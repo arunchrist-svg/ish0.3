@@ -1,0 +1,56 @@
+/* ISH Design System — core tokens */
+@theme inline {
+  --color-ish-outer: #6b6878;
+  --color-ish-app: #efeff0;
+  --color-ish-ink: #1a1a1f;
+  --color-ish-ink-soft: #6b6975;
+  --color-ish-ink-faint: #a8a6b0;
+  --color-ish-border: #e7e6ea;
+  --color-ish-yellow: #f4f25a;
+  --color-ish-yellow-soft: #f9f8c8;
+  --color-ish-pink: #fad9d0;
+  --color-ish-pink-soft: #fceeea;
+  --color-ish-green: #3fbe82;
+  --color-ish-green-soft: #e0f7ec;
+  --color-ish-black: #15151a;
+  --color-ish-avatar-1: #f2c9a0;
+  --color-ish-avatar-2: #f2a8a8;
+  --color-ish-avatar-3: #a8c9f2;
+  --color-ish-avatar-4: #c9a8f2;
+  --color-ish-avatar-5: #a8f2c9;
+  --color-ish-avatar-6: #f2dca8;
+  --shadow-ish-sm: 0 1px 2px rgba(20, 20, 30, 0.05);
+  --shadow-ish: 0 2px 8px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
+  --shadow-ish-float: 0 24px 60px rgba(20, 16, 30, 0.22);
+  --shadow-ish-yellow: 0 6px 18px rgba(244, 242, 90, 0.35);
+  --shadow-ish-yellow-sm: 0 4px 14px rgba(244, 242, 90, 0.3);
+}
+
+:root {
+  --ish-yellow-gradient: linear-gradient(135deg, #f4f25a 0%, #fdeaa8 50%, #fcd9c4 100%);
+}
+
+.dark {
+  --color-ish-outer: #3d3b45;
+  --color-ish-app: #1e1e24;
+  --color-ish-ink: #f0f0f2;
+  --color-ish-ink-soft: #a8a6b0;
+  --color-ish-ink-faint: #6b6975;
+  --color-ish-border: #3a3940;
+  --color-ish-yellow-soft: #3d3a1a;
+  --color-ish-pink-soft: #3d2e2a;
+  --color-ish-green-soft: #1a3d2e;
+  --ish-yellow-gradient: linear-gradient(135deg, #c4c248 0%, #b8a060 50%, #a88070 100%);
+}
+
+@keyframes d365-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes d365-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-d365-in { animation: d365-in 0.2s ease-out; }
+.bg-ish-yellow-gradient { background: var(--ish-yellow-gradient); }

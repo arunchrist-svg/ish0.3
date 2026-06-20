@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ish_crm
+    ports:
+      - "5432:5432"
+    volumes:
+      - ish_pgdata:/var/lib/postgresql/data
+volumes:
+  ish_pgdata:
