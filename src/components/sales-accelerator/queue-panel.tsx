@@ -2,6 +2,8 @@
 
 import { Calendar, RefreshCw, Search, Mail } from "lucide-react";
 import { CircleButton, IshAvatar, ScoreBadge, Separator } from "@/design-system";
+import { SlidingHighlight } from "@/design-system/primitives/sliding-highlight";
+import { useSlidingHighlight } from "@/design-system/hooks/use-sliding-highlight";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
 
@@ -14,6 +16,7 @@ type Props = {
 export function QueuePanel({ leads, activeId, onSelect }: Props) {
   const today = leads.slice(0, Math.min(3, leads.length));
   const older = leads.slice(3);
+  const { containerRef, register, rect, ready } = useSlidingHighlight(activeId);
 
   return (
     <div className="w-[330px] shrink-0 border-r border-ish-border bg-ish-app p-[22px_18px]">
@@ -26,27 +29,49 @@ export function QueuePanel({ leads, activeId, onSelect }: Props) {
         </div>
       </div>
 
-      {today.length > 0 && (
-        <>
-          <div className="mb-2.5 mt-4 text-xs font-semibold text-ish-ink-faint">RECENT</div>
-          {today.map((item, i) => (
-            <QueueCard key={item.id} item={item} index={i} active={activeId === item.id} onClick={() => onSelect(item.id)} />
-          ))}
-        </>
-      )}
+      <div ref={containerRef} className="relative">
+        <SlidingHighlight
+          rect={rect}
+          ready={ready}
+          className="rounded-[18px] bg-ish-yellow-gradient shadow-[var(--shadow-ish-yellow)]"
+        />
 
-      {older.length > 0 && (
-        <>
-          <div className="my-4 flex items-center gap-2.5">
-            <Separator className="flex-1 bg-ish-border" />
-            <span className="text-[11.5px] font-semibold text-ish-ink-faint">EARLIER</span>
-            <Separator className="flex-1 bg-ish-border" />
-          </div>
-          {older.map((item, i) => (
-            <QueueCard key={item.id} item={item} index={i + 3} active={activeId === item.id} onClick={() => onSelect(item.id)} />
-          ))}
-        </>
-      )}
+        {today.length > 0 && (
+          <>
+            <div className="mb-2.5 mt-4 text-xs font-semibold text-ish-ink-faint">RECENT</div>
+            {today.map((item, i) => (
+              <QueueCard
+                key={item.id}
+                item={item}
+                index={i}
+                active={activeId === item.id}
+                register={register(item.id)}
+                onClick={() => onSelect(item.id)}
+              />
+            ))}
+          </>
+        )}
+
+        {older.length > 0 && (
+          <>
+            <div className="my-4 flex items-center gap-2.5">
+              <Separator className="flex-1 bg-ish-border" />
+              <span className="text-[11.5px] font-semibold text-ish-ink-faint">EARLIER</span>
+              <Separator className="flex-1 bg-ish-border" />
+            </div>
+            {older.map((item, i) => (
+              <QueueCard
+                key={item.id}
+                item={item}
+                index={i + 3}
+                active={activeId === item.id}
+                register={register(item.id)}
+                onClick={() => onSelect(item.id)}
+              />
+            ))}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -57,16 +82,31 @@ function emailStatusDot(status: string) {
   return "bg-ish-ink-faint";
 }
 
-function QueueCard({ item, index, active, onClick }: { item: LeadQueueItem; index: number; active: boolean; onClick: () => void }) {
+function QueueCard({
+  item,
+  index,
+  active,
+  register,
+  onClick,
+}: {
+  item: LeadQueueItem;
+  index: number;
+  active: boolean;
+  register: (node: HTMLElement | null) => void;
+  onClick: () => void;
+}) {
   return (
     <button
+      ref={register}
       type="button"
       onClick={onClick}
       className={cn(
-        "mb-2.5 w-full cursor-pointer rounded-[18px] p-4 text-left transition-all duration-150",
+        "relative z-10 mb-2.5 w-full cursor-pointer rounded-[18px] p-4 text-left",
+        "transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "hover:translate-y-[-1px] active:scale-[0.99]",
         active
-          ? "bg-ish-yellow-gradient shadow-[var(--shadow-ish-yellow)]"
-          : "bg-white shadow-[var(--shadow-ish-sm)] hover:brightness-[0.98]",
+          ? "shadow-[var(--shadow-ish-yellow)]"
+          : "bg-white shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)]",
       )}
     >
       <div className="mb-3.5 flex items-start justify-between">
@@ -77,7 +117,13 @@ function QueueCard({ item, index, active, onClick }: { item: LeadQueueItem; inde
             <div className="mt-0.5 text-xs text-ish-ink-soft">{item.action}</div>
           </div>
         </div>
-        <div className="flex size-[30px] items-center justify-center rounded-full bg-white/60">
+        <div
+          className={cn(
+            "flex size-[30px] items-center justify-center rounded-full bg-white/60",
+            "transition-transform duration-300",
+            active && "scale-110",
+          )}
+        >
           <Mail className="size-3.5 text-ish-ink-soft" />
         </div>
       </div>

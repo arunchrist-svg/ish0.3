@@ -1,10 +1,13 @@
 import { ExternalLink, Lock, Zap } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
-import { IshAvatar, ScoreBadge, PanelCard, SectionHeader, Button } from "@/design-system";
+import { IshAvatar, ScoreGauge, PanelCard, SectionHeader, Button } from "@/design-system";
+import { normalizeLinkedInUrl } from "@/lib/utils";
 
 type Props = { person: Person; index: number };
 
 export function PersonDetailPanel({ person, index }: Props) {
+  const linkedInUrl = normalizeLinkedInUrl(person.linkedIn);
+
   return (
     <PanelCard tone="white" className="flex h-full flex-col gap-4 overflow-y-auto rounded-none p-5">
       {/* Header: avatar + name + KEY + score */}
@@ -24,7 +27,7 @@ export function PersonDetailPanel({ person, index }: Props) {
             {person.department} · {person.seniority}
           </div>
         </div>
-        <ScoreBadge score={person.matchScore} />
+        <ScoreGauge score={person.matchScore} size="md" background />
       </div>
 
       {/* Bio — PanelCard tone="yellow" */}
@@ -56,17 +59,19 @@ export function PersonDetailPanel({ person, index }: Props) {
       </div>
 
       {/* LinkedIn — Button variant="outline" size="sm" */}
-      <a
-        href={`https://${person.linkedIn}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="w-full"
-      >
-        <Button variant="outline" size="sm" className="w-full justify-start gap-2">
-          <ExternalLink className="size-3.5" />
-          View LinkedIn Profile
-        </Button>
-      </a>
+      {linkedInUrl ? (
+        <a
+          href={linkedInUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full"
+        >
+          <Button variant="outline" size="sm" className="w-full justify-start gap-2">
+            <ExternalLink className="size-3.5" />
+            View LinkedIn Profile
+          </Button>
+        </a>
+      ) : null}
 
       {/* Blurred contact fields */}
       <div>

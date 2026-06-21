@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db, outreachApprovals, leadOutreach, leads, contacts, outreachSchedule, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
+import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/resend-client";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { logAudit } from "@/lib/audit";
@@ -28,6 +29,10 @@ export async function POST(req: Request) {
       with: { contact: true },
     });
     if (!leadRow) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+
+    if (isManualStage(leadRow.status) || isPastReplyStage(leadRow.status)) {
+      return NextResponse.json({ error: "Lead is past outreach stage" }, { status: 400 });
+    }
 
     const contact = leadRow.contact as typeof contacts.$inferSelect;
 

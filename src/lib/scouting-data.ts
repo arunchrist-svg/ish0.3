@@ -30,8 +30,87 @@ export type Person = {
   bio: string;
 };
 
-export const SCOUT_CITIES = ["Bangalore", "Hosur", "Mysore", "Pune", "Chennai"] as const;
-export const SCOUT_INDUSTRIES = ["IT", "Manufacturing", "Real Estate", "Pharma", "Retail", "FMCG"] as const;
+export const SCOUT_CITIES = [
+  "Bengaluru",
+  "Mysore",
+  "Mangalore",
+  "Hubli",
+  "Tumkur",
+  "Hassan",
+  "Belgaum",
+  "Davanagere",
+  "Shivamogga",
+  "Bellary",
+  "Udupi",
+  "Hosur",
+] as const;
+
+export type ScoutCity = (typeof SCOUT_CITIES)[number];
+
+/** Karnataka major cities + Hosur (TN border). */
+
+export const SCOUT_CITY_META: Record<
+  ScoutCity,
+  { initials: string; icon: string; tagline: string }
+> = {
+  Bengaluru: { initials: "BLR", icon: "🏙️", tagline: "Metro & tech hub" },
+  Mysore: { initials: "MYS", icon: "🏰", tagline: "Heritage & education" },
+  Mangalore: { initials: "MNG", icon: "⛵", tagline: "Port city & trade" },
+  Hubli: { initials: "HBL", icon: "🚂", tagline: "Rail junction & commerce" },
+  Tumkur: { initials: "TMK", icon: "🌾", tagline: "Agri & logistics" },
+  Hassan: { initials: "HSN", icon: "🛕", tagline: "Temple towns" },
+  Belgaum: { initials: "BGM", icon: "🪖", tagline: "Border city & industry" },
+  Davanagere: { initials: "DVG", icon: "🥘", tagline: "Food processing" },
+  Shivamogga: { initials: "SMG", icon: "🌊", tagline: "Malnad region" },
+  Bellary: { initials: "BLY", icon: "⛰️", tagline: "Mining & steel" },
+  Udupi: { initials: "UDI", icon: "🥥", tagline: "Coastal trade & cuisine" },
+  Hosur: { initials: "HSR", icon: "🏭", tagline: "Industrial corridor" },
+};
+
+export function getCityMeta(city: string) {
+  return SCOUT_CITY_META[city as ScoutCity] ?? {
+    initials: city.slice(0, 3).toUpperCase(),
+    icon: "📍",
+    tagline: city,
+  };
+}
+
+export const SCOUT_CITY_GROUPS: { label: string; cities: ScoutCity[] }[] = [
+  { label: "Metro & hub", cities: ["Bengaluru", "Mysore"] },
+  { label: "Coastal Karnataka", cities: ["Mangalore", "Udupi"] },
+  { label: "Central Karnataka", cities: ["Tumkur", "Hassan", "Davanagere", "Shivamogga"] },
+  { label: "North Karnataka", cities: ["Hubli", "Belgaum", "Bellary"] },
+  { label: "Tamil Nadu border", cities: ["Hosur"] },
+];
+export const SCOUT_INDUSTRIES = [
+  "Manufacturing",
+  "Real Estate",
+  "Technology",
+  "Financial Services",
+  "Healthcare",
+  "Retail",
+  "FMCG",
+  "Construction",
+  "Automotive",
+  "Pharmaceuticals",
+  "Education",
+  "Hospitality",
+  "Logistics",
+] as const;
+
+export const SCOUT_SENIORITY = ["C-Level", "VP", "Director", "Manager"] as const;
+export type ScoutSeniority = (typeof SCOUT_SENIORITY)[number];
+
+export const SCOUT_DEPARTMENTS = [
+  "HR",
+  "Admin",
+  "Procurement",
+  "Facilities",
+  "Marketing",
+  "Operations",
+  "Leadership",
+] as const;
+export type ScoutDepartment = (typeof SCOUT_DEPARTMENTS)[number];
 
 export const COMPANIES: Company[] = [
   {

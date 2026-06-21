@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule } from "@/db";
+import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel } from "@/db";
 import { eq, desc } from "drizzle-orm";
+import { canManuallyAdvance, parseDealAmount } from "@/lib/pipeline-status";
+import { logAudit } from "@/lib/audit";
 import type { LeadDetailRecord } from "@/lib/api-client";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -55,12 +57,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       employees: account.employees ?? "—",
       email: contact.email ?? "—",
       emailStatus: contact.emailStatus ?? "missing",
+      emailConfidence: contact.emailConfidence ?? undefined,
+      enrichmentSource: contact.enrichmentSource ?? undefined,
+      enrichmentProvider: contact.enrichmentProvider ?? undefined,
       phone: contact.phone ?? undefined,
       linkedIn: contact.linkedIn ?? undefined,
       score: lead.score ?? 60,
       scoreGrade: lead.scoreGrade ?? gradeFromScore(lead.score ?? 60),
       scoreTrend: lead.scoreTrend ?? "Steady",
       estimatedValue: lead.estimatedValue ?? research?.estimatedOrderValue ?? undefined,
+      closedDealAmount: lead.closedDealAmount ?? undefined,
       status: lead.status,
       leadSource: lead.leadSource ?? "scout",
       rating: lead.rating ?? "Warm",
@@ -155,4 +161,70 @@ function deriveUpNext(
   return tasks;
 }
 
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const { status: nextStatus, closedDealAmount } = body as {
+      status?: string;
+      closedDealAmount?: string;
+    };
+
+    if (!nextStatus) {
+      return NextResponse.json({ error: "status required" }, { status: 400 });
+    }
+
+    const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+    if (!lead) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    if (!canManuallyAdvance(lead.status, nextStatus)) {
+      return NextResponse.json(
+        { error: `Cannot advance from ${lead.status} to ${nextStatus}` },
+        { status: 400 },
+      );
+    }
+
+    if (nextStatus === "closed") {
+      if (!closedDealAmount?.trim()) {
+        return NextResponse.json({ error: "closedDealAmount required to close deal" }, { status: 400 });
+      }
+      const parsed = parseDealAmount(closedDealAmount);
+      if (parsed === null) {
+        return NextResponse.json({ error: "Invalid deal amount" }, { status: 400 });
+      }
+    }
+
+    const updates: { status: string; closedDealAmount?: string; updatedAt: Date } = {
+      status: nextStatus,
+      updatedAt: new Date(),
+    };
+    if (nextStatus === "closed" && closedDealAmount) {
+      updates.closedDealAmount = closedDealAmount.trim();
+    }
+
+    await db.update(leads).set(updates).where(eq(leads.id, id));
+
+    if (nextStatus === "closed") {
+      await db.insert(yieldFunnel).values({
+        leadId: id,
+        stage: "po_closed",
+        metadata: { closedDealAmount: closedDealAmount?.trim(), source: "manual" },
+      });
+    }
+
+    await logAudit({
+      action: `lead.status.${nextStatus}`,
+      entityType: "lead",
+      entityId: id,
+      metadata: { from: lead.status, to: nextStatus, closedDealAmount },
+    });
+
+    return NextResponse.json({ ok: true, status: nextStatus });
+  } catch (e) {
+    console.error("[api/leads/[id] PATCH]", e);
+    return NextResponse.json({ error: "Status update failed" }, { status: 500 });
+  }
+}
 

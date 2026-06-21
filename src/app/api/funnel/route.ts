@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db, yieldFunnel, leads, enrichmentRuns } from "@/db";
-import { count, eq } from "drizzle-orm";
+import { count, eq, or } from "drizzle-orm";
+import { parseDealAmount } from "@/lib/pipeline-status";
 
 export async function GET() {
   try {
@@ -24,6 +25,17 @@ export async function GET() {
       .from(leads)
       .groupBy(leads.status);
 
+    const closedRows = await db
+      .select({ closedDealAmount: leads.closedDealAmount })
+      .from(leads)
+      .where(or(eq(leads.status, "closed"), eq(leads.status, "po_closed")));
+
+    const closedCount = closedRows.length;
+    const totalAmount = closedRows.reduce((sum, row) => {
+      if (!row.closedDealAmount) return sum;
+      return sum + (parseDealAmount(row.closedDealAmount) ?? 0);
+    }, 0);
+
     return NextResponse.json({
       stages: stageCounts,
       emailAccuracy: {
@@ -38,9 +50,21 @@ export async function GET() {
           : 0,
       },
       leadStatuses,
+      closedDeals: { count: closedCount, totalAmount },
     });
   } catch (e) {
     console.error("[api/funnel]", e);
+    const closedRows = await db
+      .select({ closedDealAmount: leads.closedDealAmount })
+      .from(leads)
+      .where(or(eq(leads.status, "closed"), eq(leads.status, "po_closed")));
+
+    const closedCount = closedRows.length;
+    const totalAmount = closedRows.reduce((sum, row) => {
+      if (!row.closedDealAmount) return sum;
+      return sum + (parseDealAmount(row.closedDealAmount) ?? 0);
+    }, 0);
+
     return NextResponse.json({ error: "Funnel stats failed" }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { AppShell } from "@/design-system";
 import { TopBar } from "@/components/sales-accelerator/top-bar";
 import { SideNav } from "@/components/sales-accelerator/side-nav";
@@ -11,8 +12,11 @@ import type { LeadQueueItem } from "@/lib/api-client";
 import { toast } from "sonner";
 
 export function SalesAcceleratorApp() {
+  const searchParams = useSearchParams();
+  const leadFromUrl = searchParams.get("lead");
+
   const [leads, setLeads] = useState<LeadQueueItem[]>([]);
-  const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
+  const [activeLeadId, setActiveLeadId] = useState<string | null>(leadFromUrl);
   const [loading, setLoading] = useState(true);
 
   async function loadLeads() {
@@ -20,7 +24,9 @@ export function SalesAcceleratorApp() {
     try {
       const data = await fetchLeads();
       setLeads(data);
-      if (data.length > 0 && !activeLeadId) {
+      if (leadFromUrl && data.some((l) => l.id === leadFromUrl)) {
+        setActiveLeadId(leadFromUrl);
+      } else if (data.length > 0 && !activeLeadId) {
         setActiveLeadId(data[0].id);
       }
     } catch {
@@ -32,7 +38,12 @@ export function SalesAcceleratorApp() {
 
   useEffect(() => {
     loadLeads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (leadFromUrl) setActiveLeadId(leadFromUrl);
+  }, [leadFromUrl]);
 
   return (
     <AppShell>
@@ -59,10 +70,12 @@ export function SalesAcceleratorApp() {
               onSelect={setActiveLeadId}
             />
             {activeLeadId && (
-              <RecordWorkspace
-                leadId={activeLeadId}
-                onLeadUpdated={loadLeads}
-              />
+              <div key={activeLeadId} className="min-w-0 flex-1 animate-ish-page-in">
+                <RecordWorkspace
+                  leadId={activeLeadId}
+                  onLeadUpdated={loadLeads}
+                />
+              </div>
             )}
           </>
         )}

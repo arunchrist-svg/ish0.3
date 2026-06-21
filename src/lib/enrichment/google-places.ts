@@ -1,6 +1,7 @@
-import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
+import type { ScoutCompanyResult } from "./types";
 
-const BASE = "https://maps.googleapis.com/maps/api/place";
+const NEW_API = "https://places.googleapis.com/v1/places:searchText";
+const LEGACY_BASE = "https://maps.googleapis.com/maps/api/place";
 
 type PlacesResult = {
   place_id: string;
@@ -12,14 +13,67 @@ type PlacesResult = {
   user_ratings_total?: number;
   types?: string[];
   business_status?: string;
-  photos?: { photo_reference: string }[];
 };
 
-async function placesTextSearch(query: string): Promise<PlacesResult[]> {
+type NewPlace = {
+  id?: string;
+  displayName?: { text?: string };
+  formattedAddress?: string;
+  websiteUri?: string;
+  nationalPhoneNumber?: string;
+  rating?: number;
+  userRatingCount?: number;
+  types?: string[];
+  businessStatus?: string;
+};
+
+function apiKey(): string {
   const key = process.env.GOOGLE_PLACES_API_KEY;
   if (!key) throw new Error("GOOGLE_PLACES_API_KEY not set");
+  return key;
+}
 
-  const url = `${BASE}/textsearch/json?query=${encodeURIComponent(query)}&region=in&language=en&key=${key}`;
+function mapNewPlace(place: NewPlace): PlacesResult {
+  return {
+    place_id: place.id ?? "",
+    name: place.displayName?.text ?? "Unknown",
+    formatted_address: place.formattedAddress,
+    website: place.websiteUri,
+    formatted_phone_number: place.nationalPhoneNumber,
+    rating: place.rating,
+    user_ratings_total: place.userRatingCount,
+    types: place.types,
+    business_status: place.businessStatus,
+  };
+}
+
+async function placesTextSearchNew(query: string): Promise<PlacesResult[]> {
+  const res = await fetch(NEW_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey(),
+      "X-Goog-FieldMask":
+        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.businessStatus",
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      regionCode: "IN",
+      languageCode: "en",
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const msg = data.error?.message ?? `Google Places (New) failed: ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return ((data.places as NewPlace[] | undefined) ?? []).map(mapNewPlace);
+}
+
+async function placesTextSearchLegacy(query: string): Promise<PlacesResult[]> {
+  const url = `${LEGACY_BASE}/textsearch/json?query=${encodeURIComponent(query)}&region=in&language=en&key=${apiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Google Places text search failed: ${res.status}`);
   const data = await res.json();
@@ -29,55 +83,61 @@ async function placesTextSearch(query: string): Promise<PlacesResult[]> {
   return data.results ?? [];
 }
 
-async function placeDetails(placeId: string): Promise<PlacesResult> {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
-  if (!key) throw new Error("GOOGLE_PLACES_API_KEY not set");
-
+async function placeDetailsLegacy(placeId: string): Promise<PlacesResult> {
   const fields = "name,formatted_address,website,formatted_phone_number,rating,user_ratings_total,types,business_status";
-  const url = `${BASE}/details/json?place_id=${placeId}&fields=${fields}&key=${key}`;
+  const url = `${LEGACY_BASE}/details/json?place_id=${placeId}&fields=${fields}&key=${apiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Google Places details failed: ${res.status}`);
   const data = await res.json();
   return data.result ?? {};
 }
 
+async function placesTextSearch(query: string): Promise<PlacesResult[]> {
+  try {
+    return await placesTextSearchNew(query);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/legacy|not enabled|REQUEST_DENIED/i.test(msg)) {
+      return placesTextSearchLegacy(query);
+    }
+    throw e;
+  }
+}
+
 function extractCityFromAddress(address?: string): string | undefined {
   if (!address) return undefined;
-  // Indian addresses typically end with "City, State, Country"
   const parts = address.split(",").map((p) => p.trim());
-  // Try to find a known city
   const KNOWN_CITIES = ["Bangalore", "Bengaluru", "Hosur", "Mysore", "Mysuru", "Pune", "Chennai", "Mumbai", "Delhi", "Hyderabad"];
   for (const part of parts) {
     const match = KNOWN_CITIES.find((c) => part.toLowerCase().includes(c.toLowerCase()));
     if (match) return match === "Bengaluru" ? "Bangalore" : match === "Mysuru" ? "Mysore" : match;
   }
-  // Fallback: second-last part is usually the city
   return parts.length >= 3 ? parts[parts.length - 3] : undefined;
 }
 
 function inferIndustry(types?: string[]): string | undefined {
   if (!types?.length) return undefined;
   const MAP: Record<string, string> = {
-    "store": "Retail",
-    "clothing_store": "Retail",
-    "shopping_mall": "Retail",
-    "food": "Food & Beverage",
-    "restaurant": "Hospitality",
-    "hospital": "Healthcare",
-    "pharmacy": "Pharma",
-    "bank": "BFSI",
-    "finance": "BFSI",
-    "insurance_agency": "BFSI",
-    "real_estate_agency": "Real Estate",
-    "general_contractor": "Construction",
-    "car_dealer": "Automotive",
-    "car_rental": "Automotive",
-    "lodging": "Hospitality",
-    "university": "Education",
-    "school": "Education",
-    "lawyer": "Legal",
-    "accounting": "Finance",
-    "doctor": "Healthcare",
+    store: "Retail",
+    clothing_store: "Retail",
+    shopping_mall: "Retail",
+    food: "Food & Beverage",
+    restaurant: "Hospitality",
+    hospital: "Healthcare",
+    pharmacy: "Pharma",
+    bank: "BFSI",
+    finance: "BFSI",
+    insurance_agency: "BFSI",
+    real_estate_agency: "Real Estate",
+    general_contractor: "Construction",
+    car_dealer: "Automotive",
+    car_rental: "Automotive",
+    lodging: "Hospitality",
+    university: "Education",
+    school: "Education",
+    lawyer: "Legal",
+    accounting: "Finance",
+    doctor: "Healthcare",
   };
   for (const t of types) {
     if (MAP[t]) return MAP[t];
@@ -89,13 +149,44 @@ function inferIndustry(types?: string[]): string | undefined {
 function estimateGiftScore(place: PlacesResult): number {
   let score = 55;
   const count = place.user_ratings_total ?? 0;
-  // More reviews = more established business = better gifting target
   if (count > 500) score += 20;
   else if (count > 100) score += 12;
   else if (count > 20) score += 5;
   if (place.rating && place.rating >= 4.0) score += 8;
   if (place.website) score += 7;
   return Math.min(score, 99);
+}
+
+function extractDomain(url: string): string | undefined {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function toScoutResult(place: PlacesResult, city: string): ScoutCompanyResult {
+  const cityExtracted = extractCityFromAddress(place.formatted_address) ?? city;
+  const domain = place.website ? extractDomain(place.website) : undefined;
+
+  return {
+    name: place.name,
+    domain,
+    website: place.website,
+    industry: inferIndustry(place.types),
+    city: cityExtracted,
+    employees: undefined,
+    giftScore: estimateGiftScore(place),
+    intelNotes: [
+      place.formatted_phone_number && `Phone: ${place.formatted_phone_number}`,
+      place.rating && `Google Rating: ${place.rating} (${place.user_ratings_total ?? 0} reviews)`,
+      place.formatted_address && `Address: ${place.formatted_address}`,
+    ]
+      .filter(Boolean)
+      .join(" · ") || undefined,
+    dataSource: "google_places",
+    externalId: place.place_id,
+  };
 }
 
 export async function googlePlacesSearchCompanies(params: {
@@ -107,14 +198,13 @@ export async function googlePlacesSearchCompanies(params: {
 
   const results: ScoutCompanyResult[] = [];
   const limit = params.limit ?? 20;
+  let lastError: Error | null = null;
 
   for (const city of params.cities.slice(0, 3)) {
     if (results.length >= limit) break;
 
-    const industryStr = params.industries.length > 0
-      ? params.industries.slice(0, 2).join(" OR ")
-      : "corporate";
-
+    const industryStr =
+      params.industries.length > 0 ? params.industries.slice(0, 2).join(" ") : "corporate";
     const query = `${industryStr} companies ${city} India`;
 
     try {
@@ -124,49 +214,23 @@ export async function googlePlacesSearchCompanies(params: {
         if (results.length >= limit) break;
         if (place.business_status === "CLOSED_PERMANENTLY") continue;
 
-        // Get details for website + phone
-        let details: PlacesResult = place;
-        try {
-          if (place.place_id) {
-            details = await placeDetails(place.place_id);
+        let merged = place;
+        if (!place.website && place.place_id && !place.place_id.startsWith("Ch")) {
+          try {
+            merged = { ...place, ...(await placeDetailsLegacy(place.place_id)) };
+          } catch {
+            // New API usually includes websiteUri — legacy details optional
           }
-        } catch {
-          // use basic result if details fail
         }
 
-        const merged = { ...place, ...details };
-        const cityExtracted = extractCityFromAddress(merged.formatted_address) ?? city;
-        const domain = merged.website ? extractDomain(merged.website) : undefined;
-
-        results.push({
-          name: merged.name,
-          domain,
-          website: merged.website,
-          industry: inferIndustry(merged.types),
-          city: cityExtracted,
-          employees: undefined, // Places API doesn't have employee count
-          giftScore: estimateGiftScore(merged),
-          intelNotes: [
-            merged.formatted_phone_number && `Phone: ${merged.formatted_phone_number}`,
-            merged.rating && `Google Rating: ${merged.rating} (${merged.user_ratings_total ?? 0} reviews)`,
-            merged.formatted_address && `Address: ${merged.formatted_address}`,
-          ].filter(Boolean).join(" · ") || undefined,
-          dataSource: "google_places",
-          externalId: place.place_id,
-        });
+        results.push(toScoutResult(merged, city));
       }
     } catch (e) {
-      console.error(`[google-places] search failed for ${city}:`, e);
+      lastError = e instanceof Error ? e : new Error(String(e));
+      console.error(`[google-places] search failed for ${city}:`, lastError.message);
     }
   }
 
+  if (!results.length && lastError) throw lastError;
   return results;
-}
-
-function extractDomain(url: string): string | undefined {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return undefined;
-  }
 }

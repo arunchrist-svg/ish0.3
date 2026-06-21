@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Package, Phone, RefreshCw } from "lucide-react";
+import { FileText, Mail, Package, Phone, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UpNextTask } from "@/lib/data";
 import { Button, CircleButton, PanelCard, SectionHeader } from "@/design-system";
@@ -10,10 +10,11 @@ const iconMap = {
   package: Package,
   phone: Phone,
   file: FileText,
+  mail: Mail,
 };
 
 function TaskCard({ task }: { task: UpNextTask }) {
-  const Icon = iconMap[task.icon];
+  const Icon = iconMap[task.icon] ?? Mail;
 
   return (
     <div

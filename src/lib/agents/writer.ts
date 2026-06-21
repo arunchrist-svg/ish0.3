@@ -2,6 +2,7 @@ import { callLLM } from "@/lib/llm";
 import { retrieveRelevantRules } from "@/lib/rag";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
+import { isManualStage } from "@/lib/pipeline-status";
 
 const PROMPT_VERSION = "v1.2";
 const MAX_REVISIONS = 2;
@@ -48,6 +49,10 @@ export async function runWriter(leadId: string): Promise<string> {
   });
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+  if (isManualStage(lead.status)) {
+    throw new Error(`Cannot generate draft for lead in ${lead.status} stage`);
+  }
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;

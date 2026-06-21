@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { LeadRecord, QueueItem } from "@/lib/data";
 import { Badge, IshAvatar, MetaField, text } from "@/design-system";
+import { statusToDisplayLabel } from "@/lib/pipeline-status";
 
 type Props = {
   record: LeadRecord;
@@ -11,7 +12,7 @@ export function RecordHeader({ record, current }: Props) {
   const meta = [
     ["Lead Source", record.leadSource],
     ["Rating", record.rating],
-    ["Status", record.status],
+    ["Status", statusToDisplayLabel(record.status)],
   ] as const;
 
   return (

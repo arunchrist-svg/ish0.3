@@ -1,6 +1,6 @@
 /* ISH Design System — core tokens */
 @theme inline {
-  --color-ish-outer: #6b6878;
+  --color-ish-outer: #000000;
   --color-ish-app: #efeff0;
   --color-ish-ink: #1a1a1f;
   --color-ish-ink-soft: #6b6975;
@@ -31,7 +31,7 @@
 }
 
 .dark {
-  --color-ish-outer: #3d3b45;
+  --color-ish-outer: #000000;
   --color-ish-app: #1e1e24;
   --color-ish-ink: #f0f0f2;
   --color-ish-ink-soft: #a8a6b0;
@@ -43,6 +43,17 @@
   --ish-yellow-gradient: linear-gradient(135deg, #c4c248 0%, #b8a060 50%, #a88070 100%);
 }
 
+
+@keyframes ish-page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ish-tab-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes d365-spin {
   to { transform: rotate(360deg); }
 }
@@ -52,5 +63,37 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes ish-radar {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  70% { opacity: 0.15; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+
+@keyframes ish-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes ish-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ish-dot {
+  0%, 60%, 100% { opacity: 0.15; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
+}
+
+@keyframes ish-shimmer-bar {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
 .animate-d365-in { animation: d365-in 0.2s ease-out; }
+.animate-ish-page-in { animation: ish-page-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-ish-tab-in { animation: ish-tab-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-ish-radar { animation: ish-radar 2.4s ease-out infinite; }
+.animate-ish-float { animation: ish-float 2.2s ease-in-out infinite; }
+.animate-ish-orbit { animation: ish-orbit 3s linear infinite; }
+.animate-ish-dot { animation: ish-dot 1.2s ease-in-out infinite; }
+.animate-ish-shimmer-bar { animation: ish-shimmer-bar 1.8s ease-in-out infinite; }
 .bg-ish-yellow-gradient { background: var(--ish-yellow-gradient); }

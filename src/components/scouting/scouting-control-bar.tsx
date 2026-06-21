@@ -1,88 +1,61 @@
 "use client";
 
-import { ArrowRight, X, MapPin, Plus, Compass, Database } from "lucide-react";
+import { ArrowRight, Compass, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SCOUT_CITIES, SCOUT_INDUSTRIES } from "@/lib/scouting-data";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/design-system";
-import type { DataMode } from "@/lib/enrichment/types";
+import { SCOUT_INDUSTRIES } from "@/lib/scouting-data";
+import { CitySelector } from "./city-selector";
 
 type Props = {
   view: "companies" | "people";
   cities: string[];
   industries: string[];
-  dataMode: DataMode;
   selectedCount: number;
+  settingsLoaded?: boolean;
+  loadingCompanies?: boolean;
+  loadingMore?: boolean;
   saving?: boolean;
-  onCityToggle: (city: string) => void;
+  onCitiesChange: (cities: string[]) => void;
   onIndustryToggle: (industry: string) => void;
-  onDataModeChange: (mode: DataMode) => void;
+  onFetchNewCompanies: () => void;
   onFetchLeads: () => void;
   onAddLeads: () => void;
   onScoutMore: () => void;
+  onLoadMore: () => void;
+  onRefresh: () => void;
 };
 
-const DATA_MODES: { value: DataMode; label: string; title: string }[] = [
-  { value: "free", label: "Free", title: "Tavily + AI extraction (dev mode)" },
-  { value: "paid", label: "Paid", title: "Apollo + Hunter (requires API keys)" },
-  { value: "auto", label: "Auto", title: "Paid if keys set, else Free" },
-];
-
+/** Scouting tools bar — filters and actions in one compact row. */
 export function ScoutingControlBar({
-  view, cities, industries, dataMode, selectedCount, saving,
-  onCityToggle, onIndustryToggle, onDataModeChange,
-  onFetchLeads, onAddLeads, onScoutMore,
+  view,
+  cities,
+  industries,
+  selectedCount,
+  settingsLoaded = true,
+  loadingCompanies,
+  loadingMore,
+  saving,
+  onCitiesChange,
+  onIndustryToggle,
+  onFetchNewCompanies,
+  onFetchLeads,
+  onAddLeads,
+  onScoutMore,
+  onLoadMore,
+  onRefresh,
 }: Props) {
-  const availableCities = SCOUT_CITIES.filter((c) => !cities.includes(c));
+  const canFetchCompanies = settingsLoaded && cities.length > 0 && !loadingCompanies;
 
   return (
-    <div className="flex items-center gap-3 border-b border-ish-border bg-white px-5 py-3">
-      {/* Multi-city selector */}
-      <div className="flex items-center gap-1.5">
-        <MapPin className="size-4 text-ish-ink-soft" />
-        <div className="flex flex-wrap items-center gap-1.5">
-          {cities.map((c) => (
-            <span
-              key={c}
-              className="flex items-center gap-1 rounded-full bg-ish-yellow px-2.5 py-1 text-[11.5px] font-semibold text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-            >
-              {c}
-              <button
-                type="button"
-                onClick={() => onCityToggle(c)}
-                className="flex size-3.5 items-center justify-center rounded-full hover:bg-ish-ink/10"
-                aria-label={`Remove ${c}`}
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-          {availableCities.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1 rounded-full border border-dashed border-ish-border bg-white px-2.5 py-1 text-[11.5px] font-medium text-ish-ink-soft transition-colors hover:border-ish-ink-soft hover:text-ish-ink">
-                <Plus className="size-3" />
-                Add City
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[140px]">
-                {availableCities.map((c) => (
-                  <DropdownMenuItem key={c} onClick={() => onCityToggle(c)}>
-                    {c}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-ish-border bg-white px-5 py-2.5">
+      <CitySelector
+        cities={cities}
+        onCitiesChange={onCitiesChange}
+        className="max-w-[min(100%,280px)] shrink-0"
+      />
 
-      <div className="h-5 w-px bg-ish-border" />
+      <div className="hidden h-5 w-px shrink-0 bg-ish-border sm:block" aria-hidden />
 
-      {/* Industry chips */}
-      <div className="flex flex-1 flex-wrap gap-1.5">
+      <div className="flex min-w-[160px] flex-1 items-center gap-1.5 overflow-x-auto">
         {SCOUT_INDUSTRIES.map((ind) => {
           const active = industries.includes(ind);
           return (
@@ -91,7 +64,7 @@ export function ScoutingControlBar({
               type="button"
               onClick={() => onIndustryToggle(ind)}
               className={cn(
-                "rounded-full px-3 py-1 text-[11.5px] font-semibold transition-all duration-100",
+                "shrink-0 rounded-full px-3 py-1 text-[11.5px] font-semibold transition-all duration-100",
                 active
                   ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
                   : "bg-ish-app text-ish-ink-soft hover:bg-ish-border",
@@ -103,71 +76,86 @@ export function ScoutingControlBar({
         })}
       </div>
 
-      {/* Data mode toggle */}
-      <div className="flex items-center gap-1 rounded-xl border border-ish-border bg-ish-app p-1">
-        <Database className="ml-1.5 size-3.5 text-ish-ink-soft" />
-        {DATA_MODES.map((m) => (
+      {view === "companies" ? (
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
           <button
-            key={m.value}
             type="button"
-            title={m.title}
-            onClick={() => onDataModeChange(m.value)}
+            onClick={onFetchNewCompanies}
+            disabled={!canFetchCompanies}
             className={cn(
-              "rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all",
-              dataMode === m.value
-                ? "bg-white text-ish-ink shadow-[var(--shadow-ish-sm)]"
-                : "text-ish-ink-soft hover:text-ish-ink",
+              "flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[12.5px] font-bold text-white transition-all duration-150",
+              canFetchCompanies
+                ? "bg-ish-black shadow-[var(--shadow-ish)] hover:opacity-90"
+                : "cursor-not-allowed bg-ish-ink-faint opacity-50",
             )}
           >
-            {m.label}
+            <Search className="size-3.5" />
+            {loadingCompanies ? "Fetching…" : "Fetch New Companies"}
           </button>
-        ))}
-      </div>
 
-      {/* Scout More button */}
-      {view === "people" && (
-        <button
-          type="button"
-          onClick={onScoutMore}
-          className="flex shrink-0 items-center gap-1.5 rounded-xl border border-ish-border bg-white px-3 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-app"
-        >
-          <Compass className="size-3.5" />
-          Scout More
-        </button>
-      )}
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loadingCompanies || cities.length === 0}
+            title="Refresh discovery with current filters"
+            className="flex shrink-0 items-center gap-1 rounded-xl border border-ish-border bg-white px-3 py-1.5 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-app disabled:opacity-50"
+          >
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </button>
 
-      {/* CTA button */}
-      {view === "companies" ? (
-        <button
-          type="button"
-          onClick={onFetchLeads}
-          disabled={selectedCount === 0}
-          className={cn(
-            "flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-bold text-white transition-all duration-150",
-            selectedCount > 0
-              ? "bg-ish-black shadow-[var(--shadow-ish)] hover:opacity-90"
-              : "cursor-not-allowed bg-ish-ink-faint opacity-50",
-          )}
-        >
-          Fetch Leads from {selectedCount > 0 ? selectedCount : "—"}{" "}
-          {selectedCount === 1 ? "Company" : "Companies"}
-          <ArrowRight className="size-4" />
-        </button>
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={loadingMore || cities.length === 0}
+            className="flex shrink-0 items-center rounded-xl border border-ish-border bg-white px-3 py-1.5 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-app disabled:opacity-50"
+          >
+            {loadingMore ? "Loading…" : "Load More"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onFetchLeads}
+            disabled={selectedCount === 0}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[12.5px] font-bold text-white transition-all duration-150 sm:ml-1",
+              selectedCount > 0
+                ? "bg-ish-green shadow-[var(--shadow-ish)] hover:opacity-90"
+                : "cursor-not-allowed bg-ish-ink-faint opacity-50",
+            )}
+          >
+            Fetch Leads from {selectedCount > 0 ? selectedCount : "—"}{" "}
+            {selectedCount === 1 ? "Company" : "Companies"}
+            <ArrowRight className="size-3.5" />
+          </button>
+        </div>
       ) : (
-        <button
-          type="button"
-          onClick={onAddLeads}
-          disabled={selectedCount === 0 || saving}
-          className={cn(
-            "flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-bold text-white transition-all duration-150",
-            selectedCount > 0 && !saving
-              ? "bg-ish-green shadow-[var(--shadow-ish)] hover:opacity-90"
-              : "cursor-not-allowed bg-ish-ink-faint opacity-50",
-          )}
-        >
-          {saving ? "Saving…" : `Add ${selectedCount > 0 ? selectedCount : "—"} as Leads`}
-          <ArrowRight className="size-4" />
-        </button>
+        <div className="flex w-full shrink-0 items-center gap-2 sm:ml-auto sm:w-auto">
+          <button
+            type="button"
+            onClick={onScoutMore}
+            disabled={loadingMore}
+            className="flex shrink-0 items-center gap-1 rounded-xl border border-ish-border bg-white px-3 py-1.5 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-app disabled:opacity-50"
+          >
+            <Compass className="size-3.5" />
+            {loadingMore ? "Scouting…" : "Scout More"}
+          </button>
+
+          <button
+            type="button"
+            onClick={onAddLeads}
+            disabled={selectedCount === 0 || saving}
+            className={cn(
+              "ml-auto flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-[12.5px] font-bold text-white transition-all duration-150 sm:ml-0",
+              selectedCount > 0 && !saving
+                ? "bg-ish-green shadow-[var(--shadow-ish)] hover:opacity-90"
+                : "cursor-not-allowed bg-ish-ink-faint opacity-50",
+            )}
+          >
+            {saving ? "Saving…" : `Add ${selectedCount > 0 ? selectedCount : "—"} as Leads`}
+            <ArrowRight className="size-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

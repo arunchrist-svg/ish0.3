@@ -1,109 +1,352 @@
 import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "./types";
+import type { EnrichmentConfig } from "./config";
+import { resolveEnrichmentConfig } from "./config";
 import { apolloSearchCompanies, apolloSearchPeople } from "./apollo";
-import { tavilySearchCompanies, tavilySearchPeople } from "./tavily";
+import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
+import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
+import { enrichPersonContact } from "./enrich-lead";
+import { shouldAutoAcceptEmail, isNamedPerson } from "./confidence";
+import { isTavilyQuotaError } from "./tavily-client";
+import { hasTavilyKeys } from "./tavily-keys";
+import { fetchTavilyAccountUsage } from "./tavily-account";
+import { allTavilyKeysExhausted, takeTavilyKeySwitchMessage } from "./tavily-usage";
 import { db } from "@/db";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
 
 const BUYING_TITLES = [
   "HR Director", "HR Manager", "HR Head", "Chief People Officer", "CPO",
   "Admin Head", "Admin Director", "Administration Manager",
-  "Procurement Manager", "Procurement Head",
-  "VP HR", "VP Human Resources", "Employee Experience",
+  "Procurement Manager", "Procurement Head", "VP HR",
 ];
+
+export type DiscoveryResult = {
+  companies: ScoutCompanyResult[];
+  warnings: string[];
+  errors: string[];
+};
+
+function tavilyQuotaHit(messages: string[]): boolean {
+  return messages.some(isTavilyQuotaError);
+}
+
+function appendTavilyKeySwitchWarning(warnings: string[]): void {
+  const switchMsg = takeTavilyKeySwitchMessage();
+  if (switchMsg && !warnings.includes(switchMsg)) {
+    warnings.push(switchMsg);
+  }
+}
+
+function hasGooglePlacesKey(): boolean {
+  return !!process.env.GOOGLE_PLACES_API_KEY;
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function filterExcluded<T extends { name: string }>(results: T[], excludeNames: string[]): T[] {
+  if (!excludeNames.length) return results;
+  const excluded = new Set(excludeNames.map(normalizeName));
+  return results.filter((r) => !excluded.has(normalizeName(r.name)));
+}
 
 export async function discoverCompanies(params: {
   tenantId: string;
   workspaceId: string;
   cities: string[];
   industries: string[];
-  dataMode: DataMode;
+  dataMode?: DataMode;
+  config?: Partial<EnrichmentConfig>;
   limit?: number;
-}): Promise<ScoutCompanyResult[]> {
-  const usePaid =
-    params.dataMode === "paid" ||
-    (params.dataMode === "auto" && !!process.env.APOLLO_API_KEY);
+  excludeNames?: string[];
+  skipInternal?: boolean;
+  fetchSeed?: number;
+  companyName?: string;
+}): Promise<DiscoveryResult> {
+  const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
+  const limit = params.limit ?? parseInt(process.env.PROSPECTING_MAX_RESULTS ?? "25", 10);
+  const useAI = process.env.SCOUT_USE_AI_PROSPECTING !== "false";
+  const excludeNames = params.excludeNames ?? [];
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const searchMeta = { warnings };
+  const isNameSearch = !!params.companyName?.trim();
 
-  const limit = params.limit ?? 25;
+  // ── SEARCH MODE: targeted lookup by company name ──────────────────────────
+  if (isNameSearch) {
+    const nameQuery = params.companyName!.trim();
+    let dbResults: (typeof accounts.$inferSelect)[] = [];
+    try {
+      dbResults = await db
+        .select()
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.tenantId, params.tenantId),
+            or(
+              ilike(accounts.name, `%${nameQuery}%`),
+            ),
+            params.cities.length > 0 ? inArray(accounts.city, params.cities) : undefined,
+          ),
+        )
+        .limit(limit);
+    } catch (e) {
+      console.error("[waterfall:name_search_db] failed:", e);
+      warnings.push("Could not search saved companies from the database.");
+    }
 
-  // ── Step 1: Internal DB ───────────────────────────────────────────────────
-  const dbResults = await db
-    .select()
-    .from(accounts)
-    .where(
-      and(
-        eq(accounts.tenantId, params.tenantId),
-        params.cities.length > 0 ? inArray(accounts.city, params.cities) : undefined,
-      ),
-    )
-    .limit(limit);
+    const dbMapped = filterExcluded(dbResults.map(dbToResult), excludeNames);
+    const external: ScoutCompanyResult[] = [];
 
-  if (dbResults.length >= limit) {
-    return dbResults.map(dbToResult);
+    // Search external source with the exact company name as query
+    if (dbMapped.length < limit) {
+      const remaining = limit - dbMapped.length;
+      const cityStr = params.cities.slice(0, 2).join(", ");
+      const searchQuery = cityStr ? `${nameQuery} ${cityStr}` : nameQuery;
+
+      if (!tavilyQuotaHit([...warnings, ...errors])) {
+        await runStep("name_search_tavily", () =>
+          tavilySearchCompanies({
+            cities: params.cities,
+            industries: params.industries,
+            limit: remaining,
+            meta: searchMeta,
+            nameQuery: searchQuery,
+          }),
+          external, remaining, excludeNames, warnings, errors,
+        );
+        appendTavilyKeySwitchWarning(warnings);
+      }
+    }
+
+    // Sort: exact match first, then partial matches
+    const allResults = [...dbMapped, ...filterExcluded(external, dbMapped.map((r) => r.name))];
+    const lowerQuery = nameQuery.toLowerCase();
+    allResults.sort((a, b) => {
+      const aExact = a.name.toLowerCase() === lowerQuery ? 0 : a.name.toLowerCase().includes(lowerQuery) ? 1 : 2;
+      const bExact = b.name.toLowerCase() === lowerQuery ? 0 : b.name.toLowerCase().includes(lowerQuery) ? 1 : 2;
+      return aExact - bExact;
+    });
+
+    return {
+      companies: allResults.slice(0, limit),
+      warnings: [...new Set(warnings)],
+      errors: [...new Set(errors)],
+    };
   }
 
-  const remaining = limit - dbResults.length;
+  // ── AUTOPILOT MODE: broad discovery ──────────────────────────────────────
+
+  let dbResults: (typeof accounts.$inferSelect)[] = [];
+
+  // ── Step 1: Internal DB (skip when loading more external results) ─────────
+  if (!params.skipInternal) {
+    try {
+      dbResults = await db
+        .select()
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.tenantId, params.tenantId),
+            params.cities.length > 0 ? inArray(accounts.city, params.cities) : undefined,
+          ),
+        )
+        .limit(limit);
+    } catch (e) {
+      console.error("[waterfall:internal_db] failed:", e);
+      warnings.push("Could not read saved companies from the database.");
+    }
+  }
+
+  const dbMapped = filterExcluded(dbResults.map(dbToResult), excludeNames);
+
+  if (dbMapped.length >= limit) {
+    return { companies: dbMapped.slice(0, limit), warnings, errors };
+  }
+
+  const remaining = limit - dbMapped.length;
   const external: ScoutCompanyResult[] = [];
 
-  // ── Step 2: Apollo (paid/auto) ────────────────────────────────────────────
-  if (usePaid) {
-    try {
-      const apolloResults = await apolloSearchCompanies({
-        cities: params.cities,
-        industries: params.industries,
-        limit: remaining,
-      });
-      external.push(...apolloResults);
-    } catch (e) {
-      console.error("[waterfall] Apollo companies failed", e);
-    }
+  // ── Step 2: Primary search provider (resolved from dataMode) ─────────────
+  switch (cfg.searchProvider) {
+    case "india_directories":
+      await runStep("india_directories", () =>
+        indiaDirectoriesSearchCompanies({
+          cities: params.cities,
+          industries: params.industries,
+          limit: remaining,
+          meta: searchMeta,
+          fetchSeed: params.fetchSeed,
+        }),
+        external, remaining, excludeNames, warnings, errors,
+      );
+      break;
+
+    case "google_places":
+      await runStep("google_places", () =>
+        googlePlacesSearchCompanies({ cities: params.cities, industries: params.industries, limit: remaining }),
+        external, remaining, excludeNames, warnings, errors,
+      );
+      break;
+
+    case "apollo":
+      await runStep("apollo", () =>
+        apolloSearchCompanies({ cities: params.cities, industries: params.industries, limit: remaining }),
+        external, remaining, excludeNames, warnings, errors,
+      );
+      break;
+
+    case "tavily_ai":
+      await runStep("tavily_ai", () =>
+        tavilySearchCompanies({
+          cities: params.cities,
+          industries: params.industries,
+          limit: remaining,
+          meta: searchMeta,
+        }),
+        external, remaining, excludeNames, warnings, errors,
+      );
+      break;
   }
 
-  // ── Step 3: Google Places (free, great for Indian local businesses) ────────
-  if (external.length < remaining && process.env.GOOGLE_PLACES_API_KEY) {
-    try {
-      const placesLimit = remaining - external.length;
-      const placesResults = await googlePlacesSearchCompanies({
-        cities: params.cities,
-        industries: params.industries,
-        limit: placesLimit,
-      });
-      // Dedupe by domain/name
-      const seen = new Set(external.map((c) => c.name.toLowerCase()));
-      for (const r of placesResults) {
-        if (!seen.has(r.name.toLowerCase())) {
-          external.push(r);
-          seen.add(r.name.toLowerCase());
-        }
+  appendTavilyKeySwitchWarning(warnings);
+
+  const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage({ force: true }) : [];
+
+  // ── Step 2b: Google Places fallback when ALL Tavily keys are exhausted ────
+  if (external.length === 0 && tavilyQuotaHit([...warnings, ...errors]) && allTavilyKeysExhausted(tavilyAccount)) {
+    if (hasGooglePlacesKey()) {
+      await runStep(
+        "google_places_fallback",
+        () => googlePlacesSearchCompanies({ cities: params.cities, industries: params.industries, limit: remaining }),
+        external,
+        remaining,
+        excludeNames,
+        warnings,
+        errors,
+      );
+      if (external.length > 0) {
+        const keptWarnings = warnings.filter((w) => !isTavilyQuotaError(w));
+        warnings.length = 0;
+        warnings.push(...keptWarnings, "All Tavily keys exhausted — switched to Google Places for company discovery.");
+        const keptErrors = errors.filter((e) => !isTavilyQuotaError(e));
+        errors.length = 0;
+        errors.push(...keptErrors);
       }
-    } catch (e) {
-      console.error("[waterfall] Google Places companies failed", e);
+    } else if (!errors.some((e) => isTavilyQuotaError(e))) {
+      errors.push(
+        "All Tavily keys exhausted. Add TAVILY_API_KEY_2 in .env.local, GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
+      );
     }
   }
 
-  // ── Step 4: Tavily + LLM (free, broad web coverage) ──────────────────────
-  if (external.length < remaining) {
-    try {
-      const tavilyLimit = remaining - external.length;
-      const tavilyResults = await tavilySearchCompanies({
+  // ── Step 3: Fallback to AI (Tavily+Gemini) if enabled and results short ──
+  if (
+    useAI &&
+    cfg.fallbackToAI &&
+    external.length < Math.floor(remaining * 0.5) &&
+    cfg.searchProvider !== "tavily_ai" &&
+    !tavilyQuotaHit([...warnings, ...errors])
+  ) {
+    await runStep("tavily_ai_fallback", () =>
+      tavilySearchCompanies({
         cities: params.cities,
         industries: params.industries,
-        limit: tavilyLimit,
-      });
-      const seen = new Set(external.map((c) => c.name.toLowerCase()));
-      for (const r of tavilyResults) {
-        if (!seen.has(r.name.toLowerCase())) {
-          external.push(r);
-          seen.add(r.name.toLowerCase());
-        }
-      }
-    } catch (e) {
-      console.error("[waterfall] Tavily companies failed", e);
-    }
+        limit: remaining - external.length,
+        meta: searchMeta,
+      }),
+      external, remaining, excludeNames, warnings, errors,
+    );
+    appendTavilyKeySwitchWarning(warnings);
   }
 
-  return [...dbResults.map(dbToResult), ...external];
+  const companies = [...dbMapped, ...external].slice(0, limit);
+  return {
+    companies,
+    warnings: [...new Set(warnings)],
+    errors: [...new Set(errors)],
+  };
+}
+
+export type PeopleDiscoveryResult = {
+  people: ScoutPersonResult[];
+  warnings: string[];
+  errors: string[];
+};
+
+function accountNameMatches(stored: string, target: string): boolean {
+  const clean = (s: string) =>
+    normalizeName(s)
+      .replace(/\([^)]*\)/g, "")
+      .replace(/\b(pvt|ltd|limited|llp|inc|corp)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const a = clean(stored);
+  const b = clean(target);
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function domainFromWebsite(website?: string): string | undefined {
+  if (!website) return undefined;
+  try {
+    return new URL(website.startsWith("http") ? website : `https://${website}`).hostname.replace(/^www\./, "");
+  } catch {
+    return undefined;
+  }
+}
+
+// Maps UI seniority labels → search title keywords
+const SENIORITY_TITLES: Record<string, string[]> = {
+  "C-Level": ["CEO", "COO", "CHRO", "CPO", "CXO", "Chief"],
+  "VP": ["VP", "Vice President"],
+  "Director": ["Director"],
+  "Manager": ["Manager", "Head"],
+};
+
+// Maps UI department labels → search title keywords
+const DEPARTMENT_TITLES: Record<string, string[]> = {
+  "HR": ["HR", "Human Resources", "People", "CHRO", "CPO"],
+  "Admin": ["Admin", "Administration"],
+  "Procurement": ["Procurement", "Purchase", "Sourcing"],
+  "Facilities": ["Facilities", "Facility"],
+  "Marketing": ["Marketing"],
+  "Operations": ["Operations"],
+  "Leadership": ["CEO", "MD", "Managing Director", "COO", "CXO"],
+};
+
+function buildRoleTitleHints(seniority: string[], departments: string[]): string[] {
+  const hints = new Set<string>();
+  for (const s of seniority) {
+    for (const t of SENIORITY_TITLES[s] ?? []) hints.add(t);
+  }
+  for (const d of departments) {
+    for (const t of DEPARTMENT_TITLES[d] ?? []) hints.add(t);
+  }
+  return [...hints];
+}
+
+function personMatchesRoles(person: ScoutPersonResult, seniority: string[], departments: string[]): boolean {
+  if (!seniority.length && !departments.length) return true;
+  const titleLower = (person.title ?? "").toLowerCase();
+  const senLower = (person.seniority ?? "").toLowerCase();
+  const deptLower = (person.department ?? "").toLowerCase();
+
+  const senMatch = seniority.length === 0 || seniority.some((s) => {
+    const keywords = SENIORITY_TITLES[s] ?? [s];
+    return keywords.some((k) => titleLower.includes(k.toLowerCase()) || senLower.includes(k.toLowerCase()));
+  });
+
+  const deptMatch = departments.length === 0 || departments.some((d) => {
+    const keywords = DEPARTMENT_TITLES[d] ?? [d];
+    return keywords.some((k) => titleLower.includes(k.toLowerCase()) || deptLower.includes(k.toLowerCase()));
+  });
+
+  // Both must match if both filters are active; either if only one is
+  if (seniority.length > 0 && departments.length > 0) return senMatch && deptMatch;
+  return senMatch || deptMatch;
 }
 
 export async function discoverPeople(params: {
@@ -111,66 +354,220 @@ export async function discoverPeople(params: {
   workspaceId: string;
   companyName: string;
   companyDomain?: string;
-  dataMode: DataMode;
+  companyWebsite?: string;
+  dataMode?: DataMode;
+  config?: Partial<EnrichmentConfig>;
   limit?: number;
-}): Promise<ScoutPersonResult[]> {
-  const usePaid =
-    params.dataMode === "paid" ||
-    (params.dataMode === "auto" && !!process.env.APOLLO_API_KEY);
-
+  seniority?: string[];
+  departments?: string[];
+}): Promise<PeopleDiscoveryResult> {
+  const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = params.limit ?? 15;
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  const resolvedDomain = params.companyDomain ?? domainFromWebsite(params.companyWebsite);
+  const activeSeniority = params.seniority ?? [];
+  const activeDepartments = params.departments ?? [];
+  const roleHints = buildRoleTitleHints(activeSeniority, activeDepartments);
 
-  // ── Step 1: Internal DB ───────────────────────────────────────────────────
-  const dbContacts = await db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.tenantId, params.tenantId))
-    .limit(limit);
+  // ── Step 1: Internal DB contacts for this company ───────────────────────
+  let companyContacts: (typeof contacts.$inferSelect)[] = [];
+  try {
+    const tenantAccounts = await db
+      .select()
+      .from(accounts)
+      .where(eq(accounts.tenantId, params.tenantId));
 
-  if (dbContacts.length >= limit) {
-    return dbContacts.map(contactToResult);
+    const account = tenantAccounts.find((a) => accountNameMatches(a.name, params.companyName));
+    if (account) {
+      companyContacts = await db
+        .select()
+        .from(contacts)
+        .where(and(eq(contacts.tenantId, params.tenantId), eq(contacts.accountId, account.id)))
+        .limit(limit);
+    }
+  } catch (e) {
+    console.error("[waterfall:internal_contacts] failed:", e);
+    warnings.push("Could not read saved contacts from the database.");
   }
 
-  const remaining = limit - dbContacts.length;
+  if (companyContacts.length >= limit) {
+    return { people: companyContacts.map(contactToResult).slice(0, limit), warnings, errors };
+  }
+
+  const remaining = limit - companyContacts.length;
   const external: ScoutPersonResult[] = [];
 
-  // ── Step 2: Apollo (paid/auto) ────────────────────────────────────────────
-  if (usePaid && params.companyDomain) {
-    try {
-      const apolloResults = await apolloSearchPeople({
-        companyDomain: params.companyDomain,
-        titles: BUYING_TITLES,
-        limit: remaining,
-      });
-      external.push(...apolloResults);
-    } catch (e) {
-      console.error("[waterfall] Apollo people failed", e);
-    }
+  // ── Step 2: Primary people search ────────────────────────────────────────
+  const effectiveTitles = roleHints.length > 0 ? roleHints : BUYING_TITLES;
+
+  if (cfg.searchProvider === "apollo" && resolvedDomain) {
+    await runStep(
+      "apollo_people",
+      () => apolloSearchPeople({ companyDomain: resolvedDomain, titles: effectiveTitles, limit: remaining }),
+      external,
+      remaining,
+      [],
+      warnings,
+      errors,
+    );
   }
 
-  // ── Step 3: Tavily + LLM (free fallback for people) ──────────────────────
-  // Note: Google Places API does not return individual employee contacts
-  if (external.length < remaining) {
-    try {
-      const tavilyResults = await tavilySearchPeople({
-        companyName: params.companyName,
-        companyDomain: params.companyDomain,
-        titles: BUYING_TITLES,
-        limit: remaining - external.length,
-      });
-      const seen = new Set(external.map((p) => p.name.toLowerCase()));
-      for (const r of tavilyResults) {
-        if (!seen.has(r.name.toLowerCase())) {
-          external.push(r);
-          seen.add(r.name.toLowerCase());
-        }
+  if (external.length === 0) {
+    if (cfg.searchProvider === "apollo" && !resolvedDomain) {
+      warnings.push(`No website domain for ${params.companyName} — searching LinkedIn instead of Apollo.`);
+    }
+    await runStep(
+      "people_search",
+      () =>
+        indiaDirectoriesSearchPeople({
+          companyName: params.companyName,
+          companyDomain: resolvedDomain,
+          limit: remaining,
+          roleHints: roleHints.length > 0 ? roleHints : undefined,
+        }),
+      external,
+      remaining,
+      [],
+      warnings,
+      errors,
+    );
+    appendTavilyKeySwitchWarning(warnings);
+  }
+
+  if (external.length === 0) {
+    const combined = [...warnings, ...errors];
+    const quotaHit = tavilyQuotaHit(combined);
+    const hasActionable = combined.some((m) =>
+      /missing|failed|quota|usage limit|exhausted|rejected|people search needs tavily|switched to backup key/i.test(m),
+    );
+
+    const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage({ force: true }) : [];
+
+    if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
+      const allExhaustedMsg =
+        "All Tavily keys exhausted for people search. Add TAVILY_API_KEY_2 in .env.local, switch to Apollo mode, or wait for monthly reset.";
+      if (!combined.some((m) => /all tavily keys exhausted/i.test(m))) {
+        errors.push(allExhaustedMsg);
       }
-    } catch (e) {
-      console.error("[waterfall] Tavily people failed", e);
+    } else if (quotaHit) {
+      const quotaMsg = combined.find(isTavilyQuotaError);
+      if (quotaMsg && !warnings.some(isTavilyQuotaError)) {
+        warnings.push(quotaMsg);
+      }
+    } else if (!hasTavilyKeys()) {
+      errors.push("TAVILY_API_KEY is missing. Add it in .env.local to search LinkedIn for decision-makers.");
+    } else if (!hasActionable) {
+      if (!resolvedDomain) {
+        warnings.push(
+          `No decision-makers found for ${params.companyName}. Add a company website for better LinkedIn matching, or try larger brands (e.g. Bosch, Infosys).`,
+        );
+      } else {
+        warnings.push(
+          `No LinkedIn profiles found for ${params.companyName}. Try well-known brands with public LinkedIn presence, or verify the company name and website.`,
+        );
+      }
     }
   }
 
-  return [...dbContacts.map(contactToResult), ...external];
+  // ── Step 3: Free email enrichment per person ─────────────────────────────
+  if (cfg.enrichProvider !== "none") {
+    const companyCtx = {
+      name: params.companyName,
+      domain: resolvedDomain,
+      website: params.companyWebsite,
+      city: undefined,
+      dataSource: "scout",
+    };
+    for (const person of external) {
+      if (person.email && person.emailStatus !== "missing") continue;
+      try {
+        const enriched = await enrichPersonContact({
+          person,
+          company: companyCtx,
+          mode: "free",
+          dataMode: params.dataMode,
+        });
+        const named = isNamedPerson(person.name);
+        if (enriched.email && shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })) {
+          person.email = enriched.email;
+          person.emailStatus = enriched.emailStatus;
+          if (enriched.phone && !person.phone) person.phone = enriched.phone;
+        }
+        if (enriched.title && !person.title) person.title = enriched.title;
+      } catch (e) {
+        console.error("[waterfall:enrich]", person.name, e);
+      }
+    }
+  }
+
+  // ── Step 4: Filter + rank by selected roles ─────────────────────────────
+  const allPeople = [...companyContacts.map(contactToResult), ...external];
+  let finalPeople: ScoutPersonResult[];
+  if (activeSeniority.length > 0 || activeDepartments.length > 0) {
+    const matched = allPeople.filter((p) => personMatchesRoles(p, activeSeniority, activeDepartments));
+    // If role filter yields nothing, fall back to unfiltered so results aren't empty
+    finalPeople = matched.length > 0 ? matched : allPeople;
+    if (matched.length === 0 && allPeople.length > 0) {
+      warnings.push("No exact role matches found — showing all available contacts for this company.");
+    }
+  } else {
+    finalPeople = allPeople;
+  }
+
+  return {
+    people: finalPeople.slice(0, limit),
+    warnings: [...new Set(warnings)],
+    errors: [...new Set(errors)],
+  };
+}
+
+function stepFailureMessage(label: string, err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/TAVILY_API_KEY not set/i.test(msg)) {
+    return "TAVILY_API_KEY is missing. Add it in .env.local for company and people search via Tavily.";
+  }
+  if (/APOLLO_API_KEY/i.test(msg)) {
+    return "APOLLO_API_KEY is missing. Switch Data Mode to Free or add your Apollo key.";
+  }
+  if (/GOOGLE_PLACES_API_KEY/i.test(msg)) {
+    return "GOOGLE_PLACES_API_KEY is missing. Switch search provider or add a Google Places key.";
+  }
+  if (/tavily api quota|usage limit/i.test(msg)) return msg;
+  if (/quota|429|rate.?limit/i.test(msg)) {
+    return `${label} hit an API rate limit. Try again shortly.`;
+  }
+  return `${label} failed: ${msg}`;
+}
+
+/** Runs a search step, dedupes by name, appends to accumulator */
+async function runStep(
+  label: string,
+  fn: () => Promise<ScoutCompanyResult[] | ScoutPersonResult[]>,
+  acc: (ScoutCompanyResult | ScoutPersonResult)[],
+  limit: number,
+  excludeNames: string[] = [],
+  warnings: string[] = [],
+  errors: string[] = [],
+): Promise<void> {
+  try {
+    const results = await fn();
+    const seen = new Set([
+      ...acc.map((r) => normalizeName(r.name)),
+      ...excludeNames.map(normalizeName),
+    ]);
+    for (const r of results) {
+      if (acc.length >= limit) break;
+      const key = normalizeName(r.name);
+      if (!seen.has(key)) {
+        acc.push(r as ScoutCompanyResult & ScoutPersonResult);
+        seen.add(key);
+      }
+    }
+  } catch (e) {
+    console.error(`[waterfall:${label}] failed:`, e);
+    errors.push(stepFailureMessage(label, e));
+  }
 }
 
 function dbToResult(a: typeof accounts.$inferSelect): ScoutCompanyResult {

@@ -1,3 +1,4 @@
+import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 
 const BASE = "https://api.apollo.io/v1";
@@ -65,7 +66,7 @@ export async function apolloSearchPeople(params: {
       email,
       emailStatus: email ? classifyEmail(email) : "missing",
       phone: (p.phone_numbers as Record<string, string>[] | undefined)?.[0]?.["sanitized_number"],
-      linkedIn: p.linkedin_url as string | undefined,
+      linkedIn: normalizeLinkedInUrl(p.linkedin_url as string | undefined),
       bio: p.headline as string | undefined,
       isKeyDM: isKeyDecisionMaker(p.title as string | undefined),
       matchScore: computeMatchScore(p),

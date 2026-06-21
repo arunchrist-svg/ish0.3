@@ -6,3 +6,4 @@ export { ScoreGauge } from "./score-gauge";
 export { PanelCard, panelCardVariants } from "./panel-card";
 export { SectionHeader } from "./section-header";
 export { MetaField } from "./meta-field";
+export { SlidingHighlight } from "./sliding-highlight";

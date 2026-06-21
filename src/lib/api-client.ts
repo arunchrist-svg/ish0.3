@@ -13,6 +13,20 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+  return res.json();
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
   if (!res.ok) {
@@ -23,22 +37,43 @@ async function get<T>(path: string): Promise<T> {
 }
 
 // ─── Scout ────────────────────────────────────────────────────────────────────
+export type ScoutCompaniesResponse = {
+  companies: ScoutCompanyResult[];
+  hasMore: boolean;
+  limit: number;
+  warnings?: string[];
+  errors?: string[];
+};
+
 export async function scoutCompanies(params: {
   cities: string[];
   industries: string[];
   dataMode: DataMode;
-}): Promise<ScoutCompanyResult[]> {
-  const data = await post<{ companies: ScoutCompanyResult[] }>("/api/scout/companies", params);
-  return data.companies;
+  excludeNames?: string[];
+  skipInternal?: boolean;
+  fetchSeed?: number;
+  limit?: number;
+  companyName?: string;
+}): Promise<ScoutCompaniesResponse> {
+  return post<ScoutCompaniesResponse>("/api/scout/companies", params);
 }
+
+export type ScoutPeopleResponse = {
+  people: ScoutPersonResult[];
+  warnings?: string[];
+  errors?: string[];
+};
 
 export async function scoutPeople(params: {
   companyName: string;
   companyDomain?: string;
+  companyWebsite?: string;
   dataMode: DataMode;
-}): Promise<ScoutPersonResult[]> {
-  const data = await post<{ people: ScoutPersonResult[] }>("/api/scout/people", params);
-  return data.people;
+  limit?: number;
+  seniority?: string[];
+  departments?: string[];
+}): Promise<ScoutPeopleResponse> {
+  return post<ScoutPeopleResponse>("/api/scout/people", params);
 }
 
 export async function scoutSave(params: {
@@ -46,6 +81,24 @@ export async function scoutSave(params: {
   company: ScoutCompanyResult;
 }): Promise<{ saved: { leadId: string; name: string; emailStatus: string }[]; skipped: { name: string; reason: string }[] }> {
   return post("/api/scout/save", params);
+}
+
+export type ScoutBatchResult = {
+  runId: string;
+  companiesDiscovered: number;
+  leadsSaved: number;
+  leadsSkipped: number;
+  errors: string[];
+};
+
+export async function runScoutAgent(params: {
+  cities?: string[];
+  industries?: string[];
+  dataMode?: DataMode;
+  companyLimit?: number;
+  maxCompaniesToProcess?: number;
+}): Promise<ScoutBatchResult> {
+  return post<ScoutBatchResult>("/api/agents/scout/run", params);
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
@@ -81,6 +134,14 @@ export async function sendOutreach(approvalId: string): Promise<{ mode: string; 
   return post("/api/outreach/send", { approvalId });
 }
 
+
+export async function updateLeadStatus(
+  leadId: string,
+  params: { status: "tasting_sent" | "negotiate" | "closed"; closedDealAmount?: string },
+): Promise<void> {
+  await patch(`/api/leads/${leadId}`, params);
+}
+
 export async function markReplied(leadId: string): Promise<void> {
   await post("/api/webhooks/reply", { leadId, source: "manual" });
 }
@@ -110,12 +171,16 @@ export type LeadDetailRecord = {
   employees: string;
   email: string;
   emailStatus: string;
+  emailConfidence?: number;
+  enrichmentSource?: string;
+  enrichmentProvider?: string;
   phone?: string;
   linkedIn?: string;
   score: number;
   scoreGrade: string;
   scoreTrend: string;
   estimatedValue?: string;
+  closedDealAmount?: string;
   status: string;
   leadSource: string;
   rating: string;
@@ -160,3 +225,64 @@ export type UpNextItem = {
   active: boolean;
   primaryAction?: string;
 };
+export async function enrichLead(
+  leadId: string,
+  options: { mode: "free" | "paid" } = { mode: "free" },
+): Promise<{
+  success: boolean;
+  enrichment: {
+    email: string | null;
+    phone: string | null;
+    emailStatus: string;
+    emailConfidence: number;
+    confidenceTier: string;
+    enrichmentSource?: string;
+    enrichmentProvider?: string;
+    title?: string | null;
+    message?: string;
+  };
+}> {
+  return post("/api/leads/" + leadId + "/enrich", { mode: options.mode });
+}
+
+
+// ─── Scout Directory ──────────────────────────────────────────────────────────
+export type DirectoryContact = {
+  leadId: string;
+  contactId: string;
+  name: string;
+  title: string;
+  email: string;
+  emailStatus: string;
+  phone?: string;
+  linkedIn?: string;
+  status: string;
+  leadSource: string;
+  score: number;
+  savedAt: string;
+  companyId: string;
+  companyName: string;
+  companyCity: string;
+  companyIndustry: string;
+};
+
+export type DirectoryCompany = {
+  id: string;
+  name: string;
+  city: string;
+  industry: string;
+  employees: string;
+  giftScore: number;
+  domain?: string;
+  contacts: Omit<DirectoryContact, "companyId" | "companyName" | "companyCity" | "companyIndustry">[];
+};
+
+export type DirectoryResponse = {
+  companies: DirectoryCompany[];
+  contacts: DirectoryContact[];
+  totals: { companies: number; contacts: number };
+};
+
+export async function fetchDirectory(): Promise<DirectoryResponse> {
+  return get<DirectoryResponse>("/api/directory");
+}

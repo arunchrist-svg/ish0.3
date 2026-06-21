@@ -1,28 +1,97 @@
 import { NextResponse } from "next/server";
 import { discoverCompanies } from "@/lib/enrichment/waterfall";
-import { db, accounts } from "@/db";
-import { eq } from "drizzle-orm";
+import { getScoutCompaniesLimit, resolveEnrichmentConfig } from "@/lib/enrichment/config";
+import { checkDiscoveryPrerequisites } from "@/lib/enrichment/discovery-prerequisites";
+import type { DataMode } from "@/lib/enrichment/types";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
 const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
 
+function getCompanyLimit(): number {
+  return getScoutCompaniesLimit();
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { cities = [], industries = [], dataMode = process.env.DEFAULT_DATA_MODE ?? "free" } = body;
+    const {
+      cities = [],
+      industries = [],
+      dataMode = (process.env.DEFAULT_DATA_MODE ?? "free") as DataMode,
+      searchProvider,
+      enrichProvider,
+      excludeNames = [],
+      skipInternal = false,
+      fetchSeed = 0,
+      limit: requestedLimit,
+      companyName,
+    } = body;
 
-    const results = await discoverCompanies({
+    if (!cities.length) {
+      return NextResponse.json({ error: "Select at least one city." }, { status: 400 });
+    }
+
+    const limit = Math.min(requestedLimit ?? getCompanyLimit(), 100);
+    const cfg = resolveEnrichmentConfig(dataMode, {
+      ...(searchProvider ? { searchProvider } : {}),
+      ...(enrichProvider ? { enrichProvider } : {}),
+    });
+
+    const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);
+    const blockingErrors = prerequisiteErrors.filter((e) =>
+      /TAVILY_API_KEY is missing|APOLLO_API_KEY is missing|GOOGLE_PLACES_API_KEY is missing/.test(e),
+    );
+
+    if (blockingErrors.length) {
+      return NextResponse.json(
+        {
+          companies: [],
+          hasMore: false,
+          limit,
+          warnings: [],
+          errors: blockingErrors,
+        },
+        { status: 200 },
+      );
+    }
+
+    const { companies, warnings, errors } = await discoverCompanies({
       tenantId: DEFAULT_TENANT,
       workspaceId: DEFAULT_WORKSPACE,
       cities,
       industries,
       dataMode,
-      limit: 30,
+      config: {
+        ...(searchProvider ? { searchProvider } : {}),
+        ...(enrichProvider ? { enrichProvider } : {}),
+      },
+      limit,
+      excludeNames,
+      skipInternal,
+      fetchSeed,
+      ...(companyName ? { companyName } : {}),
     });
 
-    return NextResponse.json({ companies: results });
+    const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));
+    const allWarnings = [...softPrereqWarnings, ...warnings];
+    const allErrors = [...errors];
+
+    if (!companies.length && !allErrors.length && !allWarnings.length) {
+      allWarnings.push(
+        "No companies matched the current filters. Try different cities or leave industries unselected for broader results.",
+      );
+    }
+
+    return NextResponse.json({
+      companies,
+      hasMore: companies.length >= limit,
+      limit,
+      warnings: [...new Set(allWarnings)],
+      errors: [...new Set(allErrors)],
+    });
   } catch (e) {
     console.error("[api/scout/companies]", e);
-    return NextResponse.json({ error: "Discovery failed" }, { status: 500 });
+    const message = e instanceof Error ? e.message : "Discovery failed";
+    return NextResponse.json({ error: message, errors: [message] }, { status: 500 });
   }
 }

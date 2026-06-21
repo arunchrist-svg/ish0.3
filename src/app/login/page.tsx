@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ISH_LOGO_URL } from "@/lib/brand";
 
 export default function LoginPage() {
   const [pin, setPin] = useState("");
@@ -30,8 +31,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-ish-app">
       <div className="w-full max-w-sm rounded-[24px] bg-white p-10 shadow-[0_8px_40px_rgba(20,16,30,0.12)]">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-ish-yellow text-3xl shadow-[0_4px_14px_rgba(244,242,90,0.4)]">
-            🍬
+          <div className="mx-auto mb-4 flex size-20 items-center justify-center rounded-2xl bg-ish-yellow p-3 shadow-[0_4px_14px_rgba(244,242,90,0.4)]">
+            <img src={ISH_LOGO_URL} alt="ISH" className="h-full w-auto object-contain" />
           </div>
           <h1 className="text-[22px] font-bold text-ish-ink">ISH Sales Accelerator</h1>
           <p className="mt-1 text-[13px] text-ish-ink-soft">Enter your access PIN to continue</p>

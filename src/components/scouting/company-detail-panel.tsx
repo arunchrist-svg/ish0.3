@@ -1,6 +1,6 @@
 import { Building2, Lightbulb, MapPin } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
-import { PanelCard, SectionHeader, MetaField } from "@/design-system";
+import { PanelCard, SectionHeader, MetaField, ScoreGauge } from "@/design-system";
 
 type Props = { company: Company };
 
@@ -8,15 +8,23 @@ export function CompanyDetailPanel({ company }: Props) {
   return (
     <PanelCard tone="white" className="flex h-full flex-col gap-4 overflow-y-auto rounded-none p-5">
       {/* Header */}
-      <div>
-        <div className="mb-2.5 text-[40px] leading-none">{company.logo}</div>
-        <div className="text-[18px] font-bold text-ish-ink">{company.name}</div>
-        <div className="mt-1.5 flex items-center gap-2 text-[12px] text-ish-ink-soft">
-          <Building2 className="size-3.5 shrink-0" />
-          <span>{company.type}</span>
-          <span className="text-ish-border">·</span>
-          <MapPin className="size-3.5 shrink-0" />
-          <span>{company.city}</span>
+      <div className="flex items-start gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2.5 text-[40px] leading-none">{company.logo}</div>
+          <div className="text-[18px] font-bold text-ish-ink">{company.name}</div>
+          <div className="mt-1.5 flex items-center gap-2 text-[12px] text-ish-ink-soft">
+            <Building2 className="size-3.5 shrink-0" />
+            <span>{company.type}</span>
+            <span className="text-ish-border">·</span>
+            <MapPin className="size-3.5 shrink-0" />
+            <span>{company.city}</span>
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          <ScoreGauge score={company.giftScore} size="md" background />
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+            Gift Score
+          </span>
         </div>
       </div>
 

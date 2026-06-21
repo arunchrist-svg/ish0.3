@@ -3,6 +3,7 @@ import { db, leads, contacts, accounts, leadResearch, outreachApprovals, leadOut
 import { eq, desc, inArray } from "drizzle-orm";
 import { runResearcherLite } from "@/lib/agents/researcher-lite";
 import type { LeadQueueItem } from "@/lib/api-client";
+import { deriveQueueAction } from "@/lib/pipeline-status";
 
 export async function GET(req: Request) {
   try {
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
       city: r.account.city ?? "—",
       score: r.lead.score ?? 60,
       status: r.lead.status,
-      action: deriveAction(r.lead.status),
+      action: deriveQueueAction(r.lead.status),
       emailStatus: r.contact.emailStatus ?? "missing",
       nextActionDate: undefined,
     }));
@@ -50,18 +51,5 @@ export async function GET(req: Request) {
   } catch (e) {
     console.error("[api/leads]", e);
     return NextResponse.json({ error: "Failed to load leads" }, { status: 500 });
-  }
-}
-
-function deriveAction(status: string): string {
-  switch (status) {
-    case "scouted": return "Awaiting research";
-    case "researched": return "Ready for outreach";
-    case "draft_ready": return "Approve email";
-    case "approved": return "Send email";
-    case "outreached": return "Follow-up";
-    case "replied": return "Hot — respond now";
-    case "meeting": return "Meeting booked";
-    default: return "Review";
   }
 }

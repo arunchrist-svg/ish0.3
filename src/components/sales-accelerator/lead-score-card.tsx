@@ -12,10 +12,10 @@ export function LeadScoreCard({ record, current }: Props) {
   const grade = getScoreGrade(current.score);
 
   return (
-    <PanelCard tone="green">
+    <PanelCard tone="green" className="flex h-full flex-col">
       <SectionHeader
         title="Lead Score"
-        className="mb-2.5"
+        className="mb-3"
         actions={
           <div className="flex gap-1.5">
             <CircleButton size={28}><MoreHorizontal className="size-3.5" /></CircleButton>
@@ -23,22 +23,26 @@ export function LeadScoreCard({ record, current }: Props) {
           </div>
         }
       />
-      <ScoreGauge score={current.score} />
-      <div className="-mt-1.5 mb-4 flex items-center justify-center gap-2">
-        <span className="text-[13px] font-bold text-ish-ink">Grade {grade}</span>
-        <span className="rounded-lg bg-ish-green/20 px-2.5 py-0.5 text-[11.5px] font-semibold text-[#1f8050]">
-          → {record.score.trend}
-        </span>
-      </div>
-      <div className="flex flex-col gap-2.5">
-        {record.score.factors.map((f) => (
-          <div key={f.bold} className="flex items-start gap-2">
-            <TrendingUp className="mt-0.5 size-3.5 shrink-0 text-ish-green" />
-            <div className="text-[12.5px] leading-relaxed text-ish-ink">
-              {f.label} <b>{f.bold}</b>
-            </div>
+      <div className="flex flex-1 items-center gap-3.5">
+        <div className="flex w-[108px] shrink-0 flex-col items-start gap-2.5">
+          <ScoreGauge score={current.score} size="card" background />
+          <div className="flex w-full flex-col gap-1.5">
+            <span className="text-[13px] font-bold leading-none text-ish-ink">Grade {grade}</span>
+            <span className="w-fit rounded-lg bg-ish-green/20 px-2.5 py-0.5 text-[11.5px] font-semibold leading-none text-[#1f8050]">
+              → {record.score.trend}
+            </span>
           </div>
-        ))}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col justify-center gap-2.5">
+          {record.score.factors.map((f) => (
+            <div key={f.bold} className="flex items-start gap-2">
+              <TrendingUp className="mt-0.5 size-3.5 shrink-0 text-ish-green" />
+              <div className="text-[12.5px] leading-snug text-ish-ink">
+                {f.label} <b>{f.bold}</b>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </PanelCard>
   );

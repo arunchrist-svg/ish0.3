@@ -14,7 +14,7 @@ export type UpNextTask = {
   title: string;
   step: string;
   desc: string;
-  icon: "package" | "phone" | "file";
+  icon: "package" | "phone" | "file" | "mail";
   active: boolean;
   primaryAction?: string;
 };
@@ -27,7 +27,6 @@ export type LeadRecord = {
   owner: string;
   tags: string[];
   contact: {
-    topic: string;
     firstName: string;
     lastName: string;
     email: string;
@@ -67,7 +66,6 @@ export const RECORD: LeadRecord = {
   owner: "ISH Cluster Mgr",
   tags: ["Lead", "Gifting Signal"],
   contact: {
-    topic: "Diwali Corporate Gifting",
     firstName: "Rajan",
     lastName: "Nair",
     email: "rajan.nair@boschindia.com",
@@ -99,7 +97,7 @@ export const RECORD: LeadRecord = {
   giftingIntelligence: "Posted about employee appreciation on LinkedIn. Approved last 2 vendor contracts. Open to outreach — replied to similar vendor within 48hrs historically.",
 };
 
-export const STAGES = ["Identify", "Tasting Sent", "Negotiate", "Closed"] as const;
+export { PIPELINE_STAGES as STAGES } from "./pipeline-status";
 
 export function getInitials(name: string) {
   return (name || "??").split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();

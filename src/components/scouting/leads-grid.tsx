@@ -7,6 +7,7 @@ type Props = {
   people: Person[];
   selectedIds: Set<string>;
   primaryId: string | null;
+  existingNames?: Set<string>;
   onToggleSelect: (id: string) => void;
   onSetPrimary: (id: string) => void;
   onContact: (person: Person) => void;
@@ -17,6 +18,7 @@ export function LeadsGrid({
   people,
   selectedIds,
   primaryId,
+  existingNames,
   onToggleSelect,
   onSetPrimary,
   onContact,
@@ -31,6 +33,7 @@ export function LeadsGrid({
           index={i}
           isSelected={selectedIds.has(person.id)}
           isPrimary={primaryId === person.id}
+          alreadyAdded={existingNames?.has(person.name.toLowerCase()) ?? false}
           onToggleSelect={() => onToggleSelect(person.id)}
           onView={() => onSetPrimary(person.id)}
           onContact={() => onContact(person)}

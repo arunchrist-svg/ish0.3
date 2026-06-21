@@ -13,11 +13,21 @@ import { OutreachApprovalCard } from "@/components/sales-accelerator/outreach-ap
 import { fetchLead } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toast } from "sonner";
+import { statusToPipelineIndex } from "@/lib/pipeline-status";
 
 type Props = {
   leadId: string;
   onLeadUpdated: () => void;
 };
+
+function confidenceTierFromLead(lead: LeadDetailRecord): string {
+  if (!lead.email || lead.email === "—") return "missing";
+  if (lead.emailStatus === "generic") return "generic";
+  if ((lead.emailConfidence ?? 0) >= 55) return "good";
+  if ((lead.emailConfidence ?? 0) >= 40) return "generic";
+  if ((lead.emailConfidence ?? 0) > 0) return "low";
+  return lead.emailStatus === "verified" || lead.emailStatus === "unverified" ? "good" : "missing";
+}
 
 function toRecord(lead: LeadDetailRecord) {
   return {
@@ -28,7 +38,6 @@ function toRecord(lead: LeadDetailRecord) {
     owner: lead.owner,
     tags: lead.tags,
     contact: {
-      topic: "Corporate Gifting — Diwali",
       firstName: lead.firstName,
       lastName: lead.lastName,
       email: lead.email,
@@ -74,8 +83,6 @@ function toQueueItem(lead: LeadDetailRecord) {
   };
 }
 
-const STAGES = ["scouted", "researched", "draft_ready", "outreached", "replied", "meeting", "po_closed"];
-
 export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   const [lead, setLead] = useState<LeadDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,7 +103,7 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
     load();
   }, [leadId]);
 
-  const stage = Math.max(0, STAGES.indexOf(lead?.status ?? "scouted"));
+  const stage = statusToPipelineIndex(lead?.status ?? "scouted");
 
   if (loading) {
     return (
@@ -125,7 +132,7 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
               <TabsTrigger
                 key={tab}
                 value={tab}
-                className="h-auto flex-none rounded-[14px] border-0 px-[18px] py-2.5 text-[13px] font-semibold text-ish-ink-soft shadow-none hover:text-ish-ink data-active:!bg-ish-black data-active:!text-white data-active:shadow-none after:hidden"
+                className="h-auto flex-none rounded-[14px] border-0 px-[18px] py-2.5 text-[13px] font-semibold text-ish-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-ish-ink active:scale-[0.97] data-active:!bg-ish-black data-active:!text-white data-active:shadow-none after:hidden"
               >
                 {tab}
               </TabsTrigger>
@@ -133,9 +140,15 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
           </TabsList>
         </div>
 
-        <TabsContent value="Summary" className="mt-0 animate-d365-in">
+        <TabsContent value="Summary" className="mt-0 animate-ish-tab-in">
           <div className="grid grid-cols-3 gap-4 px-[22px] py-[18px]">
-            <ContactCard record={record} current={current} />
+            <ContactCard
+              record={record}
+              current={current}
+              emailConfidence={lead.emailConfidence}
+              confidenceTier={confidenceTierFromLead(lead)}
+              enrichmentSource={lead.enrichmentSource}
+            />
             <UpNextPanel tasks={record.upNext} />
             <LeadScoreCard record={record} current={current} />
           </div>
@@ -159,7 +172,7 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
           <TabsContent
             key={tab}
             value={tab}
-            className="px-[22px] py-12 text-center text-ish-ink-soft animate-d365-in"
+            className="px-[22px] py-12 text-center text-ish-ink-soft animate-ish-tab-in"
           >
             {tab} view coming soon.
           </TabsContent>
