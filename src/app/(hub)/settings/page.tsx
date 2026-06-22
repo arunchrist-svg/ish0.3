@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { DataModeSegmentedControl, SegmentedTabs, text } from "@/design-system";
+import { DataModeSegmentedControl, SegmentedTabs, text, stratusPalette, stratusGradient, stratusPaletteLegend } from "@/design-system";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { ProviderCard } from "@/components/settings/provider-card";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
@@ -352,7 +352,7 @@ function SettingsPageInner() {
                 <div className="flex h-16 w-full items-center justify-center rounded-[12px] bg-[#f4f4f6]">
                   <div className="flex gap-1.5">
                     <span className="size-3 rounded-full bg-[#1a1a1f]" />
-                    <span className="size-3 rounded-full bg-[#f4f25a]" />
+                    <span className="size-3 rounded-full bg-ish-yellow" />
                     <span className="size-3 rounded-full bg-[#3fbe82]" />
                   </div>
                 </div>
@@ -372,12 +372,14 @@ function SettingsPageInner() {
                 onClick={() => setTheme("stratus")}
                 className={cn(
                   "group relative flex flex-col gap-3 rounded-[18px] border-2 p-4 text-left transition-all",
-                  resolvedTheme === "stratus"
-                    ? "border-[#83a2db] bg-[#eef4fd] shadow-[0_4px_20px_rgba(131,162,219,0.14)]"
-                    : "border-[#d4e3f5] bg-[#eef4fd] hover:border-[#83a2db]/50",
+                  resolvedTheme === "stratus" && "shadow-[0_4px_20px_rgba(131,162,219,0.14)]",
                 )}
+                style={{
+                  borderColor: resolvedTheme === "stratus" ? stratusPalette.blue : stratusPalette.borderLight,
+                  backgroundColor: stratusPalette.canvasPreview,
+                }}
               >
-                <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded-[12px]" style={{ background: "linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%)" }}>
+                <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded-[12px]" style={{ background: stratusGradient }}>
                   <div className="flex gap-1.5">
                     <span className="size-3 rounded-full bg-white/80" />
                     <span className="size-3 rounded-full bg-white/60" />
@@ -385,35 +387,30 @@ function SettingsPageInner() {
                   </div>
                 </div>
                 <div>
-                  <p className="text-[13px] font-bold text-[#0d0d0d]">Stratus</p>
-                  <p className="mt-0.5 text-[11px] text-[#8a96a8]">Blue · Salmon · Yellow</p>
+                  <p className="text-[13px] font-bold text-ish-ink">Stratus</p>
+                  <p className="mt-0.5 text-[11px] text-ish-ink-faint">Blue · Salmon · Yellow</p>
                 </div>
                 {resolvedTheme === "stratus" && (
-                  <span className="absolute right-3 top-3 flex size-5 items-center justify-center rounded-full bg-[#83a2db] text-white text-[10px] font-bold">✓</span>
+                  <span className="absolute right-3 top-3 flex size-5 items-center justify-center rounded-full text-white text-[10px] font-bold" style={{ backgroundColor: stratusPalette.blue }}>✓</span>
                 )}
               </button>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[14px] border border-ish-border bg-ish-app/70 backdrop-blur-sm px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-[#83a2db]" />
-                <span className="text-[11px] text-ish-ink-soft">#83A2DB Blue</span>
-              </div>
-              <span className="text-ish-border">·</span>
-              <div className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-[#fd8e8c]" />
-                <span className="text-[11px] text-ish-ink-soft">#FD8E8C Salmon</span>
-              </div>
-              <span className="text-ish-border">·</span>
-              <div className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-[#ffce87]" />
-                <span className="text-[11px] text-ish-ink-soft">#FFCE87 Yellow</span>
-              </div>
-              <span className="text-ish-border">·</span>
-              <div className="flex items-center gap-2">
-                <span className="size-3 rounded-full bg-[#d8dbdb] border border-ish-border" />
-                <span className="text-[11px] text-ish-ink-soft">#D8DBDB Gray</span>
-              </div>
+              {stratusPaletteLegend.map((swatch, i) => (
+                <span key={swatch.hex} className="contents">
+                  {i > 0 && <span className="text-ish-border">·</span>}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="size-3 rounded-full border border-ish-border/60"
+                      style={{ backgroundColor: swatch.hex }}
+                    />
+                    <span className="text-[11px] text-ish-ink-soft">
+                      {swatch.hex.toUpperCase()} {swatch.label}
+                    </span>
+                  </div>
+                </span>
+              ))}
             </div>
           </SettingsSection>
         </div>

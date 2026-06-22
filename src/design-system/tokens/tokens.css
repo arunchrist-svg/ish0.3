@@ -7,28 +7,31 @@
   --color-ish-ink-soft: #6b6975;
   --color-ish-ink-faint: #a8a6b0;
   --color-ish-border: #e7e6ea;
-  --color-ish-yellow: #f4f25a;
-  --color-ish-yellow-soft: #f9f8c8;
+  --color-ish-yellow: #ffce87;
+  --color-ish-yellow-soft: #fff4e0;
   --color-ish-pink: #fad9d0;
   --color-ish-pink-soft: #fceeea;
   --color-ish-green: #3fbe82;
   --color-ish-green-soft: #e0f7ec;
-  --color-ish-black: #15151a;
+  --color-ish-black: #293042;
   --color-ish-avatar-1: #f2c9a0;
   --color-ish-avatar-2: #f2a8a8;
   --color-ish-avatar-3: #a8c9f2;
   --color-ish-avatar-4: #c9a8f2;
   --color-ish-avatar-5: #a8f2c9;
   --color-ish-avatar-6: #f2dca8;
+  --color-ish-stratus-blue: #83a2db;
+  --color-ish-stratus-salmon: #fd8e8c;
+  --color-ish-stratus-yellow: #ffce87;
   --shadow-ish-sm: 0 1px 2px rgba(20, 20, 30, 0.05);
   --shadow-ish: 0 2px 8px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
   --shadow-ish-float: 0 24px 60px rgba(20, 16, 30, 0.22);
-  --shadow-ish-yellow: 0 6px 18px rgba(244, 242, 90, 0.35);
-  --shadow-ish-yellow-sm: 0 4px 14px rgba(244, 242, 90, 0.3);
+  --shadow-ish-yellow: 0 6px 18px rgba(255, 206, 135, 0.35);
+  --shadow-ish-yellow-sm: 0 4px 14px rgba(255, 206, 135, 0.30);
 }
 
 :root {
-  --ish-yellow-gradient: linear-gradient(135deg, #f4f25a 0%, #fdeaa8 50%, #fcd9c4 100%);
+  --ish-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #ffe4b8 50%, #fcd9c4 100%);
 }
 
 .dark {
@@ -46,31 +49,34 @@
 }
 
 .stratus {
+  /* ── Stratus DS palette (see tokens/stratus.ts) ─────────────────────── */
+  --ish-stratus-blue: #83a2db;
+  --ish-stratus-salmon: #fd8e8c;
+  --ish-stratus-yellow: #ffce87;
+  --ish-stratus-blue-rgb: 131, 162, 219;
+  --ish-stratus-salmon-rgb: 253, 142, 140;
+  --ish-stratus-yellow-rgb: 255, 206, 135;
   --color-ish-outer: #0d0d0d;
   --color-ish-app: #fdfdfd;
   --color-ish-canvas: #f6f7fa;
   --color-ish-ink: #0d0d0d;
   --color-ish-ink-soft: #4a5568;
   --color-ish-ink-faint: #8a96a8;
-  --color-ish-border: rgba(131, 162, 219, 0.26);
-  /* Yellow accent stays warm — DS CTA color (#FFCE87 warm yellow) */
-  --color-ish-yellow: #ffce87;
+  --color-ish-border: rgba(var(--ish-stratus-blue-rgb), 0.26);
+  --color-ish-yellow: var(--ish-stratus-yellow);
   --color-ish-yellow-soft: #fff4e0;
-  /* Remap "pink" accent → soft blush */
-  --color-ish-pink: #fd8e8c;
+  --color-ish-pink: var(--ish-stratus-salmon);
   --color-ish-pink-soft: #fdf0f0;
   --color-ish-green: #3fbe82;
   --color-ish-green-soft: #edfaf4;
-  --color-ish-black: #15151a;
-  --shadow-ish-sm: 0 1px 3px rgba(131, 162, 219, 0.06), 0 1px 2px rgba(131, 162, 219, 0.035);
-  --shadow-ish: 0 4px 16px rgba(131, 162, 219, 0.08), 0 1px 4px rgba(131, 162, 219, 0.045);
+  --color-ish-black: #293042;
+  --shadow-ish-sm: 0 1px 3px rgba(var(--ish-stratus-blue-rgb), 0.06), 0 1px 2px rgba(var(--ish-stratus-blue-rgb), 0.035);
+  --shadow-ish: 0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.08), 0 1px 4px rgba(var(--ish-stratus-blue-rgb), 0.045);
   --shadow-ish-float: 0 24px 60px rgba(108, 138, 198, 0.16);
-  /* Yellow gradient → warm DS palette blend (yellow→salmon) */
-  --ish-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #fdb99a 55%, #fd8e8c 100%);
-  --shadow-ish-yellow: 0 6px 18px rgba(255, 180, 100, 0.30);
-  --shadow-ish-yellow-sm: 0 4px 14px rgba(255, 180, 100, 0.22);
-  --ish-stratus-blue: #83a2db;
-  --ish-stratus-gradient: linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%);
+  --ish-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #fdb99a 55%, var(--ish-stratus-salmon) 100%);
+  --shadow-ish-yellow: 0 6px 18px rgba(var(--ish-stratus-yellow-rgb), 0.45);
+  --shadow-ish-yellow-sm: 0 4px 14px rgba(var(--ish-stratus-yellow-rgb), 0.32);
+  --ish-stratus-gradient: linear-gradient(135deg, var(--ish-stratus-blue) 0%, var(--ish-stratus-salmon) 50%, var(--ish-stratus-yellow) 100%);
 }
 
 
@@ -145,7 +151,7 @@
 .ish-ambient-canvas {
   background-color: #ffffff;
   background-image:
-    radial-gradient(ellipse 80% 55% at 0% 0%, rgba(244, 242, 90, 0.07), transparent 58%),
+    radial-gradient(ellipse 80% 55% at 0% 0%, rgba(255, 206, 135, 0.07), transparent 58%),
     radial-gradient(ellipse 70% 50% at 100% 100%, rgba(63, 190, 130, 0.05), transparent 52%),
     radial-gradient(ellipse 60% 40% at 85% 10%, rgba(250, 217, 208, 0.06), transparent 48%);
 }
@@ -221,10 +227,10 @@
   box-shadow: inset 0 0 0 1px rgba(63, 190, 130, 0.15) !important;
 }
 
-/* Record header banner — warm glass wash (yellow→salmon) */
+/* Record header banner — neutral glass wash */
 .stratus .bg-ish-yellow-gradient {
-  background: linear-gradient(150deg, #fff8ee 0%, #fef4f0 55%, #fef0ef 100%) !important;
-  border-bottom: 1px solid rgba(255, 180, 100, 0.18);
+  background: linear-gradient(150deg, #fafafa 0%, #f6f6f6 55%, #f3f3f3 100%) !important;
+  border-bottom: 1px solid rgba(var(--ish-stratus-yellow-rgb), 0.55);
 }
 
 /* Scouting grid main area — lift from bg-white/40 to light glass */
@@ -271,20 +277,20 @@
   border-color: transparent !important;
 }
 
-/* Active SlidingHighlight in queue sidebar — warm glass bloom */
+/* Active SlidingHighlight in queue sidebar — neutral glass bloom */
 .stratus .ish-glass-sidebar span.bg-ish-yellow-gradient {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(255, 210, 140, 0.28) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(253, 142, 140, 0.10) 0%, transparent 50%),
-    linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 252, 248, 0.95) 100%) !important;
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%) !important;
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border-bottom: none !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 2px rgba(255, 190, 100, 0.22),
-    0 0 0 1px rgba(255, 190, 100, 0.28),
-    0 8px 28px rgba(255, 160, 80, 0.16),
+    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.40),
+    0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.35),
+    0 8px 28px rgba(var(--ish-stratus-blue-rgb), 0.12),
     0 2px 8px rgba(0, 0, 0, 0.05) !important;
 }
 
@@ -304,3 +310,47 @@
   --tw-ring-color: rgba(131, 162, 219, 0.70);
 }
 
+
+/* ── Stratus: SideNav refinements ───────────────────────────────────────── */
+
+/* Nav item hover — warm blue-glass tint instead of black/4%                */
+.stratus .ish-glass-sidebar a:hover,
+.stratus .ish-glass-sidebar .group:hover {
+  background: rgba(131, 162, 219, 0.10) !important;
+  border-radius: 10px;
+}
+
+/* Active nav pill — #FFCE87 glass gradient */
+.stratus .ish-glass-sidebar span.bg-ish-yellow {
+  background:
+    radial-gradient(ellipse 110% 90% at 10% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 58%),
+    linear-gradient(
+      135deg,
+      rgba(var(--ish-stratus-yellow-rgb), 0.88) 0%,
+      rgba(255, 228, 185, 0.72) 52%,
+      rgba(255, 245, 225, 0.62) 100%
+    ) !important;
+  backdrop-filter: blur(14px) saturate(165%);
+  -webkit-backdrop-filter: blur(14px) saturate(165%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.50),
+    0 2px 14px rgba(var(--ish-stratus-yellow-rgb), 0.35),
+    0 1px 4px rgba(255, 170, 80, 0.14) !important;
+}
+
+/* Sidebar right-edge divider — subtle Stratus blue tint                    */
+.stratus .ish-glass-sidebar {
+  border-right-color: rgba(131, 162, 219, 0.18) !important;
+}
+
+/* Section dividers (collapsed collapsed mode) — match Stratus border        */
+.stratus .border-t.border-ish-border\/70,
+.stratus .border-t.border-ish-border {
+  border-top-color: rgba(131, 162, 219, 0.18) !important;
+}
+
+/* TopBar bottom border — Stratus blue tint                                 */
+.stratus .border-b.border-ish-border {
+  border-bottom-color: rgba(131, 162, 219, 0.18) !important;
+}
