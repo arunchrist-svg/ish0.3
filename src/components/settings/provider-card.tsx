@@ -2,9 +2,9 @@ import { CheckCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const BADGE_COLORS: Record<string, string> = {
-  Free: "bg-ish-green/15 text-[#1f8050]",
-  "Free tier": "bg-ish-green/15 text-[#1f8050]",
-  Paid: "bg-[#fbe9c4] text-[#8a5a00]",
+  Free: "bg-ish-stratus-blue/15 text-ish-ink",
+  "Free tier": "bg-ish-stratus-blue/15 text-ish-ink",
+  Paid: "bg-ish-yellow-soft text-ish-ink",
 };
 
 function Badge({ label }: { label: string }) {
@@ -37,7 +37,7 @@ export function ProviderCard<T extends string>({
       className={cn(
         "relative w-full rounded-[18px] border p-4 text-left transition-all duration-150",
         selected
-          ? "border-ish-ink bg-ish-yellow/10 shadow-[var(--shadow-ish-yellow-sm)]"
+          ? "border-ish-yellow/60 bg-ish-yellow/10 shadow-[var(--shadow-ish-yellow-sm)] ring-1 ring-ish-yellow/30"
           : "border-ish-border bg-white hover:border-ish-ink-soft",
       )}
     >

@@ -3,9 +3,9 @@ import type { EnrichmentConfig } from "@/lib/enrichment/config";
 
 export function ActiveConfigSummary({ config }: { config: EnrichmentConfig }) {
   return (
-    <PanelCard tone="white" className="mt-6 rounded-[18px] border border-ish-border p-4 shadow-none">
+    <PanelCard tone="yellow" className="h-full rounded-[20px] border border-ish-border/60 p-5 shadow-[var(--shadow-ish-sm)]">
       <p className={text.label}>Active Configuration</p>
-      <code className="mt-2 block text-[12px] text-ish-ink">
+      <code className="mt-2 block rounded-[12px] bg-white/60 px-3 py-3 text-[12px] text-ish-ink backdrop-blur-sm">
         ENRICHMENT_SEARCH_PROVIDER=&quot;{config.searchProvider}&quot;<br />
         ENRICHMENT_ENRICH_PROVIDER=&quot;{config.enrichProvider}&quot;<br />
         ENRICHMENT_FALLBACK_TO_AI=&quot;{String(config.fallbackToAI)}&quot;<br />
@@ -15,7 +15,7 @@ export function ActiveConfigSummary({ config }: { config: EnrichmentConfig }) {
         SCOUT_LEADS_LIMIT=&quot;{config.scoutLeadsLimit}&quot;
       </code>
       <p className="mt-2 text-[11px] text-ish-ink-faint">
-        Copy these into your <code>.env.local</code> to persist across restarts.
+        Copy these into your <code className="rounded bg-white/50 px-1">.env.local</code> to persist across restarts.
       </p>
     </PanelCard>
   );

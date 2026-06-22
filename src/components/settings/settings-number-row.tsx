@@ -20,7 +20,7 @@ export function SettingsNumberRow({
   onChange: (v: number) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[16px] border border-ish-border bg-white p-4">
+    <div className="flex items-start justify-between gap-4 rounded-[16px] border border-ish-border/60 bg-white/70 p-4 backdrop-blur-sm">
       <div>
         <div className="text-[13.5px] font-bold text-ish-ink">{label}</div>
         <p className="mt-0.5 text-[12px] text-ish-ink-soft">{desc}</p>
@@ -37,7 +37,7 @@ export function SettingsNumberRow({
             if (Number.isFinite(next)) onChange(Math.min(max, Math.max(min, next)));
           }}
           className={cn(
-            "w-20 rounded-[12px] border border-ish-border bg-ish-app px-3 py-2 text-right text-[13px] font-semibold text-ish-ink",
+            "w-20 rounded-[12px] border border-ish-border bg-white/80 px-3 py-2 text-right text-[13px] font-semibold text-ish-ink backdrop-blur-sm",
             "focus:border-ish-black focus:outline-none",
           )}
         />

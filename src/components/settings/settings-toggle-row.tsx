@@ -12,7 +12,7 @@ export function SettingsToggleRow({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[16px] border border-ish-border bg-white p-4">
+    <div className="flex items-start justify-between gap-4 rounded-[16px] border border-ish-border/60 bg-white/70 p-4 backdrop-blur-sm">
       <div>
         <div className="text-[13.5px] font-bold text-ish-ink">{label}</div>
         <p className="mt-0.5 text-[12px] text-ish-ink-soft">{desc}</p>

@@ -94,8 +94,9 @@ export function LinkedInIntegration() {
   const member = status?.activeMember;
 
   return (
-    <div className="space-y-6">
+    <div className="grid grid-cols-12 gap-4">
       <SettingsSection
+        className="col-span-12"
         title="LinkedIn — Who Knows Whom"
         description="Connect your LinkedIn profile, then import Connections.csv from your LinkedIn data export. The app matches your network against CRM contacts to surface warm-intro paths."
       >
@@ -105,7 +106,7 @@ export function LinkedInIntegration() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-4 rounded-[16px] border border-ish-border bg-white p-4">
+        <div className="flex flex-wrap items-center gap-4 rounded-[16px] border border-ish-border/60 bg-white/70 p-4 backdrop-blur-sm">
           {member?.linkedInPicture ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={member.linkedInPicture} alt="" className="size-12 rounded-full" />
@@ -143,6 +144,7 @@ export function LinkedInIntegration() {
       </SettingsSection>
 
       <SettingsSection
+        className="col-span-12 lg:col-span-6"
         title="Import Connections"
         description="Export from LinkedIn: Me → Settings & Privacy → Data privacy → Get a copy of your data → Connections."
       >
@@ -150,7 +152,7 @@ export function LinkedInIntegration() {
           href="https://www.linkedin.com/help/linkedin/answer/a566336"
           target="_blank"
           rel="noopener noreferrer"
-          className="mb-3 inline-flex items-center gap-1 text-[12px] font-semibold text-ish-green hover:underline"
+          className="mb-3 inline-flex items-center gap-1 text-[12px] font-semibold text-ish-stratus-blue hover:underline"
         >
           LinkedIn export instructions <ExternalLink className="size-3" />
         </a>
@@ -186,14 +188,14 @@ export function LinkedInIntegration() {
         )}
 
         {member?.connectionCount ? (
-          <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ish-green">
+          <p className="mt-3 flex items-center gap-1.5 text-[12px] text-ish-stratus-blue">
             <Check className="size-3.5" /> {member.connectionCount} connections loaded for matching
           </p>
         ) : null}
       </SettingsSection>
 
       {status && status.members.length > 1 && (
-        <SettingsSection title="Team members" description="All LinkedIn-connected reps in this workspace.">
+        <SettingsSection className="col-span-12 lg:col-span-6" title="Team members" description="All LinkedIn-connected reps in this workspace.">
           <ul className="space-y-2">
             {status.members.map((m) => (
               <li key={m.id} className="rounded-[12px] border border-ish-border px-3 py-2 text-[12px] text-ish-ink-soft">

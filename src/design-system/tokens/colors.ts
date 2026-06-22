@@ -24,3 +24,10 @@ export const scoreToneClasses = {
   mid: "bg-[#fbe9c4] text-ish-ink",
   low: "bg-[#fbe0de] text-ish-ink",
 } as const;
+
+/** Gift/match score color — reads theme tokens (Stratus remaps via CSS vars). */
+export function getScoreColor(score: number): string {
+  if (score >= 75) return "var(--color-score-high)";
+  if (score >= 50) return "var(--color-score-mid)";
+  return "var(--color-score-low)";
+}

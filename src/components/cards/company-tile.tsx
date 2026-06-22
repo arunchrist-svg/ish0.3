@@ -1,15 +1,11 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getScoreColor } from "@/design-system/tokens/colors";
 import { MapPin, Users, Check } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
 import { CompanyLogo } from "@/components/company/company-logo";
 
-function getScoreColor(score: number): string {
-  if (score >= 75) return "#3fbe82";
-  if (score >= 50) return "#e8a000";
-  return "#e57373";
-}
 
 type Props = {
   company: Company;

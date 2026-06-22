@@ -199,3 +199,9 @@
   color: #1f6b45 !important;
   border-color: #b8e8cc !important;
 }
+
+.stratus [data-sonner-toast][data-type="success"] {
+  background: #eef4fd !important;
+  color: #2a4a7a !important;
+  border-color: rgba(131, 162, 219, 0.35) !important;
+}

@@ -7,6 +7,7 @@ type SettingsSectionProps = {
   children: React.ReactNode;
   className?: string;
   contentClassName?: string;
+  tone?: "white" | "yellow" | "pink" | "green";
 };
 
 export function SettingsSection({
@@ -15,11 +16,15 @@ export function SettingsSection({
   children,
   className,
   contentClassName,
+  tone = "white",
 }: SettingsSectionProps) {
   return (
     <PanelCard
-      tone="white"
-      className={cn("mb-6 rounded-[24px] p-6 shadow-[var(--shadow-ish-sm)]", className)}
+      tone={tone}
+      className={cn(
+        "rounded-[20px] border border-ish-border/60 p-5 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm",
+        className,
+      )}
     >
       <SectionHeader title={title} size="card" className="mb-1" />
       {description ? <p className={cn("mb-4", text.caption)}>{description}</p> : null}

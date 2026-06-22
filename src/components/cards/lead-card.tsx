@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { getScoreColor } from "@/design-system/tokens/colors";
 import { Bookmark, MessageCircle, Zap, ExternalLink } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
 import { COMPANIES } from "@/lib/scouting-data";
@@ -23,11 +24,6 @@ type Props = {
   directoryLeadId?: string;
 };
 
-function getScoreColor(score: number): string {
-  if (score >= 75) return "#3fbe82";
-  if (score >= 50) return "#e8a000";
-  return "#e57373";
-}
 
 export function LeadCard({
   person,

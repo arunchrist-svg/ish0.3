@@ -1,13 +1,9 @@
 import { ExternalLink, Lock, Zap } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
 import { IshAvatar } from "@/design-system";
-import { normalizeLinkedInUrl } from "@/lib/utils";
+import { normalizeLinkedInUrl } from "@/lib/utils"
+import { getScoreColor } from "@/design-system/tokens/colors";
 
-function getScoreColor(score: number): string {
-  if (score >= 75) return "#3fbe82";
-  if (score >= 50) return "#e8a000";
-  return "#e57373";
-}
 
 type Props = { person: Person; index: number };
 

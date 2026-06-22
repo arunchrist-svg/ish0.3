@@ -1,14 +1,10 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { getScoreColor } from "@/design-system/tokens/colors";
 import type { Person } from "@/lib/scouting-data";
 import { IshAvatar } from "@/design-system";
 
-function getScoreColor(score: number): string {
-  if (score >= 75) return "#3fbe82";
-  if (score >= 50) return "#e8a000";
-  return "#e57373";
-}
 
 type Props = {
   person: Person;

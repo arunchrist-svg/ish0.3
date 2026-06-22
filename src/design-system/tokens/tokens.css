@@ -23,6 +23,9 @@
   --color-ish-stratus-blue: #83a2db;
   --color-ish-stratus-salmon: #fd8e8c;
   --color-ish-stratus-yellow: #ffce87;
+  --color-score-high: #3fbe82;
+  --color-score-mid: #e8a000;
+  --color-score-low: #e57373;
   --shadow-ish-sm: 0 1px 2px rgba(20, 20, 30, 0.05);
   --shadow-ish: 0 2px 8px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
   --shadow-ish-float: 0 24px 60px rgba(20, 16, 30, 0.22);
@@ -67,8 +70,11 @@
   --color-ish-yellow-soft: #fff4e0;
   --color-ish-pink: var(--ish-stratus-salmon);
   --color-ish-pink-soft: #fdf0f0;
-  --color-ish-green: #3fbe82;
-  --color-ish-green-soft: #edfaf4;
+  --color-ish-green: var(--ish-stratus-blue);
+  --color-ish-green-soft: #e8f0fb;
+  --color-score-high: var(--ish-stratus-blue);
+  --color-score-mid: var(--ish-stratus-yellow);
+  --color-score-low: var(--ish-stratus-salmon);
   --color-ish-black: #293042;
   --shadow-ish-sm: 0 1px 3px rgba(var(--ish-stratus-blue-rgb), 0.06), 0 1px 2px rgba(var(--ish-stratus-blue-rgb), 0.035);
   --shadow-ish: 0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.08), 0 1px 4px rgba(var(--ish-stratus-blue-rgb), 0.045);
@@ -220,11 +226,11 @@
 
 .stratus .bg-ish-green-soft {
   background:
-    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(63, 190, 130, 0.08) 0%, transparent 68%),
-    linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(248, 253, 250, 0.78) 100%) !important;
+    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 68%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(249, 250, 253, 0.78) 100%) !important;
   backdrop-filter: blur(14px) saturate(148%);
   -webkit-backdrop-filter: blur(14px) saturate(148%);
-  box-shadow: inset 0 0 0 1px rgba(63, 190, 130, 0.15) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.18) !important;
 }
 
 /* Record header banner — neutral glass wash */
@@ -353,4 +359,73 @@
 /* TopBar bottom border — Stratus blue tint                                 */
 .stratus .border-b.border-ish-border {
   border-bottom-color: rgba(131, 162, 219, 0.18) !important;
+}
+
+/* ── Stratus: remap all green → DS palette ──────────────────────────────── */
+
+/* Success / verified text & icons → Stratus blue */
+.stratus .text-ish-green {
+  color: var(--ish-stratus-blue) !important;
+}
+
+/* Indicator fills (checkmarks, dots, progress) → Stratus blue */
+.stratus .bg-ish-green:not(.text-white) {
+  background-color: var(--ish-stratus-blue) !important;
+}
+
+/* Green primary CTAs (Fetch Leads, Add Leads, etc.) → navy button */
+.stratus .bg-ish-green.text-white {
+  background-color: var(--color-ish-black) !important;
+  box-shadow: var(--shadow-ish) !important;
+}
+
+.stratus .hover\:bg-ish-green\/90:hover {
+  background-color: color-mix(in srgb, var(--color-ish-black) 90%, transparent) !important;
+}
+
+/* Green tint overlays → blue glass */
+.stratus .bg-ish-green\/10 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.10) !important; }
+.stratus .bg-ish-green\/15 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.15) !important; }
+.stratus .bg-ish-green\/20 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.20) !important; }
+.stratus .bg-ish-green\/25 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.25) !important; }
+.stratus .border-ish-green\/20 { border-color: rgba(var(--ish-stratus-blue-rgb), 0.20) !important; }
+
+/* Hardcoded green glow shadows → Stratus blue */
+.stratus .shadow-\[0_2px_8px_rgba\(63\,190\,130\,0\.35\)\] {
+  box-shadow: 0 2px 8px rgba(var(--ish-stratus-blue-rgb), 0.35) !important;
+}
+.stratus .shadow-\[0_2px_6px_rgba\(63\,190\,130\,0\.30\)\] {
+  box-shadow: 0 2px 6px rgba(var(--ish-stratus-blue-rgb), 0.30) !important;
+}
+.stratus .shadow-\[0_0_6px_rgba\(63\,190\,130\,0\.6\)\] {
+  box-shadow: 0 0 6px rgba(var(--ish-stratus-blue-rgb), 0.45) !important;
+}
+
+/* ── Stratus: Settings screen ───────────────────────────────────────────── */
+.stratus .settings-nav-rail a:hover,
+.stratus .settings-nav-rail button:hover {
+  background: rgba(var(--ish-stratus-blue-rgb), 0.10) !important;
+  border-radius: 10px;
+}
+
+.stratus .settings-nav-rail span.bg-ish-yellow {
+  background:
+    radial-gradient(ellipse 110% 90% at 10% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 58%),
+    linear-gradient(
+      135deg,
+      rgba(var(--ish-stratus-yellow-rgb), 0.88) 0%,
+      rgba(255, 228, 185, 0.72) 52%,
+      rgba(255, 245, 225, 0.62) 100%
+    ) !important;
+  backdrop-filter: blur(14px) saturate(165%);
+  -webkit-backdrop-filter: blur(14px) saturate(165%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    inset 0 1px 0 rgba(255, 255, 255, 0.50),
+    0 2px 14px rgba(var(--ish-stratus-yellow-rgb), 0.35),
+    0 1px 4px rgba(255, 170, 80, 0.14) !important;
+}
+
+.stratus .settings-content > header {
+  border-bottom-color: rgba(var(--ish-stratus-blue-rgb), 0.18) !important;
 }

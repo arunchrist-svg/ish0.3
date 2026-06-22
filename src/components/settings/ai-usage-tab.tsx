@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
+import { SettingsSection } from "@/components/settings/settings-section";
 import { cn } from "@/lib/utils";
 
 type TavilyKey = {
@@ -54,9 +55,9 @@ type LlmUsage = {
 };
 
 function barTone(percent: number, allExhausted: boolean): string {
-  if (allExhausted || percent >= 90) return "bg-red-500";
-  if (percent >= 70) return "bg-amber-500";
-  return "bg-emerald-500";
+  if (allExhausted || percent >= 90) return "bg-ish-stratus-salmon";
+  if (percent >= 70) return "bg-ish-yellow";
+  return "bg-ish-stratus-blue";
 }
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -64,10 +65,10 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-        ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600",
+        ok ? "bg-ish-stratus-blue/15 text-ish-ink" : "bg-red-50 text-red-600",
       )}
     >
-      <span className={cn("size-1.5 rounded-full", ok ? "bg-emerald-500" : "bg-red-400")} />
+      <span className={cn("size-1.5 rounded-full", ok ? "bg-ish-stratus-blue" : "bg-red-400")} />
       {label}
     </span>
   );
@@ -79,14 +80,6 @@ function ActiveBadge() {
       <span className="size-1.5 rounded-full bg-white/70" />
       Active provider
     </span>
-  );
-}
-
-function SectionCard({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={cn("rounded-2xl border border-ish-border bg-white p-5", className)}>
-      {children}
-    </div>
   );
 }
 
@@ -123,38 +116,26 @@ export function AiUsageTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-[15px] font-semibold text-ish-ink">AI Service Usage</h2>
-          <p className="mt-0.5 text-[12px] text-ish-ink-soft">
-            Live credit meters and configuration status for all AI services used by Scout.
-          </p>
-        </div>
+      <div className="flex items-center justify-end">
         <button
           type="button"
           onClick={handleRefresh}
-          className="flex items-center gap-1.5 rounded-xl border border-ish-border bg-white px-3 py-2 text-[12px] font-medium text-ish-ink-soft transition-all hover:border-ish-ink-faint hover:text-ish-ink"
+          className="flex items-center gap-1.5 rounded-xl border border-ish-border bg-white/80 px-3 py-2 text-[12px] font-medium text-ish-ink-soft backdrop-blur-sm transition-all hover:border-ish-ink-faint hover:text-ish-ink"
         >
           <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           Refresh
         </button>
       </div>
 
-      {/* Tavily */}
-      <SectionCard>
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-[13px] font-semibold text-ish-ink">Tavily Search</h3>
-              {tavily?.configured ? (
-                <StatusBadge ok={!tavily.allKeysExhausted} label={tavily.allKeysExhausted ? "All keys exhausted" : "Configured"} />
-              ) : (
-                <StatusBadge ok={false} label="Not configured" />
-              )}
-            </div>
-            <p className="mt-0.5 text-[11px] text-ish-ink-faint">
-              Used for company discovery and lead scouting. Pulled live from Tavily account API.
-            </p>
+      <div className="grid grid-cols-12 gap-4">
+      <SettingsSection className="col-span-12 lg:col-span-7" title="Tavily Search" description="Used for company discovery and lead scouting. Pulled live from Tavily account API.">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            {tavily?.configured ? (
+              <StatusBadge ok={!tavily.allKeysExhausted} label={tavily.allKeysExhausted ? "All keys exhausted" : "Configured"} />
+            ) : (
+              <StatusBadge ok={false} label="Not configured" />
+            )}
           </div>
           <a
             href="https://app.tavily.com"
@@ -215,7 +196,7 @@ export function AiUsageTab() {
                       <div className="flex items-center gap-2">
                         <span className="text-[12px] font-medium text-ish-ink">{k.label}</span>
                         {k.active && (
-                          <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                          <span className="rounded-full bg-ish-stratus-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-ish-ink">
                             active
                           </span>
                         )}
@@ -276,24 +257,18 @@ export function AiUsageTab() {
             </p>
           </>
         )}
-      </SectionCard>
+      </SettingsSection>
 
-      {/* Gemini */}
-      <SectionCard>
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-[13px] font-semibold text-ish-ink">Google Gemini</h3>
-              {llm ? (
-                <>
-                  {llm.gemini.active && <ActiveBadge />}
-                  <StatusBadge ok={llm.gemini.configured} label={llm.gemini.configured ? "Key configured" : "Key missing"} />
-                </>
-              ) : null}
-            </div>
-            <p className="mt-0.5 text-[11px] text-ish-ink-faint">
-              Used for lead extraction, enrichment parsing, and AI fallback scouting.
-            </p>
+      <div className="col-span-12 flex flex-col gap-4 lg:col-span-5">
+      <SettingsSection title="Google Gemini" description="Lead extraction, enrichment parsing, and AI fallback scouting.">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {llm ? (
+              <>
+                {llm.gemini.active && <ActiveBadge />}
+                <StatusBadge ok={llm.gemini.configured} label={llm.gemini.configured ? "Key configured" : "Key missing"} />
+              </>
+            ) : null}
           </div>
           <a
             href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com"
@@ -340,26 +315,17 @@ export function AiUsageTab() {
             </p>
           </div>
         )}
-      </SectionCard>
+      </SettingsSection>
 
-      {/* Anthropic — always visible so users know it exists */}
-      <SectionCard>
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-[13px] font-semibold text-ish-ink">Anthropic Claude</h3>
-              {llm ? (
-                <>
-                  {llm.anthropic.active && <ActiveBadge />}
-                  <StatusBadge ok={llm.anthropic.configured} label={llm.anthropic.configured ? "Key configured" : "Key missing"} />
-                </>
-              ) : null}
-            </div>
-            <p className="mt-0.5 text-[11px] text-ish-ink-faint">
-              Alternative LLM provider. Set{" "}
-              <code className="rounded bg-ish-app px-1 font-mono text-[10px]">LLM_PROVIDER=anthropic</code> to
-              activate.
-            </p>
+      <SettingsSection title="Anthropic Claude" description="Alternative LLM. Set LLM_PROVIDER=anthropic to activate.">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {llm ? (
+              <>
+                {llm.anthropic.active && <ActiveBadge />}
+                <StatusBadge ok={llm.anthropic.configured} label={llm.anthropic.configured ? "Key configured" : "Key missing"} />
+              </>
+            ) : null}
           </div>
           <a
             href="https://console.anthropic.com"
@@ -416,7 +382,9 @@ export function AiUsageTab() {
             </p>
           </div>
         )}
-      </SectionCard>
+      </SettingsSection>
+      </div>
+      </div>
     </div>
   );
 }
