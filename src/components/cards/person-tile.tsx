@@ -11,9 +11,18 @@ type Props = {
   isPrimary: boolean;
   onCheckboxClick: (e: React.MouseEvent) => void;
   onTileClick: () => void;
+  selectable?: boolean;
 };
 
-export function PersonTile({ person, index, isSelected, isPrimary, onCheckboxClick, onTileClick }: Props) {
+export function PersonTile({
+  person,
+  index,
+  isSelected,
+  isPrimary,
+  onCheckboxClick,
+  onTileClick,
+  selectable = true,
+}: Props) {
   return (
     <div
       role="button"
@@ -32,23 +41,25 @@ export function PersonTile({ person, index, isSelected, isPrimary, onCheckboxCli
           : "shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)]",
       )}
     >
-      <button
-        type="button"
-        onClick={onCheckboxClick}
-        className={cn(
-          "flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-100",
-          isSelected
-            ? "border-ish-green bg-ish-green"
-            : "border-ish-border bg-white group-hover:border-ish-ink-faint",
-        )}
-        aria-label={isSelected ? "Deselect" : "Select"}
-      >
-        {isSelected && (
-          <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-            <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+      {selectable ? (
+        <button
+          type="button"
+          onClick={onCheckboxClick}
+          className={cn(
+            "flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-100",
+            isSelected
+              ? "border-ish-green bg-ish-green"
+              : "border-ish-border bg-white group-hover:border-ish-ink-faint",
+          )}
+          aria-label={isSelected ? "Deselect" : "Select"}
+        >
+          {isSelected && (
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      ) : null}
 
       <IshAvatar name={person.name} index={index} size={40} />
 

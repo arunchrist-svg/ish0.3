@@ -1,21 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, MoreHorizontal, RefreshCw, Save, CheckCircle, MessageSquare, Package, Handshake, Trophy, Search, Sparkles } from "lucide-react";
+import { FileText, MoreHorizontal, RefreshCw, Save, MessageSquare, Package, Handshake, Trophy, Search, Sparkles } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { runWriter, markReplied, updateLeadStatus, enrichLead } from "@/lib/api-client";
+import { markReplied, updateLeadStatus, enrichLead } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { getNextManualStatus, isContactReadyStage } from "@/lib/pipeline-status";
+import { AppModal } from "@/components/ui/app-modal";
 
 type Props = {
   lead: LeadDetailRecord;
   onAction: () => void;
   onLeadUpdated: () => void;
+  onOpenEmailTab?: () => void;
+  hasEmailDraft?: boolean;
 };
 
-export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
+export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, hasEmailDraft }: Props) {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [dealAmount, setDealAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -51,18 +54,6 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
     }
   }
 
-  async function handleGenerate() {
-    try {
-      toast.info("Generating email draft…");
-      await runWriter(lead.id);
-      toast.success("Email draft ready — check approval card");
-      onAction();
-      onLeadUpdated();
-    } catch (e) {
-      toast.error("Writer failed. Check logs.");
-      console.error(e);
-    }
-  }
 
   async function handleMarkReplied() {
     try {
@@ -143,33 +134,18 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
           </Button>
         )}
 
-        {showGenerate && (
+        {(showGenerate || showApprove) && (
           <Button
             variant="ghost"
             size="sm"
             className="h-auto rounded-[18px] bg-ish-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-black/90"
-            onClick={handleGenerate}
+            onClick={() => onOpenEmailTab?.()}
           >
             <FileText className="size-3.5" />
-            Generate Email
+            {hasEmailDraft ? "Review Email" : "Write Email"}
           </Button>
         )}
 
-        {showApprove && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-auto rounded-[18px] bg-ish-green px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-green/90"
-            onClick={() => {
-              const el = document.getElementById("approval-card");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-              else toast.info("Scroll down to the approval card");
-            }}
-          >
-            <CheckCircle className="size-3.5" />
-            Review Draft
-          </Button>
-        )}
 
         {showMarkReplied && (
           <Button
@@ -240,9 +216,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
         </Button>
       </div>
 
-      {closeDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-[22px] bg-white p-6 shadow-xl">
+      <AppModal open={closeDialogOpen} onClose={() => { setCloseDialogOpen(false); setDealAmount(""); }}>
             <h3 className="text-[15px] font-bold text-ish-ink">Close Deal</h3>
             <p className="mt-1 text-[13px] text-ish-ink-soft">Enter the final deal amount to mark this lead as closed.</p>
             <label className="mt-4 block text-[12px] font-semibold text-ish-ink-soft">Deal amount (₹)</label>
@@ -278,13 +252,10 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
                 Confirm Close
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+      </AppModal>
 
-      {paidDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-[22px] bg-white p-6 shadow-xl">
+
+      <AppModal open={paidDialogOpen} onClose={() => setPaidDialogOpen(false)}>
             <h3 className="text-[15px] font-bold text-ish-ink">Paid enrichment</h3>
             <p className="mt-1 text-[13px] text-ish-ink-soft">
               Uses Apollo and Hunter credits to find a direct email for {lead.name}. This spends paid API quota for this lead only.
@@ -308,9 +279,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
                 Run paid enrich
               </Button>
             </div>
-          </div>
-        </div>
-      )}
+      </AppModal>
     </>
   );
 }

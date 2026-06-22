@@ -15,14 +15,14 @@ export function SlidingHighlight({ rect, ready, className }: SlidingHighlightPro
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute z-0 rounded-[10px] bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]",
-        "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "pointer-events-none absolute top-0 left-0 z-0 rounded-[10px] bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]",
+        "will-change-[transform,width,height]",
+        "transition-[transform,width,height,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
         ready ? "opacity-100" : "opacity-0",
         className,
       )}
       style={{
-        top: rect.top,
-        left: rect.left,
+        transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
         width: rect.width,
         height: rect.height,
       }}

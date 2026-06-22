@@ -1,6 +1,7 @@
 import {
   pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum,
 } from "drizzle-orm/pg-core";
+import type { CompanyOverview } from "@/lib/company-overview";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 export const dataMode = pgEnum("data_mode", ["free", "paid", "auto"]);
@@ -61,6 +62,8 @@ export const accounts = pgTable("accounts", {
   giftBudget:   text("gift_budget"),
   pastGifting:  jsonb("past_gifting").$type<object[]>().default([]),
   intelNotes:   text("intel_notes"),
+  companyOverview: jsonb("company_overview").$type<CompanyOverview | null>(),
+  overviewEnrichedAt: timestamp("overview_enriched_at"),
   dataSource:   text("data_source"),
   externalId:   text("external_id"),
   createdAt:    timestamp("created_at").defaultNow().notNull(),

@@ -33,6 +33,9 @@ export async function GET() {
         employees: string;
         giftScore: number;
         domain?: string;
+        website?: string;
+        companyOverview?: unknown;
+        overviewEnrichedAt?: string;
         contacts: {
           leadId: string;
           contactId: string;
@@ -46,6 +49,7 @@ export async function GET() {
           leadSource: string;
           score: number;
           savedAt: string;
+          isKeyDM: boolean;
         }[];
       }
     >();
@@ -80,6 +84,9 @@ export async function GET() {
           employees: row.account.employees ?? "—",
           giftScore: row.account.giftScore ?? 60,
           domain: row.account.domain ?? undefined,
+          website: row.account.website ?? undefined,
+          companyOverview: row.account.companyOverview ?? undefined,
+          overviewEnrichedAt: row.account.overviewEnrichedAt?.toISOString(),
           contacts: [],
         });
       }
@@ -97,6 +104,7 @@ export async function GET() {
         leadSource: row.lead.leadSource ?? "scout",
         score: row.lead.score ?? 60,
         savedAt: row.lead.createdAt.toISOString(),
+        isKeyDM: row.contact.isKeyDM ?? false,
       };
 
       companyMap.get(accountId)!.contacts.push(contactEntry);

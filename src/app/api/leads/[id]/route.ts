@@ -103,6 +103,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       upNext,
       network: [],
       giftingIntelligence: account.intelNotes ?? research?.giftingHook ?? undefined,
+      companyOverview: (account.companyOverview as import("@/lib/company-overview").CompanyOverview | null) ?? undefined,
+      accountId: account.id,
+      industry: account.industry ?? undefined,
+      giftScore: account.giftScore ?? undefined,
+      giftBudget: account.giftBudget ?? undefined,
     };
 
     return NextResponse.json({ lead: record });

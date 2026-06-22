@@ -1,9 +1,6 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { AppShell } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
-import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { ScoutingProgressBar } from "./scouting-progress-bar";
 import { ScoutingToolbar, type ScoutMode } from "./scouting-toolbar";
 import { DiscoveringLoader } from "./discovering-loader";
@@ -114,12 +111,13 @@ function toCompanyShape(c: ScoutCompanyResult) {
   return {
     id: companyKey(c),
     logo: c.logo ?? "🏢",
+    domain: c.domain,
     name: c.name,
     type: c.industry ?? "Corporate",
     city: c.city ?? "",
     industry: c.industry ?? "",
     employees: c.employees ?? "—",
-    revenue: "—",
+    revenue: c.revenue ?? "—",
     founded: 0,
     giftScore: c.giftScore ?? 60,
     giftBudget: c.giftBudget ?? "—",
@@ -324,15 +322,52 @@ export function ScoutingApp() {
   const [selectedPersonIds, setSelectedPersonIds] = useState<Set<string>>(new Set());
   const [primaryPersonId, setPrimaryPersonId] = useState<string | null>(null);
   const [existingContactNames, setExistingContactNames] = useState<Set<string>>(new Set());
+  const [crmLeadIdsByKey, setCrmLeadIdsByKey] = useState<Map<string, string>>(new Map());
   const [scoutMode, setScoutMode] = useState<ScoutMode>("autopilot");
   const [companySearchQuery, setCompanySearchQuery] = useState("");
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [pendingFetchIds, setPendingFetchIds] = useState<Set<string> | null>(null);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const leadsRes = await fetch("/api/leads");
+        const leadsData = await leadsRes.json();
+        if (!leadsData.leads) return;
+        const map = new Map<string, string>();
+        for (const lead of leadsData.leads as { id: string; name: string; company: string }[]) {
+          map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
+          map.set(lead.name.toLowerCase(), lead.id);
+        }
+        setCrmLeadIdsByKey(map);
+        setExistingContactNames(new Set((leadsData.leads as { name: string }[]).map((l) => l.name.toLowerCase())));
+      } catch {
+        // non-critical
+      }
+    })();
+  }, []);
+
   const primaryCompany = useMemo(
     () => companies.find((c) => c.id === primaryCompanyId) ?? null,
     [companies, primaryCompanyId],
   );
+
+  const primaryCompanyDecisionMaker = useMemo(() => {
+    if (!primaryCompany) return undefined;
+    const companyPeople = people.filter((p) => p.companyId === primaryCompany.id);
+    const key = companyPeople.find((p) => p.isKeyDecisionMaker) ?? companyPeople[0];
+    if (!key) return undefined;
+    return key.title && key.title !== "—" ? `${key.name} — ${key.title}` : key.name;
+  }, [primaryCompany, people]);
+  const primaryCompanyDecisionMakerLeadId = useMemo(() => {
+    if (!primaryCompany) return undefined;
+    const companyPeople = people.filter((p) => p.companyId === primaryCompany.id);
+    const key = companyPeople.find((p) => p.isKeyDecisionMaker) ?? companyPeople[0];
+    if (!key) return undefined;
+    const companyKey = `${primaryCompany.name.toLowerCase()}|${key.name.toLowerCase()}`;
+    return crmLeadIdsByKey.get(companyKey) ?? crmLeadIdsByKey.get(key.name.toLowerCase());
+  }, [primaryCompany, people, crmLeadIdsByKey]);
+
   const primaryPerson = useMemo(
     () => people.find((p) => p.id === primaryPersonId) ?? null,
     [people, primaryPersonId],
@@ -341,6 +376,17 @@ export function ScoutingApp() {
     () => people.findIndex((p) => p.id === primaryPersonId),
     [people, primaryPersonId],
   );
+
+  const selectablePeople = useMemo(
+    () => people.filter((p) => !existingContactNames.has(p.name.toLowerCase())),
+    [people, existingContactNames],
+  );
+
+  const allCompaniesSelected =
+    companies.length > 0 && companies.every((c) => selectedCompanyIds.has(c.id));
+
+  const allPeopleSelected =
+    selectablePeople.length > 0 && selectablePeople.every((p) => selectedPersonIds.has(p.id));
 
   const currentStep: 1 | 2 | 3 = view === "companies" ? 1 : selectedPersonIds.size > 0 ? 3 : 2;
 
@@ -591,6 +637,23 @@ export function ScoutingApp() {
     setSelectedPersonIds((prev) => (prev.has(id) ? prev : new Set([...prev, id])));
   }
 
+  function selectAllCompanies() {
+    setSelectedCompanyIds(new Set(companies.map((c) => c.id)));
+  }
+
+  function deselectAllCompanies() {
+    setSelectedCompanyIds(new Set());
+  }
+
+  function selectAllPeople() {
+    const selectable = people.filter((p) => !existingContactNames.has(p.name.toLowerCase()));
+    setSelectedPersonIds(new Set(selectable.map((p) => p.id)));
+  }
+
+  function deselectAllPeople() {
+    setSelectedPersonIds(new Set());
+  }
+
   function handleFetchLeads() {
     const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
     if (!selected.length) return;
@@ -649,10 +712,13 @@ export function ScoutingApp() {
         const leadsRes = await fetch("/api/leads");
         const leadsData = await leadsRes.json();
         if (leadsData.leads) {
-          const names = new Set<string>(
-            (leadsData.leads as { name: string }[]).map((l) => l.name.toLowerCase()),
-          );
-          setExistingContactNames(names);
+          const map = new Map<string, string>();
+          for (const lead of leadsData.leads as { id: string; name: string; company: string }[]) {
+            map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
+            map.set(lead.name.toLowerCase(), lead.id);
+          }
+          setCrmLeadIdsByKey(map);
+          setExistingContactNames(new Set((leadsData.leads as { id: string; name: string }[]).map((l) => l.name.toLowerCase())));
         }
       } catch {
         // non-critical
@@ -724,6 +790,21 @@ export function ScoutingApp() {
         // mark saved people so they show as already-added if user returns
         const savedNames = selectedPeople.map((p) => p.name.toLowerCase());
         setExistingContactNames((prev) => new Set([...prev, ...savedNames]));
+        void (async () => {
+          try {
+            const leadsRes = await fetch("/api/leads");
+            const leadsData = await leadsRes.json();
+            if (!leadsData.leads) return;
+            const map = new Map<string, string>();
+            for (const lead of leadsData.leads as { id: string; name: string; company: string }[]) {
+              map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
+              map.set(lead.name.toLowerCase(), lead.id);
+            }
+            setCrmLeadIdsByKey(map);
+          } catch {
+            // non-critical
+          }
+        })();
       }
       if (allSkipped.length > 0) {
         const detail = allSkipped
@@ -748,11 +829,8 @@ export function ScoutingApp() {
   }
 
   return (
-    <AppShell>
-      <TopBar />
-      <div className="flex overflow-hidden" style={{ height: "calc(100vh - 116px)" }}>
-        <SideNav />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ScoutingProgressBar
             currentStep={currentStep}
             companiesCount={selectedCompanyIds.size}
@@ -840,11 +918,21 @@ export function ScoutingApp() {
                         {discoveryNotice}
                       </div>
                     ) : null}
-                    <div className="px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                      {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
-                      {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
-                      {" · "}{cities.join(", ")}
-                      {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
+                    <div className="flex items-center justify-between gap-3 px-5 py-2">
+                      <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                        {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
+                        {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
+                        {" · "}{cities.join(", ")}
+                        {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
+                        {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={allCompaniesSelected ? deselectAllCompanies : selectAllCompanies}
+                        className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
+                      >
+                        {allCompaniesSelected ? "Deselect all" : "Select all"}
+                      </button>
                     </div>
                     <CompaniesGrid
                       companies={companies}
@@ -876,9 +964,21 @@ export function ScoutingApp() {
                   >
                     ← Back to Companies
                   </button>
-                  <div className="mb-2 ml-3 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                    {people.length} Decision-Makers · {selectedCompanyIds.size}{" "}
-                    {selectedCompanyIds.size === 1 ? "Company" : "Companies"}
+                  <div className="mb-2 flex items-center justify-between gap-3 px-3">
+                    <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                      {people.length} Decision-Makers · {selectedCompanyIds.size}{" "}
+                      {selectedCompanyIds.size === 1 ? "Company" : "Companies"}
+                      {selectedPersonIds.size > 0 ? ` · ${selectedPersonIds.size} selected` : ""}
+                    </div>
+                    {people.length > 0 && !loadingPeople ? (
+                      <button
+                        type="button"
+                        onClick={allPeopleSelected ? deselectAllPeople : selectAllPeople}
+                        className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
+                      >
+                        {allPeopleSelected ? "Deselect all" : "Select all"}
+                      </button>
+                    ) : null}
                   </div>
                   {loadingPeople ? (
                     <DiscoveringLoader
@@ -911,9 +1011,9 @@ export function ScoutingApp() {
               )}
             </div>
 
-            <div className="w-[320px] shrink-0 overflow-y-auto border-l border-ish-border bg-white">
+            <div className="w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white">
               {view === "companies" && primaryCompany ? (
-                <CompanyDetailPanel company={primaryCompany} />
+                <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
               ) : view === "people" && primaryPerson ? (
                 <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
               ) : (
@@ -926,7 +1026,6 @@ export function ScoutingApp() {
             </div>
           </div>
         </div>
-      </div>
       {showRolePicker && (
         <RolePickerModal
           onConfirm={handleRolePickerConfirm}
@@ -939,6 +1038,6 @@ export function ScoutingApp() {
           }}
         />
       )}
-    </AppShell>
+    </>
   );
 }

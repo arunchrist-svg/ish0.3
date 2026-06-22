@@ -4,8 +4,8 @@ type AppShellProps = {
 
 export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-ish-outer p-4 font-sans">
-      <div className="mx-auto max-w-[1620px] overflow-hidden rounded-3xl bg-ish-app shadow-[var(--shadow-ish-float)]">
+    <div className="h-screen overflow-hidden bg-ish-outer p-4 font-sans">
+      <div className="mx-auto flex h-full max-w-[1620px] flex-col overflow-hidden rounded-3xl bg-ish-app shadow-[var(--shadow-ish-float)]">
         {children}
       </div>
     </div>

@@ -224,7 +224,7 @@ function CityPopoverContent({
     ...g,
     cities: g.cities.filter((c) => {
       const m = getCityMeta(c);
-      return !q || c.toLowerCase().includes(q) || m.initials.toLowerCase().includes(q);
+      return !q || c.toLowerCase().includes(q);
     }),
   })).filter((g) => g.cities.length > 0);
 
@@ -264,7 +264,7 @@ function CityPopoverContent({
       </div>
 
       {/* City groups */}
-      <div className="max-h-[280px] overflow-y-auto p-3">
+      <div className="p-3">
         {filtered.length === 0 ? (
           <p className="py-4 text-center text-[12px] text-ish-ink-faint">No cities match.</p>
         ) : (
@@ -291,7 +291,6 @@ function CityPopoverContent({
                     >
                       <span className="leading-none">{meta.icon}</span>
                       {city}
-                      <span className="text-[10px] font-bold opacity-50">{meta.initials}</span>
                     </button>
                   );
                 })}

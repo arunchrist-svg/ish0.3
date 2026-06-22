@@ -45,8 +45,8 @@
 
 
 @keyframes ish-page-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes ish-tab-in {
@@ -59,8 +59,8 @@
 }
 
 @keyframes d365-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes ish-radar {
@@ -89,7 +89,7 @@
 }
 
 .animate-d365-in { animation: d365-in 0.2s ease-out; }
-.animate-ish-page-in { animation: ish-page-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-ish-page-in { animation: ish-page-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-ish-tab-in { animation: ish-tab-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .animate-ish-radar { animation: ish-radar 2.4s ease-out infinite; }
 .animate-ish-float { animation: ish-float 2.2s ease-in-out infinite; }

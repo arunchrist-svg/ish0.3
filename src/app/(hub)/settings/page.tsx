@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppShell, DataModeSegmentedControl, text } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
-import { SideNav } from "@/components/sales-accelerator/side-nav";
+import { DataModeSegmentedControl, text } from "@/design-system";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { ProviderCard } from "@/components/settings/provider-card";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
@@ -104,23 +102,13 @@ export default function SettingsPage() {
 
   if (!config) {
     return (
-      <AppShell>
-        <TopBar />
-        <div className="flex" style={{ minHeight: "calc(100vh - 116px)" }}>
-          <SideNav />
           <div className="flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
             <Loader2 className="mr-2 size-4 animate-spin" /> Loading settings…
           </div>
-        </div>
-      </AppShell>
     );
   }
 
   return (
-    <AppShell>
-      <TopBar />
-      <div className="flex" style={{ minHeight: "calc(100vh - 116px)" }}>
-        <SideNav />
         <div className="min-w-0 flex-1 overflow-y-auto bg-ish-app p-8">
           <div className="mb-8 flex items-start justify-between">
             <div>
@@ -302,7 +290,5 @@ export default function SettingsPage() {
 
           <ActiveConfigSummary config={config} />
         </div>
-      </div>
-    </AppShell>
   );
 }

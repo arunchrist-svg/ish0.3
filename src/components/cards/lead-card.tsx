@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ScoreGauge } from "@/design-system";
-import { Bookmark, MessageCircle, Zap, Briefcase } from "lucide-react";
+import { Bookmark, MessageCircle, Zap, Briefcase, ExternalLink } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
 import { COMPANIES } from "@/lib/scouting-data";
 import { getInitials } from "@/lib/data";
@@ -18,6 +19,9 @@ type Props = {
   onView: () => void;
   onContact: () => void;
   onBookmark: () => void;
+  selectable?: boolean;
+  companyName?: string;
+  directoryLeadId?: string;
 };
 
 function getScoreRingColor(score: number): string {
@@ -36,8 +40,13 @@ export function LeadCard({
   onView,
   onContact,
   onBookmark,
+  selectable = true,
+  companyName,
+  directoryLeadId,
 }: Props) {
-  const company = COMPANIES.find((c) => c.id === person.companyId);
+  const company = companyName
+    ? { name: companyName }
+    : COMPANIES.find((c) => c.id === person.companyId);
   const signalsCount = person.engagementSignals.length;
   const ringColor = getScoreRingColor(person.matchScore);
 
@@ -54,39 +63,43 @@ export function LeadCard({
       )}
     >
       {/* Checkbox row */}
-      <button
-        type="button"
-        onClick={alreadyAdded ? undefined : onToggleSelect}
-        disabled={alreadyAdded}
-        className="flex w-full items-center justify-between px-5 pt-4 pb-0"
-        aria-label={alreadyAdded ? `${person.name} already added` : isSelected ? `Deselect ${person.name}` : `Select ${person.name}`}
-      >
-        <span
-          className={cn(
-            "flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-            alreadyAdded
-              ? "border-ish-border bg-ish-app"
-              : isSelected
-              ? "border-ish-green bg-ish-green"
-              : "border-ish-border bg-white",
-          )}
+      {selectable ? (
+        <button
+          type="button"
+          onClick={alreadyAdded ? undefined : onToggleSelect}
+          disabled={alreadyAdded}
+          className="flex w-full items-center justify-between px-5 pt-4 pb-0"
+          aria-label={alreadyAdded ? `${person.name} already added` : isSelected ? `Deselect ${person.name}` : `Select ${person.name}`}
         >
-          {alreadyAdded ? (
-            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-              <path d="M1 4l3 3 5-6" stroke="#aaa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : isSelected ? (
-            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-              <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : null}
-        </span>
-        {alreadyAdded && (
-          <span className="text-[10px] font-semibold text-ish-ink-faint bg-ish-app rounded-full px-2 py-0.5">
-            Already added
+          <span
+            className={cn(
+              "flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+              alreadyAdded
+                ? "border-ish-border bg-ish-app"
+                : isSelected
+                ? "border-ish-green bg-ish-green"
+                : "border-ish-border bg-white",
+            )}
+          >
+            {alreadyAdded ? (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4l3 3 5-6" stroke="#aaa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : isSelected ? (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : null}
           </span>
-        )}
-      </button>
+          {alreadyAdded && (
+            <span className="text-[10px] font-semibold text-ish-ink-faint bg-ish-app rounded-full px-2 py-0.5">
+              Already added
+            </span>
+          )}
+        </button>
+      ) : (
+        <div className="px-5 pt-4" />
+      )}
 
       {/* View zone */}
       <button
@@ -116,7 +129,12 @@ export function LeadCard({
           <div className="text-[14.5px] font-bold leading-snug text-ish-ink">{person.name}</div>
           <div className="mt-0.5 text-[11.5px] leading-snug text-ish-ink-soft">{person.title}</div>
           {company && (
-            <div className="mt-0.5 text-[11px] text-ish-ink-faint">{company.name}</div>
+            <div
+              className="mt-0.5 line-clamp-2 min-h-[2.4em] text-[11px] leading-[1.3] text-ish-ink-faint"
+              title={company.name}
+            >
+              {company.name}
+            </div>
           )}
         </div>
 
@@ -164,24 +182,36 @@ export function LeadCard({
       </button>
 
       {/* Actions */}
-      <div className="flex items-center gap-2 px-5 pb-5">
-        <button
-          type="button"
-          onClick={onContact}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ish-app py-2.5 text-[12px] font-semibold text-ish-ink transition-colors hover:bg-ish-border"
-        >
-          <MessageCircle className="size-3.5" />
-          Get in touch
-        </button>
-        <button
-          type="button"
-          onClick={onBookmark}
-          className="flex size-10 items-center justify-center rounded-full border border-ish-border bg-white text-ish-ink-soft transition-colors hover:text-ish-ink hover:bg-ish-app"
-          aria-label="Save"
-        >
-          <Bookmark className="size-4" />
-        </button>
-      </div>
+      {directoryLeadId ? (
+        <div className="px-5 pb-5">
+          <Link
+            href={`/?lead=${directoryLeadId}`}
+            className="flex w-full items-center justify-center gap-1.5 rounded-full bg-ish-app py-2.5 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-ish-border"
+          >
+            Open lead
+            <ExternalLink className="size-3.5" />
+          </Link>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 px-5 pb-5">
+          <button
+            type="button"
+            onClick={onContact}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ish-app py-2.5 text-[12px] font-semibold text-ish-ink transition-colors hover:bg-ish-border"
+          >
+            <MessageCircle className="size-3.5" />
+            Get in touch
+          </button>
+          <button
+            type="button"
+            onClick={onBookmark}
+            className="flex size-10 items-center justify-center rounded-full border border-ish-border bg-white text-ish-ink-soft transition-colors hover:text-ish-ink hover:bg-ish-app"
+            aria-label="Save"
+          >
+            <Bookmark className="size-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

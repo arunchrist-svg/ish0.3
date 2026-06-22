@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppShell } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
-import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { cn } from "@/lib/utils";
 
 const STAGE_ORDER = [
@@ -50,10 +47,6 @@ export default function FunnelPage() {
   const maxCount = Math.max(...Array.from(stageMap.values()), 1);
 
   return (
-    <AppShell>
-      <TopBar />
-      <div className="flex" style={{ minHeight: "calc(100vh - 116px)" }}>
-        <SideNav />
         <div className="min-w-0 flex-1 overflow-y-auto bg-ish-app p-8">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-ish-ink">Yield Funnel</h1>
@@ -134,7 +127,5 @@ export default function FunnelPage() {
             </>
           )}
         </div>
-      </div>
-    </AppShell>
   );
 }

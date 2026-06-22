@@ -1,3 +1,5 @@
+import type { CompanyOverview } from "@/lib/company-overview";
+
 export type DataMode = "free" | "paid" | "auto";
 
 export type ScoutCompanyResult = {
@@ -7,12 +9,13 @@ export type ScoutCompanyResult = {
   industry?: string;
   city?: string;
   employees?: string;
-  revenue?: string;
   logo?: string;
   giftScore?: number;
   giftBudget?: string;
   pastGifting?: object[];
   intelNotes?: string;
+  revenue?: string;
+  companyOverview?: CompanyOverview;
   dataSource: string;
   externalId?: string;
 };

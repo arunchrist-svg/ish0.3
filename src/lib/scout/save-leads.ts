@@ -72,7 +72,10 @@ export async function saveScoutLeads(params: {
       logo: company.logo,
       giftScore: company.giftScore,
       giftBudget: company.giftBudget,
+      revenue: company.revenue,
+      pastGifting: company.pastGifting ?? [],
       intelNotes: company.intelNotes,
+      companyOverview: company.companyOverview ?? null,
       dataSource: company.dataSource,
       externalId: company.externalId,
     })

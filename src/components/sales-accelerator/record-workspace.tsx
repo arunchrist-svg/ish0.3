@@ -6,10 +6,11 @@ import { RecordToolbar } from "@/components/sales-accelerator/record-toolbar";
 import { RecordHeader } from "@/components/sales-accelerator/record-header";
 import { PipelineStepper } from "@/components/sales-accelerator/pipeline-stepper";
 import { ContactCard } from "@/components/sales-accelerator/contact-card";
+import { CompanyOverviewPanel } from "@/components/company/company-overview-panel";
 import { UpNextPanel } from "@/components/sales-accelerator/up-next-card";
 import { LeadScoreCard } from "@/components/sales-accelerator/lead-score-card";
 import { BottomCards } from "@/components/sales-accelerator/bottom-cards";
-import { OutreachApprovalCard } from "@/components/sales-accelerator/outreach-approval-card";
+import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
 import { fetchLead } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -83,9 +84,12 @@ function toQueueItem(lead: LeadDetailRecord) {
   };
 }
 
+const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"] as const;
+
 export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   const [lead, setLead] = useState<LeadDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<string>("Summary");
 
   async function load() {
     setLoading(true);
@@ -117,24 +121,29 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
 
   const record = toRecord(lead);
   const current = toQueueItem(lead);
-  const hasDraft = !!lead.outreach && lead.status === "draft_ready";
+  const hasDraft = !!lead.outreach;
 
   return (
-    <div className="min-w-0 flex-1 overflow-hidden p-[22px_26px]">
-      <RecordToolbar lead={lead} onAction={load} onLeadUpdated={onLeadUpdated} />
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-[22px_26px]">
+      <RecordToolbar lead={lead} onAction={load} onLeadUpdated={onLeadUpdated} onOpenEmailTab={() => setActiveTab("Email")} hasEmailDraft={hasDraft} />
       <RecordHeader record={record} current={current} />
       <PipelineStepper stage={stage} activeDays={2} />
 
-      <Tabs defaultValue="Summary" className="bg-white">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white">
         <div className="px-[22px] pt-4">
           <TabsList className="h-auto gap-1.5 bg-transparent p-0">
-            {["Summary", "Relationship Analytics", "Details", "Related"].map((tab) => (
+            {TABS.map((tab) => (
               <TabsTrigger
                 key={tab}
                 value={tab}
                 className="h-auto flex-none rounded-[14px] border-0 px-[18px] py-2.5 text-[13px] font-semibold text-ish-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-ish-ink active:scale-[0.97] data-active:!bg-ish-black data-active:!text-white data-active:shadow-none after:hidden"
               >
-                {tab}
+                <span className="flex items-center gap-1.5">
+                  {tab}
+                  {tab === "Email" && hasDraft && lead.outreach?.approvalStatus === "pending" && (
+                    <span className="size-1.5 rounded-full bg-[#e8a000]" aria-label="Draft pending" />
+                  )}
+                </span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -153,19 +162,43 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
             <LeadScoreCard record={record} current={current} />
           </div>
 
-          {hasDraft && lead.outreach && (
-            <div className="px-[22px] pb-4">
-              <OutreachApprovalCard
-                leadId={lead.id}
-                draft={lead.outreach}
-                onDone={() => { load(); onLeadUpdated(); }}
-              />
-            </div>
-          )}
+
+          <div className="px-[22px] pb-4">
+            <CompanyOverviewPanel
+              name={lead.company}
+              city={lead.city}
+              giftScore={lead.giftScore}
+              industry={lead.industry}
+              initialOverview={lead.companyOverview}
+              decisionMakerLeadId={lead.id}
+              overviewInput={{
+                name: lead.company,
+                city: lead.city,
+                industry: lead.industry,
+                employees: lead.employees !== "—" ? lead.employees : undefined,
+                giftBudget: lead.giftBudget,
+                giftScore: lead.giftScore,
+                intelligenceNotes: lead.giftingIntelligence,
+                accountId: lead.accountId,
+                decisionMakerHint:
+                  lead.title && lead.title !== "—"
+                    ? `${lead.name} — ${lead.title}`
+                    : lead.name,
+              }}
+            />
+          </div>
 
           <div className="grid grid-cols-3 gap-4 px-[22px] pb-[22px]">
             <BottomCards record={record} />
           </div>
+        </TabsContent>
+
+        <TabsContent value="Email" className="mt-0">
+          <EmailTabPanel
+            lead={lead}
+            draft={lead.outreach}
+            onRefresh={() => { load(); onLeadUpdated(); }}
+          />
         </TabsContent>
 
         {["Relationship Analytics", "Details", "Related"].map((tab) => (

@@ -1,3 +1,4 @@
+import type { CompanyOverview, CompanyOverviewInput, CompanyOverviewResult } from "./company-overview";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "./enrichment/types";
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -36,7 +37,17 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
-// ─── Scout ────────────────────────────────────────────────────────────────────
+
+// ─── Company Overview ─────────────────────────────────────────────────────────
+export type { CompanyOverview, CompanyOverviewInput, CompanyOverviewResult, PastGiftingBrand } from "./company-overview";
+
+export async function fetchCompanyOverview(
+  params: CompanyOverviewInput,
+): Promise<CompanyOverviewResult> {
+  return post<CompanyOverviewResult>("/api/companies/overview", params);
+}
+
+
 export type ScoutCompaniesResponse = {
   companies: ScoutCompanyResult[];
   hasMore: boolean;
@@ -113,8 +124,14 @@ export async function fetchLead(id: string): Promise<LeadDetailRecord> {
   return data.lead;
 }
 
-export async function runWriter(leadId: string): Promise<WriterDraft> {
-  const data = await post<{ draft: WriterDraft }>("/api/agents/writer/run", { leadId });
+export async function runWriter(
+  leadId: string,
+  options?: { outreachTemplate?: string },
+): Promise<WriterDraft> {
+  const data = await post<{ draft: WriterDraft }>("/api/agents/writer/run", {
+    leadId,
+    outreachTemplate: options?.outreachTemplate,
+  });
   return data.draft;
 }
 
@@ -196,6 +213,11 @@ export type LeadDetailRecord = {
   upNext: UpNextItem[];
   network: { name: string; email: string }[];
   giftingIntelligence?: string;
+  companyOverview?: CompanyOverview;
+  accountId?: string;
+  industry?: string;
+  giftScore?: number;
+  giftBudget?: string;
 };
 
 export type WriterDraft = {
@@ -260,6 +282,7 @@ export type DirectoryContact = {
   leadSource: string;
   score: number;
   savedAt: string;
+  isKeyDM?: boolean;
   companyId: string;
   companyName: string;
   companyCity: string;
@@ -274,6 +297,9 @@ export type DirectoryCompany = {
   employees: string;
   giftScore: number;
   domain?: string;
+  website?: string;
+  companyOverview?: CompanyOverview;
+  overviewEnrichedAt?: string;
   contacts: Omit<DirectoryContact, "companyId" | "companyName" | "companyCity" | "companyIndustry">[];
 };
 

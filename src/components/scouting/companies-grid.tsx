@@ -1,7 +1,7 @@
 "use client";
 
 import type { Company } from "@/lib/scouting-data";
-import { CompanyTile } from "./company-tile";
+import { CompanyTile } from "@/components/cards";
 
 type Props = {
   companies: Company[];
@@ -9,11 +9,19 @@ type Props = {
   primaryId: string | null;
   onToggleSelect: (id: string) => void;
   onSetPrimary: (id: string) => void;
+  selectable?: boolean;
 };
 
-export function CompaniesGrid({ companies, selectedIds, primaryId, onToggleSelect, onSetPrimary }: Props) {
+export function CompaniesGrid({
+  companies,
+  selectedIds,
+  primaryId,
+  onToggleSelect,
+  onSetPrimary,
+  selectable = true,
+}: Props) {
   return (
-    <div className="grid grid-cols-4 gap-3 p-5">
+    <div className="grid grid-cols-4 gap-4 p-5">
       {companies.map((company) => (
         <CompanyTile
           key={company.id}
@@ -22,6 +30,7 @@ export function CompaniesGrid({ companies, selectedIds, primaryId, onToggleSelec
           isPrimary={primaryId === company.id}
           onToggleSelect={() => onToggleSelect(company.id)}
           onView={() => onSetPrimary(company.id)}
+          selectable={selectable}
         />
       ))}
     </div>

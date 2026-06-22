@@ -10,7 +10,7 @@ export function TopBar() {
   const router = useRouter();
 
   return (
-    <div className="flex items-center border-b border-ish-border bg-white px-7 py-4">
+    <div className="flex shrink-0 items-center border-b border-ish-border bg-white px-7 py-4">
       <div className="flex items-center gap-2.5">
         <Grip className="size-4 text-ish-ink-faint" />
         <img src={ISH_LOGO_URL} alt="ISH" className="h-10 w-auto" />

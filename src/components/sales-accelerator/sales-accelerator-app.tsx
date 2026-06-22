@@ -2,9 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { AppShell } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
-import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { QueuePanel } from "@/components/sales-accelerator/queue-panel";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
 import { fetchLeads } from "@/lib/api-client";
@@ -46,10 +43,7 @@ export function SalesAcceleratorApp() {
   }, [leadFromUrl]);
 
   return (
-    <AppShell>
-      <TopBar />
-      <div className="flex">
-        <SideNav />
+    <>
         {loading ? (
           <div className="flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
             <span className="mr-2 animate-spin">⟳</span> Loading leads…
@@ -63,23 +57,22 @@ export function SalesAcceleratorApp() {
             </div>
           </div>
         ) : (
-          <>
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <QueuePanel
               leads={leads}
               activeId={activeLeadId ?? ""}
               onSelect={setActiveLeadId}
             />
             {activeLeadId && (
-              <div key={activeLeadId} className="min-w-0 flex-1 animate-ish-page-in">
+              <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 overflow-hidden animate-ish-page-in">
                 <RecordWorkspace
                   leadId={activeLeadId}
                   onLeadUpdated={loadLeads}
                 />
               </div>
             )}
-          </>
+          </div>
         )}
-      </div>
-    </AppShell>
+    </>
   );
 }

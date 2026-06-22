@@ -19,7 +19,7 @@ export function QueuePanel({ leads, activeId, onSelect }: Props) {
   const { containerRef, register, rect, ready } = useSlidingHighlight(activeId);
 
   return (
-    <div className="w-[330px] shrink-0 border-r border-ish-border bg-ish-app p-[22px_18px]">
+    <div className="flex h-full w-[330px] shrink-0 flex-col overflow-hidden border-r border-ish-border bg-ish-app p-[22px_18px]">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-xl font-bold text-ish-ink">My Leads</span>
         <div className="flex gap-1.5">
@@ -29,7 +29,7 @@ export function QueuePanel({ leads, activeId, onSelect }: Props) {
         </div>
       </div>
 
-      <div ref={containerRef} className="relative">
+      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-y-auto">
         <SlidingHighlight
           rect={rect}
           ready={ready}

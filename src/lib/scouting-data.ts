@@ -1,6 +1,9 @@
+import type { CompanyOverview } from "@/lib/company-overview";
+
 export type Company = {
   id: string;
   logo: string;
+  domain?: string;
   name: string;
   type: string;
   city: string;
@@ -12,6 +15,8 @@ export type Company = {
   giftBudget: string;
   pastGifting: { year: string; occasion: string; items: string; perPerson: string }[];
   intelligenceNotes: string;
+  overview?: CompanyOverview;
+  accountId?: string;
 };
 
 export type Person = {

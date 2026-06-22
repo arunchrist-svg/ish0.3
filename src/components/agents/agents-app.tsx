@@ -1,9 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AppShell } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
-import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { runScoutAgent } from "@/lib/api-client";
 import type { DataMode } from "@/lib/enrichment/types";
 import { SCOUT_INDUSTRIES } from "@/lib/scouting-data";
@@ -47,10 +44,6 @@ export function AgentsApp() {
   }
 
   return (
-    <AppShell>
-      <TopBar />
-      <div className="flex overflow-hidden" style={{ height: "calc(100vh - 116px)" }}>
-        <SideNav />
         <div className="min-w-0 flex-1 overflow-y-auto bg-ish-app p-8">
           <div className="mx-auto max-w-2xl">
             <div className="mb-6 flex items-center gap-3">
@@ -172,7 +165,5 @@ export function AgentsApp() {
             )}
           </div>
         </div>
-      </div>
-    </AppShell>
   );
 }

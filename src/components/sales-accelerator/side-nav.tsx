@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
-  Activity, BarChart3, ChevronLeft, Clock, Contact, Home, LayoutDashboard,
+  Activity, ChevronLeft, Clock, Contact, Home, LayoutDashboard,
   Pin, Rocket, Settings, Target, Telescope, TrendingUp, User, Users, GitFork, Bot, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -68,42 +69,56 @@ function isActive(pathname: string, href?: string) {
 }
 
 function getActiveKey(pathname: string) {
-  const exact = linkedItems.find((item) => item.href && isActive(pathname, item.href));
-  if (!exact) return "";
-  if (pathname === "/" && exact.href === "/") return "lead-accelerator";
-  return exact.key;
+  const match = linkedItems.find((item) => item.href && isActive(pathname, item.href));
+  if (!match) return "";
+  if (pathname === "/" && match.href === "/") return "lead-accelerator";
+  if (pathname === "/directory" || pathname.startsWith("/directory/")) return "directory";
+  return match.key;
 }
 
 function NavItemRow({
   item,
   pathname,
+  pendingKey,
   register,
+  onNavigate,
 }: {
   item: NavItemEntry;
   pathname: string;
+  pendingKey: string | null;
   register: (key: string) => (node: HTMLElement | null) => void;
+  onNavigate: (key: string) => void;
 }) {
   const { icon: Icon, label, href, key } = item;
-  const active = href ? isActive(pathname, href) : false;
-  const indicatorActive = getActiveKey(pathname) === key;
+  const routeActive = href ? isActive(pathname, href) : false;
+  const pending = pendingKey === key;
+  const highlighted = routeActive || pending;
 
   const className = cn(
     "group relative z-10 mb-0.5 flex items-center gap-3 rounded-[10px] px-2 py-2",
-    "transition-[color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-    "hover:translate-x-0.5 active:scale-[0.98]",
-    !indicatorActive && "hover:bg-ish-app/80",
-    active ? text.navItemActive : text.navItem,
+    "transition-[color,transform,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+    "hover:translate-x-1 active:scale-[0.98]",
+    !highlighted && "hover:bg-ish-app/80",
+    highlighted ? text.navItemActive : text.navItem,
+    pending && "opacity-90",
   );
 
   const content = (
     <>
       <Icon
         className={cn(
-          "size-4 shrink-0 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-          active ? "scale-110" : "group-hover:scale-105",
+          "size-4 shrink-0 transition-[transform,color] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+          highlighted ? "scale-110 text-ish-ink" : "text-ish-ink-soft group-hover:scale-105 group-hover:text-ish-ink",
         )}
       />
-      <span className="transition-[font-weight] duration-200">{label}</span>
+      <span
+        className={cn(
+          "transition-[font-weight,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+          highlighted ? "font-semibold" : "font-medium",
+        )}
+      >
+        {label}
+      </span>
     </>
   );
 
@@ -112,6 +127,7 @@ function NavItemRow({
       <Link
         ref={register(key)}
         href={href}
+        onClick={() => onNavigate(key)}
         className={className}
       >
         {content}
@@ -129,16 +145,24 @@ function NavItemRow({
 export function SideNav() {
   const pathname = usePathname();
   const activeKey = getActiveKey(pathname);
-  const { containerRef, register, rect, ready } = useSlidingHighlight(activeKey);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const indicatorKey = pendingKey ?? activeKey;
+  const { containerRef, register, rect, ready } = useSlidingHighlight(indicatorKey);
+
+  useEffect(() => {
+    if (pendingKey && activeKey === pendingKey) {
+      setPendingKey(null);
+    }
+  }, [pathname, activeKey, pendingKey]);
 
   return (
-    <div className="w-[200px] shrink-0 border-r border-ish-border bg-white p-[22px_16px]">
+    <div className="flex h-full w-[200px] shrink-0 flex-col overflow-hidden border-r border-ish-border bg-white p-[22px_16px]">
       <div className="mb-6 flex items-center justify-between">
         <span className="text-lg font-bold text-ish-ink">Menu</span>
         <CircleButton size={28}><ChevronLeft className="size-3.5" /></CircleButton>
       </div>
 
-      <nav ref={containerRef} className="relative">
+      <nav ref={containerRef} className="relative min-h-0 flex-1 overflow-y-auto">
         <SlidingHighlight rect={rect} ready={ready} />
 
         {sections.map((section) => (
@@ -151,7 +175,9 @@ export function SideNav() {
                 key={item.key}
                 item={item}
                 pathname={pathname}
+                pendingKey={pendingKey}
                 register={register}
+                onNavigate={setPendingKey}
               />
             ))}
           </div>

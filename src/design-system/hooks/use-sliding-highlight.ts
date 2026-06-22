@@ -27,10 +27,7 @@ export function useSlidingHighlight(activeKey: string) {
     const measure = () => {
       const container = containerRef.current;
       const item = activeKey ? itemRefs.current.get(activeKey) : null;
-      if (!container || !item) {
-        setRect(null);
-        return;
-      }
+      if (!container || !item) return;
 
       const containerBox = container.getBoundingClientRect();
       const itemBox = item.getBoundingClientRect();
@@ -44,11 +41,14 @@ export function useSlidingHighlight(activeKey: string) {
     };
 
     measure();
+    const raf = requestAnimationFrame(measure);
+
     window.addEventListener("resize", measure);
     const observer = new ResizeObserver(measure);
     if (containerRef.current) observer.observe(containerRef.current);
 
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener("resize", measure);
       observer.disconnect();
     };

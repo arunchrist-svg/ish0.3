@@ -3,6 +3,7 @@ import { retrieveRelevantRules } from "@/lib/rag";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
+import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 
 const PROMPT_VERSION = "v1.2";
 const MAX_REVISIONS = 2;
@@ -42,7 +43,11 @@ ISH Gifting Team
 ---
 `;
 
-export async function runWriter(leadId: string): Promise<string> {
+export type WriterOptions = {
+  outreachTemplate?: OutreachTemplateId;
+};
+
+export async function runWriter(leadId: string, options?: WriterOptions): Promise<string> {
   const lead = await db.query.leads.findFirst({
     where: eq(leads.id, leadId),
     with: { contact: true, account: true },
@@ -70,6 +75,7 @@ export async function runWriter(leadId: string): Promise<string> {
   const confidenceTier = research?.confidenceTier ?? "low";
   const giftingHook = research?.giftingHook ?? "";
   const employees = account.employees ?? "100+";
+  const template = getOutreachTemplate(options?.outreachTemplate);
 
   const systemPrompt = `You are ISH's outreach writer. Write personalised, warm, concise corporate gifting emails.
 Rules from knowledge base:
@@ -95,11 +101,14 @@ Confidence tier: ${confidenceTier}
 Gifting hook: ${giftingHook || "Diwali season gifting for employees"}
 Intel: ${account.intelNotes ?? "none"}
 
+Outreach template: ${template.label}
+${template.ctaInstruction}
+
 Rules:
 - 3 paragraphs, max 150 words
 - Subject A: contains company name
-- Subject B: contains contact first name  
-- End with "Can we schedule a 15-min call this week?"
+- Subject B: contains contact first name
+- Match the CTA to the outreach template above
 - Sign off with "ISH Gifting Team"`;
 
   let emailBody = "";
@@ -113,7 +122,7 @@ Rules:
   // Deliverability revision loop
   for (let attempt = 0; attempt <= MAX_REVISIONS; attempt++) {
     const raw = await callLLM({
-      tier: "quality",
+      tier: "fast",
       system: systemPrompt,
       prompt: attempt === 0
         ? userPrompt
@@ -131,8 +140,8 @@ Rules:
     emailBody = parsed.emailBody ?? "";
     subjectA = parsed.subjectA ?? `Diwali gifts for ${account.name}`;
     subjectB = parsed.subjectB ?? `Diwali gifting, ${contact.firstName ?? contact.name}`;
-    outreachGoal = parsed.outreachGoal ?? "Book a discovery call";
-    templateVariant = parsed.templateVariant ?? (confidenceTier === "high" ? "high_confidence" : "low_confidence");
+    templateVariant = template.id;
+    outreachGoal = template.label;
 
     const delivScore = await scoreDeliverability(emailBody, subjectA);
     revisionCount = attempt;

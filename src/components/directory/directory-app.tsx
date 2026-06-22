@@ -2,120 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AppShell, SegmentedTabs } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
-import { SideNav } from "@/components/sales-accelerator/side-nav";
-import { cn } from "@/lib/utils";
+import { SegmentedTabs } from "@/design-system";
+import { CompaniesGrid } from "@/components/scouting/companies-grid";
+import { LeadsGrid } from "@/components/scouting/leads-grid";
+import { PeopleList } from "@/components/scouting/people-list";
+import { CompanyOverviewPanel } from "@/components/company/company-overview-panel";
 import { fetchDirectory, type DirectoryCompany, type DirectoryContact } from "@/lib/api-client";
-import { ScoreGauge, IshAvatar } from "@/design-system";
-import { Building2, Users, MapPin, Mail, Phone, ExternalLink, Search } from "lucide-react";
+import { directoryCompanyToCard, directoryContactToPerson } from "@/lib/directory-mappers";
+import { Building2, Users, Search } from "lucide-react";
 import { toast } from "sonner";
 
 type Tab = "companies" | "contacts";
 
-const STATUS_COLORS: Record<string, string> = {
-  scouted: "bg-ish-app text-ish-ink-soft",
-  researched: "bg-blue-50 text-blue-700",
-  draft_ready: "bg-ish-yellow/30 text-ish-ink",
-  outreached: "bg-purple-50 text-purple-700",
-  replied: "bg-ish-green/20 text-[#1f8050]",
-};
-
-function StatusBadge({ status }: { status: string }) {
-  return (
-    <span
-      className={cn(
-        "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-        STATUS_COLORS[status] ?? "bg-ish-app text-ish-ink-soft",
-      )}
-    >
-      {status.replace(/_/g, " ")}
-    </span>
-  );
-}
-
-function CompanyCard({
-  company,
-  isSelected,
-  onSelect,
-}: {
-  company: DirectoryCompany;
-  isSelected: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        "flex w-full flex-col rounded-[18px] bg-white p-4 text-left transition-all",
-        isSelected
-          ? "ring-2 ring-blue-500 shadow-[var(--shadow-ish)]"
-          : "shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)] hover:-translate-y-0.5",
-      )}
-    >
-      <div className="mb-3 flex items-start justify-between">
-        <div className="flex size-10 items-center justify-center rounded-[10px] bg-ish-app text-xl">
-          🏢
-        </div>
-        <ScoreGauge score={company.giftScore} size="sm" background />
-      </div>
-      <div className="truncate text-[14px] font-bold text-ish-ink">{company.name}</div>
-      <div className="mt-0.5 truncate text-[11px] text-ish-ink-soft">{company.industry}</div>
-      <div className="mt-2 flex items-center gap-2 text-[11px] text-ish-ink-faint">
-        <MapPin className="size-3" />
-        {company.city}
-        <span className="text-ish-border">·</span>
-        <Users className="size-3" />
-        {company.contacts.length} lead{company.contacts.length !== 1 ? "s" : ""}
-      </div>
-    </button>
-  );
-}
-
-function ContactRow({ contact, showCompany }: { contact: DirectoryContact; showCompany?: boolean }) {
-  return (
-    <div className="flex items-center gap-3 rounded-[14px] border border-ish-border bg-white px-4 py-3 shadow-[var(--shadow-ish-sm)]">
-      <IshAvatar name={contact.name} index={contact.name.charCodeAt(0)} size={36} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13.5px] font-bold text-ish-ink">{contact.name}</span>
-          <StatusBadge status={contact.status} />
-        </div>
-        <div className="mt-0.5 text-[12px] text-ish-ink-soft">{contact.title}</div>
-        {showCompany && (
-          <div className="mt-0.5 text-[11px] font-medium text-ish-ink-faint">
-            {contact.companyName} · {contact.companyCity}
-          </div>
-        )}
-        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[11px] text-ish-ink-faint">
-          {contact.email !== "—" && (
-            <span className="flex items-center gap-1">
-              <Mail className="size-3" />
-              {contact.email}
-            </span>
-          )}
-          {contact.phone && (
-            <span className="flex items-center gap-1">
-              <Phone className="size-3" />
-              {contact.phone}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <ScoreGauge score={contact.score} size="sm" />
-        <Link
-          href={`/?lead=${contact.leadId}`}
-          className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:underline"
-        >
-          Open lead
-          <ExternalLink className="size-3" />
-        </Link>
-      </div>
-    </div>
-  );
-}
+const EMPTY_SET = new Set<string>();
 
 export function DirectoryApp() {
   const [tab, setTab] = useState<Tab>("companies");
@@ -169,24 +68,59 @@ export function DirectoryApp() {
     );
   }, [contacts, search]);
 
+  const companyCards = useMemo(
+    () => filteredCompanies.map(directoryCompanyToCard),
+    [filteredCompanies],
+  );
+
+  const contactPeople = useMemo(
+    () => filteredContacts.map((c) => directoryContactToPerson(c)),
+    [filteredContacts],
+  );
+
+  const contactMetaByLeadId = useMemo(() => {
+    const map = new Map<string, { companyName: string; leadId: string }>();
+    for (const contact of filteredContacts) {
+      map.set(contact.leadId, { companyName: contact.companyName, leadId: contact.leadId });
+    }
+    return map;
+  }, [filteredContacts]);
+
   const selectedCompany = companies.find((c) => c.id === selectedCompanyId) ?? null;
 
+  const selectedCompanyDecisionMaker = useMemo(() => {
+    if (!selectedCompany) return undefined;
+    const key =
+      selectedCompany.contacts.find((c) => c.isKeyDM) ?? selectedCompany.contacts[0];
+    if (!key) return undefined;
+    return key.title && key.title !== "—" ? `${key.name} — ${key.title}` : key.name;
+  }, [selectedCompany]);
+  const selectedCompanyDecisionMakerLeadId = useMemo(() => {
+    if (!selectedCompany) return undefined;
+    const key =
+      selectedCompany.contacts.find((c) => c.isKeyDM) ?? selectedCompany.contacts[0];
+    return key?.leadId;
+  }, [selectedCompany]);
+
+  const selectedCompanyPeople = useMemo(
+    () =>
+      selectedCompany
+        ? selectedCompany.contacts.map((c) =>
+            directoryContactToPerson({ ...c, companyId: selectedCompany.id }, selectedCompany.id, selectedCompany.name),
+          )
+        : [],
+    [selectedCompany],
+  );
+
   return (
-    <AppShell>
-      <TopBar />
-      <div className="flex overflow-hidden" style={{ height: "calc(100vh - 116px)" }}>
-        <SideNav />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {/* Single unified bar */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-4 border-b border-ish-border bg-white px-5 py-2.5">
-            {/* Title */}
             <div className="shrink-0">
               <span className="text-[14px] font-bold text-ish-ink">Scout Directory</span>
             </div>
 
             <div className="mx-1 h-5 w-px shrink-0 bg-ish-border" aria-hidden />
 
-            {/* Tabs */}
             <SegmentedTabs
               value={tab}
               onChange={(value) => setTab(value as "companies" | "contacts")}
@@ -196,7 +130,6 @@ export function DirectoryApp() {
               ]}
             />
 
-            {/* Search */}
             <div className="relative w-[220px] shrink-0">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
               <input
@@ -208,13 +141,11 @@ export function DirectoryApp() {
               />
             </div>
 
-            {/* Count — pushed to right */}
             <div className="ml-auto shrink-0 text-[11.5px] font-semibold text-ish-ink-faint">
               {companies.length} companies · {contacts.length} contacts
             </div>
           </div>
 
-          {/* Content */}
           <div className="min-h-0 flex-1 overflow-y-auto bg-ish-app">
             {loading ? (
               <div className="flex h-full items-center justify-center text-[13px] text-ish-ink-faint">
@@ -236,62 +167,89 @@ export function DirectoryApp() {
               </div>
             ) : tab === "companies" ? (
               <div key="companies" className="flex min-h-0 h-full animate-ish-tab-in">
-                <div className="min-w-0 flex-1 overflow-y-auto p-5">
-                  <div className="grid grid-cols-3 gap-3 xl:grid-cols-4">
-                    {filteredCompanies.map((company) => (
-                      <CompanyCard
-                        key={company.id}
-                        company={company}
-                        isSelected={selectedCompanyId === company.id}
-                        onSelect={() => setSelectedCompanyId(company.id)}
-                      />
-                    ))}
-                  </div>
-                  {filteredCompanies.length === 0 && (
+                <div className="min-w-0 flex-1 overflow-y-auto">
+                  {companyCards.length === 0 ? (
                     <p className="py-10 text-center text-[13px] text-ish-ink-faint">No companies match your search.</p>
+                  ) : (
+                    <CompaniesGrid
+                      companies={companyCards}
+                      selectedIds={EMPTY_SET}
+                      primaryId={selectedCompanyId}
+                      onToggleSelect={() => {}}
+                      onSetPrimary={setSelectedCompanyId}
+                      selectable={false}
+                    />
                   )}
                 </div>
 
-                <div className="w-[340px] shrink-0 overflow-y-auto border-l border-ish-border bg-white p-5">
+                <div className="w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white">
                   {selectedCompany ? (
                     <>
-                      <div className="mb-4">
-                        <div className="text-[16px] font-bold text-ish-ink">{selectedCompany.name}</div>
-                        <div className="mt-1 text-[12px] text-ish-ink-soft">
-                          {selectedCompany.industry} · {selectedCompany.city}
+                      <CompanyOverviewPanel
+                        name={selectedCompany.name}
+                        city={selectedCompany.city}
+                        giftScore={selectedCompany.giftScore}
+                        industry={selectedCompany.industry}
+                        initialOverview={selectedCompany.companyOverview}
+                        overviewInput={{
+                          name: selectedCompany.name,
+                          city: selectedCompany.city,
+                          industry: selectedCompany.industry,
+                          employees: selectedCompany.employees !== "—" ? selectedCompany.employees : undefined,
+                          domain: selectedCompany.domain,
+                          website: selectedCompany.website,
+                          giftScore: selectedCompany.giftScore,
+                          accountId: selectedCompany.id,
+                          decisionMakerHint: selectedCompanyDecisionMaker,
+                        }}
+                        decisionMakerLeadId={selectedCompanyDecisionMakerLeadId}
+                      />
+                      {selectedCompanyPeople.length > 0 ? (
+                        <div className="border-t border-ish-border p-4">
+                          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ish-ink-faint">
+                            Lead Contacts ({selectedCompany.contacts.length})
+                          </div>
+                          <PeopleList
+                            people={selectedCompanyPeople}
+                            selectedIds={EMPTY_SET}
+                            primaryId={null}
+                            onToggleSelect={() => {}}
+                            onSetPrimary={() => {}}
+                            selectable={false}
+                          />
                         </div>
-                        <div className="mt-2 flex items-center gap-2 text-[11px] text-ish-ink-faint">
-                          <Users className="size-3" />
-                          {selectedCompany.employees} employees
-                        </div>
-                      </div>
-                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                        Lead contacts ({selectedCompany.contacts.length})
-                      </div>
-                      <div className="space-y-2">
-                        {selectedCompany.contacts.map((c) => (
-                          <ContactRow key={c.leadId} contact={{ ...c, companyName: selectedCompany.name, companyCity: selectedCompany.city, companyIndustry: selectedCompany.industry, companyId: selectedCompany.id }} />
-                        ))}
-                      </div>
+                      ) : (
+                        <p className="border-t border-ish-border p-5 text-[13px] text-ish-ink-faint">
+                          No lead contacts for this company.
+                        </p>
+                      )}
                     </>
                   ) : (
-                    <p className="text-[13px] text-ish-ink-faint">Select a company to view its lead contacts.</p>
+                    <p className="p-5 text-[13px] text-ish-ink-faint">Select a company to view its lead contacts.</p>
                   )}
                 </div>
               </div>
             ) : (
-              <div key="contacts" className="space-y-2 p-5 animate-ish-tab-in">
-                {filteredContacts.map((contact) => (
-                  <ContactRow key={contact.leadId} contact={contact} showCompany />
-                ))}
-                {filteredContacts.length === 0 && (
+              <div key="contacts" className="animate-ish-tab-in">
+                {contactPeople.length === 0 ? (
                   <p className="py-10 text-center text-[13px] text-ish-ink-faint">No contacts match your search.</p>
+                ) : (
+                  <LeadsGrid
+                    people={contactPeople}
+                    selectedIds={EMPTY_SET}
+                    primaryId={null}
+                    onToggleSelect={() => {}}
+                    onSetPrimary={() => {}}
+                    onContact={() => {}}
+                    onBookmark={() => {}}
+                    selectable={false}
+                    getCompanyName={(person) => contactMetaByLeadId.get(person.id)?.companyName}
+                    getDirectoryLeadId={(person) => contactMetaByLeadId.get(person.id)?.leadId}
+                  />
                 )}
               </div>
             )}
           </div>
         </div>
-      </div>
-    </AppShell>
   );
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle, XCircle, AlertCircle, Send, Mail } from "lucide-react";
+import { CheckCircle, XCircle, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { approveOutreach, sendOutreach } from "@/lib/api-client";
 import type { WriterDraft } from "@/lib/api-client";
 import { toast } from "sonner";
+
+
 
 const REJECT_REASONS = [
   "Wrong tone",
@@ -30,15 +32,6 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
   const [subjectUsed, setSubjectUsed] = useState<"A" | "B">("A");
   const [approvalId, setApprovalId] = useState<string | null>(null);
   const [localStatus, setLocalStatus] = useState(draft.approvalStatus);
-
-  const verdictColor =
-    draft.deliverabilityVerdict === "PASS"
-      ? "text-ish-green"
-      : draft.deliverabilityVerdict === "MARGINAL"
-      ? "text-[#e8a000]"
-      : "text-red-500";
-
-  const rubric = draft.rubricScore ?? {};
 
   async function handleApprove() {
     setLoading(true);
@@ -107,42 +100,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
 
   return (
     <div id="approval-card" className="rounded-[20px] border border-ish-border bg-white p-5 shadow-[var(--shadow-ish-sm)]">
-      {/* Header */}
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-full bg-ish-yellow">
-            <Mail className="size-4 text-ish-ink" />
-          </div>
-          <div>
-            <div className="text-[13px] font-bold text-ish-ink">Email Outreach Draft</div>
-            <div className="text-[11px] text-ish-ink-faint">
-              {draft.draftSource} · {draft.promptVersion} · {draft.revisionCount ?? 0} revision{draft.revisionCount !== 1 ? "s" : ""}
-              {draft.revisionTimeout && <span className="ml-1 text-[#e8a000]">(revision timeout)</span>}
-            </div>
-          </div>
-        </div>
-        <div className={cn("flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11.5px] font-bold", verdictColor)}>
-          <AlertCircle className="size-3.5" />
-          {draft.deliverabilityVerdict ?? "—"} ({draft.deliverabilityScore ?? "—"}/100)
-        </div>
-      </div>
-
-      {/* Rubric scores */}
-      {draft.rubricTotal && draft.rubricTotal > 0 && (
-        <div className="mb-4 grid grid-cols-4 gap-2">
-          {Object.entries(rubric).map(([dim, score]) => (
-            <div key={dim} className="rounded-[12px] bg-ish-app p-2.5 text-center">
-              <div className="text-[18px] font-bold text-ish-ink">{score}</div>
-              <div className="text-[10px] text-ish-ink-faint capitalize">{dim.replace(/_/g, " ")}</div>
-            </div>
-          ))}
-          <div className="col-span-4 rounded-[12px] bg-ish-yellow/20 p-2 text-center">
-            <span className="text-[12px] font-bold text-ish-ink">Total: {draft.rubricTotal}/100</span>
-          </div>
-        </div>
-      )}
-
-      {/* Subject selector */}
+{/* Subject selector */}
       <div className="mb-3 flex gap-2">
         {(["A", "B"] as const).map((v) => (
           <button
@@ -261,7 +219,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
 
       {localStatus === "rejected" && (
         <div className="rounded-[14px] bg-red-50 py-3 text-center text-[13px] font-bold text-red-500">
-          ✗ Rejected — Click Generate Email to create a new draft
+          ✗ Rejected — Pick a template in the Email tab to create a new draft
         </div>
       )}
     </div>
