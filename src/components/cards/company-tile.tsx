@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { ScoreGauge } from "@/design-system";
 import { Users, MapPin, Check } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
+import { CompanyLogo } from "@/components/company/company-logo";
 
 type Props = {
   company: Company;
@@ -58,28 +59,14 @@ export function CompanyTile({
             selectable ? "cursor-pointer" : "cursor-default",
           )}
         >
-          {company.domain ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`https://logo.clearbit.com/${company.domain}`}
-              alt={company.name}
-              width={32}
-              height={32}
-              className="size-8 rounded-[6px] object-contain"
-              onError={(e) => {
-                const img = e.currentTarget;
-                img.style.display = "none";
-                const sibling = img.nextElementSibling as HTMLElement | null;
-                if (sibling) sibling.style.display = "flex";
-              }}
-            />
-          ) : null}
-          <span
-            aria-hidden={!!company.domain}
-            style={{ display: company.domain ? "none" : undefined }}
-          >
-            {company.logo}
-          </span>
+          <CompanyLogo
+            name={company.name}
+            domain={company.domain}
+            logo={company.logo}
+            size="md"
+            className="bg-ish-app ring-0"
+            rounded="rounded-[12px]"
+          />
 
           {/* Hover hint: empty white ring */}
           {selectable && !isSelected && (

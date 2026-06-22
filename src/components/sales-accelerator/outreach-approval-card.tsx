@@ -111,7 +111,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
               "flex-1 rounded-[12px] border p-2.5 text-left text-[12px] transition-all",
               subjectUsed === v
                 ? "border-ish-ink bg-ish-black text-white"
-                : "border-ish-border bg-white text-ish-ink hover:bg-ish-app",
+                : "border-ish-border bg-white text-ish-ink hover:bg-ish-canvas",
             )}
           >
             <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide opacity-60">
@@ -123,7 +123,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
       </div>
 
       {/* Email body */}
-      <div className="mb-4 rounded-[14px] bg-ish-app p-4">
+      <div className="mb-4 rounded-[14px] bg-ish-canvas p-4">
         <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">Body</div>
         <pre className="whitespace-pre-wrap text-[12.5px] leading-relaxed text-ish-ink">
           {draft.emailBody ?? "(No body generated)"}
@@ -146,7 +146,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
             type="button"
             onClick={() => setRejecting(true)}
             disabled={loading}
-            className="flex flex-1 items-center justify-center gap-2 rounded-[14px] border border-ish-border py-2.5 text-[13px] font-bold text-ish-ink hover:bg-ish-app disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-[14px] border border-ish-border py-2.5 text-[13px] font-bold text-ish-ink hover:bg-ish-canvas disabled:opacity-50"
           >
             <XCircle className="size-4" />
             Reject
@@ -183,7 +183,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
                   "rounded-full px-3 py-1 text-[11.5px] font-semibold transition-all",
                   rejectReason === r
                     ? "bg-ish-black text-white"
-                    : "bg-ish-app text-ish-ink hover:bg-ish-border",
+                    : "bg-ish-canvas text-ish-ink hover:bg-ish-border",
                 )}
               >
                 {r}
@@ -194,7 +194,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
             placeholder="Optional note (helps improve next draft)"
             value={rejectNote}
             onChange={(e) => setRejectNote(e.target.value)}
-            className="w-full rounded-[12px] border border-ish-border bg-ish-app px-3 py-2 text-[12px] text-ish-ink outline-none focus:border-ish-ink"
+            className="w-full rounded-[12px] border border-ish-border bg-ish-canvas px-3 py-2 text-[12px] text-ish-ink outline-none focus:border-ish-ink"
             rows={2}
           />
           <div className="flex gap-2">
@@ -209,7 +209,7 @@ export function OutreachApprovalCard({ leadId, draft, onDone }: Props) {
             <button
               type="button"
               onClick={() => setRejecting(false)}
-              className="flex-1 rounded-[14px] border border-ish-border py-2.5 text-[13px] font-bold text-ish-ink hover:bg-ish-app"
+              className="flex-1 rounded-[14px] border border-ish-border py-2.5 text-[13px] font-bold text-ish-ink hover:bg-ish-canvas"
             >
               Cancel
             </button>

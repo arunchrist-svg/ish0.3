@@ -44,7 +44,7 @@ export function AgentsApp() {
   }
 
   return (
-        <div className="min-w-0 flex-1 overflow-y-auto bg-ish-app p-8">
+        <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
           <div className="mx-auto max-w-2xl">
             <div className="mb-6 flex items-center gap-3">
               <div className="flex size-10 items-center justify-center rounded-xl bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]">

@@ -14,6 +14,7 @@ export function CompanyDetailPanel({ company, decisionMakerHint, decisionMakerLe
     <CompanyOverviewPanel
       name={company.name}
       logo={company.logo}
+      domain={company.domain}
       city={company.city}
       giftScore={company.giftScore}
       industry={company.industry || company.type}
@@ -23,6 +24,7 @@ export function CompanyDetailPanel({ company, decisionMakerHint, decisionMakerLe
         name: company.name,
         city: company.city,
         industry: company.industry || company.type,
+        domain: company.domain,
         employees: company.employees !== "—" ? company.employees : undefined,
         giftBudget: company.giftBudget !== "—" ? company.giftBudget : undefined,
         giftScore: company.giftScore,

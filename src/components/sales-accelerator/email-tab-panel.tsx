@@ -72,7 +72,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
 
   return (
     <div className="animate-ish-tab-in px-[22px] py-[18px]">
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-ish-app px-3 py-2.5">
+      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-ish-canvas px-3 py-2.5">
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-full bg-ish-yellow">
             <Mail className="size-3.5 text-ish-ink" />
@@ -120,7 +120,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
               disabled={!canWrite || generating}
               className={cn(
                 "flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ish-border bg-white px-2.5 text-[11px] font-semibold text-ish-ink outline-none",
-                "hover:bg-ish-app focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed disabled:opacity-40",
+                "hover:bg-ish-canvas focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed disabled:opacity-40",
               )}
             >
               <span className="text-[9px] font-bold uppercase tracking-widest text-ish-ink-faint">Template</span>

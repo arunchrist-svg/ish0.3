@@ -2,7 +2,7 @@ import type { CompanyOverview } from "@/lib/company-overview";
 
 export type Company = {
   id: string;
-  logo: string;
+  logo?: string;
   domain?: string;
   name: string;
   type: string;
@@ -119,7 +119,7 @@ export type ScoutDepartment = (typeof SCOUT_DEPARTMENTS)[number];
 
 export const COMPANIES: Company[] = [
   {
-    id: "c1", logo: "🔧", name: "Bosch India", type: "Manufacturing", city: "Hosur",
+    id: "c1", logo: "🔧", domain: "bosch.com", name: "Bosch India", type: "Manufacturing", city: "Hosur",
     industry: "Manufacturing", employees: "8,500", revenue: "₹12,400 Cr", founded: 1951,
     giftScore: 91, giftBudget: "₹8–12L / year",
     pastGifting: [
@@ -129,7 +129,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "HR Director posted about premium corporate gifting for Diwali 2025. Budget approved in August.",
   },
   {
-    id: "c2", logo: "🏢", name: "Infosys Mysore", type: "IT Services", city: "Mysore",
+    id: "c2", logo: "🏢", domain: "infosys.com", name: "Infosys Mysore", type: "IT Services", city: "Mysore",
     industry: "IT", employees: "14,200", revenue: "₹1,46,767 Cr", founded: 1981,
     giftScore: 88, giftBudget: "₹15–25L / year",
     pastGifting: [
@@ -139,7 +139,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "Admin Head shortlisted vendors in Oct. Strong preference for locally-sourced premium sweets.",
   },
   {
-    id: "c3", logo: "🚗", name: "Toyota Kirloskar", type: "Automobile", city: "Bangalore",
+    id: "c3", logo: "🚗", domain: "toyotabharat.com", name: "Toyota Kirloskar", type: "Automobile", city: "Bangalore",
     industry: "Manufacturing", employees: "6,300", revenue: "₹21,000 Cr", founded: 1997,
     giftScore: 76, giftBudget: "₹5–8L / year",
     pastGifting: [
@@ -148,7 +148,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "Procurement team opens vendor enquiries every September. Prefer eco-friendly packaging.",
   },
   {
-    id: "c4", logo: "🏗️", name: "Prestige Group", type: "Real Estate", city: "Bangalore",
+    id: "c4", logo: "🏗️", domain: "prestigeconstructions.com", name: "Prestige Group", type: "Real Estate", city: "Bangalore",
     industry: "Real Estate", employees: "3,200", revenue: "₹8,900 Cr", founded: 1986,
     giftScore: 83, giftBudget: "₹6–10L / year",
     pastGifting: [
@@ -158,7 +158,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "VP HR is a decision-maker who follows gifting trends on LinkedIn. Repeat buyer potential.",
   },
   {
-    id: "c5", logo: "⌚", name: "Titan Company", type: "Consumer Goods", city: "Hosur",
+    id: "c5", logo: "⌚", domain: "titan.co.in", name: "Titan Company", type: "Consumer Goods", city: "Hosur",
     industry: "Manufacturing", employees: "7,100", revenue: "₹40,000 Cr", founded: 1984,
     giftScore: 64, giftBudget: "₹4–6L / year",
     pastGifting: [
@@ -167,7 +167,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "Plant HR Manager mentioned gifting budget cuts in 2024. Watch for Q3 2025 signals.",
   },
   {
-    id: "c6", logo: "💊", name: "Biocon Limited", type: "Pharma", city: "Bangalore",
+    id: "c6", logo: "💊", domain: "biocon.com", name: "Biocon Limited", type: "Pharma", city: "Bangalore",
     industry: "Pharma", employees: "11,500", revenue: "₹9,750 Cr", founded: 1978,
     giftScore: 79, giftBudget: "₹7–11L / year",
     pastGifting: [
@@ -177,7 +177,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "CSR head drives gifting decisions. Focus on health-conscious, zero-sugar products.",
   },
   {
-    id: "c7", logo: "🛍️", name: "Reliance Retail", type: "Retail", city: "Bangalore",
+    id: "c7", logo: "🛍️", domain: "relianceretail.com", name: "Reliance Retail", type: "Retail", city: "Bangalore",
     industry: "Retail", employees: "22,000", revenue: "₹2,60,364 Cr", founded: 2006,
     giftScore: 72, giftBudget: "₹12–20L / year",
     pastGifting: [
@@ -186,7 +186,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "Large volumes but lower per-unit budget. Good for bulk standard orders.",
   },
   {
-    id: "c8", logo: "🏭", name: "ABB India", type: "Industrial Tech", city: "Bangalore",
+    id: "c8", logo: "🏭", domain: "abb.com", name: "ABB India", type: "Industrial Tech", city: "Bangalore",
     industry: "Manufacturing", employees: "5,800", revenue: "₹7,200 Cr", founded: 1949,
     giftScore: 85, giftBudget: "₹5–9L / year",
     pastGifting: [

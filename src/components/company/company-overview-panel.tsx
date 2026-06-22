@@ -2,16 +2,19 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Building2, ExternalLink, Lightbulb, MapPin, RefreshCw } from "lucide-react";
+import { ExternalLink, Lightbulb, MapPin, RefreshCw } from "lucide-react";
 import type { CompanyOverview, CompanyOverviewInput } from "@/lib/company-overview";
 import { displayValue } from "@/lib/company-overview";
 import { useCompanyOverview } from "@/hooks/use-company-overview";
-import { PanelCard, SectionHeader, ScoreGauge } from "@/design-system";
+import { PanelCard, SectionHeader } from "@/design-system";
+import { CompanyLogo } from "@/components/company/company-logo";
 import { cn } from "@/lib/utils";
 
 type Props = {
   name: string;
   logo?: string;
+  domain?: string;
+  website?: string;
   city?: string;
   giftScore?: number;
   industry?: string;
@@ -20,6 +23,8 @@ type Props = {
   enabled?: boolean;
   className?: string;
   decisionMakerLeadId?: string;
+  layout?: "sidebar" | "wide";
+  footer?: ReactNode;
 };
 
 function OverviewRow({
@@ -41,11 +46,9 @@ function OverviewRow({
   );
 }
 
-
-
 function DecisionMakerRow({ value, leadId }: { value: string; leadId?: string }) {
   return (
-    <div className="flex items-start gap-2 px-3.5 py-2.5 min-w-0">
+    <div className="flex min-w-0 items-start gap-2 px-3.5 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-center justify-between gap-2">
           <div className="text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
@@ -68,36 +71,54 @@ function DecisionMakerRow({ value, leadId }: { value: string; leadId?: string })
   );
 }
 
-function SectionLabel({ children }: { children: ReactNode }) {
-  return (
-    <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-ish-ink-faint">
-      {children}
-    </div>
-  );
+function BentoCell({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return <div className={cn("min-h-0 min-w-0", className)}>{children}</div>;
 }
 
-function OverviewSkeleton() {
+function OverviewSkeleton({ wide, compact }: { wide?: boolean; compact?: boolean }) {
   return (
-    <div className="flex animate-pulse flex-col gap-3">
-      <div className="h-[108px] rounded-xl bg-ish-border/40" />
-      <div className="h-14 rounded-xl bg-ish-border/30" />
-      <div className="h-20 rounded-xl bg-ish-border/30" />
-      <div className="h-14 rounded-xl bg-ish-border/30" />
+    <div
+      className={cn(
+        "grid animate-pulse gap-2.5",
+        wide ? "grid-cols-6 auto-rows-[minmax(72px,auto)]" : "grid-cols-2",
+      )}
+    >
+      <div
+        className={cn(
+          "rounded-xl bg-ish-border/40",
+          wide
+            ? compact
+              ? "col-span-2 h-20"
+              : "col-span-3 row-span-2 h-full min-h-[140px]"
+            : "col-span-2 h-[108px]",
+        )}
+      />
+      <div className={cn("h-20 rounded-xl bg-ish-border/30", wide ? "col-span-2" : "col-span-1")} />
+      <div className={cn("h-20 rounded-xl bg-ish-border/30", wide ? "col-span-2" : "col-span-1")} />
     </div>
   );
 }
 
 export function CompanyOverviewPanel({
   name,
-  logo = "🏢",
+  logo,
+  domain,
+  website,
   city,
-  giftScore = 60,
   industry,
   overviewInput,
   initialOverview,
   enabled = true,
   className,
   decisionMakerLeadId,
+  layout = "sidebar",
+  footer,
 }: Props) {
   const { overview, loading, error, enrichedAt, cached, hasLoaded, refresh } = useCompanyOverview(
     overviewInput ? { ...overviewInput, name } : null,
@@ -106,36 +127,53 @@ export function CompanyOverviewPanel({
 
   const o = overview ?? initialOverview ?? {};
   const pastGifting = o.pastGiftingBrands ?? [];
+  const milestones = (o.corporateMilestones ?? []).filter((m) => m.trim());
+  const wide = layout === "wide";
+  const compactPrimary = Boolean(footer);
+  const showIntelligence = Boolean(o.intelligenceNotes?.trim()) && !footer;
+  const hasGiftBudget = Boolean(o.giftBudget?.trim());
+  const complianceSpan = wide
+    ? hasGiftBudget
+      ? "col-span-1"
+      : compactPrimary
+        ? "col-span-2"
+        : "col-span-3"
+    : "col-span-2";
+  const nextGiftingSpan = wide
+    ? hasGiftBudget
+      ? "col-span-2"
+      : compactPrimary
+        ? "col-span-2"
+        : "col-span-3"
+    : "col-span-1";
+
+  const bentoGrid = cn(
+    "grid gap-2.5",
+    wide ? "grid-cols-6 auto-rows-[minmax(72px,auto)]" : "grid-cols-2",
+  );
 
   return (
     <PanelCard
       tone="white"
       className={cn("flex h-full flex-col gap-4 overflow-y-auto rounded-none p-4", className)}
     >
-      {/* Header */}
-      <div className="flex items-start gap-3 border-b border-ish-border/60 pb-4">
-        <div className="min-w-0 flex-1">
-          <div className="mb-2 text-[32px] leading-none">{logo}</div>
+      <div className="flex items-start gap-3 border-b border-ish-border/60 pb-3">
+        <CompanyLogo
+          name={name}
+          domain={domain ?? overviewInput?.domain}
+          website={website ?? overviewInput?.website}
+          logo={logo}
+          size="xl"
+          rounded="rounded-2xl"
+        />
+        <div className="min-w-0 flex-1 pt-0.5">
           <div className="break-words text-[17px] font-bold leading-tight text-ish-ink">{name}</div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-ish-ink-soft">
-            <span className="inline-flex items-center gap-1">
-              <Building2 className="size-3 shrink-0" />
-              <span className="break-words">{industry ?? o.sector ?? "Corporate"}</span>
-            </span>
-            {city ? (
-              <span className="inline-flex items-center gap-1">
-                <span className="text-ish-border">·</span>
-                <MapPin className="size-3 shrink-0" />
-                <span>{city}</span>
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-center gap-1">
-          <ScoreGauge score={giftScore} size="md" background />
-          <span className="text-[9px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-            Gift Score
-          </span>
+          {city ? (
+            <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-ish-ink-soft">
+              <MapPin className="size-3 shrink-0" />
+              <span>{city}</span>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -158,7 +196,7 @@ export function CompanyOverviewPanel({
       />
 
       {loading ? (
-        <OverviewSkeleton />
+        <OverviewSkeleton wide={wide} compact={compactPrimary} />
       ) : !hasLoaded && !overview ? (
         <div className="rounded-xl border border-dashed border-ish-border/80 bg-ish-app/50 px-4 py-8 text-center">
           <p className="text-[12px] font-medium text-ish-ink-soft">
@@ -169,113 +207,136 @@ export function CompanyOverviewPanel({
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          {/* Primary — stacked rows for narrow sidebar */}
-          <div>
-            <SectionLabel>Primary</SectionLabel>
-            <PanelCard tone="yellow" className="overflow-hidden p-0">
-              <div className="grid grid-cols-2 divide-x divide-ish-border/25">
-                <OverviewRow label="Sector" value={displayValue(o.sector ?? industry)} />
-                <OverviewRow label="Employees" value={displayValue(o.employees)} />
-              </div>
-              <div className="border-t border-ish-border/25">
+        <div className={bentoGrid}>
+          <BentoCell
+            className={
+              wide
+                ? compactPrimary
+                  ? "col-span-2"
+                  : "col-span-3 row-span-2"
+                : "col-span-2"
+            }
+          >
+            <PanelCard tone="yellow" className="h-full overflow-hidden p-0">
+              {compactPrimary ? (
                 <DecisionMakerRow
                   value={displayValue(o.decisionMaker)}
                   leadId={decisionMakerLeadId}
                 />
-              </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 divide-x divide-ish-border/25">
+                    <OverviewRow label="Sector" value={displayValue(o.sector ?? industry)} />
+                    <OverviewRow label="Employees" value={displayValue(o.employees)} />
+                  </div>
+                  <div className="border-t border-ish-border/25">
+                    <DecisionMakerRow
+                      value={displayValue(o.decisionMaker)}
+                      leadId={decisionMakerLeadId}
+                    />
+                  </div>
+                </>
+              )}
             </PanelCard>
-          </div>
+          </BentoCell>
 
-          {/* Secondary */}
-          <div>
-            <SectionLabel>Secondary</SectionLabel>
-            <div className="flex flex-col gap-2">
-              <PanelCard tone="green" className="p-3.5">
-                <OverviewRow
-                  label="Next Gifting Calendar Cycle"
-                  value={displayValue(o.nextGiftingCalendarCycle)}
-                  className="px-0 py-0"
-                />
+          <BentoCell className={nextGiftingSpan}>
+            <PanelCard tone="green" className="h-full p-3.5">
+              <OverviewRow
+                label="Next Gifting Cycle"
+                value={displayValue(o.nextGiftingCalendarCycle)}
+                className="px-0 py-0"
+              />
+            </PanelCard>
+          </BentoCell>
+
+          {hasGiftBudget ? (
+            <BentoCell className={wide ? "col-span-1" : "col-span-1"}>
+              <PanelCard tone="green" className="flex h-full flex-col justify-center p-3.5">
+                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                  Est. Gift Budget
+                </div>
+                <div className="text-[15px] font-bold leading-tight text-ish-ink">{o.giftBudget}</div>
               </PanelCard>
+            </BentoCell>
+          ) : null}
 
-              <PanelCard tone="pink" className="p-3.5">
+          <BentoCell className={complianceSpan}>
+            <PanelCard tone="yellow" className="h-full p-3.5">
+              <OverviewRow
+                label="Contract / Vendor Compliance"
+                value={displayValue(o.complianceRequirements)}
+                className="px-0 py-0"
+              />
+            </PanelCard>
+          </BentoCell>
+
+          {milestones.length > 0 ? (
+            <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
+              <PanelCard tone="pink" className="h-full p-3.5">
                 <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
                   Recent Corporate Milestones
                 </div>
-                {o.corporateMilestones?.length ? (
-                  <ul className="list-disc space-y-1.5 pl-4 text-[12px] leading-relaxed text-ish-ink-soft">
-                    {o.corporateMilestones.map((m, i) => (
-                      <li key={i} className="break-words">
-                        {m}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-[12px] text-ish-ink-soft">—</div>
-                )}
+                <ul className="grid gap-1.5 sm:grid-cols-2">
+                  {milestones.map((m, i) => (
+                    <li
+                      key={i}
+                      className="flex gap-2 text-[12px] leading-relaxed text-ish-ink-soft before:mt-1.5 before:size-1 before:shrink-0 before:rounded-full before:bg-ish-pink"
+                    >
+                      <span className="min-w-0 break-words">{m}</span>
+                    </li>
+                  ))}
+                </ul>
               </PanelCard>
-
-              <PanelCard tone="yellow" className="p-3.5">
-                <OverviewRow
-                  label="Contract / Vendor Compliance"
-                  value={displayValue(o.complianceRequirements)}
-                  className="px-0 py-0"
-                />
-              </PanelCard>
-            </div>
-          </div>
-
-          {/* Past Gifting */}
-          <div>
-            <SectionHeader title="Past Gifting Brands" size="card" className="mb-2" />
-            <div className="flex flex-col gap-2">
-              {pastGifting.length ? (
-                pastGifting.map((g, i) => (
-                  <PanelCard key={i} tone="pink" className="flex items-start gap-2.5 p-3">
-                    {g.year ? (
-                      <span className="mt-0.5 shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-ish-ink-soft">
-                        {g.year}
-                      </span>
-                    ) : null}
-                    <div className="min-w-0 flex-1">
-                      <div className="break-words text-[12.5px] font-semibold text-ish-ink">
-                        {g.occasion ?? "Gifting"}
-                      </div>
-                      <div className="break-words text-[11px] text-ish-ink-soft">{g.items ?? "—"}</div>
-                    </div>
-                    {g.perPerson ? (
-                      <span className="shrink-0 text-[11.5px] font-bold text-ish-ink">{g.perPerson}</span>
-                    ) : null}
-                  </PanelCard>
-                ))
-              ) : (
-                <div className="rounded-xl border border-dashed border-ish-border/80 px-3 py-2.5 text-[12px] text-ish-ink-faint">
-                  —
-                </div>
-              )}
-            </div>
-          </div>
-
-          {o.giftBudget ? (
-            <PanelCard tone="green" className="p-3.5">
-              <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                Est. Gift Budget
-              </div>
-              <div className="text-[16px] font-bold text-ish-ink">{o.giftBudget}</div>
-            </PanelCard>
+            </BentoCell>
           ) : null}
 
-          {o.intelligenceNotes ? (
-            <PanelCard tone="yellow" className="p-3.5">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                <Lightbulb className="size-3.5 shrink-0" />
-                Intelligence
-              </div>
-              <p className="break-words text-[12px] italic leading-relaxed text-ish-ink-soft">
-                {o.intelligenceNotes}
-              </p>
-            </PanelCard>
+          {pastGifting.length > 0 ? (
+            <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
+              <PanelCard tone="white" className="p-3.5">
+                <SectionHeader title="Past Gifting Brands" size="card" className="mb-2.5" />
+                <div className={cn("grid gap-2", wide ? "grid-cols-3" : "grid-cols-1")}>
+                  {pastGifting.map((g, i) => (
+                    <PanelCard key={i} tone="pink" className="flex items-start gap-2.5 p-3">
+                      {g.year ? (
+                        <span className="mt-0.5 shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-ish-ink-soft">
+                          {g.year}
+                        </span>
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <div className="break-words text-[12.5px] font-semibold text-ish-ink">
+                          {g.occasion ?? "Gifting"}
+                        </div>
+                        <div className="break-words text-[11px] text-ish-ink-soft">{g.items ?? "—"}</div>
+                      </div>
+                      {g.perPerson ? (
+                        <span className="shrink-0 text-[11.5px] font-bold text-ish-ink">{g.perPerson}</span>
+                      ) : null}
+                    </PanelCard>
+                  ))}
+                </div>
+              </PanelCard>
+            </BentoCell>
+          ) : null}
+
+          {showIntelligence ? (
+            <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
+              <PanelCard tone="yellow" className="p-3.5">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                  <Lightbulb className="size-3.5 shrink-0" />
+                  Intelligence
+                </div>
+                <p className="break-words text-[12px] italic leading-relaxed text-ish-ink-soft">
+                  {o.intelligenceNotes}
+                </p>
+              </PanelCard>
+            </BentoCell>
+          ) : null}
+
+          {footer ? (
+            <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
+              <div className={cn("grid gap-2.5", wide ? "grid-cols-3" : "grid-cols-1")}>{footer}</div>
+            </BentoCell>
           ) : null}
         </div>
       )}

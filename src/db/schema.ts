@@ -1,5 +1,5 @@
 import {
-  pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum,
+  pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { CompanyOverview } from "@/lib/company-overview";
 
@@ -68,6 +68,7 @@ export const accounts = pgTable("accounts", {
   externalId:   text("external_id"),
   createdAt:    timestamp("created_at").defaultNow().notNull(),
   updatedAt:    timestamp("updated_at").defaultNow().notNull(),
+  isPinned:     boolean("is_pinned").default(false),
 });
 
 // ─── Contacts (People) ────────────────────────────────────────────────────────
@@ -121,6 +122,7 @@ export const leads = pgTable("leads", {
   researcherEligible: boolean("researcher_eligible").notNull().default(false),
   createdAt:    timestamp("created_at").defaultNow().notNull(),
   updatedAt:    timestamp("updated_at").defaultNow().notNull(),
+  isPinned:     boolean("is_pinned").default(false),
 });
 
 // ─── Lead Research ────────────────────────────────────────────────────────────
@@ -241,6 +243,52 @@ export const consentRecords = pgTable("consent_records", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+
+// ─── Team Members (LinkedIn-connected ISH reps) ─────────────────────────────
+export const teamMembers = pgTable("team_members", {
+  id:              uuid("id").defaultRandom().primaryKey(),
+  tenantId:        uuid("tenant_id").notNull().references(() => tenants.id),
+  workspaceId:     uuid("workspace_id").notNull().references(() => workspaces.id),
+  name:            text("name").notNull(),
+  email:           text("email"),
+  linkedInSub:     text("linkedin_sub").notNull().unique(),
+  linkedInUrl:     text("linkedin_url"),
+  linkedInPicture: text("linkedin_picture"),
+  lastImportAt:    timestamp("last_import_at"),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+  updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ─── LinkedIn Connections (imported 1st-degree network per rep) ───────────────
+export const linkedinConnections = pgTable("linkedin_connections", {
+  id:            uuid("id").defaultRandom().primaryKey(),
+  memberId:      uuid("member_id").notNull().references(() => teamMembers.id, { onDelete: "cascade" }),
+  firstName:     text("first_name").notNull(),
+  lastName:      text("last_name").notNull(),
+  linkedInUrl:   text("linkedin_url").notNull(),
+  email:         text("email"),
+  company:       text("company"),
+  position:      text("position"),
+  connectedOn:   timestamp("connected_on"),
+  importBatchId: text("import_batch_id"),
+  createdAt:     timestamp("created_at").defaultNow().notNull(),
+  updatedAt:     timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  memberUrlIdx: uniqueIndex("linkedin_connections_member_url_idx").on(table.memberId, table.linkedInUrl),
+}));
+
+// ─── Connection Matches (cached connection → CRM contact links) ───────────────
+export const connectionMatches = pgTable("connection_matches", {
+  id:           uuid("id").defaultRandom().primaryKey(),
+  connectionId: uuid("connection_id").notNull().references(() => linkedinConnections.id, { onDelete: "cascade" }),
+  contactId:    uuid("contact_id").notNull().references(() => contacts.id, { onDelete: "cascade" }),
+  matchMethod:  text("match_method").notNull(),
+  confidence:   integer("confidence").notNull(),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  connectionContactIdx: uniqueIndex("connection_matches_conn_contact_idx").on(table.connectionId, table.contactId),
+}));
+
 // ─── Relations (for Drizzle query API) ────────────────────────────────────────
 import { relations } from "drizzle-orm";
 
@@ -278,3 +326,19 @@ export const outreachApprovalsRelations = relations(outreachApprovals, ({ one })
 export const yieldFunnelRelations = relations(yieldFunnel, ({ one }) => ({
   lead: one(leads, { fields: [yieldFunnel.leadId], references: [leads.id] }),
 }));
+
+
+export const teamMembersRelations = relations(teamMembers, ({ many }) => ({
+  connections: many(linkedinConnections),
+}));
+
+export const linkedinConnectionsRelations = relations(linkedinConnections, ({ one, many }) => ({
+  member: one(teamMembers, { fields: [linkedinConnections.memberId], references: [teamMembers.id] }),
+  matches: many(connectionMatches),
+}));
+
+export const connectionMatchesRelations = relations(connectionMatches, ({ one }) => ({
+  connection: one(linkedinConnections, { fields: [connectionMatches.connectionId], references: [linkedinConnections.id] }),
+  contact: one(contacts, { fields: [connectionMatches.contactId], references: [contacts.id] }),
+}));
+

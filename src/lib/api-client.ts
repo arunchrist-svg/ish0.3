@@ -211,13 +211,22 @@ export type LeadDetailRecord = {
   };
   outreach?: WriterDraft;
   upNext: UpNextItem[];
-  network: { name: string; email: string }[];
+  network: {
+    name: string;
+    email?: string;
+    linkedIn?: string;
+    strength: 1 | 2 | 3 | 4;
+    relationship: string;
+    connectorName: string;
+    path: string[];
+  }[];
   giftingIntelligence?: string;
   companyOverview?: CompanyOverview;
   accountId?: string;
   industry?: string;
   giftScore?: number;
   giftBudget?: string;
+  isPinned?: boolean;
 };
 
 export type WriterDraft = {
@@ -311,4 +320,76 @@ export type DirectoryResponse = {
 
 export async function fetchDirectory(): Promise<DirectoryResponse> {
   return get<DirectoryResponse>("/api/directory");
+}
+
+// ─── Pins ─────────────────────────────────────────────────────────────────────
+export type PinnedLead = {
+  id: string;
+  type: "lead";
+  name: string;
+  title: string;
+  company: string;
+  city: string;
+  score: number;
+  status: string;
+  email: string;
+  emailStatus: string;
+  isPinned: boolean;
+  updatedAt: string;
+};
+
+export type PinnedCompany = {
+  id: string;
+  type: "company";
+  name: string;
+  industry: string;
+  city: string;
+  employees: string;
+  giftScore: number;
+  isPinned: boolean;
+  updatedAt: string;
+};
+
+export type PinsResponse = {
+  leads: PinnedLead[];
+  companies: PinnedCompany[];
+};
+
+export async function fetchPins(): Promise<PinsResponse> {
+  return get<PinsResponse>("/api/pins");
+}
+
+export async function togglePin(type: "lead" | "company", id: string, pinned: boolean): Promise<void> {
+  await post("/api/pins", { type, id, pinned });
+}
+
+// ─── Contacts List ────────────────────────────────────────────────────────────
+export type ContactListItem = {
+  id: string;
+  leadId: string | null;
+  name: string;
+  title: string;
+  email: string;
+  emailStatus: string;
+  phone: string | null;
+  linkedIn: string | null;
+  company: string;
+  companyId: string;
+  city: string;
+  industry: string;
+  isKeyDM: boolean;
+  hasLead: boolean;
+  score: number | null;
+  status: string | null;
+};
+
+export async function fetchContacts(): Promise<ContactListItem[]> {
+  return get<ContactListItem[]>("/api/contacts");
+}
+
+export type NetworkGraph = import("./network/types").NetworkGraph;
+
+export async function fetchLeadNetwork(id: string): Promise<NetworkGraph> {
+  const data = await get<{ graph: NetworkGraph }>(`/api/leads/${id}/network`);
+  return data.graph;
 }

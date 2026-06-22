@@ -868,7 +868,7 @@ export function ScoutingApp() {
           />
 
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="min-w-0 flex-1 overflow-y-auto bg-ish-app">
+            <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">
               {view === "companies" ? (
                 loadingCompanies ? (
                   <DiscoveringLoader

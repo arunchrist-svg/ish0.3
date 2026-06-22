@@ -128,6 +128,85 @@ async function seed() {
     });
   }
 
+
+  const COLLEAGUE_ARUN_ID = "00000000-0000-0000-0000-000000000013";
+  const COLLEAGUE_MEERA_ID = "00000000-0000-0000-0000-000000000014";
+  const TEAM_MEMBER_ID = "00000000-0000-0000-0000-000000000020";
+
+  await db.insert(schema.contacts).values([
+    {
+      id: COLLEAGUE_ARUN_ID,
+      tenantId: TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      accountId: SAMPLE_ACCOUNT_ID,
+      name: "Arun Krishnan",
+      firstName: "Arun",
+      lastName: "Krishnan",
+      title: "Plant HR Manager",
+      email: "arun.k@boschindia.com",
+      emailStatus: "verified",
+      linkedIn: "https://www.linkedin.com/in/arun-krishnan-bosch",
+      dataSource: "sample",
+    },
+    {
+      id: COLLEAGUE_MEERA_ID,
+      tenantId: TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      accountId: SAMPLE_ACCOUNT_ID,
+      name: "Meera Pillai",
+      firstName: "Meera",
+      lastName: "Pillai",
+      title: "HR Business Partner",
+      email: "meera.p@boschindia.com",
+      emailStatus: "verified",
+      linkedIn: "https://www.linkedin.com/in/meera-pillai-bosch",
+      dataSource: "sample",
+    },
+  ]).onConflictDoNothing();
+
+  await db.insert(schema.teamMembers).values({
+    id: TEAM_MEMBER_ID,
+    tenantId: TENANT_ID,
+    workspaceId: WORKSPACE_ID,
+    name: "ISH Cluster Mgr",
+    email: "cm@indiasweethouse.com",
+    linkedInSub: "sample-ish-cluster-mgr",
+    lastImportAt: new Date(),
+  }).onConflictDoNothing();
+
+  await db.insert(schema.linkedinConnections).values([
+    {
+      memberId: TEAM_MEMBER_ID,
+      firstName: "Rajan",
+      lastName: "Nair",
+      linkedInUrl: "https://www.linkedin.com/in/rajan-nair",
+      email: "rajan.nair@boschindia.com",
+      company: "Bosch India",
+      position: "HR Director",
+      connectedOn: new Date("2024-03-15"),
+    },
+    {
+      memberId: TEAM_MEMBER_ID,
+      firstName: "Arun",
+      lastName: "Krishnan",
+      linkedInUrl: "https://www.linkedin.com/in/arun-krishnan-bosch",
+      email: "arun.k@boschindia.com",
+      company: "Bosch India",
+      position: "Plant HR Manager",
+      connectedOn: new Date("2023-11-02"),
+    },
+    {
+      memberId: TEAM_MEMBER_ID,
+      firstName: "Meera",
+      lastName: "Pillai",
+      linkedInUrl: "https://www.linkedin.com/in/meera-pillai-bosch",
+      email: "meera.p@boschindia.com",
+      company: "Bosch India",
+      position: "HR Business Partner",
+      connectedOn: new Date("2024-01-20"),
+    },
+  ]).onConflictDoNothing();
+
   console.log("Seed complete.");
   console.log("Sample lead:", SAMPLE_LEAD_ID, "— Rajan Nair @ Bosch India");
 }

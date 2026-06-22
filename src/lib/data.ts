@@ -46,7 +46,15 @@ export type LeadRecord = {
     trend: string;
     factors: { label: string; bold: string }[];
   };
-  network: { name: string; email: string }[];
+  network: {
+    name: string;
+    email?: string;
+    linkedIn?: string;
+    strength?: 1 | 2 | 3 | 4;
+    relationship?: string;
+    connectorName?: string;
+    path?: string[];
+  }[];
   giftingIntelligence: string;
 };
 

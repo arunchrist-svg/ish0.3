@@ -22,19 +22,23 @@ type NavItemEntry = {
 
 const mainNav: NavItemEntry[] = [
   { icon: Home, label: "Home", href: "/", key: "home" },
-  { icon: Pin, label: "Pinned", key: "pinned" },
+  { icon: Pin, label: "Pinned", href: "/pinned", key: "pinned" },
 ];
 
 const workNav: NavItemEntry[] = [
-  { icon: Rocket, label: "Lead Accelerator", href: "/", key: "lead-accelerator" },
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
+  { icon: Rocket, label: "Lead Accelerator", href: "/", key: "lead-accelerator" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
-  { icon: Settings, label: "Settings", href: "/settings", key: "settings" },
 ];
 
 const customerNav: NavItemEntry[] = [
   { icon: User, label: "Accounts", href: "/directory", key: "accounts" },
-  { icon: Contact, label: "Contacts", key: "contacts" },
+  { icon: Contact, label: "Contacts", href: "/contacts", key: "contacts" },
+];
+
+const bottomNav: NavItemEntry[] = [
+  { icon: User, label: "Profile", href: "/profile", key: "profile" },
+  { icon: Settings, label: "Settings", href: "/settings", key: "settings" },
 ];
 
 const sections: { title?: string; items: NavItemEntry[] }[] = [
@@ -43,7 +47,7 @@ const sections: { title?: string; items: NavItemEntry[] }[] = [
   { title: "CUSTOMERS", items: customerNav },
 ];
 
-const linkedItems = sections.flatMap((section) => section.items.filter((item) => item.href));
+const allLinkedItems = [...sections.flatMap((s) => s.items), ...bottomNav].filter((item) => item.href);
 
 function isActive(pathname: string, href?: string) {
   if (!href) return false;
@@ -52,9 +56,10 @@ function isActive(pathname: string, href?: string) {
 }
 
 function getActiveKey(pathname: string) {
-  const match = linkedItems.find((item) => item.href && isActive(pathname, item.href));
+  const match = allLinkedItems.find((item) => item.href && isActive(pathname, item.href));
   if (!match) return "";
   if (pathname === "/" && match.href === "/") return "lead-accelerator";
+  if (pathname === "/directory" || pathname.startsWith("/directory/")) return "accounts";
   return match.key;
 }
 
@@ -62,12 +67,14 @@ function NavItemRow({
   item,
   pathname,
   pendingKey,
+  collapsed,
   register,
   onNavigate,
 }: {
   item: NavItemEntry;
   pathname: string;
   pendingKey: string | null;
+  collapsed: boolean;
   register: (key: string) => (node: HTMLElement | null) => void;
   onNavigate: (key: string) => void;
 }) {
@@ -77,10 +84,12 @@ function NavItemRow({
   const highlighted = routeActive || pending;
 
   const className = cn(
-    "group relative z-10 mb-0.5 flex items-center gap-3 rounded-[10px] px-2 py-2",
-    "transition-[color,transform,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-    "hover:translate-x-1 active:scale-[0.98]",
-    !highlighted && "hover:bg-ish-app/80",
+    "group relative z-10 mb-0.5 flex items-center rounded-[10px] py-2",
+    collapsed ? "justify-center px-2" : "gap-3 px-2",
+    "transition-[color,transform,padding] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+    !collapsed && "hover:translate-x-1",
+    "active:scale-[0.98]",
+    !highlighted && "hover:bg-black/[0.04]",
     highlighted ? text.navItemActive : text.navItem,
     pending && "opacity-90",
   );
@@ -93,14 +102,16 @@ function NavItemRow({
           highlighted ? "scale-110 text-ish-ink" : "text-ish-ink-soft group-hover:scale-105 group-hover:text-ish-ink",
         )}
       />
-      <span
-        className={cn(
-          "transition-[font-weight,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-          highlighted ? "font-semibold" : "font-medium",
-        )}
-      >
-        {label}
-      </span>
+      {!collapsed && (
+        <span
+          className={cn(
+            "transition-[font-weight,opacity,width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+            highlighted ? "font-semibold" : "font-medium",
+          )}
+        >
+          {label}
+        </span>
+      )}
     </>
   );
 
@@ -109,6 +120,7 @@ function NavItemRow({
       <Link
         ref={register(key)}
         href={href}
+        title={collapsed ? label : undefined}
         onClick={() => onNavigate(key)}
         className={className}
       >
@@ -118,7 +130,7 @@ function NavItemRow({
   }
 
   return (
-    <div className={cn(className, "cursor-default opacity-70")}>
+    <div className={cn(className, "cursor-default opacity-70")} title={collapsed ? label : undefined}>
       {content}
     </div>
   );
@@ -128,6 +140,7 @@ export function SideNav() {
   const pathname = usePathname();
   const activeKey = getActiveKey(pathname);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
   const indicatorKey = pendingKey ?? activeKey;
   const { containerRef, register, rect, ready } = useSlidingHighlight(indicatorKey);
 
@@ -137,33 +150,82 @@ export function SideNav() {
     }
   }, [pathname, activeKey, pendingKey]);
 
+  useEffect(() => {
+    const stored = localStorage.getItem("ish-side-nav-collapsed");
+    if (stored === "true") setCollapsed(true);
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem("ish-side-nav-collapsed", String(next));
+      return next;
+    });
+  }
+
   return (
-    <div className="flex h-full w-[200px] shrink-0 flex-col overflow-hidden border-r border-ish-border bg-white p-[22px_16px]">
-      <div className="mb-6 flex items-center justify-between">
-        <span className="text-lg font-bold text-ish-ink">Menu</span>
-        <CircleButton size={28}><ChevronLeft className="size-3.5" /></CircleButton>
+    <div
+      className={cn(
+        "ish-glass-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r border-white/50 transition-[width,padding] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+        collapsed ? "w-[68px] px-2 py-[22px]" : "w-[200px] p-[22px_16px]",
+      )}
+    >
+      <div className={cn("mb-6 flex items-center", collapsed ? "justify-center" : "justify-between")}>
+        {!collapsed && <span className="text-lg font-bold text-ish-ink">Menu</span>}
+        <CircleButton
+          size={28}
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expand menu" : "Collapse menu"}
+          className="transition-transform duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+        >
+          <ChevronLeft
+            className={cn(
+              "size-3.5 transition-transform duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+              collapsed && "rotate-180",
+            )}
+          />
+        </CircleButton>
       </div>
 
-      <nav ref={containerRef} className="relative min-h-0 flex-1 overflow-y-auto">
-        <SlidingHighlight rect={rect} ready={ready} />
+      <nav ref={containerRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+        <div className="flex-1">
+          <SlidingHighlight rect={rect} ready={ready} />
 
-        {sections.map((section) => (
-          <div key={section.title ?? "main"}>
-            {section.title && (
-              <div className={cn("mb-1.5 mt-4 px-2", text.navSection)}>{section.title}</div>
-            )}
-            {section.items.map((item) => (
-              <NavItemRow
-                key={item.key}
-                item={item}
-                pathname={pathname}
-                pendingKey={pendingKey}
-                register={register}
-                onNavigate={setPendingKey}
-              />
-            ))}
-          </div>
-        ))}
+          {sections.map((section) => (
+            <div key={section.title ?? "main"}>
+              {section.title && !collapsed && (
+                <div className={cn("mb-1.5 mt-4 px-2", text.navSection)}>{section.title}</div>
+              )}
+              {section.title && collapsed && <div className="mb-2 mt-3 border-t border-ish-border/70" />}
+              {section.items.map((item) => (
+                <NavItemRow
+                  key={item.key}
+                  item={item}
+                  pathname={pathname}
+                  pendingKey={pendingKey}
+                  collapsed={collapsed}
+                  register={register}
+                  onNavigate={setPendingKey}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-2">
+          <div className="mb-2 border-t border-ish-border" />
+          {bottomNav.map((item) => (
+            <NavItemRow
+              key={item.key}
+              item={item}
+              pathname={pathname}
+              pendingKey={pendingKey}
+              collapsed={collapsed}
+              register={register}
+              onNavigate={setPendingKey}
+            />
+          ))}
+        </div>
       </nav>
     </div>
   );

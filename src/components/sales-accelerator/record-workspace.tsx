@@ -10,10 +10,11 @@ import { CompanyOverviewPanel } from "@/components/company/company-overview-pane
 import { UpNextPanel } from "@/components/sales-accelerator/up-next-card";
 import { LeadScoreCard } from "@/components/sales-accelerator/lead-score-card";
 import { BottomCards } from "@/components/sales-accelerator/bottom-cards";
+import { RelationshipAnalyticsPanel } from "@/components/network/relationship-analytics-panel";
 import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
 import { fetchLead } from "@/lib/api-client";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
-import { toast } from "sonner";
+import { showError } from "@/lib/toast";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
 
 type Props = {
@@ -90,14 +91,23 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   const [lead, setLead] = useState<LeadDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("Summary");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load(opts?: { silent?: boolean }) {
     if (!opts?.silent) setLoading(true);
     try {
       const data = await fetchLead(leadId);
       setLead(data);
-    } catch {
-      toast.error("Could not load lead details");
+      setLoadError(null);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Failed to load lead";
+      setLoadError(message);
+      if (!opts?.silent) {
+        showError("Couldn't open this lead", {
+          id: `lead-load-${leadId}`,
+          description: message === "Failed to fetch" ? "Check your connection and try again." : message,
+        });
+      }
     } finally {
       if (!opts?.silent) setLoading(false);
     }
@@ -116,7 +126,11 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   }
 
   useEffect(() => {
+    setLead(null);
+    setLoadError(null);
+    setActiveTab("Summary");
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
 
   const stage = statusToPipelineIndex(lead?.status ?? "scouted");
@@ -129,7 +143,24 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
     );
   }
 
-  if (!lead) return null;
+  if (!lead) {
+    return (
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+        <div className="text-3xl">⚠️</div>
+        <div className="text-[14px] font-semibold text-ish-ink">Couldn't load this lead</div>
+        <p className="max-w-sm text-[12px] text-ish-ink-soft">
+          {loadError ?? "Something went wrong while fetching lead details."}
+        </p>
+        <button
+          type="button"
+          onClick={() => load()}
+          className="mt-1 rounded-xl bg-ish-black px-4 py-2 text-[12px] font-bold text-white"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   const record = toRecord(lead);
   const current = toQueueItem(lead);
@@ -175,14 +206,15 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
           </div>
 
 
-          <div className="px-[22px] pb-4">
+          <div className="px-[22px] pb-[22px]">
             <CompanyOverviewPanel
               name={lead.company}
               city={lead.city}
-              giftScore={lead.giftScore}
               industry={lead.industry}
               initialOverview={lead.companyOverview}
               decisionMakerLeadId={lead.id}
+              layout="wide"
+              footer={<BottomCards record={record} onOpenAnalytics={() => setActiveTab("Relationship Analytics")} />}
               overviewInput={{
                 name: lead.company,
                 city: lead.city,
@@ -190,7 +222,6 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
                 employees: lead.employees !== "—" ? lead.employees : undefined,
                 giftBudget: lead.giftBudget,
                 giftScore: lead.giftScore,
-                intelligenceNotes: lead.giftingIntelligence,
                 accountId: lead.accountId,
                 decisionMakerHint:
                   lead.title && lead.title !== "—"
@@ -198,10 +229,6 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
                     : lead.name,
               }}
             />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4 px-[22px] pb-[22px]">
-            <BottomCards record={record} />
           </div>
         </TabsContent>
 
@@ -217,7 +244,11 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
           />
         </TabsContent>
 
-        {["Relationship Analytics", "Details", "Related"].map((tab) => (
+        <TabsContent value="Relationship Analytics" className="mt-0 animate-ish-tab-in">
+          <RelationshipAnalyticsPanel key={leadId} leadId={leadId} />
+        </TabsContent>
+
+        {["Details", "Related"].map((tab) => (
           <TabsContent
             key={tab}
             value={tab}

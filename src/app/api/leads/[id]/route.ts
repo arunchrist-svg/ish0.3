@@ -4,6 +4,7 @@ import { eq, desc } from "drizzle-orm";
 import { canManuallyAdvance, parseDealAmount } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
 import type { LeadDetailRecord } from "@/lib/api-client";
+import { getLeadNetworkSummary } from "@/lib/network/graph";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -45,6 +46,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .orderBy(outreachSchedule.scheduledFor);
 
     const upNext = deriveUpNext(lead.status, scheduleRows);
+
+    let networkSummary: LeadDetailRecord["network"] = [];
+    try {
+      networkSummary = await getLeadNetworkSummary(id);
+    } catch (networkErr) {
+      console.error("[api/leads/[id]] network summary failed:", networkErr);
+    }
 
     const record: LeadDetailRecord = {
       id: lead.id,
@@ -101,13 +109,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           }
         : undefined,
       upNext,
-      network: [],
+      network: networkSummary,
       giftingIntelligence: account.intelNotes ?? research?.giftingHook ?? undefined,
       companyOverview: (account.companyOverview as import("@/lib/company-overview").CompanyOverview | null) ?? undefined,
       accountId: account.id,
       industry: account.industry ?? undefined,
       giftScore: account.giftScore ?? undefined,
       giftBudget: account.giftBudget ?? undefined,
+      isPinned: lead.isPinned ?? false,
     };
 
     return NextResponse.json({ lead: record });

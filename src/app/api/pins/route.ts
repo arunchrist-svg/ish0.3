@@ -1,0 +1,72 @@
+import { NextResponse } from "next/server";
+import { db } from "@/db";
+import { leads, accounts, contacts } from "@/db/schema";
+import { eq, desc, sql } from "drizzle-orm";
+
+export async function GET() {
+  try {
+    const pinnedLeads = await db
+      .select({
+        id: leads.id,
+        type: sql<string>`'lead'`,
+        name: contacts.name,
+        title: contacts.title,
+        company: accounts.name,
+        city: accounts.city,
+        score: leads.score,
+        status: leads.status,
+        email: contacts.email,
+        emailStatus: contacts.emailStatus,
+        isPinned: leads.isPinned,
+        updatedAt: leads.updatedAt,
+      })
+      .from(leads)
+      .innerJoin(contacts, eq(leads.contactId, contacts.id))
+      .innerJoin(accounts, eq(leads.accountId, accounts.id))
+      .where(eq(leads.isPinned, true))
+      .orderBy(desc(leads.updatedAt));
+
+    const pinnedAccounts = await db
+      .select({
+        id: accounts.id,
+        type: sql<string>`'company'`,
+        name: accounts.name,
+        industry: accounts.industry,
+        city: accounts.city,
+        employees: accounts.employees,
+        giftScore: accounts.giftScore,
+        isPinned: accounts.isPinned,
+        updatedAt: accounts.updatedAt,
+      })
+      .from(accounts)
+      .where(eq(accounts.isPinned, true))
+      .orderBy(desc(accounts.updatedAt));
+
+    return NextResponse.json({
+      leads: pinnedLeads,
+      companies: pinnedAccounts,
+    });
+  } catch (err) {
+    console.error("GET /api/pins error:", err);
+    return NextResponse.json({ error: "Failed to fetch pinned items" }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const { type, id, pinned } = await req.json();
+
+    if (type === "lead") {
+      await db.update(leads).set({ isPinned: pinned }).where(eq(leads.id, id));
+    } else if (type === "company") {
+      await db.update(accounts).set({ isPinned: pinned }).where(eq(accounts.id, id));
+    } else {
+      return NextResponse.json({ error: "Invalid type" }, { status: 400 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("POST /api/pins error:", err);
+    return NextResponse.json({ error: "Failed to update pin status" }, { status: 500 });
+  }
+}

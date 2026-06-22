@@ -47,7 +47,7 @@ export default function FunnelPage() {
   const maxCount = Math.max(...Array.from(stageMap.values()), 1);
 
   return (
-        <div className="min-w-0 flex-1 overflow-y-auto bg-ish-app p-8">
+        <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-ish-ink">Yield Funnel</h1>
             <p className="mt-1 text-[13px] text-ish-ink-soft">Lead progression across all stages</p>

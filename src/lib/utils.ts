@@ -30,3 +30,18 @@ export function normalizeLinkedInUrl(raw?: string | null): string | undefined {
 
   return `https://${url}`;
 }
+
+/** Extract lowercase LinkedIn /in/ slug for matching. */
+export function linkedInSlug(raw?: string | null): string | undefined {
+  const normalized = normalizeLinkedInUrl(raw);
+  if (!normalized) return undefined;
+  const match = normalized.match(/linkedin\.com\/in\/([^/?#]+)/i);
+  return match ? decodeURIComponent(match[1]).toLowerCase() : undefined;
+}
+
+/** Normalize email for case-insensitive matching. */
+export function normalizeEmail(raw?: string | null): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim().toLowerCase();
+  return trimmed.includes("@") ? trimmed : undefined;
+}

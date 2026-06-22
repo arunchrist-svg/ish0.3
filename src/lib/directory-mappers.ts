@@ -4,7 +4,7 @@ import type { Company, Person } from "@/lib/scouting-data";
 export function directoryCompanyToCard(company: DirectoryCompany): Company {
   return {
     id: company.id,
-    logo: "🏢",
+    logo: "",
     domain: company.domain,
     name: company.name,
     type: company.industry,

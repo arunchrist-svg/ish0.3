@@ -146,7 +146,7 @@ export function DirectoryApp() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-ish-app">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-transparent">
             {loading ? (
               <div className="flex h-full items-center justify-center text-[13px] text-ish-ink-faint">
                 <span className="mr-2 animate-spin">⟳</span> Loading directory…
@@ -189,6 +189,8 @@ export function DirectoryApp() {
                         name={selectedCompany.name}
                         city={selectedCompany.city}
                         giftScore={selectedCompany.giftScore}
+                        domain={selectedCompany.domain}
+                        website={selectedCompany.website}
                         industry={selectedCompany.industry}
                         initialOverview={selectedCompany.companyOverview}
                         overviewInput={{

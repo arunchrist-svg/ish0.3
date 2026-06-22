@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, MoreHorizontal, RefreshCw, Save, MessageSquare, Package, Handshake, Trophy, Search, Sparkles } from "lucide-react";
+import { FileText, MoreHorizontal, RefreshCw, Save, MessageSquare, Package, Handshake, Trophy, Search, Sparkles, Pin } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { markReplied, updateLeadStatus, enrichLead } from "@/lib/api-client";
+import { markReplied, updateLeadStatus, enrichLead, togglePin } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { getNextManualStatus, isContactReadyStage } from "@/lib/pipeline-status";
 import { AppModal } from "@/components/ui/app-modal";
@@ -24,6 +24,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, h
   const [submitting, setSubmitting] = useState(false);
   const [enriching, setEnriching] = useState(false);
   const [paidDialogOpen, setPaidDialogOpen] = useState(false);
+  const [pinning, setPinning] = useState(false);
 
   const needsEnrich =
     !lead.title || lead.title === "—" ||
@@ -87,6 +88,20 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, h
       toast.error(e instanceof Error ? e.message : "Could not update status");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleTogglePin() {
+    setPinning(true);
+    try {
+      const newPinned = !lead.isPinned;
+      await togglePin("lead", lead.id, newPinned);
+      toast.success(newPinned ? "Pinned to quick access" : "Unpinned");
+      onAction();
+    } catch {
+      toast.error("Failed to update pin");
+    } finally {
+      setPinning(false);
     }
   }
 
@@ -205,6 +220,22 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, h
         >
           <RefreshCw className="size-3.5" />
           Refresh
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pinning}
+          className={cn(
+            "h-auto rounded-[18px] px-3.5 py-1.5 text-xs font-semibold",
+            lead.isPinned
+              ? "bg-ish-yellow text-ish-ink hover:bg-ish-yellow/80"
+              : "bg-white/55 text-ish-ink hover:bg-white/70"
+          )}
+          onClick={handleTogglePin}
+        >
+          <Pin className={cn("size-3.5", lead.isPinned && "fill-current")} />
+          {lead.isPinned ? "Pinned" : "Pin"}
         </Button>
 
         <Button

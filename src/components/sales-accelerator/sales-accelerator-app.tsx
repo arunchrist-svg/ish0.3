@@ -6,7 +6,7 @@ import { QueuePanel } from "@/components/sales-accelerator/queue-panel";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
 import { fetchLeads } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
-import { toast } from "sonner";
+import { showError } from "@/lib/toast";
 
 export function SalesAcceleratorApp() {
   const searchParams = useSearchParams();
@@ -27,7 +27,7 @@ export function SalesAcceleratorApp() {
         setActiveLeadId(data[0].id);
       }
     } catch {
-      toast.error("Could not load leads");
+      showError("Couldn't load leads", { id: "leads-load", description: "Refresh the page or check your connection." });
     } finally {
       setLoading(false);
     }

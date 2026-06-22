@@ -41,6 +41,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           toast: "cn-toast",
         },
       }}
+      visibleToasts={2}
+      expand={false}
+      closeButton
+      duration={4000}
       {...props}
     />
   )

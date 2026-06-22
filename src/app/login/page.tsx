@@ -78,78 +78,82 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-white">
-      {/* Left — product image */}
-      <aside className="relative hidden w-[58%] overflow-hidden lg:block">
-        <img
-          src={HERO_IMAGE}
-          alt="Manikya — India Sweet House"
-          className="absolute inset-0 h-full w-full object-cover"
-        />
-      </aside>
+    <div className="h-screen overflow-hidden bg-white p-[15px] font-sans">
+      <div className="mx-auto flex h-full max-w-[1620px] overflow-hidden rounded-3xl bg-white shadow-[var(--shadow-ish-float)]">
+        <div className="flex min-h-0 min-w-0 flex-1">
+          {/* Left — product image */}
+          <aside className="relative hidden w-[48%] overflow-hidden lg:block">
+            <img
+              src={HERO_IMAGE}
+              alt="Manikya — India Sweet House"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          </aside>
 
-      {/* Right — login form */}
-      <main className="flex flex-1 flex-col">
-        <div className="flex flex-1 items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20">
-          <div className="w-full max-w-[420px]">
-            <div className="mb-10 lg:hidden">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-ish-yellow p-3 shadow-[var(--shadow-ish-yellow-sm)]">
-                <img src={ISH_LOGO_URL} alt="ISH" className="h-full w-auto object-contain" />
+          {/* Right — login form */}
+          <main className="flex min-h-0 flex-1 flex-col">
+            <div className="flex flex-1 items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20">
+              <div className="w-full max-w-[420px]">
+                <div className="mb-10 lg:hidden">
+                  <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-ish-yellow p-3 shadow-[var(--shadow-ish-yellow-sm)]">
+                    <img src={ISH_LOGO_URL} alt="ISH" className="h-full w-auto object-contain" />
+                  </div>
+                </div>
+
+                <div className="mb-8">
+                  <p className="text-[13px] font-bold text-ish-ink">India Sweet House™</p>
+                  <p className="text-[12px] text-ish-ink-soft">Sales Accelerator Platform</p>
+                </div>
+
+                <h1 className={cn("mb-8 max-w-[16ch] leading-tight", text.display)}>
+                  Welcome, login to your account.
+                </h1>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <LoginField
+                    id="pin"
+                    label="Access PIN:"
+                    type="password"
+                    value={pin}
+                    onChange={setPin}
+                    placeholder="Enter your PIN"
+                    inputMode="numeric"
+                    maxLength={8}
+                  />
+
+                  {error ? (
+                    <p className="text-center text-[12px] font-medium text-red-500">{error}</p>
+                  ) : null}
+
+                  <div className="flex flex-wrap items-center gap-4 pt-1">
+                    <Button
+                      type="submit"
+                      disabled={loading || pin.length < 4}
+                      className={cn(
+                        "h-12 rounded-full bg-ish-black px-8 text-[14px] font-bold text-white",
+                        "hover:bg-ish-black/90 disabled:opacity-50",
+                      )}
+                    >
+                      {loading ? "Signing in…" : "Sign In Here"}
+                    </Button>
+                    <span className="inline-flex items-center gap-1.5 text-[12px] text-ish-ink-soft">
+                      <KeyRound className="size-3.5" />
+                      Contact admin for access
+                    </span>
+                  </div>
+                </form>
               </div>
             </div>
 
-            <div className="mb-8">
-              <p className="text-[13px] font-bold text-ish-ink">India Sweet House™</p>
-              <p className="text-[12px] text-ish-ink-soft">Sales Accelerator Platform</p>
+            <div className="px-6 pb-8 sm:px-10 lg:px-14 xl:px-20">
+              <Separator className="mb-5 bg-ish-border" />
+              <p className="text-center text-[12px] text-ish-ink-faint lg:text-left">
+                www.indiasweethouse.in
+              </p>
             </div>
-
-            <h1 className={cn("mb-8 max-w-[16ch] leading-tight", text.display)}>
-              Welcome, login to your account.
-            </h1>
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <LoginField
-                id="pin"
-                label="Access PIN:"
-                type="password"
-                value={pin}
-                onChange={setPin}
-                placeholder="Enter your PIN"
-                inputMode="numeric"
-                maxLength={8}
-              />
-
-              {error ? (
-                <p className="text-center text-[12px] font-medium text-red-500">{error}</p>
-              ) : null}
-
-              <div className="flex flex-wrap items-center gap-4 pt-1">
-                <Button
-                  type="submit"
-                  disabled={loading || pin.length < 4}
-                  className={cn(
-                    "h-12 rounded-full bg-ish-black px-8 text-[14px] font-bold text-white",
-                    "hover:bg-ish-black/90 disabled:opacity-50",
-                  )}
-                >
-                  {loading ? "Signing in…" : "Sign In Here"}
-                </Button>
-                <span className="inline-flex items-center gap-1.5 text-[12px] text-ish-ink-soft">
-                  <KeyRound className="size-3.5" />
-                  Contact admin for access
-                </span>
-              </div>
-            </form>
-          </div>
+          </main>
         </div>
-
-        <div className="px-6 pb-8 sm:px-10 lg:px-14 xl:px-20">
-          <Separator className="mb-5 bg-ish-border" />
-          <p className="text-center text-[12px] text-ish-ink-faint lg:text-left">
-            www.indiasweethouse.in
-          </p>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
+@custom-variant stratus (&:is(.stratus *));
 
 @theme inline {
   --color-background: var(--background);
@@ -132,4 +133,69 @@
 @layer base {
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-thumb { background: #d2d0d8; border-radius: 3px; }
+}
+
+.stratus ::-webkit-scrollbar-thumb {
+  background: rgba(131, 162, 219, 0.32);
+  border-radius: 3px;
+}
+.stratus ::-webkit-scrollbar-thumb:hover {
+  background: rgba(131, 162, 219, 0.50);
+}
+
+.stratus {
+  --background: oklch(0.993 0.002 240);
+  --foreground: oklch(0.08 0 0);
+  --card: oklch(1 0 0 / 0.78);
+  --card-foreground: oklch(0.08 0 0);
+  --popover: oklch(0.98 0.007 240);
+  --popover-foreground: oklch(0.08 0 0);
+  --primary: oklch(0.14 0.008 265);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.97 0.005 240);
+  --secondary-foreground: oklch(0.12 0 0);
+  --muted: oklch(0.97 0.004 240);
+  --muted-foreground: oklch(0.48 0.016 240);
+  --accent: oklch(0.97 0.005 240);
+  --accent-foreground: oklch(0.12 0 0);
+  --destructive: oklch(0.70 0.16 15);
+  --border: oklch(0.90 0.008 240 / 0.38);
+  --input: oklch(0.94 0.006 240 / 0.52);
+  --ring: oklch(0.55 0.07 240);
+  --chart-1: oklch(0.62 0.085 240);
+  --chart-2: oklch(0.70 0.16 15);
+  --chart-3: oklch(0.80 0.10 70);
+  --chart-4: oklch(0.86 0.02 220);
+  --chart-5: oklch(0.53 0.065 240);
+  --sidebar: oklch(0.96 0.011 240 / 0.82);
+  --sidebar-foreground: oklch(0.08 0 0);
+  --sidebar-primary: oklch(0.14 0.008 265);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.93 0.011 240 / 0.60);
+  --sidebar-accent-foreground: oklch(0.08 0 0);
+  --sidebar-border: oklch(0.88 0.011 240 / 0.33);
+  --sidebar-ring: oklch(0.55 0.07 240);
+}
+
+[data-sonner-toaster] {
+  --width: 360px;
+}
+
+[data-sonner-toast] {
+  border-radius: 14px !important;
+  box-shadow: 0 8px 28px rgba(20, 20, 30, 0.12) !important;
+  border: 1px solid var(--border) !important;
+  font-size: 13px;
+}
+
+[data-sonner-toast][data-type="error"] {
+  background: #fff5f5 !important;
+  color: #8b1a1a !important;
+  border-color: #f5c2c2 !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+  background: #f3fdf7 !important;
+  color: #1f6b45 !important;
+  border-color: #b8e8cc !important;
 }

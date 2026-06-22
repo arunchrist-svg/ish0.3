@@ -1,7 +1,8 @@
 /* ISH Design System — core tokens */
 @theme inline {
   --color-ish-outer: #000000;
-  --color-ish-app: #efeff0;
+  --color-ish-app: #ffffff;
+  --color-ish-canvas: #f4f4f6;
   --color-ish-ink: #1a1a1f;
   --color-ish-ink-soft: #6b6975;
   --color-ish-ink-faint: #a8a6b0;
@@ -32,7 +33,8 @@
 
 .dark {
   --color-ish-outer: #000000;
-  --color-ish-app: #1e1e24;
+  --color-ish-app: #16161a;
+  --color-ish-canvas: #222228;
   --color-ish-ink: #f0f0f2;
   --color-ish-ink-soft: #a8a6b0;
   --color-ish-ink-faint: #6b6975;
@@ -41,6 +43,34 @@
   --color-ish-pink-soft: #3d2e2a;
   --color-ish-green-soft: #1a3d2e;
   --ish-yellow-gradient: linear-gradient(135deg, #c4c248 0%, #b8a060 50%, #a88070 100%);
+}
+
+.stratus {
+  --color-ish-outer: #0d0d0d;
+  --color-ish-app: #fdfdfd;
+  --color-ish-canvas: #f6f7fa;
+  --color-ish-ink: #0d0d0d;
+  --color-ish-ink-soft: #4a5568;
+  --color-ish-ink-faint: #8a96a8;
+  --color-ish-border: rgba(131, 162, 219, 0.26);
+  /* Yellow accent stays warm — DS CTA color (#FFCE87 warm yellow) */
+  --color-ish-yellow: #ffce87;
+  --color-ish-yellow-soft: #fff4e0;
+  /* Remap "pink" accent → soft blush */
+  --color-ish-pink: #fd8e8c;
+  --color-ish-pink-soft: #fdf0f0;
+  --color-ish-green: #3fbe82;
+  --color-ish-green-soft: #edfaf4;
+  --color-ish-black: #15151a;
+  --shadow-ish-sm: 0 1px 3px rgba(131, 162, 219, 0.06), 0 1px 2px rgba(131, 162, 219, 0.035);
+  --shadow-ish: 0 4px 16px rgba(131, 162, 219, 0.08), 0 1px 4px rgba(131, 162, 219, 0.045);
+  --shadow-ish-float: 0 24px 60px rgba(108, 138, 198, 0.16);
+  /* Yellow gradient → warm DS palette blend (yellow→salmon) */
+  --ish-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #fdb99a 55%, #fd8e8c 100%);
+  --shadow-ish-yellow: 0 6px 18px rgba(255, 180, 100, 0.30);
+  --shadow-ish-yellow-sm: 0 4px 14px rgba(255, 180, 100, 0.22);
+  --ish-stratus-blue: #83a2db;
+  --ish-stratus-gradient: linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%);
 }
 
 
@@ -97,3 +127,180 @@
 .animate-ish-dot { animation: ish-dot 1.2s ease-in-out infinite; }
 .animate-ish-shimmer-bar { animation: ish-shimmer-bar 1.8s ease-in-out infinite; }
 .bg-ish-yellow-gradient { background: var(--ish-yellow-gradient); }
+
+.ish-glass-sidebar {
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.94) 0%,
+    rgba(255, 255, 255, 0.78) 55%,
+    rgba(248, 248, 252, 0.72) 100%
+  );
+  backdrop-filter: blur(22px) saturate(165%);
+  -webkit-backdrop-filter: blur(22px) saturate(165%);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.85),
+    1px 0 24px rgba(20, 20, 30, 0.04);
+}
+
+.ish-ambient-canvas {
+  background-color: #ffffff;
+  background-image:
+    radial-gradient(ellipse 80% 55% at 0% 0%, rgba(244, 242, 90, 0.07), transparent 58%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(63, 190, 130, 0.05), transparent 52%),
+    radial-gradient(ellipse 60% 40% at 85% 10%, rgba(250, 217, 208, 0.06), transparent 48%);
+}
+
+.dark .ish-glass-sidebar {
+  background: linear-gradient(
+    165deg,
+    rgba(38, 38, 44, 0.9) 0%,
+    rgba(28, 28, 34, 0.76) 100%
+  );
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.06),
+    1px 0 24px rgba(0, 0, 0, 0.22);
+}
+
+.dark .ish-ambient-canvas {
+  background-color: #16161a;
+  background-image:
+    radial-gradient(ellipse 80% 55% at 0% 0%, rgba(196, 194, 72, 0.08), transparent 58%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(63, 190, 130, 0.06), transparent 52%);
+}
+
+.stratus .ish-glass-sidebar {
+  background: linear-gradient(
+    165deg,
+    rgba(246, 247, 250, 0.92) 0%,
+    rgba(238, 240, 246, 0.80) 55%,
+    rgba(230, 233, 240, 0.74) 100%
+  );
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.80),
+    1px 0 24px rgba(131, 162, 219, 0.08);
+}
+
+.stratus .ish-ambient-canvas {
+  background-color: #f6f7fa;
+  background-image:
+    radial-gradient(ellipse 90% 65% at -5% 0%, rgba(131, 162, 219, 0.05), transparent 60%),
+    radial-gradient(ellipse 70% 55% at 100% 100%, rgba(253, 160, 160, 0.035), transparent 55%),
+    radial-gradient(ellipse 65% 50% at 88% 8%, rgba(255, 212, 154, 0.025), transparent 50%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255, 255, 255, 0.30), transparent 72%);
+}
+
+/* ── Stratus: harmonise PanelCard tone backgrounds ──────────────────────── */
+/* All three remap to the same frosted-glass base with barely-there DS tints  */
+
+.stratus .bg-ish-pink-soft {
+  background:
+    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(253, 160, 160, 0.08) 0%, transparent 68%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 250, 249, 0.78) 100%) !important;
+  backdrop-filter: blur(14px) saturate(148%);
+  -webkit-backdrop-filter: blur(14px) saturate(148%);
+  box-shadow: inset 0 0 0 1px rgba(253, 160, 160, 0.14) !important;
+}
+
+.stratus .bg-ish-yellow-soft {
+  background:
+    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(131, 162, 219, 0.10) 0%, transparent 68%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(249, 250, 253, 0.78) 100%) !important;
+  backdrop-filter: blur(14px) saturate(148%);
+  -webkit-backdrop-filter: blur(14px) saturate(148%);
+  box-shadow: inset 0 0 0 1px rgba(131, 162, 219, 0.18) !important;
+}
+
+.stratus .bg-ish-green-soft {
+  background:
+    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(63, 190, 130, 0.08) 0%, transparent 68%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(248, 253, 250, 0.78) 100%) !important;
+  backdrop-filter: blur(14px) saturate(148%);
+  -webkit-backdrop-filter: blur(14px) saturate(148%);
+  box-shadow: inset 0 0 0 1px rgba(63, 190, 130, 0.15) !important;
+}
+
+/* Record header banner — warm glass wash (yellow→salmon) */
+.stratus .bg-ish-yellow-gradient {
+  background: linear-gradient(150deg, #fff8ee 0%, #fef4f0 55%, #fef0ef 100%) !important;
+  border-bottom: 1px solid rgba(255, 180, 100, 0.18);
+}
+
+/* Scouting grid main area — lift from bg-white/40 to light glass */
+.stratus .bg-white\/40 {
+  background: rgba(255, 255, 255, 0.38) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Right detail panel border in scouting */
+.stratus .border-l.bg-white {
+  background: rgba(255, 255, 255, 0.80) !important;
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  border-color: rgba(131, 162, 219, 0.18) !important;
+}
+
+/* Toolbar bar bg-white at top of scouting — glass strip */
+.stratus .border-b.bg-white {
+  background: rgba(255, 255, 255, 0.82) !important;
+  backdrop-filter: blur(20px) saturate(155%);
+  -webkit-backdrop-filter: blur(20px) saturate(155%);
+  border-color: rgba(131, 162, 219, 0.18) !important;
+}
+
+/* All bg-white surfaces — frosted glass baseline */
+.stratus div.bg-white,
+.stratus button.bg-white {
+  background: rgba(255, 255, 255, 0.76) !important;
+  backdrop-filter: blur(16px) saturate(155%);
+  -webkit-backdrop-filter: blur(16px) saturate(155%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62), 0 2px 8px rgba(131, 162, 219, 0.07) !important;
+  border-color: rgba(131, 162, 219, 0.14) !important;
+}
+
+/* Queue/nav sidebar cards — recede so active highlight reads clearly */
+.stratus .ish-glass-sidebar button.bg-white {
+  background: rgba(255, 255, 255, 0.30) !important;
+  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
+    0 1px 2px rgba(131, 162, 219, 0.04) !important;
+  border-color: transparent !important;
+}
+
+/* Active SlidingHighlight in queue sidebar — warm glass bloom */
+.stratus .ish-glass-sidebar span.bg-ish-yellow-gradient {
+  background:
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(255, 210, 140, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(253, 142, 140, 0.10) 0%, transparent 50%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 252, 248, 0.95) 100%) !important;
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  border-bottom: none !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.95),
+    inset 0 0 0 2px rgba(255, 190, 100, 0.22),
+    0 0 0 1px rgba(255, 190, 100, 0.28),
+    0 8px 28px rgba(255, 160, 80, 0.16),
+    0 2px 8px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Inline chips / code */
+.stratus span.bg-white,
+.stratus code.bg-white {
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+/* Fix hardcoded ring-blue-500 on primary selected tiles → stratus blue */
+.stratus .ring-blue-500 {
+  --tw-ring-color: rgba(131, 162, 219, 0.85);
+}
+
+/* Remap green selection ring → stratus blue for consistency */
+.stratus .ring-ish-green {
+  --tw-ring-color: rgba(131, 162, 219, 0.70);
+}
+
