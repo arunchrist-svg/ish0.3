@@ -45,8 +45,10 @@ export function ContactCard({ record, current, emailConfidence, confidenceTier, 
       {enrichmentSource ? (
         <p className="mb-3 text-[10.5px] text-ish-ink-faint">Source: {enrichmentSource.replace(/_/g, " ")}</p>
       ) : null}
-      <FieldRow label="First Name" value={record.contact.firstName} />
-      <FieldRow label="Last Name" value={record.contact.lastName} />
+      <FieldRow
+        label="Name"
+        value={[record.contact.firstName, record.contact.lastName].filter(Boolean).join(" ") || "—"}
+      />
       <FieldRow label="Job Title" value={current.title} />
       <FieldRow label="Business Phone" value={record.contact.businessPhone} action="phone" />
       <FieldRow label="Mobile Phone" value={record.contact.mobilePhone} action="phone" />

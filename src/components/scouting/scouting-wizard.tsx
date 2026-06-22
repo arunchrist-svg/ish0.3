@@ -22,56 +22,75 @@ type Props = {
 };
 
 export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Props) {
+  function subLabel(id: number): string | null {
+    if (id === 1 && companiesCount > 0) return `${companiesCount} selected`;
+    if (id === 2 && currentStep >= 2 && leadsCount > 0) return `${leadsCount} found`;
+    return null;
+  }
+
   return (
-    <div className="border-b border-ish-border bg-ish-app/60 px-6 py-3.5">
-      <div className="flex items-center justify-center gap-2">
+    <div className="border-b border-ish-border bg-white px-6 py-4">
+      <div className="flex items-start justify-center gap-0">
         {STEPS.map((step, idx) => {
           const isCompleted = step.id < currentStep;
           const isCurrent = step.id === currentStep;
+          const isPending = step.id > currentStep;
           const Icon = step.icon;
+          const sub = subLabel(step.id);
 
           return (
-            <div key={step.id} className="flex items-center">
-              <div className="flex items-center gap-2.5">
+            <div key={step.id} className="flex items-start">
+              {/* Step node */}
+              <div className="flex flex-col items-center gap-2" style={{ minWidth: 90 }}>
+                {/* Circle */}
                 <div
                   className={cn(
-                    "flex size-8 items-center justify-center rounded-full text-sm font-bold transition-all",
-                    isCompleted && "bg-ish-green text-white",
-                    isCurrent && "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow)]",
-                    !isCompleted && !isCurrent && "bg-white text-ish-ink-faint ring-1 ring-ish-border",
+                    "flex size-10 items-center justify-center rounded-full transition-all duration-300",
+                    isCompleted && "bg-ish-green shadow-[0_2px_8px_rgba(63,190,130,0.35)]",
+                    isCurrent && "bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]",
+                    isPending && "bg-ish-border",
                   )}
                 >
-                  {isCompleted ? <Check className="size-3.5" /> : <Icon className="size-3.5" />}
+                  {isCompleted ? (
+                    <Check className="size-[18px] text-white" strokeWidth={2.5} />
+                  ) : (
+                    <Icon
+                      className={cn(
+                        "size-[18px] transition-colors",
+                        isCurrent ? "text-ish-ink" : "text-ish-ink-faint",
+                      )}
+                    />
+                  )}
                 </div>
-                <div className="flex flex-col">
+
+                {/* Label + sub-label */}
+                <div className="flex flex-col items-center gap-0.5 text-center">
                   <span
                     className={cn(
-                      "text-[12px] font-semibold leading-tight",
-                      isCurrent ? "text-ish-ink" : "text-ish-ink-soft",
+                      "text-[11.5px] font-semibold leading-tight",
+                      isCurrent ? "text-ish-ink" : isCompleted ? "text-ish-ink-soft" : "text-ish-ink-faint",
                     )}
                   >
                     {step.label}
                   </span>
-                  {step.id === 1 && companiesCount > 0 && (
-                    <span className="text-[10px] text-ish-ink-faint">
-                      {companiesCount} selected
-                    </span>
-                  )}
-                  {step.id === 2 && currentStep >= 2 && leadsCount > 0 && (
-                    <span className="text-[10px] text-ish-ink-faint">
-                      {leadsCount} found
-                    </span>
+                  {sub ? (
+                    <span className="text-[10px] font-medium text-ish-ink-faint">{sub}</span>
+                  ) : (
+                    <span className="text-[10px] text-transparent select-none">—</span>
                   )}
                 </div>
               </div>
 
+              {/* Connector line between steps */}
               {idx < STEPS.length - 1 && (
-                <div
-                  className={cn(
-                    "mx-3 h-0.5 w-12 rounded-full transition-colors sm:mx-4 sm:w-16",
-                    step.id < currentStep ? "bg-ish-green" : "bg-ish-border",
-                  )}
-                />
+                <div className="relative mx-1 mt-5 h-0.5 w-16 overflow-hidden rounded-full bg-ish-border sm:w-20">
+                  <div
+                    className={cn(
+                      "absolute inset-y-0 left-0 rounded-full bg-ish-green transition-all duration-500",
+                    )}
+                    style={{ width: step.id < currentStep ? "100%" : "0%" }}
+                  />
+                </div>
               )}
             </div>
           );

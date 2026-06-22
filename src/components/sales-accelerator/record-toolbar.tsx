@@ -1,60 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, MoreHorizontal, RefreshCw, Save, MessageSquare, Package, Handshake, Trophy, Search, Sparkles, Pin } from "lucide-react";
+import { MoreHorizontal, RefreshCw, MessageSquare, Package, Handshake, Trophy, Pin } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { markReplied, updateLeadStatus, enrichLead, togglePin } from "@/lib/api-client";
+import { markReplied, updateLeadStatus, togglePin } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
-import { getNextManualStatus, isContactReadyStage } from "@/lib/pipeline-status";
+import { getNextManualStatus } from "@/lib/pipeline-status";
 import { AppModal } from "@/components/ui/app-modal";
 
 type Props = {
   lead: LeadDetailRecord;
   onAction: () => void;
   onLeadUpdated: () => void;
-  onOpenEmailTab?: () => void;
-  hasEmailDraft?: boolean;
 };
 
-export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, hasEmailDraft }: Props) {
+export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [dealAmount, setDealAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [enriching, setEnriching] = useState(false);
-  const [paidDialogOpen, setPaidDialogOpen] = useState(false);
   const [pinning, setPinning] = useState(false);
-
-  const needsEnrich =
-    !lead.title || lead.title === "—" ||
-    !lead.email || lead.email === "—" ||
-    lead.emailStatus === "missing" || lead.emailStatus === "generic" ||
-    (lead.emailConfidence ?? 0) < 55;
-
-  async function handleEnrich(mode: "free" | "paid") {
-    setEnriching(true);
-    try {
-      const result = await enrichLead(lead.id, { mode });
-      if (result.enrichment.title) {
-        toast.success(`Title updated: ${result.enrichment.title}`);
-      } else if (result.success && result.enrichment.email) {
-        toast.success(`Email found (${result.enrichment.confidenceTier})`);
-      } else if (result.enrichment.message) {
-        toast.info(result.enrichment.message);
-      } else {
-        toast.info(mode === "paid" ? "Paid enrich completed — no new email found" : "No email found via free sources");
-      }
-      setPaidDialogOpen(false);
-      onAction();
-      onLeadUpdated();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Enrichment failed");
-    } finally {
-      setEnriching(false);
-    }
-  }
-
 
   async function handleMarkReplied() {
     try {
@@ -105,63 +71,12 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, h
     }
   }
 
-  const showGenerate = isContactReadyStage(lead.status);
-  const showApprove = lead.status === "draft_ready";
   const showMarkReplied = lead.status === "outreached";
   const nextManual = getNextManualStatus(lead.status);
 
   return (
     <>
       <div className="flex flex-wrap gap-2 rounded-t-[22px] bg-ish-yellow-gradient px-[22px] py-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-auto rounded-[18px] bg-white/55 px-3.5 py-1.5 text-xs font-semibold text-ish-ink hover:bg-white/70"
-          onClick={() => toast.info("Saved")}
-        >
-          <Save className="size-3.5" />
-          Save
-        </Button>
-
-        {needsEnrich && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={enriching}
-            className="h-auto rounded-[18px] bg-white/55 px-3.5 py-1.5 text-xs font-semibold text-ish-ink hover:bg-white/70"
-            onClick={() => handleEnrich("free")}
-          >
-            <Search className="size-3.5" />
-            Find Email (Free)
-          </Button>
-        )}
-
-        {needsEnrich && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={enriching}
-            className="h-auto rounded-[18px] bg-ish-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-black/90"
-            onClick={() => setPaidDialogOpen(true)}
-          >
-            <Sparkles className="size-3.5" />
-            Enrich (Paid)
-          </Button>
-        )}
-
-        {(showGenerate || showApprove) && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-auto rounded-[18px] bg-ish-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-black/90"
-            onClick={() => onOpenEmailTab?.()}
-          >
-            <FileText className="size-3.5" />
-            {hasEmailDraft ? "Review Email" : "Write Email"}
-          </Button>
-        )}
-
-
         {showMarkReplied && (
           <Button
             variant="ghost"
@@ -281,33 +196,6 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated, onOpenEmailTab, h
                 onClick={() => handleManualAdvance("closed", dealAmount)}
               >
                 Confirm Close
-              </Button>
-            </div>
-      </AppModal>
-
-
-      <AppModal open={paidDialogOpen} onClose={() => setPaidDialogOpen(false)}>
-            <h3 className="text-[15px] font-bold text-ish-ink">Paid enrichment</h3>
-            <p className="mt-1 text-[13px] text-ish-ink-soft">
-              Uses Apollo and Hunter credits to find a direct email for {lead.name}. This spends paid API quota for this lead only.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-auto rounded-[14px] px-4 py-2 text-xs font-semibold"
-                onClick={() => setPaidDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={enriching}
-                className="h-auto rounded-[14px] bg-ish-black px-4 py-2 text-xs font-semibold text-white hover:bg-ish-black/90"
-                onClick={() => handleEnrich("paid")}
-              >
-                Run paid enrich
               </Button>
             </div>
       </AppModal>

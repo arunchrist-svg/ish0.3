@@ -105,10 +105,10 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all duration-150",
+        "whitespace-nowrap rounded-full px-4 py-1.5 text-[12px] font-semibold transition-all duration-150 active:scale-[0.97]",
         active
-          ? "bg-ish-ink text-white"
-          : "bg-ish-app text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
+          ? "bg-ish-ink text-white shadow-sm"
+          : "bg-ish-canvas text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
       )}
     >
       {label}
@@ -337,20 +337,29 @@ function IndustryPopoverContent({
   onToggle: (i: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-3 p-4">
+    <div className="flex flex-col gap-3.5 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-ish-ink-soft">Select industries to scout</p>
+        <div className="flex items-center gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-ish-ink-faint">
+            Industries
+          </p>
+          {industries.length > 0 && (
+            <span className="rounded-full bg-ish-green-soft px-2 py-0.5 text-[10px] font-bold text-ish-green">
+              {industries.length}
+            </span>
+          )}
+        </div>
         {industries.length > 0 && (
           <button
             type="button"
             onClick={() => industries.forEach((i) => onToggle(i))}
             className="text-[11px] font-semibold text-ish-ink-faint hover:text-ish-ink"
           >
-            Clear all
+            Clear
           </button>
         )}
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-2">
         {SCOUT_INDUSTRIES.map((ind) => (
           <FilterChip
             key={ind}
@@ -384,7 +393,9 @@ function PeoplePopoverContent({
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
-        <p className="text-[11px] font-semibold text-ish-ink-soft">Filter by seniority & department</p>
+        <p className="text-[11px] font-bold uppercase tracking-widest text-ish-ink-faint">
+          People Filters
+        </p>
         {hasAny && (
           <button
             type="button"
@@ -394,16 +405,16 @@ function PeoplePopoverContent({
             }}
             className="text-[11px] font-semibold text-ish-ink-faint hover:text-ish-ink"
           >
-            Clear all
+            Clear
           </button>
         )}
       </div>
 
       <div>
-        <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+        <p className="mb-2.5 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
           Seniority
         </p>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {SCOUT_SENIORITY.map((s) => (
             <FilterChip
               key={s}
@@ -415,11 +426,13 @@ function PeoplePopoverContent({
         </div>
       </div>
 
+      <div className="h-px bg-ish-border/60" />
+
       <div>
-        <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+        <p className="mb-2.5 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
           Department
         </p>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {SCOUT_DEPARTMENTS.map((d) => (
             <FilterChip
               key={d}
@@ -537,7 +550,7 @@ function SecondaryBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex shrink-0 items-center gap-1.5 rounded-xl border border-ish-border bg-white px-3.5 py-1.5 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-app disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex shrink-0 items-center gap-1.5 rounded-full border border-ish-border bg-white px-4 py-2 text-[12.5px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-canvas active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       {label}
@@ -564,12 +577,12 @@ function PrimaryBtn({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-1.5 text-[12.5px] font-bold transition-all duration-150",
+        "flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2 text-[13px] font-bold transition-all duration-150 active:scale-[0.97]",
         !disabled && color === "yellow" &&
           "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)] hover:opacity-90",
         !disabled && color === "green" &&
-          "bg-ish-green text-white shadow-[var(--shadow-ish)] hover:opacity-90",
-        disabled && "cursor-not-allowed bg-ish-app text-ish-ink-faint",
+          "bg-ish-green text-white shadow-[0_2px_8px_rgba(63,190,130,0.35)] hover:opacity-90",
+        disabled && "cursor-not-allowed bg-ish-canvas text-ish-ink-faint",
       )}
     >
       {label}

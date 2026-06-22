@@ -5,7 +5,6 @@ import { CircleButton } from "@/design-system";
 
 type Props = {
   stage: number;
-  activeDays: number;
 };
 
 function StageNode({ label, active, done, isLast }: { label: string; active: boolean; done: boolean; isLast: boolean }) {
@@ -31,13 +30,9 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
   );
 }
 
-export function PipelineStepper({ stage, activeDays }: Props) {
+export function PipelineStepper({ stage }: Props) {
   return (
-    <div className="flex items-center gap-0 bg-ish-yellow-gradient px-[22px] pb-[22px]">
-      <div className="mr-3.5 shrink-0 rounded-2xl bg-white/40 px-[18px] py-3">
-        <div className="text-[13px] font-bold text-ish-ink">Diwali Gifting Pipeline</div>
-        <div className="mt-0.5 text-[11px] text-ish-ink/60">Active for {activeDays} Days</div>
-      </div>
+    <div className="flex items-center gap-0 rounded-b-[22px] bg-ish-yellow-gradient px-[22px] pt-[22px] pb-[22px]">
       <CircleButton size={28}><ChevronLeft className="size-3.5" /></CircleButton>
       <div className="flex flex-1 items-center gap-2 overflow-hidden px-2.5">
         {STAGES.map((s, i) => (

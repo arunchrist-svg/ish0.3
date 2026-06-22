@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
-import { RecordToolbar } from "@/components/sales-accelerator/record-toolbar";
 import { RecordHeader } from "@/components/sales-accelerator/record-header";
 import { PipelineStepper } from "@/components/sales-accelerator/pipeline-stepper";
 import { ContactCard } from "@/components/sales-accelerator/contact-card";
@@ -16,6 +15,7 @@ import { fetchLead } from "@/lib/api-client";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { showError } from "@/lib/toast";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
+import { ActionLoader } from "@/components/sales-accelerator/action-loader";
 
 type Props = {
   leadId: string;
@@ -90,6 +90,7 @@ const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"
 export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   const [lead, setLead] = useState<LeadDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("Summary");
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -113,6 +114,15 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
     }
   }
 
+  async function refreshInline(showOverlay = true) {
+    if (showOverlay) setRefreshing(true);
+    try {
+      await load({ silent: true });
+    } finally {
+      if (showOverlay) setRefreshing(false);
+    }
+  }
+
   function applyDraft(draft: WriterDraft) {
     setLead((prev) =>
       prev
@@ -132,8 +142,6 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId]);
-
-  const stage = statusToPipelineIndex(lead?.status ?? "scouted");
 
   if (loading) {
     return (
@@ -167,11 +175,14 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   const hasDraft = !!lead.outreach;
 
   return (
-    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-[22px_26px]">
-      <RecordToolbar lead={lead} onAction={load} onLeadUpdated={onLeadUpdated} onOpenEmailTab={() => setActiveTab("Email")} hasEmailDraft={hasDraft} />
-      <RecordHeader record={record} current={current} />
-      <PipelineStepper stage={stage} activeDays={2} />
-
+    <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto p-[22px_26px]">
+      {refreshing && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center bg-white/50 pt-28 backdrop-blur-[2px]">
+          <ActionLoader variant="refresh" contactName={lead.name} />
+        </div>
+      )}
+      <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} />
+      <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
       <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white">
         <div className="px-[22px] pt-4">
           <TabsList className="h-auto gap-1.5 bg-transparent p-0">
@@ -201,7 +212,14 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
               confidenceTier={confidenceTierFromLead(lead)}
               enrichmentSource={lead.enrichmentSource}
             />
-            <UpNextPanel tasks={record.upNext} />
+            <UpNextPanel
+              tasks={record.upNext}
+              lead={lead}
+              hasEmailDraft={hasDraft}
+              onOpenEmailTab={() => setActiveTab("Email")}
+              onLeadUpdated={onLeadUpdated}
+              onRefresh={refreshInline}
+            />
             <LeadScoreCard record={record} current={current} />
           </div>
 

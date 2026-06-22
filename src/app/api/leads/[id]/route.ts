@@ -138,11 +138,11 @@ function deriveUpNext(
 ): LeadDetailRecord["upNext"] {
   const tasks: LeadDetailRecord["upNext"] = [];
 
-  if (status === "researched" || status === "scouted") {
+  if (status === "researched" || status === "scouted" || status === "prefiltered") {
     tasks.push({
       title: "Generate Email Draft",
       step: "Step 1 · Ready now",
-      desc: "Click Generate in the toolbar to create a personalized email",
+      desc: "Write a personalized outreach email for this contact",
       icon: "mail",
       active: true,
       primaryAction: "Generate",

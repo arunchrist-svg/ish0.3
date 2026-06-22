@@ -1,10 +1,15 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ScoreGauge } from "@/design-system";
-import { Users, MapPin, Check } from "lucide-react";
+import { MapPin, Users, Check } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
 import { CompanyLogo } from "@/components/company/company-logo";
+
+function getScoreColor(score: number): string {
+  if (score >= 75) return "#3fbe82";
+  if (score >= 50) return "#e8a000";
+  return "#e57373";
+}
 
 type Props = {
   company: Company;
@@ -23,6 +28,8 @@ export function CompanyTile({
   onView,
   selectable = true,
 }: Props) {
+  const scoreColor = getScoreColor(company.giftScore);
+
   return (
     <div
       role="button"
@@ -30,33 +37,28 @@ export function CompanyTile({
       onClick={onView}
       onKeyDown={(e) => e.key === "Enter" && onView()}
       className={cn(
-        "group relative flex min-h-[172px] cursor-pointer flex-col overflow-hidden rounded-[20px] bg-white p-4 transition-all duration-200",
+        "group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-white p-4 transition-all duration-200",
         isPrimary
-          ? "ring-2 ring-blue-500 shadow-[var(--shadow-ish)]"
+          ? "shadow-[var(--shadow-ish)] ring-[1.5px] ring-ish-green"
+          : isSelected
+          ? "shadow-[var(--shadow-ish)] ring-[1.5px] ring-ish-green"
           : "shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)] hover:-translate-y-0.5",
-        isSelected && !isPrimary && "ring-2 ring-ish-green",
       )}
     >
-      {/* Top row: logo (select overlay) + score badge */}
-      <div className="mb-3 flex items-start justify-between">
-        {/* Logo with Google-Photos-style selection overlay */}
+      {/* Top row: logo + score */}
+      <div className="mb-3.5 flex items-start justify-between">
+        {/* Logo (tappable to select) */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             if (selectable) onToggleSelect();
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              if (selectable) onToggleSelect();
-            }
-          }}
           disabled={!selectable}
           aria-label={isSelected ? `Deselect ${company.name}` : `Select ${company.name}`}
           className={cn(
-            "relative flex size-12 shrink-0 items-center justify-center rounded-[12px] bg-ish-app text-[26px] leading-none",
-            selectable ? "cursor-pointer" : "cursor-default",
+            "relative flex size-12 shrink-0 items-center justify-center rounded-xl bg-ish-canvas transition-transform duration-150",
+            selectable ? "cursor-pointer active:scale-95" : "cursor-default",
           )}
         >
           <CompanyLogo
@@ -64,65 +66,71 @@ export function CompanyTile({
             domain={company.domain}
             logo={company.logo}
             size="md"
-            className="bg-ish-app ring-0"
-            rounded="rounded-[12px]"
+            className="bg-ish-canvas ring-0"
+            rounded="rounded-xl"
           />
 
-          {/* Hover hint: empty white ring */}
+          {/* Hover overlay hint */}
           {selectable && !isSelected && (
             <span
               aria-hidden
-              className="absolute inset-0 flex items-center justify-center rounded-[12px] bg-black/20 opacity-0 transition-opacity group-hover:opacity-100"
+              className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/15 opacity-0 transition-opacity group-hover:opacity-100"
             >
-              <span className="size-5 rounded-full border-2 border-white" />
+              <span className="size-4 rounded-full border-2 border-white" />
             </span>
           )}
 
-          {/* Selected: green checkmark */}
+          {/* Selected overlay */}
           {isSelected && (
             <span
               aria-hidden
-              className="absolute inset-0 flex items-center justify-center rounded-[12px] bg-black/20"
+              className="absolute inset-0 flex items-center justify-center rounded-xl bg-ish-green/20"
             >
-              <span className="flex size-5 items-center justify-center rounded-full bg-ish-green">
-                <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                  <path
-                    d="M1 4l3 3 5-6"
-                    stroke="white"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+              <span className="flex size-5 items-center justify-center rounded-full bg-ish-green shadow-sm">
+                <svg width="9" height="7" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
             </span>
           )}
         </button>
 
-        <ScoreGauge score={company.giftScore} size="sm" background />
+        {/* Score badge */}
+        <div
+          className="flex items-baseline gap-0.5 rounded-full px-2.5 py-1"
+          style={{ backgroundColor: `${scoreColor}18` }}
+        >
+          <span className="text-[14px] font-extrabold leading-none" style={{ color: scoreColor }}>
+            {company.giftScore}
+          </span>
+          <span className="text-[8px] font-bold" style={{ color: scoreColor, opacity: 0.7 }}>%</span>
+        </div>
       </div>
 
-      {/* Body */}
+      {/* Company name + industry */}
       <div className="flex-1">
         <div
-          className="mb-1.5 line-clamp-2 text-[13.5px] font-bold leading-snug text-ish-ink"
+          className="mb-1.5 line-clamp-2 text-[14px] font-bold leading-snug text-ish-ink"
           title={company.name}
         >
           {company.name}
         </div>
-        <span className="inline-block rounded-full bg-ish-app px-2.5 py-0.5 text-[11px] font-medium text-ish-ink-soft">
+        <span className="inline-block rounded-full bg-ish-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-ish-ink-soft">
           {company.type}
         </span>
       </div>
 
-      {/* Bottom row: meta left + Select CTA right */}
-      <div className="mt-3 flex items-center justify-between border-t border-ish-border/50 pt-3">
+      {/* Divider */}
+      <div className="mx-0 my-3 h-px bg-ish-border/60" />
+
+      {/* Footer: meta + Select CTA */}
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-[11px] text-ish-ink-faint">
           <Users className="size-3 shrink-0" />
           <span>{company.employees}</span>
           <span className="text-ish-border">·</span>
           <MapPin className="size-3 shrink-0" />
-          <span className="max-w-[80px] truncate">{company.city}</span>
+          <span className="max-w-[70px] truncate">{company.city}</span>
         </div>
 
         {selectable && (
@@ -132,23 +140,17 @@ export function CompanyTile({
               e.stopPropagation();
               onToggleSelect();
             }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                onToggleSelect();
-              }
-            }}
             aria-label={isSelected ? `Deselect ${company.name}` : `Select ${company.name}`}
             className={cn(
-              "flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition-all",
+              "flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition-all duration-150 active:scale-95",
               isSelected
-                ? "bg-ish-green text-white"
+                ? "bg-ish-green text-white shadow-[0_2px_6px_rgba(63,190,130,0.30)]"
                 : "border border-ish-border bg-white text-ish-ink-soft hover:border-ish-ink-soft hover:text-ish-ink",
             )}
           >
             {isSelected ? (
               <>
-                <Check className="size-3" />
+                <Check className="size-3" strokeWidth={2.5} />
                 Selected
               </>
             ) : (

@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { ScoreGauge } from "@/design-system";
-import { Bookmark, MessageCircle, Zap, Briefcase, ExternalLink } from "lucide-react";
+import { Bookmark, MessageCircle, Zap, ExternalLink } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
 import { COMPANIES } from "@/lib/scouting-data";
 import { getInitials } from "@/lib/data";
@@ -24,9 +23,9 @@ type Props = {
   directoryLeadId?: string;
 };
 
-function getScoreRingColor(score: number): string {
-  if (score >= 85) return "#3fbe82";
-  if (score >= 70) return "#e8a000";
+function getScoreColor(score: number): string {
+  if (score >= 75) return "#3fbe82";
+  if (score >= 50) return "#e8a000";
   return "#e57373";
 }
 
@@ -48,167 +47,150 @@ export function LeadCard({
     ? { name: companyName }
     : COMPANIES.find((c) => c.id === person.companyId);
   const signalsCount = person.engagementSignals.length;
-  const ringColor = getScoreRingColor(person.matchScore);
+  const scoreColor = getScoreColor(person.matchScore);
 
   return (
     <div
       className={cn(
-        "flex flex-col overflow-hidden rounded-[20px] bg-white transition-all duration-200",
+        "group relative flex flex-col overflow-hidden rounded-2xl bg-white transition-all duration-200",
         alreadyAdded
           ? "opacity-50 cursor-not-allowed"
           : isPrimary
-          ? "ring-2 ring-blue-500 shadow-[var(--shadow-ish)]"
+          ? "shadow-[var(--shadow-ish)] ring-[1.5px] ring-ish-green"
+          : isSelected
+          ? "shadow-[var(--shadow-ish)] ring-[1.5px] ring-ish-green"
           : "shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)] hover:-translate-y-0.5",
-        isSelected && !isPrimary && !alreadyAdded && "ring-2 ring-ish-green",
       )}
     >
-      {/* Checkbox row */}
-      {selectable ? (
-        <button
-          type="button"
-          onClick={alreadyAdded ? undefined : onToggleSelect}
-          disabled={alreadyAdded}
-          className="flex w-full items-center justify-between px-5 pt-4 pb-0"
-          aria-label={alreadyAdded ? `${person.name} already added` : isSelected ? `Deselect ${person.name}` : `Select ${person.name}`}
-        >
-          <span
-            className={cn(
-              "flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-              alreadyAdded
-                ? "border-ish-border bg-ish-app"
-                : isSelected
-                ? "border-ish-green bg-ish-green"
-                : "border-ish-border bg-white",
-            )}
-          >
-            {alreadyAdded ? (
-              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                <path d="M1 4l3 3 5-6" stroke="#aaa" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            ) : isSelected ? (
-              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            ) : null}
-          </span>
-          {alreadyAdded && (
-            <span className="text-[10px] font-semibold text-ish-ink-faint bg-ish-app rounded-full px-2 py-0.5">
-              Already added
-            </span>
-          )}
-        </button>
-      ) : (
-        <div className="px-5 pt-4" />
-      )}
-
-      {/* View zone */}
+      {/* Clickable body */}
       <button
         type="button"
-        onClick={onView}
-        className="flex w-full flex-1 cursor-pointer flex-col px-5 pb-4 pt-3 text-left"
+        onClick={alreadyAdded ? undefined : onView}
+        disabled={alreadyAdded}
+        className="flex w-full flex-1 cursor-pointer flex-col px-4 pb-3 pt-4 text-left"
         aria-label={`View ${person.name}`}
       >
-        {/* Avatar */}
-        <div className="mb-3.5 flex justify-center">
-          <div
-            className={cn(
-              "flex size-[60px] items-center justify-center rounded-full font-bold text-[#5a4838]",
-              getAvatarColor(index),
-            )}
-            style={{
-              fontSize: 18,
-              boxShadow: `0 0 0 3px white, 0 0 0 5px ${ringColor}`,
+        {/* Top row: avatar (selector) + score */}
+        <div className="mb-3.5 flex items-start justify-between">
+          {/* Avatar as selector */}
+          <button
+            type="button"
+            disabled={alreadyAdded || !selectable}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (!alreadyAdded && selectable) onToggleSelect();
             }}
+            className={cn(
+              "relative flex size-[56px] shrink-0 items-center justify-center rounded-full font-bold text-[#5a4838] transition-transform duration-150",
+              selectable && !alreadyAdded && "active:scale-95",
+            )}
+            style={{ fontSize: 17 }}
+            aria-label={alreadyAdded ? `${person.name} already added` : isSelected ? `Deselect ${person.name}` : `Select ${person.name}`}
           >
-            {getInitials(person.name)}
+            {/* Avatar background */}
+            <div
+              className={cn(
+                "flex size-full items-center justify-center rounded-full font-bold",
+                getAvatarColor(index),
+              )}
+            >
+              {getInitials(person.name)}
+            </div>
+            {/* Selected checkmark overlay */}
+            {(isSelected || alreadyAdded) && (
+              <span className="absolute -bottom-0.5 -right-0.5 flex size-5 items-center justify-center rounded-full border-2 border-white bg-ish-green shadow-sm">
+                <svg width="9" height="7" viewBox="0 0 10 8" fill="none">
+                  <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+            )}
+          </button>
+
+          {/* Score + signals */}
+          <div className="flex flex-col items-end gap-1.5">
+            <div
+              className="flex items-baseline gap-0.5 rounded-full px-2.5 py-1 text-white"
+              style={{ backgroundColor: scoreColor }}
+            >
+              <span className="text-[14px] font-extrabold leading-none">{person.matchScore}</span>
+              <span className="text-[8px] font-semibold opacity-80">%</span>
+            </div>
+            {signalsCount > 0 && (
+              <div className="flex items-center gap-1">
+                <Zap className="size-3 text-ish-green" />
+                <span className="text-[11px] font-semibold text-ish-ink-soft">{signalsCount}</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Name + title */}
-        <div className="mb-3 text-center">
-          <div className="text-[14.5px] font-bold leading-snug text-ish-ink">{person.name}</div>
-          <div className="mt-0.5 text-[11.5px] leading-snug text-ish-ink-soft">{person.title}</div>
-          {company && (
-            <div
-              className="mt-0.5 line-clamp-2 min-h-[2.4em] text-[11px] leading-[1.3] text-ish-ink-faint"
-              title={company.name}
-            >
-              {company.name}
-            </div>
-          )}
-        </div>
-
-        {/* Badges */}
-        <div className="mb-4 flex flex-wrap justify-center gap-1.5">
+        {/* Name + KEY badge */}
+        <div className="mb-1 flex items-center gap-1.5">
+          <span className="text-[15px] font-bold leading-tight text-ish-ink line-clamp-1">{person.name}</span>
           {person.isKeyDecisionMaker && (
-            <span className="rounded-full bg-ish-black px-2.5 py-0.5 text-[10px] font-bold tracking-wide text-white">
+            <span className="shrink-0 rounded-[5px] bg-ish-black px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
               KEY
             </span>
           )}
-          <span className="rounded-full bg-ish-app px-2.5 py-0.5 text-[10px] font-medium text-ish-ink-soft">
-            {person.department}
-          </span>
-          <span className="rounded-full bg-ish-app px-2.5 py-0.5 text-[10px] font-medium text-ish-ink-soft">
-            {person.seniority}
-          </span>
         </div>
 
-        {/* Stats row */}
-        <div className="flex items-center justify-center rounded-[12px] bg-ish-app px-3 py-3 gap-0">
-          <div className="flex flex-1 flex-col items-center gap-1">
-            <ScoreGauge score={person.matchScore} size="sm" background />
-            <span className="text-[10px] text-ish-ink-faint">Match</span>
-          </div>
+        {/* Title */}
+        <div className="mb-0.5 text-[12px] font-medium leading-snug text-ish-ink-soft line-clamp-1">
+          {person.title}
+        </div>
 
-          <div className="h-8 w-px bg-ish-border" />
+        {/* Company */}
+        {company && (
+          <div className="mb-3 text-[11px] text-ish-ink-faint line-clamp-1">{company.name}</div>
+        )}
 
-          <div className="flex flex-1 flex-col items-center gap-1">
-            <div className="flex items-center gap-1">
-              <Zap className="size-3.5 text-ish-green" />
-              <span className="text-[14px] font-bold text-ish-ink">{signalsCount}</span>
-            </div>
-            <span className="text-[10px] text-ish-ink-faint">Signals</span>
-          </div>
-
-          <div className="h-8 w-px bg-ish-border" />
-
-          <div className="flex flex-1 flex-col items-center gap-1">
-            <div className="flex items-center gap-1">
-              <Briefcase className="size-3.5 text-ish-ink-soft" />
-            </div>
-            <span className="text-[10px] text-ish-ink-faint">{person.seniority}</span>
-          </div>
+        {/* Dept + seniority tags */}
+        <div className="flex flex-wrap gap-1.5">
+          <span className="rounded-full bg-ish-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-ish-ink-soft">
+            {person.department}
+          </span>
+          <span className="rounded-full bg-ish-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-ish-ink-soft">
+            {person.seniority}
+          </span>
+          {alreadyAdded && (
+            <span className="rounded-full bg-ish-border px-2.5 py-0.5 text-[10px] font-semibold text-ish-ink-faint">
+              Already added
+            </span>
+          )}
         </div>
       </button>
 
-      {/* Actions */}
+      {/* Divider */}
+      <div className="mx-4 h-px bg-ish-border/60" />
+
+      {/* CTA row */}
       {directoryLeadId ? (
-        <div className="px-5 pb-5">
+        <div className="px-4 py-3">
           <Link
             href={`/?lead=${directoryLeadId}`}
-            className="flex w-full items-center justify-center gap-1.5 rounded-full bg-ish-app py-2.5 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-ish-border"
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-ish-canvas py-2 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-ish-border active:scale-[0.98]"
           >
             Open lead
             <ExternalLink className="size-3.5" />
           </Link>
         </div>
       ) : (
-        <div className="flex items-center gap-2 px-5 pb-5">
+        <div className="flex items-center gap-2 px-4 py-3">
           <button
             type="button"
             onClick={onContact}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-ish-app py-2.5 text-[12px] font-semibold text-ish-ink transition-colors hover:bg-ish-border"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-ish-canvas py-2 text-[12px] font-semibold text-ish-ink transition-all hover:bg-ish-border active:scale-[0.98]"
           >
-            <MessageCircle className="size-3.5" />
+            <MessageCircle className="size-3.5 text-ish-ink-soft" />
             Get in touch
           </button>
           <button
             type="button"
             onClick={onBookmark}
-            className="flex size-10 items-center justify-center rounded-full border border-ish-border bg-white text-ish-ink-soft transition-colors hover:text-ish-ink hover:bg-ish-app"
+            className="flex size-9 items-center justify-center rounded-xl border border-ish-border/70 bg-white text-ish-ink-faint transition-all hover:border-ish-ink-soft hover:text-ish-ink active:scale-95"
             aria-label="Save"
           >
-            <Bookmark className="size-4" />
+            <Bookmark className="size-3.5" />
           </button>
         </div>
       )}
