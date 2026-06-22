@@ -1,13 +1,27 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, ChevronDown, Grip, HelpCircle, Lightbulb, Plus, Search, Settings } from "lucide-react";
-import { CircleButton, IshAvatar, ThemeToggle } from "@/design-system";
+import { Grip, LogOut } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  IshAvatar,
+} from "@/design-system";
 import { ISH_LOGO_URL } from "@/lib/brand";
 import { TavilyUsageMeter } from "./tavily-usage-meter";
 
 export function TopBar() {
   const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+  }
 
   return (
     <div className="flex shrink-0 items-center border-b border-ish-border bg-white px-7 py-4">
@@ -19,17 +33,30 @@ export function TopBar() {
       </div>
       <div className="ml-auto flex items-center gap-2">
         <TavilyUsageMeter />
-        <CircleButton size={36}><Search className="size-4" /></CircleButton>
-        <CircleButton size={36}><Plus className="size-4" /></CircleButton>
-        <CircleButton size={36}><Lightbulb className="size-4" /></CircleButton>
-        <CircleButton size={36}><ChevronDown className="size-4" /></CircleButton>
-        <ThemeToggle />
-        <CircleButton size={36} onClick={() => router.push("/settings")} aria-label="Settings">
-          <Settings className="size-4" />
-        </CircleButton>
-        <CircleButton size={36}><HelpCircle className="size-4" /></CircleButton>
-        <CircleButton size={36}><Bell className="size-4" /></CircleButton>
-        <IshAvatar name="ISH Owner" index={3} size={36} />
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ish-black/20"
+            aria-label="Account menu"
+          >
+            <IshAvatar name="ISH Owner" index={3} size={36} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[180px]">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-[12px] font-semibold text-ish-ink">
+                ISH Owner
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              variant="destructive"
+              className="cursor-pointer text-[12px]"
+              onClick={handleLogout}
+            >
+              <LogOut className="size-3.5" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

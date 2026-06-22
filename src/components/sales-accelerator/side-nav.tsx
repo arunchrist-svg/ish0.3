@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Activity, ChevronLeft, Clock, Contact, Home, LayoutDashboard,
-  Pin, Rocket, Settings, Target, Telescope, TrendingUp, User, Users, GitFork, Bot, BookOpen,
+  ChevronLeft, Contact, Home,
+  Pin, Rocket, Settings, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CircleButton } from "@/design-system";
@@ -22,19 +22,14 @@ type NavItemEntry = {
 
 const mainNav: NavItemEntry[] = [
   { icon: Home, label: "Home", href: "/", key: "home" },
-  { icon: Clock, label: "Recent", key: "recent" },
   { icon: Pin, label: "Pinned", key: "pinned" },
 ];
 
 const workNav: NavItemEntry[] = [
   { icon: Rocket, label: "Lead Accelerator", href: "/", key: "lead-accelerator" },
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
-  { icon: BookOpen, label: "Directory", href: "/directory", key: "directory" },
-  { icon: Bot, label: "Agents", href: "/agents", key: "agents" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
   { icon: Settings, label: "Settings", href: "/settings", key: "settings" },
-  { icon: LayoutDashboard, label: "Dashboards", key: "dashboards" },
-  { icon: Activity, label: "Activities", key: "activities" },
 ];
 
 const customerNav: NavItemEntry[] = [
@@ -42,22 +37,10 @@ const customerNav: NavItemEntry[] = [
   { icon: Contact, label: "Contacts", key: "contacts" },
 ];
 
-const pipelineNav: NavItemEntry[] = [
-  { icon: Target, label: "Leads", key: "leads" },
-  { icon: Users, label: "Opportunities", key: "opportunities" },
-];
-
-const performanceNav: NavItemEntry[] = [
-  { icon: Target, label: "Targets", key: "targets" },
-  { icon: TrendingUp, label: "Forecasts", key: "forecasts" },
-];
-
 const sections: { title?: string; items: NavItemEntry[] }[] = [
   { items: mainNav },
   { title: "MY WORK", items: workNav },
   { title: "CUSTOMERS", items: customerNav },
-  { title: "PIPELINE", items: pipelineNav },
-  { title: "PERFORMANCE", items: performanceNav },
 ];
 
 const linkedItems = sections.flatMap((section) => section.items.filter((item) => item.href));
@@ -72,7 +55,6 @@ function getActiveKey(pathname: string) {
   const match = linkedItems.find((item) => item.href && isActive(pathname, item.href));
   if (!match) return "";
   if (pathname === "/" && match.href === "/") return "lead-accelerator";
-  if (pathname === "/directory" || pathname.startsWith("/directory/")) return "directory";
   return match.key;
 }
 

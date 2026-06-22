@@ -12,7 +12,7 @@ import { LeadScoreCard } from "@/components/sales-accelerator/lead-score-card";
 import { BottomCards } from "@/components/sales-accelerator/bottom-cards";
 import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
 import { fetchLead } from "@/lib/api-client";
-import type { LeadDetailRecord } from "@/lib/api-client";
+import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { toast } from "sonner";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
 
@@ -91,16 +91,28 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("Summary");
 
-  async function load() {
-    setLoading(true);
+  async function load(opts?: { silent?: boolean }) {
+    if (!opts?.silent) setLoading(true);
     try {
       const data = await fetchLead(leadId);
       setLead(data);
     } catch {
       toast.error("Could not load lead details");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
+  }
+
+  function applyDraft(draft: WriterDraft) {
+    setLead((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: "draft_ready",
+            outreach: draft,
+          }
+        : prev,
+    );
   }
 
   useEffect(() => {
@@ -197,7 +209,11 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
           <EmailTabPanel
             lead={lead}
             draft={lead.outreach}
-            onRefresh={() => { load(); onLeadUpdated(); }}
+            onDraftUpdated={(draft) => {
+              applyDraft(draft);
+              onLeadUpdated();
+            }}
+            onSilentRefresh={() => load({ silent: true })}
           />
         </TabsContent>
 

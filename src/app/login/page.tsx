@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { Button, Separator, text } from "@/design-system";
 import { ISH_LOGO_URL } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const HERO_IMAGE =
-  "https://images.unsplash.com/photo-1487958449943-2429e8be8625?auto=format&fit=crop&w=1600&q=80";
+  "https://indiasweethouse.in/cdn/shop/files/CopyofManikya1Kg1.png?v=1729236656";
 
 function LoginField({
   id,
@@ -79,39 +79,13 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen bg-white">
-      {/* Left — brand panel */}
+      {/* Left — product image */}
       <aside className="relative hidden w-[58%] overflow-hidden lg:block">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${HERO_IMAGE})` }}
+        <img
+          src={HERO_IMAGE}
+          alt="Manikya — India Sweet House"
+          className="absolute inset-0 h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/55 to-black/80" />
-
-        <div className="relative flex h-full flex-col justify-between p-10 xl:p-12">
-          <div className="inline-flex w-fit max-w-sm items-start gap-3 rounded-full border border-white/15 bg-black/35 px-4 py-3 backdrop-blur-md">
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
-              <ShieldCheck className="size-4" />
-            </span>
-            <div>
-              <p className="text-[13px] font-bold text-white">Team Access</p>
-              <p className="mt-0.5 text-[11px] leading-snug text-white/65">
-                Lead scouting, enrichment, outreach &amp; D365 sync
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-end justify-between gap-6">
-            <div className="flex items-center gap-3">
-              <div className="flex size-11 items-center justify-center rounded-2xl bg-ish-yellow p-2 shadow-[var(--shadow-ish-yellow-sm)]">
-                <img src={ISH_LOGO_URL} alt="ISH" className="h-full w-auto object-contain" />
-              </div>
-              <span className="text-[22px] font-bold tracking-tight text-white">
-                India Sweet House
-              </span>
-            </div>
-            <p className="text-[11px] text-white/45">© India Sweet House {new Date().getFullYear()}</p>
-          </div>
-        </div>
       </aside>
 
       {/* Right — login form */}

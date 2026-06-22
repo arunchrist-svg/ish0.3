@@ -16,8 +16,8 @@ export function SalesAcceleratorApp() {
   const [activeLeadId, setActiveLeadId] = useState<string | null>(leadFromUrl);
   const [loading, setLoading] = useState(true);
 
-  async function loadLeads() {
-    setLoading(true);
+  async function loadLeads(opts?: { silent?: boolean }) {
+    if (!opts?.silent) setLoading(true);
     try {
       const data = await fetchLeads();
       setLeads(data);
@@ -67,7 +67,7 @@ export function SalesAcceleratorApp() {
               <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 overflow-hidden animate-ish-page-in">
                 <RecordWorkspace
                   leadId={activeLeadId}
-                  onLeadUpdated={loadLeads}
+                  onLeadUpdated={() => loadLeads({ silent: true })}
                 />
               </div>
             )}

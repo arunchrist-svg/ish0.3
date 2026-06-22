@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, FileText, Mail, AlertCircle } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
@@ -29,14 +29,21 @@ const RUBRIC_SHORT: Record<string, string> = {
 type Props = {
   lead: LeadDetailRecord;
   draft?: WriterDraft;
-  onRefresh: () => void;
+  onDraftUpdated: (draft: WriterDraft) => void;
+  onSilentRefresh: () => void;
 };
 
-export function EmailTabPanel({ lead, draft, onRefresh }: Props) {
+export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: Props) {
   const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplateId>(
     (draft?.templateVariant as OutreachTemplateId) ?? OUTREACH_TEMPLATES[0].id,
   );
   const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    if (draft?.templateVariant) {
+      setSelectedTemplate(draft.templateVariant as OutreachTemplateId);
+    }
+  }, [draft?.id, draft?.templateVariant]);
 
   const canWrite = isContactReadyStage(lead.status) || lead.status === "draft_ready";
   const hasDraft = !!draft;
@@ -52,9 +59,9 @@ export function EmailTabPanel({ lead, draft, onRefresh }: Props) {
   async function handleGenerate() {
     setGenerating(true);
     try {
-      await runWriter(lead.id, { outreachTemplate: selectedTemplate });
-      toast.success("Email draft ready — review below");
-      onRefresh();
+      const newDraft = await runWriter(lead.id, { outreachTemplate: selectedTemplate });
+      onDraftUpdated(newDraft);
+      toast.success("Draft updated");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Email draft failed");
       console.error(e);
@@ -83,7 +90,7 @@ export function EmailTabPanel({ lead, draft, onRefresh }: Props) {
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1">
-          {hasDraft && draft && (draft.rubricTotal ?? 0) > 0 ? (
+          {hasDraft && draft && !generating && (draft.rubricTotal ?? 0) > 0 ? (
             <>
               <div className="flex min-w-[90px] max-w-[140px] items-center gap-1.5">
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-ish-border">
@@ -155,7 +162,7 @@ export function EmailTabPanel({ lead, draft, onRefresh }: Props) {
           <WritingLoader contactName={lead.name} companyName={lead.company} />
         </div>
       ) : hasDraft && draft ? (
-        <OutreachApprovalCard leadId={lead.id} draft={draft} onDone={onRefresh} />
+        <OutreachApprovalCard key={draft.id} leadId={lead.id} draft={draft} onDone={onSilentRefresh} />
       ) : (
         <div className="flex min-h-[200px] flex-col items-center justify-center rounded-[20px] border border-dashed border-ish-border bg-white p-8 text-center shadow-[var(--shadow-ish-sm)]">
           <p className="text-[13px] font-semibold text-ish-ink">Pick {activeTemplate.shortLabel} and click Write</p>
