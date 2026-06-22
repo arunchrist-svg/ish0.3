@@ -29,7 +29,7 @@ export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Prop
   }
 
   return (
-    <div className="border-b border-ish-border bg-white px-6 py-4">
+    <div className="border-b border-ish-border bg-white px-6 py-2.5">
       <div className="flex items-start justify-center gap-0">
         {STEPS.map((step, idx) => {
           const isCompleted = step.id < currentStep;

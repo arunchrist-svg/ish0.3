@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { SettingsRow } from "@/components/settings/settings-group";
 
 export function SettingsToggleRow({
   label,
@@ -7,15 +8,15 @@ export function SettingsToggleRow({
   onChange,
 }: {
   label: string;
-  desc: string;
+  desc?: string;
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[16px] border border-ish-border/60 bg-white/70 p-4 backdrop-blur-sm">
-      <div>
-        <div className="text-[13.5px] font-bold text-ish-ink">{label}</div>
-        <p className="mt-0.5 text-[12px] text-ish-ink-soft">{desc}</p>
+    <SettingsRow className="justify-between">
+      <div className="min-w-0 flex-1 pr-4">
+        <div className="text-[15px] font-medium leading-snug text-ish-ink">{label}</div>
+        {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-ish-ink-soft">{desc}</p> : null}
       </div>
       <button
         type="button"
@@ -23,17 +24,17 @@ export function SettingsToggleRow({
         aria-checked={value}
         onClick={() => onChange(!value)}
         className={cn(
-          "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-200",
+          "relative h-[31px] w-[51px] shrink-0 overflow-hidden rounded-full transition-colors duration-200",
           value ? "bg-ish-black" : "bg-ish-border",
         )}
       >
         <span
           className={cn(
-            "absolute top-0.5 size-5 rounded-full bg-white shadow transition-transform duration-200",
-            value ? "translate-x-5" : "translate-x-0.5",
+            "absolute top-[2px] size-[27px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.2)] transition-[left] duration-200 ease-out",
+            value ? "left-[22px]" : "left-[2px]",
           )}
         />
       </button>
-    </div>
+    </SettingsRow>
   );
 }

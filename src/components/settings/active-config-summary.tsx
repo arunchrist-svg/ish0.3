@@ -1,22 +1,21 @@
-import { PanelCard, text } from "@/design-system";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
+import { SettingsGroup } from "@/components/settings/settings-group";
 
 export function ActiveConfigSummary({ config }: { config: EnrichmentConfig }) {
   return (
-    <PanelCard tone="yellow" className="h-full rounded-[20px] border border-ish-border/60 p-5 shadow-[var(--shadow-ish-sm)]">
-      <p className={text.label}>Active Configuration</p>
-      <code className="mt-2 block rounded-[12px] bg-white/60 px-3 py-3 text-[12px] text-ish-ink backdrop-blur-sm">
-        ENRICHMENT_SEARCH_PROVIDER=&quot;{config.searchProvider}&quot;<br />
-        ENRICHMENT_ENRICH_PROVIDER=&quot;{config.enrichProvider}&quot;<br />
-        ENRICHMENT_FALLBACK_TO_AI=&quot;{String(config.fallbackToAI)}&quot;<br />
-        ENRICHMENT_ENRICH_ON_IMPORT=&quot;{String(config.enrichOnImport)}&quot;<br />
-        DEFAULT_DATA_MODE=&quot;{config.dataMode}&quot;<br />
-        SCOUT_COMPANIES_LIMIT=&quot;{config.scoutCompaniesLimit}&quot;<br />
-        SCOUT_LEADS_LIMIT=&quot;{config.scoutLeadsLimit}&quot;
-      </code>
-      <p className="mt-2 text-[11px] text-ish-ink-faint">
-        Copy these into your <code className="rounded bg-white/50 px-1">.env.local</code> to persist across restarts.
-      </p>
-    </PanelCard>
+    <SettingsGroup
+      title="Environment"
+      footer="Copy these into your .env.local to persist across restarts."
+    >
+      <pre className="overflow-x-auto px-4 py-4 font-mono text-[11px] leading-relaxed text-ish-ink-soft">
+{`ENRICHMENT_SEARCH_PROVIDER="${config.searchProvider}"
+ENRICHMENT_ENRICH_PROVIDER="${config.enrichProvider}"
+ENRICHMENT_FALLBACK_TO_AI="${String(config.fallbackToAI)}"
+ENRICHMENT_ENRICH_ON_IMPORT="${String(config.enrichOnImport)}"
+DEFAULT_DATA_MODE="${config.dataMode}"
+SCOUT_COMPANIES_LIMIT="${config.scoutCompaniesLimit}"
+SCOUT_LEADS_LIMIT="${config.scoutLeadsLimit}"`}
+      </pre>
+    </SettingsGroup>
   );
 }

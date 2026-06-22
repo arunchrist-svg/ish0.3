@@ -2,7 +2,6 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { text } from "@/design-system";
 import { SettingsNav, type SettingsNavItem } from "@/components/settings/settings-nav";
 import { EnrichmentTab } from "@/components/settings/enrichment-tab";
 import { AppearanceTab } from "@/components/settings/appearance-tab";
@@ -128,28 +127,34 @@ function SettingsAppInner() {
       <SettingsNav value={activeTab} onChange={handleTabChange} items={NAV_ITEMS} />
 
       <div className="settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex shrink-0 items-start justify-between border-b border-ish-border/60 bg-white/76 px-[26px] py-5 backdrop-blur-md">
-          <div>
-            <h1 className={text.display}>{NAV_ITEMS.find((i) => i.value === activeTab)?.label ?? "Settings"}</h1>
-            <p className={cn("mt-1", text.bodySoft)}>{TAB_SUBTITLES[activeTab] ?? ""}</p>
-          </div>
-          {activeTab === "enrichment" && (
-            <button
-              type="button"
-              onClick={save}
-              disabled={!dirty || saving || !config}
-              className={cn(
-                "flex items-center gap-2 rounded-[14px] px-5 py-2.5 text-[13px] font-bold text-white transition-all",
-                dirty && !saving && config ? "bg-ish-black hover:opacity-90" : "cursor-not-allowed bg-ish-ink-faint opacity-50",
-              )}
-            >
-              {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              {saving ? "Saving…" : "Save Changes"}
-            </button>
-          )}
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-[22px_26px]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10">
+          <div className="mx-auto w-full max-w-2xl">
+            <header className="mb-8">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h1 className="text-[34px] font-bold leading-tight tracking-tight text-ish-ink">
+                    {NAV_ITEMS.find((i) => i.value === activeTab)?.label ?? "Settings"}
+                  </h1>
+                  <p className="mt-1.5 text-[15px] text-ish-ink-soft">{TAB_SUBTITLES[activeTab] ?? ""}</p>
+                </div>
+                {activeTab === "enrichment" && (
+                  <button
+                    type="button"
+                    onClick={save}
+                    disabled={!dirty || saving || !config}
+                    className={cn(
+                      "flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-all",
+                      dirty && !saving && config
+                        ? "bg-ish-black text-white hover:opacity-90"
+                        : "cursor-not-allowed text-ish-ink-faint opacity-40",
+                    )}
+                  >
+                    {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                )}
+              </div>
+            </header>
           {activeTab === "enrichment" && (
             <EnrichmentTab
               config={config}
@@ -170,6 +175,7 @@ function SettingsAppInner() {
           {activeTab === "ai-usage" && <AiUsageTab />}
 
           {activeTab === "appearance" && <AppearanceTab />}
+          </div>
         </div>
       </div>
     </div>

@@ -2,7 +2,6 @@
 
 import { usePathname } from "next/navigation";
 import { AppShell } from "@/design-system";
-import { TopBar } from "@/components/sales-accelerator/top-bar";
 import { SideNav } from "@/components/sales-accelerator/side-nav";
 
 export function HubShell({ children }: { children: React.ReactNode }) {
@@ -10,7 +9,6 @@ export function HubShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AppShell>
-      <TopBar />
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <SideNav />
         <div

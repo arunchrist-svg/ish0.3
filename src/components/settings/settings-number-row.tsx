@@ -1,4 +1,6 @@
 import { cn } from "@/lib/utils";
+import { Minus, Plus } from "lucide-react";
+import { SettingsRow } from "@/components/settings/settings-group";
 
 export function SettingsNumberRow({
   label,
@@ -7,11 +9,10 @@ export function SettingsNumberRow({
   min,
   max,
   step = 1,
-  suffix,
   onChange,
 }: {
   label: string;
-  desc: string;
+  desc?: string;
   value: number;
   min: number;
   max: number;
@@ -19,13 +20,26 @@ export function SettingsNumberRow({
   suffix?: string;
   onChange: (v: number) => void;
 }) {
+  function bump(delta: number) {
+    onChange(Math.min(max, Math.max(min, value + delta)));
+  }
+
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[16px] border border-ish-border/60 bg-white/70 p-4 backdrop-blur-sm">
-      <div>
-        <div className="text-[13.5px] font-bold text-ish-ink">{label}</div>
-        <p className="mt-0.5 text-[12px] text-ish-ink-soft">{desc}</p>
+    <SettingsRow className="justify-between">
+      <div className="min-w-0 flex-1 pr-4">
+        <div className="text-[15px] font-medium leading-snug text-ish-ink">{label}</div>
+        {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-ish-ink-soft">{desc}</p> : null}
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 rounded-xl bg-ish-canvas/80 p-0.5">
+        <button
+          type="button"
+          onClick={() => bump(-step)}
+          disabled={value <= min}
+          className="flex size-8 items-center justify-center rounded-[10px] text-ish-ink-soft transition-colors hover:bg-white disabled:opacity-30"
+          aria-label={`Decrease ${label}`}
+        >
+          <Minus className="size-3.5" />
+        </button>
         <input
           type="number"
           min={min}
@@ -37,12 +51,20 @@ export function SettingsNumberRow({
             if (Number.isFinite(next)) onChange(Math.min(max, Math.max(min, next)));
           }}
           className={cn(
-            "w-20 rounded-[12px] border border-ish-border bg-white/80 px-3 py-2 text-right text-[13px] font-semibold text-ish-ink backdrop-blur-sm",
-            "focus:border-ish-black focus:outline-none",
+            "w-11 bg-transparent text-center text-[15px] font-semibold tabular-nums text-ish-ink",
+            "focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
           )}
         />
-        {suffix ? <span className="text-[12px] text-ish-ink-soft">{suffix}</span> : null}
+        <button
+          type="button"
+          onClick={() => bump(step)}
+          disabled={value >= max}
+          className="flex size-8 items-center justify-center rounded-[10px] text-ish-ink-soft transition-colors hover:bg-white disabled:opacity-30"
+          aria-label={`Increase ${label}`}
+        >
+          <Plus className="size-3.5" />
+        </button>
       </div>
-    </div>
+    </SettingsRow>
   );
 }

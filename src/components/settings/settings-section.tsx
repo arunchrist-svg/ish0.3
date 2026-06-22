@@ -1,4 +1,4 @@
-import { PanelCard, SectionHeader, text } from "@/design-system";
+import { SettingsGroup } from "@/components/settings/settings-group";
 import { cn } from "@/lib/utils";
 
 type SettingsSectionProps = {
@@ -10,25 +10,17 @@ type SettingsSectionProps = {
   tone?: "white" | "yellow" | "pink" | "green";
 };
 
+/** @deprecated Prefer SettingsGroup directly. Thin wrapper for backward compatibility. */
 export function SettingsSection({
   title,
   description,
   children,
   className,
   contentClassName,
-  tone = "white",
 }: SettingsSectionProps) {
   return (
-    <PanelCard
-      tone={tone}
-      className={cn(
-        "rounded-[20px] border border-ish-border/60 p-5 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm",
-        className,
-      )}
-    >
-      <SectionHeader title={title} size="card" className="mb-1" />
-      {description ? <p className={cn("mb-4", text.caption)}>{description}</p> : null}
-      <div className={contentClassName}>{children}</div>
-    </PanelCard>
+    <SettingsGroup title={title} footer={description} className={className}>
+      <div className={cn(contentClassName)}>{children}</div>
+    </SettingsGroup>
   );
 }

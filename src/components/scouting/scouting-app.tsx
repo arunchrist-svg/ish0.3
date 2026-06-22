@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { ScoutingProgressBar } from "./scouting-progress-bar";
+// import { ScoutingProgressBar } from "./scouting-progress-bar";
 import { ScoutingToolbar, type ScoutMode } from "./scouting-toolbar";
 import { DiscoveringLoader } from "./discovering-loader";
 import { CompaniesGrid } from "./companies-grid";
@@ -388,7 +388,7 @@ export function ScoutingApp() {
   const allPeopleSelected =
     selectablePeople.length > 0 && selectablePeople.every((p) => selectedPersonIds.has(p.id));
 
-  const currentStep: 1 | 2 | 3 = view === "companies" ? 1 : selectedPersonIds.size > 0 ? 3 : 2;
+  // const currentStep: 1 | 2 | 3 = view === "companies" ? 1 : selectedPersonIds.size > 0 ? 3 : 2;
 
   useEffect(() => {
     fetch("/api/settings")
@@ -831,11 +831,13 @@ export function ScoutingApp() {
   return (
     <>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/* ScoutingProgressBar — stepper hidden for now
           <ScoutingProgressBar
             currentStep={currentStep}
             companiesCount={selectedCompanyIds.size}
             leadsCount={people.length}
           />
+          */}
 
           <ScoutingToolbar
             view={view}

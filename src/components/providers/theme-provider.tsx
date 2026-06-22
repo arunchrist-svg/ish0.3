@@ -5,7 +5,7 @@ import type { ComponentProps } from "react";
 
 export function ThemeProvider({ children, ...props }: ComponentProps<typeof NextThemesProvider>) {
   return (
-    <NextThemesProvider attribute="class" defaultTheme="light" disableTransitionOnChange themes={["light", "stratus"]} {...props}>
+    <NextThemesProvider attribute="class" defaultTheme="stratus" disableTransitionOnChange themes={["light", "stratus"]} {...props}>
       {children}
     </NextThemesProvider>
   );

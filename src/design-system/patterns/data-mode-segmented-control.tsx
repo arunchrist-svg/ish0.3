@@ -20,12 +20,22 @@ export function DataModeSegmentedControl({ value, onChange, className }: DataMod
     <div
       ref={containerRef}
       className={cn(
-        "relative inline-flex items-center gap-1 rounded-xl border border-ish-border bg-ish-app p-1",
+        "relative inline-flex items-center gap-1 rounded-xl border border-ish-border/70 bg-white/60 p-1 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm",
         className,
       )}
     >
-      <SlidingHighlight rect={rect} ready={ready} className="rounded-lg bg-white shadow-[var(--shadow-ish-sm)]" />
-      <Database className="relative z-10 ml-1.5 size-3.5 text-ish-ink-soft" aria-hidden />
+      <SlidingHighlight
+        rect={rect}
+        ready={ready}
+        className="rounded-lg bg-ish-black shadow-[var(--shadow-ish-sm)]"
+      />
+      <Database
+        className={cn(
+          "relative z-10 ml-1.5 size-3.5 shrink-0 transition-colors duration-300",
+          "text-ish-ink-soft",
+        )}
+        aria-hidden
+      />
       {DATA_MODE_OPTIONS.map((mode) => {
         const active = value === mode.value;
         return (
@@ -36,10 +46,10 @@ export function DataModeSegmentedControl({ value, onChange, className }: DataMod
             title={mode.title}
             onClick={() => onChange(mode.value)}
             className={cn(
-              "relative z-10 rounded-lg px-2.5 py-1 text-[11px] font-semibold",
+              "relative z-10 rounded-lg px-3 py-1.5 text-[11px] font-semibold",
               "transition-[color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
-              "hover:text-ish-ink active:scale-[0.97]",
-              active ? "text-ish-ink" : "text-ish-ink-soft",
+              "active:scale-[0.97]",
+              active ? "text-white" : "text-ish-ink-soft hover:text-ish-ink",
             )}
           >
             {mode.label}

@@ -1,104 +1,94 @@
 "use client";
 
-import { SettingsSection } from "@/components/settings/settings-section";
+import { Check } from "lucide-react";
+import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { stratusPalette, stratusGradient, stratusPaletteLegend } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
+
+function ThemeSwatch({ colors }: { colors: string[] }) {
+  return (
+    <div className="flex gap-1.5">
+      {colors.map((c) => (
+        <span key={c} className="size-4 rounded-full border border-black/5" style={{ backgroundColor: c }} />
+      ))}
+    </div>
+  );
+}
 
 export function AppearanceTab() {
   const { resolvedTheme, setTheme } = useTheme();
 
   return (
-    <div className="grid grid-cols-12 gap-4">
-      <SettingsSection
-        className="col-span-12"
-        title="Theme"
-        description="Choose how the app looks. Your preference is saved in the browser."
-        tone="yellow"
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => setTheme("light")}
-            className={cn(
-              "group relative flex flex-col gap-3 rounded-[18px] border-2 p-4 text-left transition-all",
-              resolvedTheme === "light"
-                ? "border-ish-black bg-white shadow-ish"
-                : "border-ish-border bg-white hover:border-ish-ink-faint",
-            )}
-          >
-            <div className="flex h-16 w-full items-center justify-center rounded-[12px] bg-[#f4f4f6]">
-              <div className="flex gap-1.5">
-                <span className="size-3 rounded-full bg-[#1a1a1f]" />
-                <span className="size-3 rounded-full bg-ish-yellow" />
-                <span className="size-3 rounded-full bg-ish-stratus-blue" />
-              </div>
-            </div>
+    <>
+      <SettingsGroup title="Appearance" footer="Your preference is saved in the browser.">
+        <SettingsRow onClick={() => setTheme("light")} className="justify-between">
+          <div className="flex items-center gap-3">
+            <ThemeSwatch colors={["#1a1a1f", "#ffce87", "#83a2db"]} />
             <div>
-              <p className="text-[13px] font-bold text-ish-ink">Light</p>
-              <p className="mt-0.5 text-[11px] text-ish-ink-faint">Clean white canvas</p>
+              <p className="text-[15px] font-medium text-ish-ink">Light</p>
+              <p className="text-[12px] text-ish-ink-soft">Clean white canvas</p>
             </div>
-            {resolvedTheme === "light" && (
-              <span className="absolute right-3 top-3 flex size-5 items-center justify-center rounded-full bg-ish-black text-[10px] font-bold text-white">
-                ✓
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setTheme("stratus")}
+          </div>
+          <div
             className={cn(
-              "group relative flex flex-col gap-3 rounded-[18px] border-2 p-4 text-left transition-all",
-              resolvedTheme === "stratus" && "shadow-[0_4px_20px_rgba(131,162,219,0.14)]",
+              "flex size-6 items-center justify-center rounded-full border-2",
+              resolvedTheme === "light" ? "border-ish-black bg-ish-black text-white" : "border-ish-border",
             )}
-            style={{
-              borderColor: resolvedTheme === "stratus" ? stratusPalette.blue : stratusPalette.borderLight,
-              backgroundColor: stratusPalette.canvasPreview,
-            }}
           >
+            {resolvedTheme === "light" ? <Check className="size-3.5" strokeWidth={3} /> : null}
+          </div>
+        </SettingsRow>
+
+        <SettingsGroupDivider />
+
+        <SettingsRow onClick={() => setTheme("stratus")} className="justify-between">
+          <div className="flex items-center gap-3">
             <div
-              className="flex h-16 w-full items-center justify-center overflow-hidden rounded-[12px]"
+              className="flex size-[22px] items-center justify-center overflow-hidden rounded-full"
               style={{ background: stratusGradient }}
             >
-              <div className="flex gap-1.5">
-                <span className="size-3 rounded-full bg-white/80" />
-                <span className="size-3 rounded-full bg-white/60" />
-                <span className="size-3 rounded-full bg-white/40" />
-              </div>
+              <span className="size-2 rounded-full bg-white/80" />
             </div>
             <div>
-              <p className="text-[13px] font-bold text-ish-ink">Stratus</p>
-              <p className="mt-0.5 text-[11px] text-ish-ink-faint">Blue · Salmon · Yellow</p>
+              <p className="text-[15px] font-medium text-ish-ink">Stratus</p>
+              <p className="text-[12px] text-ish-ink-soft">Blue · Salmon · Yellow</p>
             </div>
-            {resolvedTheme === "stratus" && (
-              <span
-                className="absolute right-3 top-3 flex size-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
-                style={{ backgroundColor: stratusPalette.blue }}
-              >
-                ✓
-              </span>
+          </div>
+          <div
+            className={cn(
+              "flex size-6 items-center justify-center rounded-full border-2",
+              resolvedTheme === "stratus" ? "border-ish-black bg-ish-black text-white" : "border-ish-border",
             )}
-          </button>
-        </div>
+          >
+            {resolvedTheme === "stratus" ? <Check className="size-3.5" strokeWidth={3} /> : null}
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[14px] border border-ish-border bg-ish-app/70 px-4 py-3 backdrop-blur-sm">
-          {stratusPaletteLegend.map((swatch, i) => (
-            <span key={swatch.hex} className="contents">
-              {i > 0 && <span className="text-ish-border">·</span>}
-              <div className="flex items-center gap-2">
+      <SettingsGroup title="Stratus Palette">
+        <div className="divide-y divide-ish-border/70">
+          {stratusPaletteLegend.map((swatch) => (
+            <div key={swatch.hex} className="flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-3">
                 <span
-                  className="size-3 rounded-full border border-ish-border/60"
+                  className="size-5 rounded-full border border-ish-border/50"
                   style={{ backgroundColor: swatch.hex }}
                 />
-                <span className="text-[11px] text-ish-ink-soft">
-                  {swatch.hex.toUpperCase()} {swatch.label}
-                </span>
+                <span className="text-[15px] font-medium text-ish-ink">{swatch.label}</span>
               </div>
-            </span>
+              <span className="font-mono text-[12px] text-ish-ink-faint">{swatch.hex.toUpperCase()}</span>
+            </div>
           ))}
+          <div className="flex items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="size-5 rounded-full border border-ish-border/50" style={{ backgroundColor: stratusPalette.black }} />
+              <span className="text-[15px] font-medium text-ish-ink">Button</span>
+            </div>
+            <span className="font-mono text-[12px] text-ish-ink-faint">{stratusPalette.black.toUpperCase()}</span>
+          </div>
         </div>
-      </SettingsSection>
-    </div>
+      </SettingsGroup>
+    </>
   );
 }

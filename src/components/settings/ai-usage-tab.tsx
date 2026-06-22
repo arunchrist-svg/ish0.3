@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
-import { SettingsSection } from "@/components/settings/settings-section";
+import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { cn } from "@/lib/utils";
 
 type TavilyKey = {
@@ -83,6 +83,17 @@ function ActiveBadge() {
   );
 }
 
+function UsageBar({ percent, exhausted }: { percent: number; exhausted: boolean }) {
+  return (
+    <div className="mt-2 h-2 overflow-hidden rounded-full bg-ish-border/60">
+      <div
+        className={cn("h-full rounded-full transition-all duration-500", barTone(percent, exhausted))}
+        style={{ width: `${Math.max(percent, percent > 0 ? 2 : 0)}%` }}
+      />
+    </div>
+  );
+}
+
 export function AiUsageTab() {
   const [tavily, setTavily] = useState<TavilyUsage | null>(null);
   const [llm, setLlm] = useState<LlmUsage | null>(null);
@@ -115,21 +126,23 @@ export function AiUsageTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-end">
+    <>
+      <div className="mb-4 flex justify-end">
         <button
           type="button"
           onClick={handleRefresh}
-          className="flex items-center gap-1.5 rounded-xl border border-ish-border bg-white/80 px-3 py-2 text-[12px] font-medium text-ish-ink-soft backdrop-blur-sm transition-all hover:border-ish-ink-faint hover:text-ish-ink"
+          className="flex items-center gap-1.5 rounded-full border border-ish-border bg-white/80 px-3 py-2 text-[12px] font-medium text-ish-ink-soft backdrop-blur-sm transition-all hover:border-ish-ink-faint hover:text-ish-ink"
         >
           <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           Refresh
         </button>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
-      <SettingsSection className="col-span-12 lg:col-span-7" title="Tavily Search" description="Used for company discovery and lead scouting. Pulled live from Tavily account API.">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <SettingsGroup
+        title="Tavily Search"
+        footer="Used for company discovery and lead scouting. Pulled live from Tavily account API."
+      >
+        <SettingsRow className="justify-between py-3">
           <div className="flex items-center gap-2">
             {tavily?.configured ? (
               <StatusBadge ok={!tavily.allKeysExhausted} label={tavily.allKeysExhausted ? "All keys exhausted" : "Configured"} />
@@ -141,40 +154,34 @@ export function AiUsageTab() {
             href="https://app.tavily.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[11px] text-ish-ink-soft hover:text-ish-ink"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
           >
             Dashboard <ExternalLink className="size-3" />
           </a>
-        </div>
+        </SettingsRow>
 
         {!tavily ? (
-          <p className="text-[12px] text-ish-ink-faint">Loading…</p>
+          <p className="px-4 py-3 text-[13px] text-ish-ink-faint">Loading…</p>
         ) : !tavily.configured ? (
-          <p className="text-[12px] text-ish-ink-faint">
+          <p className="px-4 py-3 text-[13px] text-ish-ink-faint">
             Add <code className="rounded bg-ish-app px-1 py-0.5 font-mono text-[11px]">TAVILY_API_KEY</code> to{" "}
             <code className="rounded bg-ish-app px-1 py-0.5 font-mono text-[11px]">.env.local</code> to enable Tavily.
           </p>
         ) : (
           <>
-            {/* Overall totals */}
-            <div className="mb-4 rounded-xl bg-ish-app px-4 py-3">
-              <div className="flex items-center justify-between text-[12px]">
+            <SettingsGroupDivider />
+            <div className="px-4 py-3">
+              <div className="flex items-center justify-between text-[13px]">
                 <span className="font-medium text-ish-ink">Total credits</span>
                 <span className={cn("font-semibold", tavily.allKeysExhausted ? "text-red-600" : "text-ish-ink")}>
                   {tavily.totalUsed} / {tavily.totalLimit} used
                 </span>
               </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-ish-border/60">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-all duration-500",
-                    barTone(tavily.percentUsed, tavily.allKeysExhausted),
-                  )}
-                  style={{ width: `${Math.max(tavily.percentUsed, tavily.totalUsed > 0 ? 2 : 0)}%` }}
-                />
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-[10px] text-ish-ink-faint">
-                <span>{tavily.totalRemaining} remaining · session calls: {tavily.sessionUsed}</span>
+              <UsageBar percent={tavily.percentUsed} exhausted={tavily.allKeysExhausted} />
+              <div className="mt-1.5 flex items-center justify-between text-[11px] text-ish-ink-faint">
+                <span>
+                  {tavily.totalRemaining} remaining · session calls: {tavily.sessionUsed}
+                </span>
                 {tavily.keyCount > 1 && (
                   <span>
                     {tavily.availableKeyCount} of {tavily.keyCount} keys available
@@ -183,18 +190,15 @@ export function AiUsageTab() {
               </div>
             </div>
 
-            {/* Per-key breakdown */}
-            <div className="space-y-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                Per-key breakdown
-              </p>
-              {tavily.keys.map((k) => {
-                const pct = k.limit ? Math.min(100, (k.used / k.limit) * 100) : 0;
-                return (
-                  <div key={k.id} className="rounded-xl border border-ish-border px-4 py-3">
+            {tavily.keys.map((k, i) => {
+              const pct = k.limit ? Math.min(100, (k.used / k.limit) * 100) : 0;
+              return (
+                <div key={k.id}>
+                  <SettingsGroupDivider />
+                  <div className="px-4 py-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[12px] font-medium text-ish-ink">{k.label}</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[13px] font-medium text-ish-ink">{k.label}</span>
                         {k.active && (
                           <span className="rounded-full bg-ish-stratus-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-ish-ink">
                             active
@@ -224,167 +228,163 @@ export function AiUsageTab() {
                         )}
                       </span>
                     </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ish-border/60">
-                      <div
-                        className={cn(
-                          "h-full rounded-full",
-                          k.exhausted ? "bg-red-400" : barTone(pct, false),
-                        )}
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
+                    <UsageBar percent={pct} exhausted={k.exhausted} />
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
 
             {tavily.configIssues && tavily.configIssues.length > 0 && (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                <p className="text-[11px] font-semibold text-red-700">Configuration issues</p>
-                {tavily.configIssues.map((issue, i) => (
-                  <p key={i} className="mt-1 text-[11px] text-red-600">
-                    {issue}
-                  </p>
-                ))}
-              </div>
+              <>
+                <SettingsGroupDivider />
+                <div className="px-4 py-3">
+                  <p className="text-[12px] font-semibold text-red-700">Configuration issues</p>
+                  {tavily.configIssues.map((issue, idx) => (
+                    <p key={idx} className="mt-1 text-[12px] text-red-600">
+                      {issue}
+                    </p>
+                  ))}
+                </div>
+              </>
             )}
-
-            <p className="mt-3 text-[10px] text-ish-ink-faint">
-              To add a backup key, set{" "}
-              <code className="rounded bg-ish-app px-1 font-mono">TAVILY_API_KEY_2</code> in{" "}
-              <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> — the app rotates
-              automatically when the active key hits quota.
-            </p>
           </>
         )}
-      </SettingsSection>
+      </SettingsGroup>
 
-      <div className="col-span-12 flex flex-col gap-4 lg:col-span-5">
-      <SettingsSection title="Google Gemini" description="Lead extraction, enrichment parsing, and AI fallback scouting.">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <SettingsGroup
+        title="Google Gemini"
+        footer="Lead extraction, enrichment parsing, and AI fallback scouting. Quota managed via Google AI Studio."
+      >
+        <SettingsRow className="justify-between py-3">
           <div className="flex flex-wrap items-center gap-2">
             {llm ? (
               <>
                 {llm.gemini.active && <ActiveBadge />}
                 <StatusBadge ok={llm.gemini.configured} label={llm.gemini.configured ? "Key configured" : "Key missing"} />
               </>
-            ) : null}
+            ) : (
+              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+            )}
           </div>
           <a
             href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[11px] text-ish-ink-soft hover:text-ish-ink"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
           >
             Console <ExternalLink className="size-3" />
           </a>
-        </div>
+        </SettingsRow>
 
-        {!llm ? (
-          <p className="text-[12px] text-ish-ink-faint">Loading…</p>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between rounded-xl bg-ish-app px-4 py-3">
+        {llm && (
+          <>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[11px] font-medium text-ish-ink">Quality tier (flash)</p>
-                <p className="text-[10px] text-ish-ink-faint">Used for structured extraction tasks</p>
+                <p className="text-[13px] font-medium text-ish-ink">Quality tier (flash)</p>
+                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
               </div>
-              <code className="rounded-lg border border-ish-border bg-white px-2.5 py-1 text-[11px] font-mono text-ish-ink">
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
                 {llm.gemini.flashModel}
               </code>
             </div>
-            <div className="flex items-center justify-between rounded-xl bg-ish-app px-4 py-3">
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[11px] font-medium text-ish-ink">Fast tier (flash-lite)</p>
-                <p className="text-[10px] text-ish-ink-faint">Used for quick classification tasks</p>
+                <p className="text-[13px] font-medium text-ish-ink">Fast tier (flash-lite)</p>
+                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
               </div>
-              <code className="rounded-lg border border-ish-border bg-white px-2.5 py-1 text-[11px] font-mono text-ish-ink">
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
                 {llm.gemini.flashLiteModel}
               </code>
             </div>
             {!llm.gemini.configured && (
-              <p className="mt-2 text-[11px] text-ish-ink-faint">
-                Set{" "}
-                <code className="rounded bg-ish-app px-1 font-mono">GEMINI_API_KEY</code> or{" "}
-                <code className="rounded bg-ish-app px-1 font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in{" "}
-                <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to enable Gemini.
-              </p>
+              <>
+                <SettingsGroupDivider />
+                <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
+                  Set <code className="rounded bg-ish-app px-1 font-mono">GEMINI_API_KEY</code> or{" "}
+                  <code className="rounded bg-ish-app px-1 font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in{" "}
+                  <code className="rounded bg-ish-app px-1 font-mono">.env.local</code>.
+                </p>
+              </>
             )}
-            <p className="pt-1 text-[10px] text-ish-ink-faint">
-              Live quota is managed via Google AI Studio / Cloud Console. No in-app quota tracking for Gemini.
-            </p>
-          </div>
+          </>
         )}
-      </SettingsSection>
+      </SettingsGroup>
 
-      <SettingsSection title="Anthropic Claude" description="Alternative LLM. Set LLM_PROVIDER=anthropic to activate.">
-        <div className="mb-4 flex items-center justify-between gap-3">
+      <SettingsGroup
+        title="Anthropic Claude"
+        footer="Alternative LLM. Set LLM_PROVIDER=anthropic to activate. Quota managed via Anthropic Console."
+      >
+        <SettingsRow className="justify-between py-3">
           <div className="flex flex-wrap items-center gap-2">
             {llm ? (
               <>
                 {llm.anthropic.active && <ActiveBadge />}
                 <StatusBadge ok={llm.anthropic.configured} label={llm.anthropic.configured ? "Key configured" : "Key missing"} />
               </>
-            ) : null}
+            ) : (
+              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+            )}
           </div>
           <a
             href="https://console.anthropic.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[11px] text-ish-ink-soft hover:text-ish-ink"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
           >
             Console <ExternalLink className="size-3" />
           </a>
-        </div>
+        </SettingsRow>
 
-        {!llm ? (
-          <p className="text-[12px] text-ish-ink-faint">Loading…</p>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between rounded-xl bg-ish-app px-4 py-3">
+        {llm && (
+          <>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[11px] font-medium text-ish-ink">Fast tier (haiku)</p>
-                <p className="text-[10px] text-ish-ink-faint">Used for quick classification tasks</p>
+                <p className="text-[13px] font-medium text-ish-ink">Fast tier (haiku)</p>
+                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
               </div>
-              <code className="rounded-lg border border-ish-border bg-white px-2.5 py-1 text-[11px] font-mono text-ish-ink">
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
                 {llm.anthropic.haikuModel}
               </code>
             </div>
-            <div className="flex items-center justify-between rounded-xl bg-ish-app px-4 py-3">
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[11px] font-medium text-ish-ink">Quality tier (sonnet)</p>
-                <p className="text-[10px] text-ish-ink-faint">Used for structured extraction tasks</p>
+                <p className="text-[13px] font-medium text-ish-ink">Quality tier (sonnet)</p>
+                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
               </div>
-              <code className="rounded-lg border border-ish-border bg-white px-2.5 py-1 text-[11px] font-mono text-ish-ink">
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
                 {llm.anthropic.sonnetModel}
               </code>
             </div>
             {llm.anthropic.maxOutputTokens !== null && (
-              <div className="flex items-center justify-between rounded-xl bg-ish-app px-4 py-3">
-                <div>
-                  <p className="text-[11px] font-medium text-ish-ink">Max output tokens</p>
-                  <p className="text-[10px] text-ish-ink-faint">Capped via ANTHROPIC_MAX_OUTPUT_TOKENS</p>
+              <>
+                <SettingsGroupDivider />
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div>
+                    <p className="text-[13px] font-medium text-ish-ink">Max output tokens</p>
+                    <p className="text-[11px] text-ish-ink-faint">ANTHROPIC_MAX_OUTPUT_TOKENS</p>
+                  </div>
+                  <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                    {llm.anthropic.maxOutputTokens}
+                  </code>
                 </div>
-                <code className="rounded-lg border border-ish-border bg-white px-2.5 py-1 text-[11px] font-mono text-ish-ink">
-                  {llm.anthropic.maxOutputTokens}
-                </code>
-              </div>
+              </>
             )}
             {!llm.anthropic.configured && (
-              <p className="mt-2 text-[11px] text-ish-ink-faint">
-                Set{" "}
-                <code className="rounded bg-ish-app px-1 font-mono">ANTHROPIC_API_KEY</code> in{" "}
-                <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to configure Claude.
-              </p>
+              <>
+                <SettingsGroupDivider />
+                <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
+                  Set <code className="rounded bg-ish-app px-1 font-mono">ANTHROPIC_API_KEY</code> in{" "}
+                  <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to configure Claude.
+                </p>
+              </>
             )}
-            <p className="pt-1 text-[10px] text-ish-ink-faint">
-              Live token usage is managed via the Anthropic Console. No in-app quota tracking for Claude.
-            </p>
-          </div>
+          </>
         )}
-      </SettingsSection>
-      </div>
-      </div>
-    </div>
+      </SettingsGroup>
+    </>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { DataModeSegmentedControl } from "@/design-system";
-import { SettingsSection } from "@/components/settings/settings-section";
-import { ProviderCard } from "@/components/settings/provider-card";
+import { SettingsGroup, SettingsGroupDivider } from "@/components/settings/settings-group";
+import { SettingsSelectRow } from "@/components/settings/settings-select-row";
+import { SettingsProviderRow } from "@/components/settings/settings-provider-row";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import { ActiveConfigSummary } from "@/components/settings/active-config-summary";
@@ -43,177 +43,167 @@ export function EnrichmentTab({
     );
   }
 
+  const searchProviders = Object.entries(SEARCH_PROVIDER_LABELS) as [
+    SearchProvider,
+    (typeof SEARCH_PROVIDER_LABELS)[SearchProvider],
+  ][];
+  const enrichProviders = Object.entries(ENRICH_PROVIDER_LABELS) as [
+    EnrichProvider,
+    (typeof ENRICH_PROVIDER_LABELS)[EnrichProvider],
+  ][];
+
   return (
-    <div className="grid grid-cols-12 gap-4">
-      <SettingsSection
-        className="col-span-12 lg:col-span-6"
-        title="Company Search Provider"
-        description="How Scout discovers companies. For testing, use India Directories (free). Switch to Apollo for production."
+    <div className="pb-8">
+      <SettingsGroup
+        title="Company Search"
+        footer="How Scout discovers companies. Use India Directories for testing; Apollo for production."
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {(Object.entries(SEARCH_PROVIDER_LABELS) as [SearchProvider, (typeof SEARCH_PROVIDER_LABELS)[SearchProvider]][]).map(
-            ([value, meta]) => (
-              <ProviderCard
-                key={value}
-                value={value}
-                selected={config.searchProvider === value}
-                label={meta.label}
-                desc={meta.desc}
-                badge={meta.badge}
-                onSelect={(v) => onUpdate("searchProvider", v)}
-              />
-            ),
-          )}
-        </div>
-      </SettingsSection>
+        {searchProviders.map(([value, meta], i) => (
+          <SettingsProviderRow
+            key={value}
+            value={value}
+            selected={config.searchProvider === value}
+            label={meta.label}
+            desc={meta.desc}
+            badge={meta.badge}
+            onSelect={(v) => onUpdate("searchProvider", v)}
+            showDivider={i > 0}
+          />
+        ))}
+      </SettingsGroup>
 
-      <SettingsSection
-        className="col-span-12 lg:col-span-6"
-        title="Email Enrichment Provider"
-        description="How Scout finds contact email addresses. Website scrape is free for Indian SMBs."
+      <SettingsGroup
+        title="Email Enrichment"
+        footer="How Scout finds contact emails. Website scrape works well for Indian SMBs."
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {(Object.entries(ENRICH_PROVIDER_LABELS) as [EnrichProvider, (typeof ENRICH_PROVIDER_LABELS)[EnrichProvider]][]).map(
-            ([value, meta]) => (
-              <ProviderCard
-                key={value}
-                value={value}
-                selected={config.enrichProvider === value}
-                label={meta.label}
-                desc={meta.desc}
-                badge={meta.badge}
-                onSelect={(v) => onUpdate("enrichProvider", v)}
-              />
-            ),
-          )}
-        </div>
-      </SettingsSection>
+        {enrichProviders.map(([value, meta], i) => (
+          <SettingsProviderRow
+            key={value}
+            value={value}
+            selected={config.enrichProvider === value}
+            label={meta.label}
+            desc={meta.desc}
+            badge={meta.badge}
+            onSelect={(v) => onUpdate("enrichProvider", v)}
+            showDivider={i > 0}
+          />
+        ))}
+      </SettingsGroup>
 
-      <SettingsSection
-        className="col-span-12 lg:col-span-7"
+      <SettingsGroup
         title="Data Mode"
-        description="Controls which providers Scout uses for company search and email enrichment."
-        tone="yellow"
+        footer="Paid enrichment (Apollo / Hunter) runs per lead from the record view."
       >
-        <DataModeSegmentedControl value={config.dataMode} onChange={(mode) => onUpdate("dataMode", mode)} />
-        <p className="mt-3 text-[11px] text-ish-ink-faint">
-          {DATA_MODE_OPTIONS.map((mode) => `${mode.label} → ${mode.desc}`).join(" · ")}
-        </p>
-        <p className="mt-2 text-[11px] text-ish-ink-faint">
-          Paid enrichment (Apollo / Hunter) runs per lead via the Enrich button on the lead record.
-        </p>
-      </SettingsSection>
+        {DATA_MODE_OPTIONS.map((mode, i) => (
+          <SettingsSelectRow
+            key={mode.value}
+            label={mode.label}
+            desc={mode.desc}
+            selected={config.dataMode === mode.value}
+            onSelect={() => onUpdate("dataMode", mode.value)}
+            showDivider={i > 0}
+          />
+        ))}
+      </SettingsGroup>
 
-      <SettingsSection
-        className="col-span-12 lg:col-span-5"
-        title="Scout Volume Presets"
-        description="Quick caps for companies and leads per scout run."
+      <SettingsGroup
+        title="Scout Volume"
+        footer={
+          scoutVolumeDirty
+            ? "Unsaved changes — scouting uses the previous limits until you save."
+            : "Add TAVILY_API_KEY_2 in .env.local for automatic key rotation when quota is hit."
+        }
       >
-        <div className="flex flex-col gap-2">
-          {(Object.entries(SCOUT_VOLUME_PRESETS) as [keyof typeof SCOUT_VOLUME_PRESETS, (typeof SCOUT_VOLUME_PRESETS)[keyof typeof SCOUT_VOLUME_PRESETS]][]).map(
-            ([key, preset]) => {
-              const active =
-                config.scoutCompaniesLimit === preset.companies && config.scoutLeadsLimit === preset.leads;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() =>
-                    onUpdateScoutVolume({
-                      scoutCompaniesLimit: preset.companies,
-                      scoutLeadsLimit: preset.leads,
-                    })
-                  }
-                  className={cn(
-                    "rounded-[14px] border px-3 py-2.5 text-left transition-all",
-                    active
-                      ? "border-ish-black bg-ish-black text-white"
-                      : "border-ish-border bg-white text-ish-ink hover:border-ish-ink-faint",
-                  )}
-                >
-                  <div className="text-[12px] font-bold">{preset.label}</div>
-                  <div className={cn("text-[10px]", active ? "text-white/80" : "text-ish-ink-soft")}>{preset.desc}</div>
-                  <div className={cn("mt-0.5 text-[10px] font-medium", active ? "text-white/90" : "text-ish-ink-faint")}>
-                    {preset.companies} cos · {preset.leads} leads
-                  </div>
-                </button>
-              );
-            },
-          )}
-        </div>
-      </SettingsSection>
+        {(Object.entries(SCOUT_VOLUME_PRESETS) as [
+            keyof typeof SCOUT_VOLUME_PRESETS,
+            (typeof SCOUT_VOLUME_PRESETS)[keyof typeof SCOUT_VOLUME_PRESETS],
+          ][]).map(([key, preset], i) => (
+            <SettingsSelectRow
+              key={key}
+              label={preset.label}
+              desc={`${preset.companies} companies · ${preset.leads} leads — ${preset.desc}`}
+              selected={
+                config.scoutCompaniesLimit === preset.companies &&
+                config.scoutLeadsLimit === preset.leads
+              }
+              onSelect={() =>
+                onUpdateScoutVolume({
+                  scoutCompaniesLimit: preset.companies,
+                  scoutLeadsLimit: preset.leads,
+                })
+              }
+              showDivider={i > 0}
+            />
+          ))}
 
-      <SettingsSection
-        className="col-span-12"
-        title="Scout Volume Limits"
-        description="Fine-tune limits. Add TAVILY_API_KEY_2 in .env.local for automatic key rotation."
-        contentClassName="space-y-3"
-      >
+        <SettingsGroupDivider />
+
         <SettingsNumberRow
           label="Companies per fetch"
-          desc="Maximum companies returned each time you click Fetch New Companies."
+          desc="Max companies each time you fetch new companies."
           value={config.scoutCompaniesLimit}
           min={1}
           max={100}
-          suffix="max"
           onChange={(v) => onUpdateScoutVolume({ scoutCompaniesLimit: v, scoutLeadsLimit: config.scoutLeadsLimit })}
         />
+
+        <SettingsGroupDivider />
+
         <SettingsNumberRow
           label="Leads per company"
-          desc="Maximum people discovered per company when you scout leads."
+          desc="Max people discovered per company when scouting leads."
           value={config.scoutLeadsLimit}
           min={1}
           max={25}
-          suffix="max"
           onChange={(v) => onUpdateScoutVolume({ scoutCompaniesLimit: config.scoutCompaniesLimit, scoutLeadsLimit: v })}
         />
-        <div className="flex items-center justify-between gap-3 rounded-[14px] border border-dashed border-ish-border bg-ish-app/50 px-4 py-3">
-          <p className="text-[12px] text-ish-ink-soft">
-            {scoutVolumeDirty
-              ? "Unsaved scout volume — scouting will use the old limits until you save."
-              : "Scout volume is saved and active on the Scouting page."}
-          </p>
-          <button
-            type="button"
-            onClick={onSaveScoutVolume}
-            disabled={!scoutVolumeDirty || savingVolume}
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-[12px] px-4 py-2 text-[12px] font-bold transition-all",
-              scoutVolumeDirty && !savingVolume
-                ? "bg-ish-black text-white hover:opacity-90"
-                : "border border-ish-border bg-white text-ish-ink-faint",
-            )}
-          >
-            {savingVolume ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : scoutVolumeDirty ? (
-              <Save className="size-3.5" />
-            ) : (
-              <Check className="size-3.5" />
-            )}
-            {savingVolume ? "Saving…" : scoutVolumeDirty ? "Save scout volume" : "Saved"}
-          </button>
-        </div>
-      </SettingsSection>
 
-      <SettingsSection className="col-span-12 lg:col-span-6" title="Behaviour" contentClassName="space-y-3">
+        {(scoutVolumeDirty || savingVolume) && (
+          <>
+            <SettingsGroupDivider />
+            <div className="px-4 py-3">
+              <button
+                type="button"
+                onClick={onSaveScoutVolume}
+                disabled={!scoutVolumeDirty || savingVolume}
+                className={cn(
+                  "flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold transition-all",
+                  scoutVolumeDirty && !savingVolume
+                    ? "bg-ish-black text-white hover:opacity-90"
+                    : "bg-ish-canvas text-ish-ink-faint",
+                )}
+              >
+                {savingVolume ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : scoutVolumeDirty ? (
+                  <Save className="size-4" />
+                ) : (
+                  <Check className="size-4" />
+                )}
+                {savingVolume ? "Saving…" : "Save Scout Volume"}
+              </button>
+            </div>
+          </>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup title="Behaviour">
         <SettingsToggleRow
-          label="Fallback to AI (Tavily + Gemini)"
-          desc="If the primary search provider returns fewer than 50% of requested results, automatically try Tavily+Gemini as a fallback."
+          label="Fallback to AI"
+          desc="Try Tavily + Gemini when the primary provider returns fewer than 50% of results."
           value={config.fallbackToAI}
           onChange={(v) => onUpdate("fallbackToAI", v)}
         />
+        <SettingsGroupDivider />
         <SettingsToggleRow
           label="Auto-enrich on import"
-          desc="Run email enrichment immediately when a lead is saved from Scout."
+          desc="Enrich emails immediately when a lead is saved from Scout."
           value={config.enrichOnImport}
           onChange={(v) => onUpdate("enrichOnImport", v)}
         />
-      </SettingsSection>
+      </SettingsGroup>
 
-      <div className="col-span-12 lg:col-span-6">
-        <ActiveConfigSummary config={config} />
-      </div>
+      <ActiveConfigSummary config={config} />
     </div>
   );
 }
