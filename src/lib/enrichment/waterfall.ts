@@ -5,6 +5,7 @@ import { apolloSearchCompanies, apolloSearchPeople } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
+import { companyCityMatchesSelection } from "./city-search";
 import { enrichPersonContact } from "./enrich-lead";
 import { shouldAutoAcceptEmail, isNamedPerson } from "./confidence";
 import { isTavilyQuotaError } from "./tavily-client";
@@ -44,6 +45,16 @@ function hasGooglePlacesKey(): boolean {
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
+}
+
+
+
+function filterBySelectedCities(
+  results: ScoutCompanyResult[],
+  cities: string[],
+): ScoutCompanyResult[] {
+  if (cities.length === 0) return results;
+  return results.filter((c) => companyCityMatchesSelection(c.city, cities));
 }
 
 function filterExcluded<T extends { name: string }>(results: T[], excludeNames: string[]): T[] {
@@ -131,7 +142,7 @@ export async function discoverCompanies(params: {
     });
 
     return {
-      companies: allResults.slice(0, limit),
+      companies: filterBySelectedCities(allResults, params.cities).slice(0, limit),
       warnings: [...new Set(warnings)],
       errors: [...new Set(errors)],
     };
@@ -262,7 +273,7 @@ export async function discoverCompanies(params: {
     appendTavilyKeySwitchWarning(warnings);
   }
 
-  const companies = [...dbMapped, ...external].slice(0, limit);
+  const companies = filterBySelectedCities([...dbMapped, ...external], params.cities).slice(0, limit);
   return {
     companies,
     warnings: [...new Set(warnings)],

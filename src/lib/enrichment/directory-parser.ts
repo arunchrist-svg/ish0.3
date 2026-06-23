@@ -1,4 +1,5 @@
 import type { ScoutCompanyResult } from "./types";
+import { expandCitySearchTerms } from "./city-search";
 
 type DirectoryHit = { title: string; url: string; content: string };
 
@@ -23,14 +24,40 @@ function inferIndustryFromTitle(title: string): string | undefined {
   return "Corporate";
 }
 
-function inferCityFromHit(hit: DirectoryHit, cities: string[]): string {
-  const blob = `${hit.title} ${hit.content} ${hit.url}`.toLowerCase();
-  for (const city of cities) {
-    if (blob.includes(city.toLowerCase())) return city;
-    if (city === "Bangalore" && blob.includes("bengaluru")) return city;
-    if (city === "Mysore" && blob.includes("mysuru")) return city;
+const LISTING_TITLE =
+  /companies in|businesses in|corporate companies|company directory|business directory|dealers in|manufacturers in/i;
+
+function isListingUrl(url: string): boolean {
+  try {
+    const segments = new URL(url).pathname.split("/").filter(Boolean);
+    const slug = segments[1] ?? "";
+    if (CATEGORY_PAGE.test(`/${slug}/`) || /^nct-/i.test(slug)) return true;
+    return (
+      /companies|businesses|directory|dealers|manufacturers|suppliers/i.test(slug) &&
+      !/-ltd|-limited|-pvt|-llp|-inc|-corp/i.test(slug)
+    );
+  } catch {
+    return false;
   }
-  return cities[0] ?? "India";
+}
+
+function inferCityFromText(blob: string, cities: string[]): string | undefined {
+  const lower = blob.toLowerCase();
+  for (const city of cities) {
+    for (const term of expandCitySearchTerms([city])) {
+      if (lower.includes(term.toLowerCase())) return city;
+    }
+  }
+  return undefined;
+}
+
+function inferCityFromSegment(segment: string, cities: string[]): string | undefined {
+  return inferCityFromText(segment, cities);
+}
+
+function inferCityFromHit(hit: DirectoryHit, cities: string[]): string | undefined {
+  if (LISTING_TITLE.test(hit.title) || isListingUrl(hit.url)) return undefined;
+  return inferCityFromText(`${hit.content} ${hit.url}`, cities);
 }
 
 function cleanCompanyName(raw: string): string | null {
@@ -135,9 +162,11 @@ export function parseCompaniesFromDirectoryResults(
       if (seen.has(key)) continue;
       seen.add(key);
 
+      const companyCity = inferCityFromSegment(raw, cities) ?? city;
+
       out.push({
         name,
-        city,
+        city: companyCity,
         industry,
         intelNotes: `Directory listing (${host}) — verify before outreach`,
         giftScore: 62,

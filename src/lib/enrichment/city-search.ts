@@ -39,3 +39,32 @@ export function expandCitySearchTerms(cities: string[]): string[] {
 export function citySearchClause(cities: string[], max = 6): string {
   return expandCitySearchTerms(cities).slice(0, max).join(" OR ");
 }
+
+const UNVERIFIED_CITY_LABELS = new Set(["", "india", "unknown"]);
+
+function normalizeCity(city: string): string {
+  return city.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** True when a company's extracted city matches any selected scout city (with aliases). */
+export function companyCityMatchesSelection(
+  companyCity: string | null | undefined,
+  selectedCities: string[],
+): boolean {
+  if (selectedCities.length === 0) return true;
+  if (!companyCity?.trim()) return false;
+
+  const normalizedCompany = normalizeCity(companyCity);
+  if (UNVERIFIED_CITY_LABELS.has(normalizedCompany)) return false;
+
+  return selectedCities.some((selected) => {
+    const aliases = expandCitySearchTerms([selected]).map(normalizeCity);
+    return aliases.some(
+      (alias) =>
+        normalizedCompany === alias ||
+        normalizedCompany.includes(alias) ||
+        alias.includes(normalizedCompany),
+    );
+  });
+}
+

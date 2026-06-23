@@ -165,8 +165,8 @@ function extractDomain(url: string): string | undefined {
   }
 }
 
-function toScoutResult(place: PlacesResult, city: string): ScoutCompanyResult {
-  const cityExtracted = extractCityFromAddress(place.formatted_address) ?? city;
+function toScoutResult(place: PlacesResult): ScoutCompanyResult {
+  const cityExtracted = extractCityFromAddress(place.formatted_address);
   const domain = place.website ? extractDomain(place.website) : undefined;
 
   return {
@@ -223,7 +223,7 @@ export async function googlePlacesSearchCompanies(params: {
           }
         }
 
-        results.push(toScoutResult(merged, city));
+        results.push(toScoutResult(merged));
       }
     } catch (e) {
       lastError = e instanceof Error ? e : new Error(String(e));
