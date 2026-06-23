@@ -339,9 +339,33 @@ function buildRoleTitleHints(seniority: string[], departments: string[]): string
   return [...hints];
 }
 
+const NON_SENIOR_TITLE_PATTERNS = [
+  /\bjunior\b/i,
+  /\bintern\b/i,
+  /\btrainee\b/i,
+  /\bassociate\b/i,
+  /\bentry[- ]level\b/i,
+  /\bgraduate\b/i,
+  /\bassistant\b/i,
+];
+
+function isNonSeniorTitle(title: string): boolean {
+  return NON_SENIOR_TITLE_PATTERNS.some((re) => re.test(title));
+}
+
+function filterPeopleByRoles(
+  people: ScoutPersonResult[],
+  seniority: string[],
+  departments: string[],
+): ScoutPersonResult[] {
+  if (!seniority.length && !departments.length) return people;
+  return people.filter((p) => personMatchesRoles(p, seniority, departments));
+}
+
 function personMatchesRoles(person: ScoutPersonResult, seniority: string[], departments: string[]): boolean {
   if (!seniority.length && !departments.length) return true;
   const titleLower = (person.title ?? "").toLowerCase();
+  if (seniority.length > 0 && titleLower && isNonSeniorTitle(titleLower)) return false;
   const senLower = (person.seniority ?? "").toLowerCase();
   const deptLower = (person.department ?? "").toLowerCase();
 
@@ -403,7 +427,15 @@ export async function discoverPeople(params: {
   }
 
   if (companyContacts.length >= limit) {
-    return { people: companyContacts.map(contactToResult).slice(0, limit), warnings, errors };
+    const filtered = filterPeopleByRoles(
+      companyContacts.map(contactToResult),
+      activeSeniority,
+      activeDepartments,
+    );
+    if (filtered.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
+      warnings.push("No contacts match the selected seniority and department filters for this company.");
+    }
+    return { people: filtered.slice(0, limit), warnings, errors };
   }
 
   const remaining = limit - companyContacts.length;
@@ -516,11 +548,9 @@ export async function discoverPeople(params: {
   const allPeople = [...companyContacts.map(contactToResult), ...external];
   let finalPeople: ScoutPersonResult[];
   if (activeSeniority.length > 0 || activeDepartments.length > 0) {
-    const matched = allPeople.filter((p) => personMatchesRoles(p, activeSeniority, activeDepartments));
-    // If role filter yields nothing, fall back to unfiltered so results aren't empty
-    finalPeople = matched.length > 0 ? matched : allPeople;
-    if (matched.length === 0 && allPeople.length > 0) {
-      warnings.push("No exact role matches found — showing all available contacts for this company.");
+    finalPeople = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments);
+    if (finalPeople.length === 0 && allPeople.length > 0) {
+      warnings.push("No contacts match the selected seniority and department filters for this company.");
     }
   } else {
     finalPeople = allPeople;
