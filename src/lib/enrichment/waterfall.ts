@@ -224,7 +224,7 @@ export async function discoverCompanies(params: {
 
   appendTavilyKeySwitchWarning(warnings);
 
-  const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage({ force: true }) : [];
+  const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
 
   // ── Step 2b: Google Places fallback when ALL Tavily keys are exhausted ────
   if (external.length === 0 && tavilyQuotaHit([...warnings, ...errors]) && allTavilyKeysExhausted(tavilyAccount)) {
@@ -453,7 +453,7 @@ export async function discoverPeople(params: {
       /missing|failed|quota|usage limit|exhausted|rejected|people search needs tavily|switched to backup key/i.test(m),
     );
 
-    const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage({ force: true }) : [];
+    const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
 
     if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
       const allExhaustedMsg =

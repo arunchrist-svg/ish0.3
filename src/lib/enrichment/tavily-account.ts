@@ -17,7 +17,16 @@ type UsageCache = {
 };
 
 let cache: UsageCache | null = null;
-const CACHE_MS = 45_000;
+const CACHE_MS = 5 * 60_000;
+const KEY_FETCH_GAP_MS = 400;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitMessage(msg: string): boolean {
+  return /rate.?limit|excessive requests|too many requests|429/i.test(msg);
+}
 
 function parseUsagePayload(keyId: string, label: string, data: Record<string, unknown>): TavilyAccountKeyUsage {
   const account = (data.account ?? {}) as Record<string, unknown>;
@@ -51,6 +60,46 @@ function parseUsagePayload(keyId: string, label: string, data: Record<string, un
   };
 }
 
+async function fetchKeyUsage(entry: { id: string; key: string; label: string }): Promise<TavilyAccountKeyUsage> {
+  try {
+    const res = await fetch("https://api.tavily.com/usage", {
+      headers: { Authorization: `Bearer ${entry.key}` },
+      cache: "no-store",
+    });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (!res.ok) {
+      const detail =
+        data.detail && typeof data.detail === "object" && "error" in (data.detail as object)
+          ? String((data.detail as { error?: unknown }).error)
+          : `HTTP ${res.status}`;
+      return {
+        keyId: entry.id,
+        label: entry.label,
+        used: 0,
+        limit: 1000,
+        remaining: 1000,
+        exhausted: false,
+        plan: null,
+        fetchError: detail,
+      };
+    }
+
+    return parseUsagePayload(entry.id, entry.label, data);
+  } catch (e) {
+    return {
+      keyId: entry.id,
+      label: entry.label,
+      used: 0,
+      limit: 1000,
+      remaining: 1000,
+      exhausted: false,
+      plan: null,
+      fetchError: e instanceof Error ? e.message : "Could not fetch Tavily usage",
+    };
+  }
+}
+
 /** Live credits from Tavily GET /usage — matches the dashboard, not local session flags. */
 export async function fetchTavilyAccountUsage(options?: { force?: boolean }): Promise<TavilyAccountKeyUsage[]> {
   const now = Date.now();
@@ -64,47 +113,24 @@ export async function fetchTavilyAccountUsage(options?: { force?: boolean }): Pr
     return [];
   }
 
-  const results = await Promise.all(
-    keys.map(async (entry) => {
-      try {
-        const res = await fetch("https://api.tavily.com/usage", {
-          headers: { Authorization: `Bearer ${entry.key}` },
-          cache: "no-store",
-        });
-        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const results: TavilyAccountKeyUsage[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    if (i > 0) await sleep(KEY_FETCH_GAP_MS);
+    results.push(await fetchKeyUsage(keys[i]));
+  }
 
-        if (!res.ok) {
-          const detail =
-            data.detail && typeof data.detail === "object" && "error" in (data.detail as object)
-              ? String((data.detail as { error?: unknown }).error)
-              : `HTTP ${res.status}`;
-          return {
-            keyId: entry.id,
-            label: entry.label,
-            used: 0,
-            limit: 1000,
-            remaining: 1000,
-            exhausted: false,
-            plan: null,
-            fetchError: detail,
-          } satisfies TavilyAccountKeyUsage;
-        }
+  const allRateLimited = results.length > 0 && results.every((r) => r.fetchError && isRateLimitMessage(r.fetchError));
+  if (allRateLimited && cache) {
+    return cache.keys;
+  }
 
-        return parseUsagePayload(entry.id, entry.label, data);
-      } catch (e) {
-        return {
-          keyId: entry.id,
-          label: entry.label,
-          used: 0,
-          limit: 1000,
-          remaining: 1000,
-          exhausted: false,
-          plan: null,
-          fetchError: e instanceof Error ? e.message : "Could not fetch Tavily usage",
-        } satisfies TavilyAccountKeyUsage;
-      }
-    }),
-  );
+  const successful = results.filter((r) => !r.fetchError);
+  if (successful.length > 0) {
+    cache = { fetchedAt: now, keys: results };
+    return results;
+  }
+
+  if (cache) return cache.keys;
 
   cache = { fetchedAt: now, keys: results };
   return results;

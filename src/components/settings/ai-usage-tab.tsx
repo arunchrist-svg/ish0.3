@@ -116,7 +116,7 @@ export function AiUsageTab() {
 
   useEffect(() => {
     void fetchAll();
-    const id = window.setInterval(() => void fetchAll(), 30_000);
+    const id = window.setInterval(() => void fetchAll(), 120_000);
     const onRefresh = () => void fetchAll();
     window.addEventListener("tavily-usage-refresh", onRefresh);
     return () => {
@@ -223,7 +223,11 @@ export function AiUsageTab() {
                       </div>
                       <span className="text-[11px] text-ish-ink-soft">
                         {k.fetchError ? (
-                          <span className="text-red-500">fetch error</span>
+                          <span className="text-red-500" title={k.fetchError}>
+                            {/rate.?limit|excessive requests/i.test(k.fetchError)
+                              ? "rate limited"
+                              : "fetch error"}
+                          </span>
                         ) : (
                           <>
                             {k.used}/{k.limit}

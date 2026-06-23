@@ -93,7 +93,6 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
         if (quotaResponse || isTavilyQuotaError(msg)) {
           lastError = new Error(msg);
           keyEntry = rotateToNextKey(keyEntry.id, accountKeys);
-          accountKeys = await fetchTavilyAccountUsage({ force: true });
           continue;
         }
         throw new Error(msg);
@@ -106,7 +105,6 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
       if (isTavilyQuotaError(err.message) && keyEntry) {
         lastError = err;
         keyEntry = rotateToNextKey(keyEntry.id, accountKeys);
-        accountKeys = await fetchTavilyAccountUsage({ force: true });
         continue;
       }
       throw err;
