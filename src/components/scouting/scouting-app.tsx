@@ -493,7 +493,7 @@ export function ScoutingApp() {
         if (!append) setHasFetched(true);
       }
     },
-    [dataMode, companies, fetchSeed],
+    [dataMode, companies, fetchSeed, scoutCompaniesLimit],
   );
 
   function handleCitiesChange(nextCities: string[]) {
@@ -531,14 +531,20 @@ export function ScoutingApp() {
     const nextSeed = fetchSeed + 1;
     setFetchSeed(nextSeed);
     setSelectedCompanyIds(new Set());
+    setView("companies");
+    setPeople([]);
+    setSelectedPersonIds(new Set());
+    setPrimaryPersonId(null);
+    setPeopleNotice(null);
+    setDiscoveryNotice(null);
+    setFetchMessage(null);
 
-    const hasExisting = companies.length > 0;
+    // Fresh scout with current filters — Load More handles appending more results.
     loadCompanies(cities, industries, {
-      append: hasExisting,
+      append: false,
       skipInternal: true,
-      excludeNames: hasExisting ? companies.map((c) => c.name) : [],
+      excludeNames: [],
       seed: nextSeed,
-      forceMainLoader: true,
     });
   }
 
