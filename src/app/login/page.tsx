@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound } from "lucide-react";
-import { Button, Separator, text } from "@/design-system";
+import { KeyRound, Loader2 } from "lucide-react";
+import { Button, text } from "@/design-system";
 import { ISH_LOGO_URL } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ function LoginField({
 }) {
   return (
     <div>
-      <label htmlFor={id} className={cn("mb-2 block", text.label)}>
+      <label htmlFor={id} className={cn("mb-2.5 block", text.label)}>
         {label}
       </label>
       <input
@@ -43,8 +43,8 @@ function LoginField({
         inputMode={inputMode}
         maxLength={maxLength}
         className={cn(
-          "w-full rounded-full border border-transparent bg-ish-app px-5 py-3.5 text-[14px] font-medium text-ish-ink",
-          "placeholder:text-ish-ink-faint focus:border-ish-black focus:bg-white focus:outline-none",
+          "w-full rounded-2xl border border-ish-border bg-ish-canvas px-5 py-4 text-[15px] font-medium tracking-widest text-ish-ink",
+          "placeholder:text-ish-ink-faint placeholder:tracking-normal focus:border-ish-black focus:bg-white focus:outline-none focus:ring-2 focus:ring-ish-black/5",
         )}
       />
     </div>
@@ -78,7 +78,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden bg-white p-[15px] font-sans">
+    <div className="h-screen overflow-hidden bg-black p-[15px] font-sans">
       <div className="mx-auto flex h-full max-w-[1620px] overflow-hidden rounded-3xl bg-white shadow-[var(--shadow-ish-float)]">
         <div className="flex min-h-0 min-w-0 flex-1">
           {/* Left — product image */}
@@ -91,28 +91,27 @@ export default function LoginPage() {
           </aside>
 
           {/* Right — login form */}
-          <main className="flex min-h-0 flex-1 flex-col">
-            <div className="flex flex-1 items-center justify-center px-6 py-10 sm:px-10 lg:px-14 xl:px-20">
-              <div className="w-full max-w-[420px]">
-                <div className="mb-10 lg:hidden">
-                  <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-ish-yellow p-3 shadow-[var(--shadow-ish-yellow-sm)]">
-                    <img src={ISH_LOGO_URL} alt="ISH" className="h-full w-auto object-contain" />
-                  </div>
+          <main className="flex min-h-0 flex-1 flex-col bg-white">
+            <div className="flex flex-1 items-center justify-center px-8 py-12 sm:px-12 lg:px-16 xl:px-20">
+              <div className="w-full max-w-[400px]">
+                {/* Brand */}
+                <div className="mb-10">
+                  <img src={ISH_LOGO_URL} alt="India Sweet House" className="h-10 w-auto object-contain" />
                 </div>
 
+                {/* Heading */}
                 <div className="mb-8">
-                  <p className="text-[13px] font-bold text-ish-ink">India Sweet House™</p>
-                  <p className="text-[12px] text-ish-ink-soft">Sales Accelerator Platform</p>
+                  <h1 className={cn("mb-2 leading-tight", text.display)}>Welcome back</h1>
+                  <p className="text-[14px] text-ish-ink-soft">
+                    Sign in with your access PIN to continue.
+                  </p>
                 </div>
 
-                <h1 className={cn("mb-8 max-w-[16ch] leading-tight", text.display)}>
-                  Welcome, login to your account.
-                </h1>
-
-                <form onSubmit={handleSubmit} className="space-y-5">
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="space-y-6">
                   <LoginField
                     id="pin"
-                    label="Access PIN:"
+                    label="Access PIN"
                     type="password"
                     value={pin}
                     onChange={setPin}
@@ -122,32 +121,39 @@ export default function LoginPage() {
                   />
 
                   {error ? (
-                    <p className="text-center text-[12px] font-medium text-red-500">{error}</p>
+                    <p className="rounded-xl bg-red-50 px-4 py-2.5 text-center text-[13px] font-medium text-red-600">
+                      {error}
+                    </p>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center gap-4 pt-1">
-                    <Button
-                      type="submit"
-                      disabled={loading || pin.length < 4}
-                      className={cn(
-                        "h-12 rounded-full bg-ish-black px-8 text-[14px] font-bold text-white",
-                        "hover:bg-ish-black/90 disabled:opacity-50",
-                      )}
-                    >
-                      {loading ? "Signing in…" : "Sign In Here"}
-                    </Button>
-                    <span className="inline-flex items-center gap-1.5 text-[12px] text-ish-ink-soft">
-                      <KeyRound className="size-3.5" />
-                      Contact admin for access
-                    </span>
-                  </div>
+                  <Button
+                    type="submit"
+                    disabled={loading || pin.length < 4}
+                    className={cn(
+                      "h-12 w-full rounded-2xl bg-ish-black text-[14px] font-bold text-white",
+                      "hover:bg-ish-black/90 disabled:opacity-50",
+                    )}
+                  >
+                    {loading ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="size-4 animate-spin" />
+                        Signing in…
+                      </span>
+                    ) : (
+                      "Sign In"
+                    )}
+                  </Button>
+
+                  <p className="flex items-center justify-center gap-1.5 text-[12px] text-ish-ink-faint">
+                    <KeyRound className="size-3.5" />
+                    Contact admin for access
+                  </p>
                 </form>
               </div>
             </div>
 
-            <div className="px-6 pb-8 sm:px-10 lg:px-14 xl:px-20">
-              <Separator className="mb-5 bg-ish-border" />
-              <p className="text-center text-[12px] text-ish-ink-faint lg:text-left">
+            <div className="px-8 pb-8 sm:px-12 lg:px-16 xl:px-20">
+              <p className="text-center text-[11px] text-ish-ink-faint">
                 www.indiasweethouse.in
               </p>
             </div>
