@@ -103,7 +103,7 @@ export const SCOUT_INDUSTRIES = [
   "Logistics",
 ] as const;
 
-export const SCOUT_SENIORITY = ["C-Level", "VP", "Director", "Manager"] as const;
+export const SCOUT_SENIORITY = ["C-Level", "Founders", "VP", "Director", "Manager"] as const;
 export type ScoutSeniority = (typeof SCOUT_SENIORITY)[number];
 
 export const SCOUT_DEPARTMENTS = [

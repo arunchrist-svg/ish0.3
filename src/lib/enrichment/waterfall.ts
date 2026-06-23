@@ -312,6 +312,7 @@ function domainFromWebsite(website?: string): string | undefined {
 // Maps UI seniority labels → search title keywords
 const SENIORITY_TITLES: Record<string, string[]> = {
   "C-Level": ["CEO", "COO", "CHRO", "CPO", "CXO", "Chief"],
+  "Founders": ["Founder", "Co-Founder", "Co-founder", "Founding"],
   "VP": ["VP", "Vice President"],
   "Director": ["Director"],
   "Manager": ["Manager", "Head"],
