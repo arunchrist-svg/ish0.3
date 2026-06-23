@@ -273,7 +273,13 @@ export async function discoverCompanies(params: {
     appendTavilyKeySwitchWarning(warnings);
   }
 
-  const companies = filterBySelectedCities([...dbMapped, ...external], params.cities).slice(0, limit);
+  const merged = [...dbMapped, ...external];
+  const companies = filterBySelectedCities(merged, params.cities).slice(0, limit);
+  if (merged.length > 0 && companies.length === 0 && params.cities.length > 0) {
+    warnings.push(
+      `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${params.cities.join(", ")}. Try a nearby city or leave industries unselected.`,
+    );
+  }
   return {
     companies,
     warnings: [...new Set(warnings)],

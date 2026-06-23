@@ -471,8 +471,13 @@ export function ScoutingApp() {
         }
 
         if (!append && !shaped.length && !primaryNotice) {
+          const helpfulWarning =
+            response.warnings?.find((w) =>
+              /verified city|directory|parse|no companies matched|listings found/i.test(w),
+            ) ?? response.warnings?.[0];
           setFetchMessage(
-            "No companies matched the current filters. Try different cities or leave industries unselected.",
+            helpfulWarning ??
+              "No companies matched the current filters. Try different cities or leave industries unselected.",
           );
         }
 

@@ -52,12 +52,35 @@ function inferCityFromText(blob: string, cities: string[]): string | undefined {
 }
 
 function inferCityFromSegment(segment: string, cities: string[]): string | undefined {
-  return inferCityFromText(segment, cities);
+  return inferCityFromText(segment.replace(/-/g, " "), cities);
+}
+
+/** Pull city from URL path segments (e.g. justdial.com/Hosur/...) or -in-city slugs. */
+function inferCityFromUrl(url: string, cities: string[]): string | undefined {
+  try {
+    const { pathname } = new URL(url);
+    const segments = pathname.split("/").filter(Boolean);
+    for (const segment of segments) {
+      const fromSegment = inferCityFromText(segment.replace(/-/g, " "), cities);
+      if (fromSegment) return fromSegment;
+    }
+    const inCity = pathname.match(/(?:^|[/-])in-([a-z][a-z-]+)/i);
+    if (inCity?.[1]) {
+      const fromSlug = inferCityFromText(inCity[1].replace(/-/g, " "), cities);
+      if (fromSlug) return fromSlug;
+    }
+  } catch {
+    // ignore bad URLs
+  }
+  return undefined;
 }
 
 function inferCityFromHit(hit: DirectoryHit, cities: string[]): string | undefined {
-  if (LISTING_TITLE.test(hit.title) || isListingUrl(hit.url)) return undefined;
-  return inferCityFromText(`${hit.content} ${hit.url}`, cities);
+  const fromUrl = inferCityFromUrl(hit.url, cities);
+  if (LISTING_TITLE.test(hit.title) || isListingUrl(hit.url)) {
+    return fromUrl;
+  }
+  return fromUrl ?? inferCityFromText(`${hit.content} ${hit.url}`, cities);
 }
 
 function cleanCompanyName(raw: string): string | null {
