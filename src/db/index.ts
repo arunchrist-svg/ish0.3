@@ -12,10 +12,19 @@ function isLocalDatabase(url: string): boolean {
   return /localhost|127\.0\.0\.1/.test(url);
 }
 
+function sanitizeDatabaseUrl(url: string): string {
+  return url.trim().replace(/^["']|["']$/g, "");
+}
+
 function createDb(): DbInstance {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
+  const rawUrl = process.env.DATABASE_URL;
+  if (!rawUrl) {
     throw new Error("DATABASE_URL is not set");
+  }
+
+  const url = sanitizeDatabaseUrl(rawUrl);
+  if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) {
+    throw new Error("DATABASE_URL is not a valid Postgres connection string");
   }
 
   if (isLocalDatabase(url)) {
