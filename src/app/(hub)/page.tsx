@@ -1,10 +1,5 @@
-import { Suspense } from "react";
-import { SalesAcceleratorApp } from "@/components/sales-accelerator/sales-accelerator-app";
+import { HomeApp } from "@/components/home/home-app";
 
 export default function Home() {
-  return (
-    <Suspense fallback={<div className="p-8 text-ish-ink-faint">Loading…</div>}>
-      <SalesAcceleratorApp />
-    </Suspense>
-  );
+  return <HomeApp />;
 }

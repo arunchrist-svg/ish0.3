@@ -28,7 +28,7 @@ const mainNav: NavItemEntry[] = [
 
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
-  { icon: Rocket, label: "Lead Accelerator", href: "/", key: "lead-accelerator" },
+  { icon: Rocket, label: "Lead Accelerator", href: "/leads", key: "lead-accelerator" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
 ];
 
@@ -59,7 +59,6 @@ function isActive(pathname: string, href?: string) {
 function getActiveKey(pathname: string) {
   const match = allLinkedItems.find((item) => item.href && isActive(pathname, item.href));
   if (!match) return "";
-  if (pathname === "/" && match.href === "/") return "lead-accelerator";
   if (pathname === "/directory" || pathname.startsWith("/directory/")) return "accounts";
   return match.key;
 }
