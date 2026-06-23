@@ -12,7 +12,8 @@ import {
 import { providerToSource, type EnrichmentInput, type EnrichmentSource } from "./enrich-types";
 import { domainFromWebsite } from "./provider-utils";
 import { normalizeLinkedInUrl } from "@/lib/utils";
-import { getEnrichmentConfig } from "./config";
+import { resolveEnrichmentConfig } from "./config";
+import { loadWorkspaceEnrichmentOverrides } from "@/lib/settings/workspace-settings";
 import { callLLM } from "@/lib/llm";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { hasGeminiKey, hasTavilyKey } from "./discovery-prerequisites";
@@ -288,8 +289,9 @@ export async function enrichLeadById(params: {
   };
 }
 
-export function shouldEnrichOnImport(): boolean {
-  return getEnrichmentConfig().enrichOnImport;
+export async function shouldEnrichOnImport(): Promise<boolean> {
+  const overrides = await loadWorkspaceEnrichmentOverrides();
+  return resolveEnrichmentConfig(undefined, overrides).enrichOnImport;
 }
 
 export { shouldAutoAcceptEmail, isNamedPerson };

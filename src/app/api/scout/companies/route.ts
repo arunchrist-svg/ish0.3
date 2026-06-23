@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 import { discoverCompanies } from "@/lib/enrichment/waterfall";
-import { getScoutCompaniesLimit, resolveEnrichmentConfig } from "@/lib/enrichment/config";
 import { checkDiscoveryPrerequisites } from "@/lib/enrichment/discovery-prerequisites";
 import type { DataMode } from "@/lib/enrichment/types";
+import {
+  getResolvedWorkspaceEnrichmentConfig,
+  loadWorkspaceEnrichmentOverrides,
+} from "@/lib/settings/workspace-settings";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
 const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
-
-function getCompanyLimit(): number {
-  return getScoutCompaniesLimit();
-}
 
 export async function POST(req: Request) {
   try {
@@ -31,11 +30,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Select at least one city." }, { status: 400 });
     }
 
-    const limit = Math.min(requestedLimit ?? getCompanyLimit(), 100);
-    const cfg = resolveEnrichmentConfig(dataMode, {
+    const requestOverride = {
       ...(searchProvider ? { searchProvider } : {}),
       ...(enrichProvider ? { enrichProvider } : {}),
-    });
+      dataMode,
+    };
+    const storedSettings = await loadWorkspaceEnrichmentOverrides();
+    const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
+    const discoveryConfig = { ...storedSettings, ...requestOverride };
+    const limit = Math.min(requestedLimit ?? cfg.scoutCompaniesLimit, 100);
 
     const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);
     const blockingErrors = prerequisiteErrors.filter((e) =>
@@ -60,11 +63,8 @@ export async function POST(req: Request) {
       workspaceId: DEFAULT_WORKSPACE,
       cities,
       industries,
-      dataMode,
-      config: {
-        ...(searchProvider ? { searchProvider } : {}),
-        ...(enrichProvider ? { enrichProvider } : {}),
-      },
+      dataMode: cfg.dataMode,
+      config: discoveryConfig,
       limit,
       excludeNames,
       skipInternal,

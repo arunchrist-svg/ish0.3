@@ -28,6 +28,12 @@ export const workspaces = pgTable("workspaces", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const workspaceSettings = pgTable("workspace_settings", {
+  workspaceId:      uuid("workspace_id").primaryKey().references(() => workspaces.id),
+  enrichmentConfig: jsonb("enrichment_config").notNull().default({}),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+});
+
 // ─── Campaigns ────────────────────────────────────────────────────────────────
 export const campaigns = pgTable("campaigns", {
   id:             uuid("id").defaultRandom().primaryKey(),

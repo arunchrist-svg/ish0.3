@@ -55,7 +55,7 @@ export async function saveScoutLeads(params: {
   const { people, company } = params;
   const dataMode = (params.dataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
   const leadSource = params.leadSource ?? "scout";
-  const enrichOnImport = shouldEnrichOnImport();
+  const enrichOnImport = await shouldEnrichOnImport();
 
   let resolvedAccountId: string;
   const [account] = await db

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { discoverPeople } from "@/lib/enrichment/waterfall";
-import { getScoutLeadsLimit } from "@/lib/enrichment/config";
 import type { DataMode } from "@/lib/enrichment/types";
+import {
+  getResolvedWorkspaceEnrichmentConfig,
+  loadWorkspaceEnrichmentOverrides,
+} from "@/lib/settings/workspace-settings";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
 const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
@@ -25,18 +28,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "companyName required" }, { status: 400 });
     }
 
+    const requestOverride = {
+      ...(searchProvider ? { searchProvider } : {}),
+      ...(enrichProvider ? { enrichProvider } : {}),
+      dataMode,
+    };
+    const storedSettings = await loadWorkspaceEnrichmentOverrides();
+    const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
+    const discoveryConfig = { ...storedSettings, ...requestOverride };
+
     const { people, warnings, errors } = await discoverPeople({
       tenantId: DEFAULT_TENANT,
       workspaceId: DEFAULT_WORKSPACE,
       companyName,
       companyDomain,
       companyWebsite,
-      dataMode,
-      config: {
-        ...(searchProvider ? { searchProvider } : {}),
-        ...(enrichProvider ? { enrichProvider } : {}),
-      },
-      limit: Math.min(requestedLimit ?? getScoutLeadsLimit(), 25),
+      dataMode: cfg.dataMode,
+      config: discoveryConfig,
+      limit: Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25),
       seniority,
       departments,
     });
