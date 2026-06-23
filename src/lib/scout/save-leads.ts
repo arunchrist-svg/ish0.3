@@ -18,17 +18,54 @@ const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
 const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
 
+const BUYING_TITLE_KEYWORDS = [
+  "hr",
+  "human resources",
+  "admin",
+  "procurement",
+  "director",
+  "head",
+  "vp",
+  "vice president",
+  "chief",
+  "manager",
+  "founder",
+  "co-founder",
+  "ceo",
+  "chro",
+  "cpo",
+  "people",
+  "facilities",
+  "office",
+];
+
+function looksLikeDecisionMaker(person: ScoutPersonResult): boolean {
+  if (person.isKeyDM) return true;
+  const title = (person.title ?? "").toLowerCase();
+  return BUYING_TITLE_KEYWORDS.some((keyword) => title.includes(keyword));
+}
+
 async function preFilterCheck(
   person: ScoutPersonResult,
   company: ScoutCompanyResult,
+  leadSource?: string,
 ): Promise<{ pass: boolean; reason: string }> {
+  if (leadSource === "scout_wizard") {
+    return { pass: true, reason: "user-selected from scout wizard" };
+  }
+
+  if (looksLikeDecisionMaker(person)) {
+    return { pass: true, reason: "decision-maker title match" };
+  }
+
   try {
     const raw = await callLLM({
       tier: "fast",
       system: `You are a B2B lead relevance classifier for a corporate gifting company (India Sweet House).
 Output ONLY valid JSON: { "pass": boolean, "reason": string }
-Pass = true if the company is a real, current Indian company that buys corporate gifts for employees (100+ employees, active business).
-Pass = false if: foreign company, very small (<50 employees), irrelevant industry, or clearly hallucinated.`,
+Pass = true if the company appears to be a real, current Indian business and the person could plausibly influence employee gifting.
+Unknown employee count or a generic industry label (e.g. Corporate) alone is NOT a reason to reject.
+Pass = false only for: clearly foreign/non-Indian companies, obvious hobby/solo businesses, irrelevant personal profiles, or clearly hallucinated entries.`,
       prompt: `Company: ${company.name}, City: ${company.city ?? "India"}, Industry: ${company.industry ?? "unknown"}, Employees: ${company.employees ?? "unknown"}
 Person: ${person.name}, Title: ${person.title ?? "unknown"}
 Is this a valid corporate gifting target?`,
@@ -176,7 +213,7 @@ export async function saveScoutLeads(params: {
       continue;
     }
 
-    const filter = await preFilterCheck(person, company);
+    const filter = await preFilterCheck(person, company, leadSource);
     if (!filter.pass) {
       skipped.push({ name: person.name, reason: `pre-filter rejected: ${filter.reason}` });
       continue;
