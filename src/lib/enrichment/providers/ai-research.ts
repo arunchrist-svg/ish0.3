@@ -1,6 +1,6 @@
 import { callLLM } from "@/lib/llm";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
-import { hasGeminiKey, hasTavilyKey } from "../discovery-prerequisites";
+import { hasLLMKey, hasTavilyKey } from "../discovery-prerequisites";
 import { tavilySearch } from "../tavily-client";
 import type { EnrichmentInput, EnrichmentProvider, EnrichmentResult } from "../enrich-types";
 import { sanitizeEmail, sanitizePhone } from "../validate-contact";
@@ -9,10 +9,10 @@ export const aiResearchProvider: EnrichmentProvider = {
   id: "ai_research",
   name: "AI Web Research",
   capabilities: ["enrich"],
-  isConfigured: () => hasTavilyKey() && hasGeminiKey(),
+  isConfigured: () => hasTavilyKey() && hasLLMKey(),
 
   async enrich(input: EnrichmentInput): Promise<EnrichmentResult | null> {
-    if (!hasTavilyKey() || !hasGeminiKey()) return null;
+    if (!hasTavilyKey() || !hasLLMKey()) return null;
 
     const query = `"${input.name}" "${input.company}" ${input.title ?? ""} email phone contact India`;
     const results = await tavilySearch(query, 6).catch(() => []);

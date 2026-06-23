@@ -4,7 +4,7 @@ import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause } from "./city-search";
 import { parseCompaniesFromDirectoryResults } from "./directory-parser";
-import { hasGeminiKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
+import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { searchPeopleViaTavily } from "./people-search";
 import type { DirectorySearchMeta } from "./india-directories";
 import { tavilySearch } from "./tavily-client";
@@ -31,7 +31,7 @@ export async function tavilySearchCompanies(params: {
     return [];
   }
 
-  if (hasGeminiKey()) {
+  if (hasLLMKey()) {
     const context = results
       .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 500)}`)
       .join("\n\n");
@@ -68,7 +68,7 @@ Only include real companies. Minimum confidence 40. Do NOT invent companies.`,
       meta?.warnings.push(llmErrorMessage(e));
     }
   } else {
-    meta?.warnings.push("GEMINI_API_KEY not set — using web parsing fallback.");
+    meta?.warnings.push("LLM API key not set — using web parsing fallback.");
   }
 
   return parseCompaniesFromDirectoryResults(results, params.cities, params.limit ?? 10).map((c) => ({

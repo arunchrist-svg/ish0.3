@@ -16,7 +16,7 @@ import { resolveEnrichmentConfig } from "./config";
 import { loadWorkspaceEnrichmentOverrides } from "@/lib/settings/workspace-settings";
 import { callLLM } from "@/lib/llm";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
-import { hasGeminiKey, hasTavilyKey } from "./discovery-prerequisites";
+import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
 import { tavilySearch } from "./tavily-client";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "./types";
 import type { EnrichmentProviderId } from "./enrich-types";
@@ -69,7 +69,7 @@ async function emailStatusFromVerify(email?: string): Promise<EnrichContactResul
 
 async function fillMissingTitle(input: EnrichmentInput): Promise<string | undefined> {
   if (input.title?.trim()) return input.title.trim();
-  if (!hasTavilyKey() || !hasGeminiKey()) return undefined;
+  if (!hasTavilyKey() || !hasLLMKey()) return undefined;
 
   const query = `"${input.name}" "${input.company}" job title role India LinkedIn`;
   const results = await tavilySearch(query, 5).catch(() => []);

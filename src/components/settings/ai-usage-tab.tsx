@@ -52,6 +52,12 @@ type LlmUsage = {
     sonnetModel: string;
     maxOutputTokens: number | null;
   };
+  openrouter: {
+    configured: boolean;
+    active: boolean;
+    fastModel: string;
+    qualityModel: string;
+  };
 };
 
 function barTone(percent: number, allExhausted: boolean): string {
@@ -379,6 +385,66 @@ export function AiUsageTab() {
                 <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
                   Set <code className="rounded bg-ish-app px-1 font-mono">ANTHROPIC_API_KEY</code> in{" "}
                   <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to configure Claude.
+                </p>
+              </>
+            )}
+          </>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="OpenRouter"
+        footer="Multi-model LLM gateway. Set LLM_PROVIDER=openrouter to activate. Quota managed via OpenRouter dashboard."
+      >
+        <SettingsRow className="justify-between py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {llm ? (
+              <>
+                {llm.openrouter.active && <ActiveBadge />}
+                <StatusBadge ok={llm.openrouter.configured} label={llm.openrouter.configured ? "Key configured" : "Key missing"} />
+              </>
+            ) : (
+              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+            )}
+          </div>
+          <a
+            href="https://openrouter.ai/keys"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+          >
+            Dashboard <ExternalLink className="size-3" />
+          </a>
+        </SettingsRow>
+
+        {llm && (
+          <>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-[13px] font-medium text-ish-ink">Fast tier</p>
+                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
+              </div>
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                {llm.openrouter.fastModel}
+              </code>
+            </div>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-[13px] font-medium text-ish-ink">Quality tier</p>
+                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
+              </div>
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                {llm.openrouter.qualityModel}
+              </code>
+            </div>
+            {!llm.openrouter.configured && (
+              <>
+                <SettingsGroupDivider />
+                <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
+                  Set <code className="rounded bg-ish-app px-1 font-mono">OPENROUTER_API_KEY</code> in{" "}
+                  <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to configure OpenRouter.
                 </p>
               </>
             )}

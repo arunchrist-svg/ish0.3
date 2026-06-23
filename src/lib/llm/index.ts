@@ -5,8 +5,32 @@ if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY && process.env.GEMINI_API_KEY) {
 }
 import { google } from "@ai-sdk/google";
 import { anthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 
 type LLMTier = "fast" | "quality";
+
+let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
+
+
+function getOpenRouterSiteUrl(): string {
+  if (process.env.OPENROUTER_SITE_URL) return process.env.OPENROUTER_SITE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3002";
+}
+
+function getOpenRouterClient() {
+  if (!openRouterClient) {
+    openRouterClient = createOpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      headers: {
+        "HTTP-Referer": getOpenRouterSiteUrl(),
+        "X-Title": process.env.OPENROUTER_SITE_NAME ?? "ISH Sales Accelerator",
+      },
+    });
+  }
+  return openRouterClient;
+}
 
 function getModel(tier: LLMTier) {
   const provider = process.env.LLM_PROVIDER ?? "gemini";
@@ -15,6 +39,13 @@ function getModel(tier: LLMTier) {
     const haiku  = process.env.ANTHROPIC_MODEL_HAIKU  ?? "claude-haiku-4-5";
     const sonnet = process.env.ANTHROPIC_MODEL_SONNET ?? "claude-sonnet-4-5";
     return tier === "fast" ? anthropic(haiku) : anthropic(sonnet);
+  }
+
+  if (provider === "openrouter") {
+    const fast    = process.env.OPENROUTER_MODEL_FAST    ?? "openai/gpt-4o-mini";
+    const quality = process.env.OPENROUTER_MODEL_QUALITY ?? "openai/gpt-4o";
+    const client  = getOpenRouterClient();
+    return tier === "fast" ? client(fast) : client(quality);
   }
 
   const flash     = process.env.GEMINI_MODEL_FLASH      ?? "gemini-2.5-flash";
@@ -86,12 +117,12 @@ export async function callLLM(params: {
 export function friendlyLLMError(error: unknown): string {
   const msg = error instanceof Error ? error.message : "AI request failed";
   if (/quota|rate.?limit|resource_exhausted|exceeded your current quota/i.test(msg)) {
-    return "Gemini API quota exceeded. Wait about a minute and try again, or switch to a paid API plan.";
+    return "LLM API quota exceeded. Wait about a minute and try again, or switch to a paid API plan.";
   }
   if (/Failed after \d+ attempts/i.test(msg)) {
     const last = msg.match(/Last error:\s*(.+)$/i)?.[1] ?? msg;
     if (/quota|rate.?limit/i.test(last)) {
-      return "Gemini API quota exceeded. Wait about a minute and try again.";
+      return "LLM API quota exceeded. Wait about a minute and try again.";
     }
     return last.length > 180 ? `${last.slice(0, 180)}…` : last;
   }

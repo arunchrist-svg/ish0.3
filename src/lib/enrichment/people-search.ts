@@ -6,7 +6,7 @@ import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutPersonResult } from "./types";
-import { hasGeminiKey, hasTavilyKey } from "./discovery-prerequisites";
+import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
 import { parsePeopleFromSearchResults } from "./people-parser";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, TAVILY_QUOTA_PEOPLE_MSG, tavilySearch } from "./tavily-client";
 
@@ -98,7 +98,7 @@ export async function searchPeopleViaTavily(params: {
     return [];
   }
 
-  if (hasGeminiKey()) {
+  if (hasLLMKey()) {
     const context = allResults
       .slice(0, 10)
       .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 400)}`)

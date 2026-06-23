@@ -473,7 +473,7 @@ export function HomeApp() {
 
                 {llmConfig && (
                   <span className="ml-auto rounded-full bg-ish-black px-2.5 py-0.5 text-[11px] font-bold text-white">
-                    {llmConfig.provider === "gemini" ? "Gemini" : "Anthropic"}
+                    {llmConfig.provider === "openrouter" ? "OpenRouter" : llmConfig.provider === "gemini" ? "Gemini" : "Anthropic"}
                   </span>
                 )}
               </div>

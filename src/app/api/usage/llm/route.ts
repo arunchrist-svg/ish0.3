@@ -5,6 +5,7 @@ export async function GET() {
 
   const geminiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
 
   return NextResponse.json({
     provider,
@@ -22,6 +23,12 @@ export async function GET() {
       maxOutputTokens: process.env.ANTHROPIC_MAX_OUTPUT_TOKENS
         ? parseInt(process.env.ANTHROPIC_MAX_OUTPUT_TOKENS, 10)
         : null,
+    },
+    openrouter: {
+      configured: Boolean(openrouterKey),
+      active: provider === "openrouter",
+      fastModel: process.env.OPENROUTER_MODEL_FAST ?? "openai/gpt-4o-mini",
+      qualityModel: process.env.OPENROUTER_MODEL_QUALITY ?? "openai/gpt-4o",
     },
   });
 }

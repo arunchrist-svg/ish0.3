@@ -11,7 +11,7 @@ import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause, expandCitySearchTerms } from "./city-search";
 import { parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { searchPeopleViaTavily } from "./people-search";
-import { hasGeminiKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
+import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, tavilySearch } from "./tavily-client";
 
 const DIRECTORIES = [
@@ -64,7 +64,6 @@ function buildQueries(cities: string[], industries: string[], fetchSeed = 0): st
 
 function parseLLMCompanies(
   raw: string,
-  cities: string[],
   limit: number,
 ): ScoutCompanyResult[] {
   const parsed = parseJsonArrayFromLLM(raw);
@@ -76,7 +75,7 @@ function parseLLMCompanies(
     website: (c.website as string | null) ?? undefined,
     domain: c.website ? extractDomain(c.website as string) : undefined,
     industry: (c.industry as string | null) ?? undefined,
-    city: (c.city as string | null) ?? cities[0],
+    city: (c.city as string | null) ?? undefined,
     employees: (c.employees as string | null) ?? undefined,
     intelNotes: buildIntelNotes(c),
     giftScore: estimateGiftScore(c),
@@ -138,7 +137,7 @@ export async function indiaDirectoriesSearchCompanies(params: {
 
   const threshold = aiConfidenceThreshold();
 
-  if (hasGeminiKey()) {
+  if (hasLLMKey()) {
     const context = allResults
       .slice(0, 12)
       .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 600)}`)
@@ -163,7 +162,7 @@ Return up to ${limit} companies.`,
       });
 
       try {
-        const llmResults = parseLLMCompanies(raw, params.cities, limit);
+        const llmResults = parseLLMCompanies(raw, limit);
         if (llmResults.length) return llmResults;
         meta?.warnings.push("AI extraction returned no companies — using directory parsing fallback.");
       } catch {
@@ -175,7 +174,7 @@ Return up to ${limit} companies.`,
       meta?.warnings.push(llmErrorMessage(e));
     }
   } else {
-    meta?.warnings.push("GEMINI_API_KEY not set — using directory parsing fallback.");
+    meta?.warnings.push("LLM API key not set — using directory parsing fallback.");
   }
 
   const fallback = parseCompaniesFromDirectoryResults(allResults, params.cities, limit);

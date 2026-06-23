@@ -9,6 +9,13 @@ export function hasGeminiKey(): boolean {
   return !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
 }
 
+export function hasLLMKey(): boolean {
+  const provider = process.env.LLM_PROVIDER ?? "gemini";
+  if (provider === "anthropic") return !!process.env.ANTHROPIC_API_KEY;
+  if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;
+  return hasGeminiKey();
+}
+
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
   const errors: string[] = [];
   const needsTavily =
@@ -22,10 +29,10 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
 
   if (
     (cfg.searchProvider === "india_directories" || cfg.searchProvider === "tavily_ai" || cfg.fallbackToAI) &&
-    !hasGeminiKey()
+    !hasLLMKey()
   ) {
     errors.push(
-      "GEMINI_API_KEY is missing. Directory search will use basic parsing only until an AI key is configured.",
+      "LLM API key is missing. Directory search will use basic parsing only until an AI key is configured.",
     );
   }
 
@@ -43,10 +50,10 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
 export function llmErrorMessage(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/quota|429|rate.?limit|resource_exhausted/i.test(msg)) {
-    return "Gemini API quota exceeded — using directory parsing fallback.";
+    return "LLM API quota exceeded — using directory parsing fallback.";
   }
   if (/api.?key|401|403|unauthorized|invalid/i.test(msg)) {
-    return "Gemini API key rejected — using directory parsing fallback.";
+    return "LLM API key rejected — using directory parsing fallback.";
   }
   return "AI extraction failed — using directory parsing fallback.";
 }

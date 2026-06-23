@@ -619,7 +619,6 @@ export function ScoutingApp() {
 
   function setCompanyAsPrimary(id: string) {
     setPrimaryCompanyId(id);
-    setSelectedCompanyIds((prev) => (prev.has(id) ? prev : new Set([...prev, id])));
   }
 
   function togglePerson(id: string) {
@@ -634,7 +633,6 @@ export function ScoutingApp() {
 
   function setPersonAsPrimary(id: string) {
     setPrimaryPersonId(id);
-    setSelectedPersonIds((prev) => (prev.has(id) ? prev : new Set([...prev, id])));
   }
 
   function selectAllCompanies() {
@@ -905,7 +903,7 @@ export function ScoutingApp() {
                         <p>{fetchMessage ?? (scoutMode === "search" ? "No companies matched that name." : "No companies found for the current filters.")}</p>
                         <p className="text-[12px]">
                           {fetchMessage?.includes("API") || fetchMessage?.includes("missing")
-                            ? "Check .env.local (TAVILY_API_KEY, GEMINI_API_KEY) or Settings, then try again."
+                            ? "Check .env.local (TAVILY_API_KEY, LLM API key) or Settings, then try again."
                             : scoutMode === "search"
                               ? "Try a different spelling or check the company name."
                               : "Try different cities or industries, then fetch again."}
