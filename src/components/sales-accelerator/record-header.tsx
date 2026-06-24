@@ -89,7 +89,7 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 rounded-t-[22px] bg-ish-yellow-gradient px-[22px] py-4">
+      <div className="flex items-center justify-between gap-4 px-[22px] py-4">
         <div className="flex min-w-0 items-center gap-[18px]">
           <IshAvatar name={current.name} index={0} size={64} />
           <div className="min-w-0">

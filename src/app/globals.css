@@ -143,6 +143,17 @@
   background: rgba(131, 162, 219, 0.50);
 }
 
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+
 .stratus {
   --background: oklch(0.993 0.002 240);
   --foreground: oklch(0.08 0 0);

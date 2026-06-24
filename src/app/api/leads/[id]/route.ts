@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel } from "@/db";
-import { eq, desc } from "drizzle-orm";
+import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
+import { eq, desc, asc } from "drizzle-orm";
 import { canManuallyAdvance, parseDealAmount } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { getLeadNetworkSummary } from "@/lib/network/graph";
+import { toEditMessage } from "@/lib/agents/writer-draft";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -38,6 +39,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           where: eq(outreachApprovals.leadOutreachId, outreach.id),
         })
       : null;
+
+    const editMessages = outreach
+      ? await db.query.outreachEditMessages.findMany({
+          where: eq(outreachEditMessages.leadOutreachId, outreach.id),
+          orderBy: [asc(outreachEditMessages.createdAt)],
+        })
+      : [];
 
     const scheduleRows = await db
       .select()
@@ -106,6 +114,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             outreachGoal: outreach.outreachGoal ?? undefined,
             confidenceTier: outreach.confidenceTier ?? undefined,
             approvalStatus: approval?.status ?? "pending",
+            editMessages: editMessages.map(toEditMessage),
           }
         : undefined,
       upNext,

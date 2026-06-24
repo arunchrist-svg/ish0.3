@@ -135,6 +135,16 @@ export async function runWriter(
   return data.draft;
 }
 
+export async function reviseDraft(
+  leadOutreachId: string,
+  message: string,
+): Promise<{ draft: WriterDraft; messages: EditMessage[] }> {
+  return post<{ draft: WriterDraft; messages: EditMessage[] }>("/api/agents/writer/revise", {
+    leadOutreachId,
+    message,
+  });
+}
+
 export async function approveOutreach(params: {
   leadOutreachId: string;
   leadId: string;
@@ -229,6 +239,13 @@ export type LeadDetailRecord = {
   isPinned?: boolean;
 };
 
+export type EditMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
+};
+
 export type WriterDraft = {
   id: string;
   subjectA?: string;
@@ -246,6 +263,7 @@ export type WriterDraft = {
   outreachGoal?: string;
   confidenceTier?: string;
   approvalStatus: string;
+  editMessages?: EditMessage[];
 };
 
 export type UpNextItem = {

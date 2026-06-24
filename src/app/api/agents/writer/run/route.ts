@@ -4,27 +4,7 @@ import { db, leadOutreach } from "@/db";
 import { eq } from "drizzle-orm";
 import { friendlyLLMError } from "@/lib/llm";
 import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
-
-function toWriterDraft(outreach: typeof leadOutreach.$inferSelect) {
-  return {
-    id: outreach.id,
-    subjectA: outreach.subjectA ?? undefined,
-    subjectB: outreach.subjectB ?? undefined,
-    emailBody: outreach.emailBody ?? undefined,
-    deliverabilityScore: outreach.deliverabilityScore ?? undefined,
-    deliverabilityVerdict: outreach.deliverabilityVerdict ?? undefined,
-    rubricScore: (outreach.rubricScore as Record<string, number>) ?? undefined,
-    rubricTotal: outreach.rubricTotal ?? undefined,
-    draftSource: outreach.draftSource,
-    promptVersion: outreach.promptVersion ?? undefined,
-    revisionCount: outreach.revisionCount ?? 0,
-    revisionTimeout: outreach.revisionTimeout ?? false,
-    templateVariant: outreach.templateVariant ?? undefined,
-    outreachGoal: outreach.outreachGoal ?? undefined,
-    confidenceTier: outreach.confidenceTier ?? undefined,
-    approvalStatus: "pending",
-  };
-}
+import { toWriterDraft } from "@/lib/agents/writer-draft";
 
 export async function POST(req: Request) {
   try {

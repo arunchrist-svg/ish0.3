@@ -29,7 +29,7 @@ export function QueuePanel({ leads, activeId, onSelect }: Props) {
         </div>
       </div>
 
-      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-y-auto px-2 -mx-2">
+      <div ref={containerRef} className="relative min-h-0 flex-1 overflow-y-auto px-2 -mx-2 scrollbar-none">
         <SlidingHighlight
           rect={rect}
           ready={ready}

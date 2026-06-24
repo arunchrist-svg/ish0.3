@@ -171,6 +171,15 @@ export const leadOutreach = pgTable("lead_outreach", {
   createdAt:         timestamp("created_at").defaultNow().notNull(),
 });
 
+// ─── Outreach Edit Messages (chat history) ───────────────────────────────────
+export const outreachEditMessages = pgTable("outreach_edit_messages", {
+  id:             uuid("id").defaultRandom().primaryKey(),
+  leadOutreachId: uuid("lead_outreach_id").notNull().references(() => leadOutreach.id),
+  role:           text("role").notNull(),
+  content:        text("content").notNull(),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
+});
+
 // ─── Outreach Approvals ───────────────────────────────────────────────────────
 export const outreachApprovals = pgTable("outreach_approvals", {
   id:            uuid("id").defaultRandom().primaryKey(),
@@ -322,6 +331,11 @@ export const leadResearchRelations = relations(leadResearch, ({ one }) => ({
 export const leadOutreachRelations = relations(leadOutreach, ({ one, many }) => ({
   lead: one(leads, { fields: [leadOutreach.leadId], references: [leads.id] }),
   approvals: many(outreachApprovals),
+  editMessages: many(outreachEditMessages),
+}));
+
+export const outreachEditMessagesRelations = relations(outreachEditMessages, ({ one }) => ({
+  outreach: one(leadOutreach, { fields: [outreachEditMessages.leadOutreachId], references: [leadOutreach.id] }),
 }));
 
 export const outreachApprovalsRelations = relations(outreachApprovals, ({ one }) => ({

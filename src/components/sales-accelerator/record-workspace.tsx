@@ -181,8 +181,10 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
           <ActionLoader variant="refresh" contactName={lead.name} />
         </div>
       )}
-      <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} />
-      <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
+      <div className="overflow-hidden rounded-[22px] bg-ish-yellow-gradient">
+        <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} />
+        <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
+      </div>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white">
         <div className="px-[22px] pt-4">
           <TabsList className="h-auto gap-1.5 bg-transparent p-0">

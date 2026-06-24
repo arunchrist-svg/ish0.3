@@ -38,6 +38,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
     (draft?.templateVariant as OutreachTemplateId) ?? OUTREACH_TEMPLATES[0].id,
   );
   const [generating, setGenerating] = useState(false);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
 
   useEffect(() => {
     if (draft?.templateVariant) {
@@ -72,7 +73,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
 
   return (
     <div className="animate-ish-tab-in px-[22px] py-[18px]">
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[12px] bg-ish-canvas px-3 py-2.5">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[16px] border border-ish-border bg-white px-3.5 py-2.5 shadow-[var(--shadow-ish-sm)]">
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex size-7 items-center justify-center rounded-full bg-ish-yellow">
             <Mail className="size-3.5 text-ish-ink" />
@@ -115,7 +116,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
             </>
           ) : null}
 
-          <DropdownMenu>
+          <DropdownMenu modal={false} open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
             <DropdownMenuTrigger
               disabled={!canWrite || generating}
               className={cn(
@@ -130,7 +131,10 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
             <DropdownMenuContent align="end" className="min-w-[220px]">
               <DropdownMenuRadioGroup
                 value={selectedTemplate}
-                onValueChange={(v) => setSelectedTemplate(v as OutreachTemplateId)}
+                onValueChange={(v) => {
+                  setSelectedTemplate(v as OutreachTemplateId);
+                  setTemplateMenuOpen(false);
+                }}
               >
                 {OUTREACH_TEMPLATES.map((template) => (
                   <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
@@ -145,11 +149,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
           </DropdownMenu>
 
           <Button
+            type="button"
             variant="ghost"
             size="sm"
             disabled={!canWrite || generating}
             className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
-            onClick={handleGenerate}
+            onClick={() => void handleGenerate()}
           >
             <FileText className="size-3" />
             {generating ? "Writing…" : hasDraft ? "Regenerate" : "Write"}
@@ -162,12 +167,21 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh }: 
           <WritingLoader contactName={lead.name} companyName={lead.company} />
         </div>
       ) : hasDraft && draft ? (
-        <OutreachApprovalCard key={draft.id} leadId={lead.id} draft={draft} onDone={onSilentRefresh} />
+        <OutreachApprovalCard
+          key={draft.id}
+          draft={draft}
+          contactName={lead.name}
+          companyName={lead.company}
+          onDraftUpdated={onDraftUpdated}
+        />
       ) : (
-        <div className="flex min-h-[200px] flex-col items-center justify-center rounded-[20px] border border-dashed border-ish-border bg-white p-8 text-center shadow-[var(--shadow-ish-sm)]">
-          <p className="text-[13px] font-semibold text-ish-ink">Pick {activeTemplate.shortLabel} and click Write</p>
-          <p className="mt-1 max-w-sm text-[12px] text-ish-ink-soft">
-            Your personalised draft will appear below for review and approval.
+        <div className="flex min-h-[280px] flex-col items-center justify-center rounded-[20px] border border-dashed border-ish-border bg-gradient-to-b from-ish-yellow-soft/30 to-white p-8 text-center shadow-[var(--shadow-ish-sm)]">
+          <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-ish-yellow-soft">
+            <Mail className="size-5 text-ish-ink-soft" />
+          </div>
+          <p className="text-[14px] font-semibold text-ish-ink">Pick {activeTemplate.shortLabel} and click Write</p>
+          <p className="mt-1.5 max-w-sm text-[12px] leading-relaxed text-ish-ink-soft">
+            Your personalised draft will appear here. Use the AI chat on the right to refine tone, length, and CTAs.
           </p>
         </div>
       )}

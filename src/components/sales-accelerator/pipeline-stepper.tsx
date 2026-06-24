@@ -1,7 +1,6 @@
-import { ChevronLeft, ChevronRight, Check, Lock, Loader2 } from "lucide-react";
+import { Check, Lock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STAGES } from "@/lib/data";
-import { CircleButton } from "@/design-system";
 
 type Props = {
   stage: number;
@@ -9,7 +8,7 @@ type Props = {
 
 function StageNode({ label, active, done, isLast }: { label: string; active: boolean; done: boolean; isLast: boolean }) {
   return (
-    <div className={cn("flex items-center", isLast ? "shrink-0" : "flex-1")}>
+    <div className="flex shrink-0 items-center">
       <div
         className={cn(
           "flex items-center gap-2 whitespace-nowrap rounded-[20px] text-[12.5px] font-semibold",
@@ -25,16 +24,15 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
         )}
         {label}
       </div>
-      {!isLast && <div className="min-w-4 flex-1 bg-ish-ink/10 h-px" />}
+      {!isLast && <div className="mx-2 h-px w-5 shrink-0 bg-ish-ink/10" />}
     </div>
   );
 }
 
 export function PipelineStepper({ stage }: Props) {
   return (
-    <div className="flex items-center gap-0 rounded-b-[22px] bg-ish-yellow-gradient px-[22px] pt-[22px] pb-[22px]">
-      <CircleButton size={28}><ChevronLeft className="size-3.5" /></CircleButton>
-      <div className="flex flex-1 items-center gap-2 overflow-hidden px-2.5">
+    <div className="border-t border-white/30 px-[22px] pb-[22px] pt-3">
+      <div className="flex min-w-0 items-center overflow-x-auto scrollbar-none">
         {STAGES.map((s, i) => (
           <StageNode
             key={s}
@@ -45,7 +43,6 @@ export function PipelineStepper({ stage }: Props) {
           />
         ))}
       </div>
-      <CircleButton size={28}><ChevronRight className="size-3.5" /></CircleButton>
     </div>
   );
 }
