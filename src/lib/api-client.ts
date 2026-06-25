@@ -87,6 +87,76 @@ export async function scoutPeople(params: {
   return post<ScoutPeopleResponse>("/api/scout/people", params);
 }
 
+
+export type ScoutPeopleBatchResponse = {
+  results: Record<string, ScoutPeopleResponse>;
+};
+
+export async function scoutPeopleBatch(params: {
+  companies: {
+    id: string;
+    name: string;
+    domain?: string;
+    website?: string;
+  }[];
+  dataMode: DataMode;
+  limit?: number;
+  seniority?: string[];
+  departments?: string[];
+}): Promise<ScoutPeopleBatchResponse> {
+  return post<ScoutPeopleBatchResponse>("/api/scout/people/batch", params);
+}
+
+
+export async function scoutPeopleBatchStream(
+  params: {
+    companies: {
+      id: string;
+      name: string;
+      domain?: string;
+      website?: string;
+    }[];
+    dataMode: DataMode;
+    limit?: number;
+    seniority?: string[];
+    departments?: string[];
+  },
+  onResult: (companyId: string, result: ScoutPeopleResponse) => void,
+): Promise<void> {
+  const res = await fetch("/api/scout/people/batch?stream=1", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+  if (!res.body) throw new Error("Empty batch stream response");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const chunk = JSON.parse(line) as { id: string } & ScoutPeopleResponse;
+      onResult(chunk.id, chunk);
+    }
+  }
+
+  if (buffer.trim()) {
+    const chunk = JSON.parse(buffer) as { id: string } & ScoutPeopleResponse;
+    onResult(chunk.id, chunk);
+  }
+}
+
 export async function scoutSave(params: {
   people: ScoutPersonResult[];
   company: ScoutCompanyResult;

@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { discoverPeople } from "@/lib/enrichment/waterfall";
 import type { DataMode } from "@/lib/enrichment/types";
-import {
-  getResolvedWorkspaceEnrichmentConfig,
-  loadWorkspaceEnrichmentOverrides,
-} from "@/lib/settings/workspace-settings";
+import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 
 const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
 const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
@@ -33,9 +30,8 @@ export async function POST(req: Request) {
       ...(enrichProvider ? { enrichProvider } : {}),
       dataMode,
     };
-    const storedSettings = await loadWorkspaceEnrichmentOverrides();
     const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
-    const discoveryConfig = { ...storedSettings, ...requestOverride };
+    const discoveryConfig = { ...cfg, ...requestOverride };
 
     const { people, warnings, errors } = await discoverPeople({
       tenantId: DEFAULT_TENANT,

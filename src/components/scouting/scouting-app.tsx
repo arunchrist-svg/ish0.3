@@ -8,7 +8,8 @@ import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
 import { LeadsGrid } from "./leads-grid";
 import { PersonDetailPanel } from "./person-detail-panel";
-import { scoutCompanies, scoutPeople, scoutSave } from "@/lib/api-client";
+import { scoutCompanies, scoutPeople, scoutPeopleBatchStream, scoutSave } from "@/lib/api-client";
+import { mapWithConcurrency } from "@/lib/async";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, cn } from "@/lib/utils";
@@ -308,6 +309,7 @@ export function ScoutingApp() {
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingPeople, setLoadingPeople] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
   const [saving, setSaving] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
@@ -687,51 +689,98 @@ export function ScoutingApp() {
     void runFetchLeads(selected, chosenSeniority, chosenDepartments);
   }
 
+  function applyLeadsDedupe(leadsData: { leads?: { id: string; name: string; company: string }[] }) {
+    if (!leadsData.leads) return;
+    const map = new Map<string, string>();
+    for (const lead of leadsData.leads) {
+      map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
+      map.set(lead.name.toLowerCase(), lead.id);
+    }
+    setCrmLeadIdsByKey(map);
+    setExistingContactNames(new Set(leadsData.leads.map((l) => l.name.toLowerCase())));
+  }
+
+  async function fetchLeadsParallel(
+    selected: CompanyShape[],
+    activeSeniority: string[],
+    activeDepartments: string[],
+    allPeople: ReturnType<typeof toPersonShape>[],
+    peopleWarnings: string[],
+  ) {
+    let doneCount = 0;
+    await mapWithConcurrency(selected, 3, async (company) => {
+      const { people: results, warnings, errors } = await scoutPeople({
+        companyName: company.name,
+        companyDomain: resolveCompanyDomain(company._raw),
+        companyWebsite: company._raw.website,
+        dataMode,
+        limit: scoutLeadsLimit,
+        seniority: activeSeniority,
+        departments: activeDepartments,
+      });
+      peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
+      const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
+      allPeople.push(...shaped);
+      doneCount += 1;
+      setFetchProgress({ done: doneCount, total: selected.length });
+      setPeople((prev) => [...prev, ...shaped]);
+    });
+  }
+
   async function runFetchLeads(selected: CompanyShape[], activeSeniority: string[], activeDepartments: string[]) {
     setView("people");
     setLoadingPeople(true);
+    setFetchProgress({ done: 0, total: selected.length });
     setPeople([]);
     setPeopleNotice(null);
     setSelectedPersonIds(new Set());
     setPrimaryPersonId(null);
 
+    const leadsDedupePromise = fetch("/api/leads")
+      .then((res) => res.json())
+      .catch(() => null);
+
     try {
       const allPeople: ReturnType<typeof toPersonShape>[] = [];
       const peopleWarnings: string[] = [];
-      for (const company of selected) {
-        const { people: results, warnings, errors } = await scoutPeople({
-          companyName: company.name,
-          companyDomain: resolveCompanyDomain(company._raw),
-          companyWebsite: company._raw.website,
-          dataMode,
-          limit: scoutLeadsLimit,
-          seniority: activeSeniority,
-          departments: activeDepartments,
-        });
-        peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
-        const shaped = results.map((p, i) =>
-          toPersonShape(p, company.id, allPeople.length + i),
-        );
-        allPeople.push(...shaped);
-      }
-      setPeople(allPeople);
 
-      // Check which fetched people are already in CRM
-      try {
-        const leadsRes = await fetch("/api/leads");
-        const leadsData = await leadsRes.json();
-        if (leadsData.leads) {
-          const map = new Map<string, string>();
-          for (const lead of leadsData.leads as { id: string; name: string; company: string }[]) {
-            map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
-            map.set(lead.name.toLowerCase(), lead.id);
-          }
-          setCrmLeadIdsByKey(map);
-          setExistingContactNames(new Set((leadsData.leads as { id: string; name: string }[]).map((l) => l.name.toLowerCase())));
+      if (selected.length > 1) {
+        try {
+          let doneCount = 0;
+          await scoutPeopleBatchStream(
+            {
+              companies: selected.map((c) => ({
+                id: c.id,
+                name: c.name,
+                domain: resolveCompanyDomain(c._raw),
+                website: c._raw.website,
+              })),
+              dataMode,
+              limit: scoutLeadsLimit,
+              seniority: activeSeniority,
+              departments: activeDepartments,
+            },
+            (companyId, batchResult) => {
+              const company = selected.find((c) => c.id === companyId);
+              if (!company) return;
+              peopleWarnings.push(...(batchResult.warnings ?? []), ...(batchResult.errors ?? []));
+              const shaped = batchResult.people.map((p, j) => toPersonShape(p, company.id, j));
+              allPeople.push(...shaped);
+              doneCount += 1;
+              setFetchProgress({ done: doneCount, total: selected.length });
+              setPeople((prev) => [...prev, ...shaped]);
+            },
+          );
+        } catch (batchErr) {
+          console.warn("[scouting] batch fetch failed, falling back to parallel singles:", batchErr);
+          await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
         }
-      } catch {
-        // non-critical
+      } else {
+        await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
       }
+
+      const leadsData = await leadsDedupePromise;
+      if (leadsData) applyLeadsDedupe(leadsData);
 
       if (allPeople[0]) {
         setPrimaryPersonId(allPeople[0].id);
@@ -993,7 +1042,11 @@ export function ScoutingApp() {
                   </div>
                   {loadingPeople ? (
                     <DiscoveringLoader
-                      message="Finding decision-makers"
+                      message={
+                        fetchProgress.total > 1
+                          ? `Finding decision-makers (${fetchProgress.done} of ${fetchProgress.total} companies)`
+                          : "Finding decision-makers"
+                      }
                       hints={[
                         "Identifying key contacts",
                         "Matching seniority & titles",

@@ -12,6 +12,7 @@ import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
 import { allTavilyKeysExhausted, takeTavilyKeySwitchMessage } from "./tavily-usage";
+import { mapWithConcurrency } from "@/lib/async";
 import { db } from "@/db";
 import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
@@ -402,6 +403,7 @@ export async function discoverPeople(params: {
   limit?: number;
   seniority?: string[];
   departments?: string[];
+  tenantAccounts?: (typeof accounts.$inferSelect)[];
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = params.limit ?? 15;
@@ -415,10 +417,9 @@ export async function discoverPeople(params: {
   // ── Step 1: Internal DB contacts for this company ───────────────────────
   let companyContacts: (typeof contacts.$inferSelect)[] = [];
   try {
-    const tenantAccounts = await db
-      .select()
-      .from(accounts)
-      .where(eq(accounts.tenantId, params.tenantId));
+    const tenantAccounts =
+      params.tenantAccounts ??
+      (await db.select().from(accounts).where(eq(accounts.tenantId, params.tenantId)));
 
     const account = tenantAccounts.find((a) => accountNameMatches(a.name, params.companyName));
     if (account) {
@@ -529,8 +530,8 @@ export async function discoverPeople(params: {
       city: undefined,
       dataSource: "scout",
     };
-    for (const person of external) {
-      if (person.email && person.emailStatus !== "missing") continue;
+    await mapWithConcurrency(external, 2, async (person) => {
+      if (person.email && person.emailStatus !== "missing") return;
       try {
         const enriched = await enrichPersonContact({
           person,
@@ -548,7 +549,7 @@ export async function discoverPeople(params: {
       } catch (e) {
         console.error("[waterfall:enrich]", person.name, e);
       }
-    }
+    });
   }
 
   // ── Step 4: Filter + rank by selected roles ─────────────────────────────
@@ -568,6 +569,89 @@ export async function discoverPeople(params: {
     warnings: [...new Set(warnings)],
     errors: [...new Set(errors)],
   };
+}
+
+
+export type DiscoverPeopleBatchItem = {
+  id: string;
+  companyName: string;
+  companyDomain?: string;
+  companyWebsite?: string;
+};
+
+export async function discoverPeopleBatch(params: {
+  tenantId: string;
+  workspaceId: string;
+  companies: DiscoverPeopleBatchItem[];
+  dataMode?: DataMode;
+  config?: Partial<EnrichmentConfig>;
+  limit?: number;
+  seniority?: string[];
+  departments?: string[];
+  concurrency?: number;
+}): Promise<Record<string, PeopleDiscoveryResult>> {
+  let tenantAccounts: (typeof accounts.$inferSelect)[] = [];
+  try {
+    tenantAccounts = await db
+      .select()
+      .from(accounts)
+      .where(eq(accounts.tenantId, params.tenantId));
+  } catch (e) {
+    console.error("[waterfall:batch_accounts] failed:", e);
+  }
+
+  const results: Record<string, PeopleDiscoveryResult> = {};
+  const { companies, concurrency = 3, ...discoverParams } = params;
+
+  await mapWithConcurrency(companies, concurrency, async (company) => {
+    results[company.id] = await discoverPeople({
+      ...discoverParams,
+      companyName: company.companyName,
+      companyDomain: company.companyDomain,
+      companyWebsite: company.companyWebsite,
+      tenantAccounts,
+    });
+  });
+
+  return results;
+}
+
+export async function discoverPeopleBatchStream(
+  params: {
+    tenantId: string;
+    workspaceId: string;
+    companies: DiscoverPeopleBatchItem[];
+    dataMode?: DataMode;
+    config?: Partial<EnrichmentConfig>;
+    limit?: number;
+    seniority?: string[];
+    departments?: string[];
+    concurrency?: number;
+  },
+  onResult: (companyId: string, result: PeopleDiscoveryResult) => void | Promise<void>,
+): Promise<void> {
+  let tenantAccounts: (typeof accounts.$inferSelect)[] = [];
+  try {
+    tenantAccounts = await db
+      .select()
+      .from(accounts)
+      .where(eq(accounts.tenantId, params.tenantId));
+  } catch (e) {
+    console.error("[waterfall:batch_accounts] failed:", e);
+  }
+
+  const { companies, concurrency = 3, ...discoverParams } = params;
+
+  await mapWithConcurrency(companies, concurrency, async (company) => {
+    const result = await discoverPeople({
+      ...discoverParams,
+      companyName: company.companyName,
+      companyDomain: company.companyDomain,
+      companyWebsite: company.companyWebsite,
+      tenantAccounts,
+    });
+    await onResult(company.id, result);
+  });
 }
 
 function stepFailureMessage(label: string, err: unknown): string {
