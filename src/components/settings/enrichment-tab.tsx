@@ -5,7 +5,6 @@ import { SettingsSelectRow } from "@/components/settings/settings-select-row";
 import { SettingsProviderRow } from "@/components/settings/settings-provider-row";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { SettingsNumberRow } from "@/components/settings/settings-number-row";
-import { ActiveConfigSummary } from "@/components/settings/active-config-summary";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Save } from "lucide-react";
 import {
@@ -111,7 +110,7 @@ export function EnrichmentTab({
         footer={
           scoutVolumeDirty
             ? "Unsaved changes — scouting uses the previous limits until you save."
-            : "Add TAVILY_API_KEY_2 in .env.local for automatic key rotation when quota is hit."
+            : "Scout volume applies to your next run. Higher volume uses more credits."
         }
       >
         {(Object.entries(SCOUT_VOLUME_PRESETS) as [
@@ -203,7 +202,6 @@ export function EnrichmentTab({
         />
       </SettingsGroup>
 
-      <ActiveConfigSummary config={config} />
     </div>
   );
 }

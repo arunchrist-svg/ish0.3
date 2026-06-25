@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { db, leads, contacts, accounts } from "@/db";
-import { eq, desc, or, like } from "drizzle-orm";
+import { eq, desc, or, like, and } from "drizzle-orm";
+import { requireTenantContext } from "@/lib/tenant";
 
 const SCOUT_SOURCES = ["scout", "scout_wizard", "scout_agent"];
 
 export async function GET() {
   try {
+    const ctx = await requireTenantContext();
     const rows = await db
       .select({
         lead: leads,
@@ -16,9 +18,12 @@ export async function GET() {
       .innerJoin(contacts, eq(contacts.id, leads.contactId))
       .innerJoin(accounts, eq(accounts.id, leads.accountId))
       .where(
-        or(
-          ...SCOUT_SOURCES.map((s) => eq(leads.leadSource, s)),
-          like(leads.leadSource, "scout%"),
+        and(
+          eq(leads.tenantId, ctx.tenantId),
+          or(
+            ...SCOUT_SOURCES.map((s) => eq(leads.leadSource, s)),
+            like(leads.leadSource, "scout%"),
+          ),
         ),
       )
       .orderBy(desc(leads.createdAt));

@@ -23,6 +23,22 @@ export const OUTREACH_TEMPLATES = [
     ctaInstruction:
       "Primary CTA: propose a 15-min in-person visit to present sweet samples and hampers at their office.",
   },
+  {
+    id: "follow_up",
+    label: "Follow-up Reminder",
+    shortLabel: "Follow-up",
+    description: "Brief, warm check-in referencing the first email",
+    ctaInstruction:
+      "This is a brief follow-up. Reference that you reached out before. Ask if they had a chance to see the earlier note. Offer a sample or quick 10-minute call. Keep it under 80 words.",
+  },
+  {
+    id: "final_reminder",
+    label: "Final Reminder",
+    shortLabel: "Final",
+    description: "Last respectful note — no pressure, leave the door open",
+    ctaInstruction:
+      "This is the final note in the sequence. Be warm and respectful. Say this is your last email so you don't clutter their inbox. Leave the door open for when the time is right. No pressure. Under 70 words.",
+  },
 ] as const;
 
 export type OutreachTemplateId = (typeof OUTREACH_TEMPLATES)[number]["id"];

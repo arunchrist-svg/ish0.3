@@ -1,25 +1,42 @@
 import { NextResponse } from "next/server";
+import { db, leads } from "@/db";
+import { eq } from "drizzle-orm";
 import { enrichLeadById } from "@/lib/enrichment/enrich-lead";
 import { hasAnyPaidProvider } from "@/lib/enrichment/provider-config";
+import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
+import { assertCredits, deductCredits } from "@/lib/billing/credits";
+import { assertPlanEntitlement } from "@/lib/billing/entitlements";
+import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
+import { handleApiError } from "@/lib/api-errors";
 import type { DataMode } from "@/lib/enrichment/types";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const ctx = await requireTenantContext();
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const mode = (body.mode === "paid" ? "paid" : "free") as "free" | "paid";
     const dataMode = (body.dataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
 
-    if (mode === "paid" && !hasAnyPaidProvider()) {
-      return NextResponse.json(
-        {
-          error: "No paid enrichment keys configured. Add APOLLO_API_KEY or HUNTER_API_KEY in .env.local.",
-        },
-        { status: 400 },
-      );
+    const [lead] = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
+    if (!lead || lead.tenantId !== ctx.tenantId) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    if (mode === "paid") {
+      await assertPlanEntitlement(ctx.tenantId, "paid_enrichment");
+      if (!hasAnyPaidProvider()) {
+        return NextResponse.json({ error: "Paid enrichment not available" }, { status: 400 });
+      }
+      await assertCredits(ctx.tenantId, "enrich.paid", 1);
     }
 
     const result = await enrichLeadById({ leadId: id, mode, dataMode });
+
+    if (mode === "paid" && result.success) {
+      await deductCredits({ tenantId: ctx.tenantId, action: "enrich.paid", referenceId: id });
+      void checkLowBalanceAlerts(ctx.tenantId);
+    }
 
     return NextResponse.json({
       success: result.success,
@@ -36,10 +53,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
     });
   } catch (e) {
-    console.error("[api/leads/[id]/enrich]", e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Enrichment failed" },
-      { status: 500 },
-    );
+    return handleApiError(e, "[leads/enrich]");
   }
 }

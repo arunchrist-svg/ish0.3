@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 // import { ScoutingProgressBar } from "./scouting-progress-bar";
 import { ScoutingToolbar, type ScoutMode } from "./scouting-toolbar";
 import { DiscoveringLoader } from "./discovering-loader";
+import { SavingLeadsLoader } from "./saving-leads-loader";
 import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
 import { LeadsGrid } from "./leads-grid";
@@ -54,16 +55,15 @@ function pickPeopleNotice(messages: string[]): { headline: string; detail: strin
 
   if (/tavily_api_key.*missing|tavily api key.*missing|tavily_api_key not set/i.test(joined)) {
     return {
-      headline: "People search needs a Tavily API key.",
-      detail: "Add TAVILY_API_KEY in .env.local, restart the dev server, then try again.",
+      headline: "People search is temporarily unavailable.",
+      detail: "Try again later or contact support if this persists.",
     };
   }
 
   if (/all tavily keys exhausted/i.test(joined)) {
     return {
-      headline: "All Tavily keys are exhausted.",
-      detail:
-        "Add TAVILY_API_KEY_2 in .env.local, switch Data Mode to Apollo, or wait for your monthly Tavily credit reset.",
+      headline: "Search capacity is temporarily limited.",
+      detail: "Try a smaller scout batch, switch data mode in Settings, or try again later.",
     };
   }
 
@@ -104,13 +104,33 @@ function pickPrimaryNotice(messages: string[]): string | null {
   );
 }
 
-function companyKey(c: ScoutCompanyResult): string {
-  return (c.externalId ?? c.name).toLowerCase().replace(/\s+/g, "-");
+function isUsableExternalId(id?: string | null): boolean {
+  if (!id?.trim()) return false;
+  const normalized = id.trim().toLowerCase();
+  return normalized !== "unknown" && normalized !== "undefined" && normalized !== "null";
 }
 
-function toCompanyShape(c: ScoutCompanyResult) {
+function slugifyKey(...parts: (string | number | undefined | null)[]): string {
+  return parts
+    .filter((part) => part !== undefined && part !== null && String(part).trim() !== "")
+    .map((part) => String(part).toLowerCase().trim())
+    .join("-")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function companyKey(c: ScoutCompanyResult, index = 0): string {
+  if (isUsableExternalId(c.externalId)) {
+    return slugifyKey(c.externalId);
+  }
+  const base = slugifyKey(c.name, c.city, c.domain);
+  if (base && base !== "unknown") return base;
+  return `company-${slugifyKey(c.name, c.city) || "item"}-${index}`;
+}
+
+function toCompanyShape(c: ScoutCompanyResult, index = 0) {
   return {
-    id: companyKey(c),
+    id: companyKey(c, index),
     logo: c.logo ?? "🏢",
     domain: c.domain,
     name: c.name,
@@ -129,8 +149,12 @@ function toCompanyShape(c: ScoutCompanyResult) {
 }
 
 function toPersonShape(p: ScoutPersonResult, companyId: string, idx: number) {
+  const id = isUsableExternalId(p.externalId)
+    ? p.externalId!.trim()
+    : slugifyKey("p", companyId, p.name, idx) || `p-${companyId}-${idx}`;
+
   return {
-    id: p.externalId ?? `p-${companyId}-${idx}`,
+    id,
     companyId,
     name: p.name,
     title: p.title ?? "—",
@@ -168,6 +192,16 @@ function mergeCompanies(existing: CompanyShape[], incoming: CompanyShape[]): Com
     }
   }
   return merged;
+}
+
+function dedupeCompanyShapes(shapes: CompanyShape[]): CompanyShape[] {
+  const seen = new Map<string, number>();
+  return shapes.map((shape) => {
+    const count = seen.get(shape.id) ?? 0;
+    seen.set(shape.id, count + 1);
+    if (count === 0) return shape;
+    return { ...shape, id: `${shape.id}-${count}` };
+  });
 }
 
 /* ─────────────────────────────────────────────
@@ -311,6 +345,7 @@ export function ScoutingApp() {
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState({ done: 0, total: 0 });
   const [hasMore, setHasMore] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [fetchMessage, setFetchMessage] = useState<string | null>(null);
@@ -333,7 +368,7 @@ export function ScoutingApp() {
   useEffect(() => {
     void (async () => {
       try {
-        const leadsRes = await fetch("/api/leads");
+        const leadsRes = await fetch("/api/leads/dedupe");
         const leadsData = await leadsRes.json();
         if (!leadsData.leads) return;
         const map = new Map<string, string>();
@@ -443,7 +478,7 @@ export function ScoutingApp() {
           ...(options?.companyName ? { companyName: options.companyName } : {}),
         });
 
-        const shaped = response.companies.map((c) => toCompanyShape(c));
+        const shaped = dedupeCompanyShapes(response.companies.map((c, i) => toCompanyShape(c, i)));
         setCompanies((prev) => (append ? mergeCompanies(prev, shaped) : shaped));
         setHasMore(response.hasMore);
         if (!append && shaped[0]) setPrimaryCompanyId(shaped[0].id);
@@ -736,7 +771,7 @@ export function ScoutingApp() {
     setSelectedPersonIds(new Set());
     setPrimaryPersonId(null);
 
-    const leadsDedupePromise = fetch("/api/leads")
+    const leadsDedupePromise = fetch("/api/leads/dedupe")
       .then((res) => res.json())
       .catch(() => null);
 
@@ -779,8 +814,9 @@ export function ScoutingApp() {
         await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
       }
 
-      const leadsData = await leadsDedupePromise;
-      if (leadsData) applyLeadsDedupe(leadsData);
+      void leadsDedupePromise.then((leadsData) => {
+        if (leadsData) applyLeadsDedupe(leadsData);
+      });
 
       if (allPeople[0]) {
         setPrimaryPersonId(allPeople[0].id);
@@ -808,7 +844,7 @@ export function ScoutingApp() {
         }
       }
     } catch (e) {
-      toast.error("Could not load people. Check API keys.");
+      toast.error("Could not load people. Try again or contact support.");
       console.error(e);
     } finally {
       window.dispatchEvent(new Event("tavily-usage-refresh"));
@@ -832,6 +868,8 @@ export function ScoutingApp() {
         byCompany.set(p.companyId, g);
       }
 
+      setSaveProgress({ done: 0, total: byCompany.size });
+
       for (const [companyId, persons] of byCompany) {
         const company = companies.find((c) => c.id === companyId);
         if (!company) continue;
@@ -841,6 +879,7 @@ export function ScoutingApp() {
         });
         totalSaved += result.saved.length;
         allSkipped.push(...result.skipped);
+        setSaveProgress((prev) => ({ ...prev, done: prev.done + 1 }));
       }
 
       if (totalSaved > 0) {
@@ -850,7 +889,7 @@ export function ScoutingApp() {
         setExistingContactNames((prev) => new Set([...prev, ...savedNames]));
         void (async () => {
           try {
-            const leadsRes = await fetch("/api/leads");
+            const leadsRes = await fetch("/api/leads/dedupe");
             const leadsData = await leadsRes.json();
             if (!leadsData.leads) return;
             const map = new Map<string, string>();
@@ -877,6 +916,7 @@ export function ScoutingApp() {
       console.error(e);
     } finally {
       setSaving(false);
+      setSaveProgress({ done: 0, total: 0 });
     }
   }
 
@@ -963,7 +1003,7 @@ export function ScoutingApp() {
                         <p>{fetchMessage ?? (scoutMode === "search" ? "No companies matched that name." : "No companies found for the current filters.")}</p>
                         <p className="text-[12px]">
                           {fetchMessage?.includes("API") || fetchMessage?.includes("missing")
-                            ? "Check .env.local (TAVILY_API_KEY, LLM API key) or Settings, then try again."
+                            ? "Try again in a few minutes or adjust settings, then retry."
                             : scoutMode === "search"
                               ? "Try a different spelling or check the company name."
                               : "Try different cities or industries, then fetch again."}
@@ -1059,6 +1099,11 @@ export function ScoutingApp() {
                       <p>{peopleNotice?.headline ?? "No decision-makers found for the selected companies."}</p>
                       <p className="mt-2 text-[12px]">{peopleNotice?.detail ?? "We search LinkedIn via Tavily. Try companies with websites or well-known brands."}</p>
                     </div>
+                  ) : saving ? (
+                    <SavingLeadsLoader
+                      count={selectedPersonIds.size}
+                      progress={saveProgress}
+                    />
                   ) : (
                     <LeadsGrid
                       people={people}

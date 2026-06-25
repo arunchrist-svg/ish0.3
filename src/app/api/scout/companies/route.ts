@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
+import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { discoverCompanies } from "@/lib/enrichment/waterfall";
 import { checkDiscoveryPrerequisites } from "@/lib/enrichment/discovery-prerequisites";
 import type { DataMode } from "@/lib/enrichment/types";
@@ -7,11 +9,9 @@ import {
   loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
 
-const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
-const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
-
 export async function POST(req: Request) {
   try {
+    const ctx = await requireTenantContext();
     const body = await req.json();
     const {
       cities = [],
@@ -58,9 +58,11 @@ export async function POST(req: Request) {
       );
     }
 
+    await assertCredits(ctx.tenantId, "scout.company", limit);
+
     const { companies, warnings, errors } = await discoverCompanies({
-      tenantId: DEFAULT_TENANT,
-      workspaceId: DEFAULT_WORKSPACE,
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
       cities,
       industries,
       dataMode: cfg.dataMode,
@@ -82,6 +84,15 @@ export async function POST(req: Request) {
       );
     }
 
+    if (companies.length > 0) {
+      await deductCredits({
+        tenantId: ctx.tenantId,
+        action: "scout.company",
+        quantity: companies.length,
+        referenceId: `scout-companies-${Date.now()}`,
+      });
+    }
+
     return NextResponse.json({
       companies,
       hasMore: companies.length >= limit,
@@ -90,6 +101,9 @@ export async function POST(req: Request) {
       errors: [...new Set(allErrors)],
     });
   } catch (e) {
+    const { handleApiError } = await import("@/lib/api-errors");
+    const errRes = handleApiError(e, "[api/scout/companies]");
+    if (errRes.status !== 500) return errRes;
     console.error("[api/scout/companies]", e);
     const message = e instanceof Error ? e.message : "Discovery failed";
     return NextResponse.json({ error: message, errors: [message] }, { status: 500 });

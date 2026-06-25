@@ -1,3 +1,4 @@
+import { promises as dns } from "dns";
 import type { EmailVerifyResult } from "./types";
 
 const GENERIC_PREFIXES = [
@@ -15,6 +16,17 @@ function isValidFormat(email: string): boolean {
     !email.includes("webpack") &&
     !email.includes(".png") &&
     !email.includes(".jpg");
+}
+
+async function domainHasMx(email: string): Promise<boolean | null> {
+  const domain = email.split("@")[1]?.toLowerCase();
+  if (!domain) return null;
+  try {
+    const records = await dns.resolveMx(domain);
+    return records.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 async function hunterVerify(email: string): Promise<"verified" | "unverified" | null> {
@@ -54,8 +66,14 @@ export async function verifyEmail(email: string): Promise<EmailVerifyResult> {
     return { email, status: "unverified", isPersonal: true, provider: "hunter" };
   }
 
-  // Format + domain check passed, no verify API available
-  return { email, status: "unverified", isPersonal: true, provider: "format" };
+  // Free MX check — domain must accept mail
+  const hasMx = await domainHasMx(email);
+  if (hasMx === false) {
+    return { email, status: "unverified", isPersonal: true, provider: "mx" };
+  }
+
+  // Format + MX passed, no paid verify API available
+  return { email, status: "unverified", isPersonal: true, provider: hasMx ? "mx+format" : "format" };
 }
 
 export function verifyGate(result: EmailVerifyResult): boolean {

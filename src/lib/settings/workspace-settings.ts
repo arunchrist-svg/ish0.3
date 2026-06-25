@@ -1,12 +1,12 @@
 import { db, workspaceSettings } from "@/db";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { getEnrichmentConfig, resolveEnrichmentConfig } from "@/lib/enrichment/config";
-import { getDefaultTenantContext } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 import { eq } from "drizzle-orm";
 
 export async function loadWorkspaceEnrichmentOverrides(): Promise<Partial<EnrichmentConfig>> {
   try {
-    const { workspaceId } = await getDefaultTenantContext();
+    const { workspaceId } = await requireTenantContext();
     const [row] = await db
       .select()
       .from(workspaceSettings)
@@ -23,7 +23,7 @@ export async function loadWorkspaceEnrichmentOverrides(): Promise<Partial<Enrich
 export async function saveWorkspaceEnrichmentOverrides(
   partial: Partial<EnrichmentConfig>,
 ): Promise<EnrichmentConfig> {
-  const { workspaceId } = await getDefaultTenantContext();
+  const { workspaceId } = await requireTenantContext();
   const existing = await loadWorkspaceEnrichmentOverrides();
   const merged = { ...existing, ...partial };
 

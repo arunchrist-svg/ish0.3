@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { handleApiError } from "@/lib/api-errors";
 import { buildLeadNetworkGraph } from "@/lib/network/graph";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -10,7 +11,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     }
     return NextResponse.json({ graph });
   } catch (e) {
-    console.error("[api/leads/[id]/network]", e);
-    return NextResponse.json({ error: "Failed to build network graph" }, { status: 500 });
+    return handleApiError(e, "[api/leads/[id]/network]");
   }
 }

@@ -12,6 +12,8 @@ export type EnrichmentConfig = {
   dataMode: DataMode;
   scoutCompaniesLimit: number;
   scoutLeadsLimit: number;
+  apolloApiKey?: string;
+  hunterApiKey?: string;
 };
 
 export const SCOUT_VOLUME_PRESETS = {

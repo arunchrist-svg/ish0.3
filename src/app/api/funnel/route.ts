@@ -1,34 +1,46 @@
 import { NextResponse } from "next/server";
-import { db, yieldFunnel, leads, enrichmentRuns } from "@/db";
-import { count, eq, or } from "drizzle-orm";
+import { db, yieldFunnel, leads, enrichmentRuns, contacts } from "@/db";
+import { count, eq, or, and } from "drizzle-orm";
+import { requireTenantContext } from "@/lib/tenant";
 import { parseDealAmount } from "@/lib/pipeline-status";
+import { handleApiError } from "@/lib/api-errors";
 
 export async function GET() {
   try {
+    const ctx = await requireTenantContext();
     const stageCounts = await db
       .select({ stage: yieldFunnel.stage, count: count() })
       .from(yieldFunnel)
+      .innerJoin(leads, eq(leads.id, yieldFunnel.leadId))
+      .where(eq(leads.tenantId, ctx.tenantId))
       .groupBy(yieldFunnel.stage);
 
-    const totalRuns = await db.select({ total: count() }).from(enrichmentRuns);
+    const totalRuns = await db
+      .select({ total: count() })
+      .from(enrichmentRuns)
+      .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
+      .where(eq(contacts.tenantId, ctx.tenantId));
     const withEmail = await db
       .select({ total: count() })
       .from(enrichmentRuns)
-      .where(eq(enrichmentRuns.emailFound, true));
+      .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
+      .where(and(eq(contacts.tenantId, ctx.tenantId), eq(enrichmentRuns.emailFound, true)));
     const verified = await db
       .select({ total: count() })
       .from(enrichmentRuns)
-      .where(eq(enrichmentRuns.emailVerified, true));
+      .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
+      .where(and(eq(contacts.tenantId, ctx.tenantId), eq(enrichmentRuns.emailVerified, true)));
 
     const leadStatuses = await db
       .select({ status: leads.status, count: count() })
       .from(leads)
+      .where(eq(leads.tenantId, ctx.tenantId))
       .groupBy(leads.status);
 
     const closedRows = await db
       .select({ closedDealAmount: leads.closedDealAmount })
       .from(leads)
-      .where(or(eq(leads.status, "closed"), eq(leads.status, "po_closed")));
+      .where(and(eq(leads.tenantId, ctx.tenantId), or(eq(leads.status, "closed"), eq(leads.status, "po_closed"))));
 
     const closedCount = closedRows.length;
     const totalAmount = closedRows.reduce((sum, row) => {
@@ -53,18 +65,6 @@ export async function GET() {
       closedDeals: { count: closedCount, totalAmount },
     });
   } catch (e) {
-    console.error("[api/funnel]", e);
-    const closedRows = await db
-      .select({ closedDealAmount: leads.closedDealAmount })
-      .from(leads)
-      .where(or(eq(leads.status, "closed"), eq(leads.status, "po_closed")));
-
-    const closedCount = closedRows.length;
-    const totalAmount = closedRows.reduce((sum, row) => {
-      if (!row.closedDealAmount) return sum;
-      return sum + (parseDealAmount(row.closedDealAmount) ?? 0);
-    }, 0);
-
-    return NextResponse.json({ error: "Funnel stats failed" }, { status: 500 });
+    return handleApiError(e, "[api/funnel]");
   }
 }

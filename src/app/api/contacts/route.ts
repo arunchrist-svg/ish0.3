@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext } from "@/lib/tenant";
 import { db } from "@/db";
 import { contacts, accounts, leads } from "@/db/schema";
 import { eq, desc, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
+    const ctx = await requireTenantContext();
     const rows = await db
       .select({
         id: contacts.id,
@@ -25,6 +27,7 @@ export async function GET() {
       })
       .from(contacts)
       .innerJoin(accounts, eq(contacts.accountId, accounts.id))
+      .where(eq(contacts.tenantId, ctx.tenantId))
       .orderBy(desc(contacts.createdAt));
 
     const result = rows.map((r) => ({

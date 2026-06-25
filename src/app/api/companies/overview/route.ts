@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { enrichCompanyOverview } from "@/lib/enrichment/company-overview";
 import type { CompanyOverviewInput } from "@/lib/company-overview";
+import { requireTenantContext } from "@/lib/tenant";
+import { handleApiError } from "@/lib/api-errors";
 
 export async function POST(req: Request) {
   try {
+    await requireTenantContext();
     const body = (await req.json()) as CompanyOverviewInput;
 
     if (!body.name?.trim()) {
@@ -27,7 +30,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(result);
   } catch (e) {
-    console.error("[api/companies/overview]", e);
-    return NextResponse.json({ error: "Failed to enrich company overview" }, { status: 500 });
+    return handleApiError(e, "[api/companies/overview]");
   }
 }

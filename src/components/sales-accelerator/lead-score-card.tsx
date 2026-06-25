@@ -39,8 +39,8 @@ export function LeadScoreCard({ record, current }: Props) {
         </div>
 
         <div className="flex flex-col gap-2.5">
-          {record.score.factors.map((f) => (
-            <div key={f.bold} className="flex items-start gap-2">
+          {record.score.factors.map((f, i) => (
+            <div key={`${f.label}-${i}`} className="flex items-start gap-2">
               <TrendingUp className="mt-0.5 size-3.5 shrink-0 text-ish-green" />
               <div className="text-[12.5px] leading-snug text-ish-ink">
                 {f.label} <b>{f.bold}</b>

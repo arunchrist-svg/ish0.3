@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ISH Sales Accelerator | D365",
-  description: "India Sweet House Sales Hub — Lead Accelerator for Dynamics 365",
+  title: "Sales Accelerator",
+  description: "Scout, enrich, and outreach for B2B sales teams",
 };
 
 export default function RootLayout({

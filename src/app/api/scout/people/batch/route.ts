@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
+import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { discoverPeopleBatch, discoverPeopleBatchStream } from "@/lib/enrichment/waterfall";
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
-
-const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
-const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
 
 type BatchCompanyInput = {
   id: string;
@@ -27,6 +26,7 @@ function mapCompanies(companies: BatchCompanyInput[]) {
 
 export async function POST(req: Request) {
   try {
+    const ctx = await requireTenantContext();
     const url = new URL(req.url);
     const stream = url.searchParams.get("stream") === "1";
     const body = await req.json();
@@ -53,13 +53,16 @@ export async function POST(req: Request) {
     const discoveryConfig = { ...cfg, ...requestOverride };
     const mappedCompanies = mapCompanies(companies);
 
+    const batchLimit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25);
+    await assertCredits(ctx.tenantId, "scout.contact", mappedCompanies.length * batchLimit);
+
     const batchParams = {
-      tenantId: DEFAULT_TENANT,
-      workspaceId: DEFAULT_WORKSPACE,
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
       companies: mappedCompanies,
       dataMode: cfg.dataMode,
       config: discoveryConfig,
-      limit: Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25),
+      limit: batchLimit,
       seniority,
       departments,
       concurrency: 3,
@@ -92,8 +95,20 @@ export async function POST(req: Request) {
     }
 
     const results = await discoverPeopleBatch(batchParams);
+    const contactCount = Object.values(results).reduce((sum, r) => sum + (r.people?.length ?? 0), 0);
+    if (contactCount > 0) {
+      await deductCredits({
+        tenantId: ctx.tenantId,
+        action: "scout.contact",
+        quantity: contactCount,
+        referenceId: `scout-batch-${Date.now()}`,
+      });
+    }
     return NextResponse.json({ results });
   } catch (e) {
+    const { handleApiError } = await import("@/lib/api-errors");
+    const errRes = handleApiError(e, "[api/scout/people/batch]");
+    if (errRes.status !== 500) return errRes;
     console.error("[api/scout/people/batch]", e);
     return NextResponse.json({ error: "Batch people discovery failed" }, { status: 500 });
   }

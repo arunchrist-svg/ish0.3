@@ -10,6 +10,9 @@ const CAMPAIGN_ID = "00000000-0000-0000-0000-000000000003";
 const SAMPLE_ACCOUNT_ID = "00000000-0000-0000-0000-000000000010";
 const SAMPLE_CONTACT_ID = "00000000-0000-0000-0000-000000000011";
 const SAMPLE_LEAD_ID = "00000000-0000-0000-0000-000000000012";
+const TEST_LEAD_ACCOUNT_ID = "00000000-0000-0000-0000-000000000015";
+const TEST_LEAD_CONTACT_ID = "00000000-0000-0000-0000-000000000016";
+const TEST_LEAD_LEAD_ID = "00000000-0000-0000-0000-000000000017";
 
 async function seed() {
   const { db } = await import("./index");
@@ -97,6 +100,73 @@ async function seed() {
     tags: ["Lead", "Gifting Signal"],
     researcherEligible: true,
   }).onConflictDoNothing();
+
+  await db.insert(schema.accounts).values({
+    id: TEST_LEAD_ACCOUNT_ID,
+    tenantId: TENANT_ID,
+    workspaceId: WORKSPACE_ID,
+    name: "Test Co",
+    domain: "test.local",
+    website: "https://test.local",
+    industry: "IT",
+    city: "Bangalore",
+    employees: "50",
+    giftScore: 75,
+    giftBudget: "₹1–2L",
+    intelNotes: "Test account for email outreach testing.",
+    dataSource: "sample",
+  }).onConflictDoNothing();
+
+  await db.insert(schema.contacts).values({
+    id: TEST_LEAD_CONTACT_ID,
+    tenantId: TENANT_ID,
+    workspaceId: WORKSPACE_ID,
+    accountId: TEST_LEAD_ACCOUNT_ID,
+    name: "Arun Murugesan",
+    firstName: "Arun",
+    lastName: "Murugesan",
+    title: "HR Manager",
+    department: "Human Resources",
+    seniority: "Manager",
+    email: "arun.jpeg@gmail.com",
+    emailStatus: "verified",
+    bio: "Test contact for SMTP and outreach email testing (Arun Murugesan).",
+    isKeyDM: true,
+    matchScore: 80,
+    engagementSignals: ["Test lead for email verification"],
+    dataSource: "sample",
+  }).onConflictDoNothing();
+
+  await db.insert(schema.leads).values({
+    id: TEST_LEAD_LEAD_ID,
+    tenantId: TENANT_ID,
+    workspaceId: WORKSPACE_ID,
+    contactId: TEST_LEAD_CONTACT_ID,
+    accountId: TEST_LEAD_ACCOUNT_ID,
+    campaignId: CAMPAIGN_ID,
+    status: "scouted",
+    score: 80,
+    scoreGrade: "B",
+    scoreTrend: "Steady",
+    estimatedValue: "₹1,50,000",
+    leadSource: "manual",
+    rating: "Warm",
+    owner: "ISH Cluster Mgr",
+    tags: ["Lead", "Test"],
+    researcherEligible: true,
+  }).onConflictDoNothing();
+
+  const existingTestLeadFunnel = await db.query.yieldFunnel.findFirst({
+    where: eq(schema.yieldFunnel.leadId, TEST_LEAD_LEAD_ID),
+  });
+  if (!existingTestLeadFunnel) {
+    await db.insert(schema.yieldFunnel).values({
+      leadId: TEST_LEAD_LEAD_ID,
+      stage: "scouted",
+      metadata: { source: "test_seed", note: "Arun Murugesan test lead" },
+    });
+  }
+
 
   const existingFunnel = await db.query.yieldFunnel.findFirst({
     where: eq(schema.yieldFunnel.leadId, SAMPLE_LEAD_ID),
@@ -209,6 +279,7 @@ async function seed() {
 
   console.log("Seed complete.");
   console.log("Sample lead:", SAMPLE_LEAD_ID, "— Rajan Nair @ Bosch India");
+  console.log("Test lead:", TEST_LEAD_LEAD_ID, "— Arun M (arun.jpeg@gmail.com) @ Test Co");
 }
 
 seed().catch(console.error);

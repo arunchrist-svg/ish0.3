@@ -215,6 +215,25 @@ export async function reviseDraft(
   });
 }
 
+
+export async function updateOutreachDraft(params: {
+  leadOutreachId: string;
+  emailBody?: string;
+  subjectA?: string;
+  subjectB?: string;
+}): Promise<{ id: string; subjectA?: string; subjectB?: string; emailBody?: string }> {
+  const res = await fetch("/api/outreach/draft", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? "Failed to save draft");
+  }
+  return res.json();
+}
+
 export async function approveOutreach(params: {
   leadOutreachId: string;
   leadId: string;
@@ -476,6 +495,13 @@ export async function fetchContacts(): Promise<ContactListItem[]> {
 }
 
 export type NetworkGraph = import("./network/types").NetworkGraph;
+
+export async function fetchLeadNetworkSummary(
+  id: string,
+): Promise<LeadDetailRecord["network"]> {
+  const data = await get<{ network: LeadDetailRecord["network"] }>(`/api/leads/${id}/network/summary`);
+  return data.network ?? [];
+}
 
 export async function fetchLeadNetwork(id: string): Promise<NetworkGraph> {
   const data = await get<{ graph: NetworkGraph }>(`/api/leads/${id}/network`);

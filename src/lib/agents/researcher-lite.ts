@@ -1,6 +1,7 @@
 import { callLLM } from "@/lib/llm";
 import { db, leadResearch, leads, contacts, accounts, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
+import { assertCredits, deductCredits } from "@/lib/billing/credits";
 
 export async function runResearcherLite(leadId: string): Promise<void> {
   const lead = await db.query.leads.findFirst({
@@ -9,6 +10,8 @@ export async function runResearcherLite(leadId: string): Promise<void> {
   });
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+  await assertCredits(lead.tenantId, "research.brief", 1);
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
@@ -85,4 +88,11 @@ Output ONLY valid JSON with this shape:
 
   await db.update(leads).set({ status: "researched" }).where(eq(leads.id, leadId));
   await db.insert(yieldFunnel).values({ leadId, stage: "researched" });
+
+  await deductCredits({
+    tenantId: lead.tenantId,
+    action: "research.brief",
+    referenceId: leadId,
+    idempotencyKey: `research-${leadId}`,
+  });
 }

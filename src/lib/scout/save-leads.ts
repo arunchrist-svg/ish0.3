@@ -5,17 +5,14 @@ import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { logAudit } from "@/lib/audit";
 import { callLLM } from "@/lib/llm";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import {
   enrichPersonContact,
-  shouldEnrichOnImport,
   shouldAutoAcceptEmail,
   isNamedPerson,
 } from "@/lib/enrichment/enrich-lead";
 import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
 
-const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
-const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
 
 const BUYING_TITLE_KEYWORDS = [
@@ -88,18 +85,18 @@ export async function saveScoutLeads(params: {
   company: ScoutCompanyResult;
   dataMode?: DataMode;
   leadSource?: string;
+  tenantId: string;
+  workspaceId: string;
 }): Promise<SaveLeadsResult> {
-  const { people, company } = params;
+  const { people, company, tenantId, workspaceId } = params;
   const dataMode = (params.dataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
   const leadSource = params.leadSource ?? "scout";
-  const enrichOnImport = await shouldEnrichOnImport();
-
   let resolvedAccountId: string;
   const [account] = await db
     .insert(accounts)
     .values({
-      tenantId: DEFAULT_TENANT,
-      workspaceId: DEFAULT_WORKSPACE,
+      tenantId,
+      workspaceId,
       name: company.name,
       domain: company.domain,
       website: company.website,
@@ -141,39 +138,34 @@ export async function saveScoutLeads(params: {
     let enrichAttempts: unknown;
     let resolvedTitle = person.title;
 
-    const needsEnrich =
-      enrichOnImport &&
-      (!resolvedEmail || !person.title?.trim() || (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && isNamedPerson(person.name)));
-
-    if (needsEnrich) {
-      const enriched = await enrichPersonContact({
-        person: {
-          ...person,
-          email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
-        },
-        company,
-        mode: "free",
-        dataMode,
-      });
-      enrichAttempts = enriched.attempts;
-      const named = isNamedPerson(person.name);
-      resolvedTitle = enriched.title ?? person.title;
-      if (
-        enriched.email &&
-        shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
-      ) {
-        resolvedEmail = enriched.email;
-        resolvedPhone = enriched.phone ?? resolvedPhone;
-        emailConfidence = enriched.emailConfidence;
-        enrichmentSource = enriched.enrichmentSource;
-        enrichmentProvider = enriched.enrichmentProvider;
-      } else if (enriched.email && !named) {
-        emailConfidence = enriched.emailConfidence;
-        enrichmentSource = enriched.enrichmentSource;
-        enrichmentProvider = enriched.enrichmentProvider;
-      } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && named) {
-        resolvedEmail = undefined;
-      }
+    // Always run free email enrichment when adding scout leads
+    const enriched = await enrichPersonContact({
+      person: {
+        ...person,
+        email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
+      },
+      company,
+      mode: "free",
+      dataMode,
+    });
+    enrichAttempts = enriched.attempts;
+    const named = isNamedPerson(person.name);
+    resolvedTitle = enriched.title ?? person.title;
+    if (
+      enriched.email &&
+      shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
+    ) {
+      resolvedEmail = enriched.email;
+      resolvedPhone = enriched.phone ?? resolvedPhone;
+      emailConfidence = enriched.emailConfidence;
+      enrichmentSource = enriched.enrichmentSource;
+      enrichmentProvider = enriched.enrichmentProvider;
+    } else if (enriched.email && !named) {
+      emailConfidence = enriched.emailConfidence;
+      enrichmentSource = enriched.enrichmentSource;
+      enrichmentProvider = enriched.enrichmentProvider;
+    } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && named) {
+      resolvedEmail = undefined;
     }
 
     const emailResult = await verifyEmail(resolvedEmail ?? "");
@@ -198,20 +190,20 @@ export async function saveScoutLeads(params: {
     }
 
     const existingByEmail = resolvedEmail
-      ? await db.query.contacts.findFirst({ where: eq(contacts.email, resolvedEmail) })
+      ? await db.query.contacts.findFirst({
+          where: and(eq(contacts.email, resolvedEmail), eq(contacts.tenantId, tenantId)),
+        })
       : null;
-    if (existingByEmail) {
-      skipped.push({ name: person.name, reason: "email already in CRM" });
-      continue;
-    }
 
     const existingByName = await db.query.contacts.findFirst({
-      where: and(eq(contacts.name, person.name), eq(contacts.accountId, resolvedAccountId)),
+      where: and(
+        eq(contacts.name, person.name),
+        eq(contacts.accountId, resolvedAccountId),
+        eq(contacts.tenantId, tenantId),
+      ),
     });
-    if (existingByName) {
-      skipped.push({ name: person.name, reason: "already scouted" });
-      continue;
-    }
+
+    const existingContact = existingByEmail ?? existingByName;
 
     const filter = await preFilterCheck(person, company, leadSource);
     if (!filter.pass) {
@@ -219,46 +211,84 @@ export async function saveScoutLeads(params: {
       continue;
     }
 
-    const [contact] = await db
-      .insert(contacts)
-      .values({
-        tenantId: DEFAULT_TENANT,
-        workspaceId: DEFAULT_WORKSPACE,
-        accountId: resolvedAccountId,
-        name: person.name,
-        firstName: person.firstName,
-        lastName: person.lastName,
-        title: resolvedTitle ?? person.title,
-        department: person.department,
-        seniority: person.seniority,
-        email: resolvedEmail ?? null,
-        emailStatus: emailResult.status,
-        emailConfidence: emailConfidence || null,
-        enrichmentSource: enrichmentSource ?? null,
-        enrichmentProvider: enrichmentProvider ?? null,
-        phone: resolvedPhone,
-        linkedIn: normalizeLinkedInUrl(person.linkedIn),
-        bio: person.bio,
-        isKeyDM: person.isKeyDM ?? false,
-        matchScore: person.matchScore,
-        engagementSignals: person.engagementSignals ?? [],
-        dataSource: person.dataSource,
-        externalId: person.externalId,
-      })
-      .onConflictDoNothing()
-      .returning();
+    let contactId: string;
 
-    if (!contact) {
-      skipped.push({ name: person.name, reason: "contact already exists" });
-      continue;
+    if (existingContact) {
+      await db
+        .update(contacts)
+        .set({
+          title: resolvedTitle ?? existingContact.title,
+          email: resolvedEmail ?? existingContact.email,
+          emailStatus: emailResult.status,
+          emailConfidence: emailConfidence || existingContact.emailConfidence,
+          enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
+          enrichmentProvider: enrichmentProvider ?? existingContact.enrichmentProvider,
+          phone: resolvedPhone ?? existingContact.phone,
+          linkedIn: normalizeLinkedInUrl(person.linkedIn) ?? existingContact.linkedIn,
+          matchScore: person.matchScore ?? existingContact.matchScore,
+          updatedAt: new Date(),
+        })
+        .where(eq(contacts.id, existingContact.id));
+      contactId = existingContact.id;
+
+      const [existingLead] = await db
+        .select()
+        .from(leads)
+        .where(and(eq(leads.contactId, existingContact.id), eq(leads.tenantId, tenantId)))
+        .orderBy(desc(leads.createdAt))
+        .limit(1);
+
+      if (existingLead) {
+        savedLeads.push({
+          leadId: existingLead.id,
+          name: person.name,
+          emailStatus: emailResult.status,
+        });
+        continue;
+      }
+    } else {
+      const [contact] = await db
+        .insert(contacts)
+        .values({
+          tenantId,
+          workspaceId,
+          accountId: resolvedAccountId,
+          name: person.name,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          title: resolvedTitle ?? person.title,
+          department: person.department,
+          seniority: person.seniority,
+          email: resolvedEmail ?? null,
+          emailStatus: emailResult.status,
+          emailConfidence: emailConfidence || null,
+          enrichmentSource: enrichmentSource ?? null,
+          enrichmentProvider: enrichmentProvider ?? null,
+          phone: resolvedPhone,
+          linkedIn: normalizeLinkedInUrl(person.linkedIn),
+          bio: person.bio,
+          isKeyDM: person.isKeyDM ?? false,
+          matchScore: person.matchScore,
+          engagementSignals: person.engagementSignals ?? [],
+          dataSource: person.dataSource,
+          externalId: person.externalId,
+        })
+        .onConflictDoNothing()
+        .returning();
+
+      if (!contact) {
+        skipped.push({ name: person.name, reason: "contact already exists" });
+        continue;
+      }
+      contactId = contact.id;
     }
 
     const [lead] = await db
       .insert(leads)
       .values({
-        tenantId: DEFAULT_TENANT,
-        workspaceId: DEFAULT_WORKSPACE,
-        contactId: contact.id,
+        tenantId,
+        workspaceId,
+        contactId,
         accountId: resolvedAccountId,
         campaignId: DEFAULT_CAMPAIGN,
         status: "scouted",
@@ -279,8 +309,8 @@ export async function saveScoutLeads(params: {
     });
 
     await logAudit({
-      tenantId: DEFAULT_TENANT,
-      workspaceId: DEFAULT_WORKSPACE,
+      tenantId,
+      workspaceId,
       action: "lead.saved",
       entityType: "lead",
       entityId: lead.id,
@@ -290,6 +320,7 @@ export async function saveScoutLeads(params: {
         emailStatus: emailResult.status,
         emailConfidence,
         source: leadSource,
+        reusedContact: Boolean(existingContact),
       },
     });
 

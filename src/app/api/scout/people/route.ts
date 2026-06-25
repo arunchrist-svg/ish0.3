@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
+import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { discoverPeople } from "@/lib/enrichment/waterfall";
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 
-const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
-const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
-
 export async function POST(req: Request) {
   try {
+    const ctx = await requireTenantContext();
     const body = await req.json();
     const {
       companyName,
@@ -33,19 +33,25 @@ export async function POST(req: Request) {
     const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
     const discoveryConfig = { ...cfg, ...requestOverride };
 
+    const limit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25);
+    await assertCredits(ctx.tenantId, "scout.contact", limit);
+
     const { people, warnings, errors } = await discoverPeople({
-      tenantId: DEFAULT_TENANT,
-      workspaceId: DEFAULT_WORKSPACE,
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
       companyName,
       companyDomain,
       companyWebsite,
       dataMode: cfg.dataMode,
       config: discoveryConfig,
-      limit: Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25),
+      limit,
       seniority,
       departments,
     });
 
+    if (people.length > 0) {
+      await deductCredits({ tenantId: ctx.tenantId, action: "scout.contact", quantity: people.length, referenceId: `scout-people-${Date.now()}` });
+    }
     return NextResponse.json({ people, warnings, errors });
   } catch (e) {
     console.error("[api/scout/people]", e);

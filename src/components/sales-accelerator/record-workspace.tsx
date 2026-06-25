@@ -11,7 +11,7 @@ import { LeadScoreCard } from "@/components/sales-accelerator/lead-score-card";
 import { BottomCards } from "@/components/sales-accelerator/bottom-cards";
 import { RelationshipAnalyticsPanel } from "@/components/network/relationship-analytics-panel";
 import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
-import { fetchLead } from "@/lib/api-client";
+import { fetchLead, fetchLeadNetworkSummary } from "@/lib/api-client";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { showError } from "@/lib/toast";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
@@ -19,6 +19,7 @@ import { ActionLoader } from "@/components/sales-accelerator/action-loader";
 
 type Props = {
   leadId: string;
+  initialLead?: LeadDetailRecord | null;
   onLeadUpdated: () => void;
 };
 
@@ -87,9 +88,9 @@ function toQueueItem(lead: LeadDetailRecord) {
 
 const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"] as const;
 
-export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
-  const [lead, setLead] = useState<LeadDetailRecord | null>(null);
-  const [loading, setLoading] = useState(true);
+export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
+  const [lead, setLead] = useState<LeadDetailRecord | null>(initialLead ?? null);
+  const [loading, setLoading] = useState(!initialLead);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("Summary");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -136,12 +137,33 @@ export function RecordWorkspace({ leadId, onLeadUpdated }: Props) {
   }
 
   useEffect(() => {
+    if (initialLead?.id === leadId) {
+      setLead(initialLead);
+      setLoading(false);
+      setLoadError(null);
+      return;
+    }
     setLead(null);
     setLoadError(null);
     setActiveTab("Summary");
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]);
+  }, [leadId, initialLead]);
+
+  useEffect(() => {
+    if (!lead || lead.network.length > 0) return;
+    let cancelled = false;
+    void fetchLeadNetworkSummary(leadId)
+      .then((network) => {
+        if (!cancelled && network.length > 0) {
+          setLead((prev) => (prev ? { ...prev, network } : prev));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [leadId, lead]);
 
   if (loading) {
     return (

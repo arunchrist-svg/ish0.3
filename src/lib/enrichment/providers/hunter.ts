@@ -1,4 +1,5 @@
 import type { EnrichmentInput, EnrichmentProvider, EnrichmentResult } from "../enrich-types";
+import { getHunterApiKey } from "../request-context";
 import { domainFromCompany, domainFromWebsite, linkedinHandle, parseName } from "../provider-utils";
 import { sanitizeEmail } from "../validate-contact";
 import { hasHunterKey } from "../config";
@@ -6,7 +7,7 @@ import { hasHunterKey } from "../config";
 const HUNTER_BASE = "https://api.hunter.io/v2";
 
 async function hunterFetch(path: string, params: Record<string, string>) {
-  const apiKey = process.env.HUNTER_API_KEY?.trim();
+  const apiKey = getHunterApiKey();
   if (!apiKey) throw new Error("HUNTER_API_KEY not set");
   const query = new URLSearchParams({ ...params, api_key: apiKey });
   const res = await fetch(`${HUNTER_BASE}${path}?${query}`);

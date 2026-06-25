@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
 import { eq, desc, asc } from "drizzle-orm";
 import { canManuallyAdvance, parseDealAmount } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
+import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
-import { getLeadNetworkSummary } from "@/lib/network/graph";
 import { toEditMessage } from "@/lib/agents/writer-draft";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const ctx = await requireTenantContext();
 
     const rows = await db
       .select({ lead: leads, contact: contacts, account: accounts })
@@ -25,42 +27,36 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { lead, contact, account } = rows[0];
 
-    const research = await db.query.leadResearch.findFirst({
-      where: eq(leadResearch.leadId, id),
-    });
+    if (lead.tenantId !== ctx.tenantId) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
 
-    const outreach = await db.query.leadOutreach.findFirst({
-      where: eq(leadOutreach.leadId, id),
-      orderBy: [desc(leadOutreach.createdAt)],
-    });
+    const [research, outreach, scheduleRows] = await Promise.all([
+      db.query.leadResearch.findFirst({ where: eq(leadResearch.leadId, id) }),
+      db.query.leadOutreach.findFirst({
+        where: eq(leadOutreach.leadId, id),
+        orderBy: [desc(leadOutreach.createdAt)],
+      }),
+      db
+        .select()
+        .from(outreachSchedule)
+        .where(eq(outreachSchedule.leadId, id))
+        .orderBy(outreachSchedule.scheduledFor),
+    ]);
 
-    const approval = outreach
-      ? await db.query.outreachApprovals.findFirst({
-          where: eq(outreachApprovals.leadOutreachId, outreach.id),
-        })
-      : null;
-
-    const editMessages = outreach
-      ? await db.query.outreachEditMessages.findMany({
-          where: eq(outreachEditMessages.leadOutreachId, outreach.id),
-          orderBy: [asc(outreachEditMessages.createdAt)],
-        })
-      : [];
-
-    const scheduleRows = await db
-      .select()
-      .from(outreachSchedule)
-      .where(eq(outreachSchedule.leadId, id))
-      .orderBy(outreachSchedule.scheduledFor);
+    const [approval, editMessages] = outreach
+      ? await Promise.all([
+          db.query.outreachApprovals.findFirst({
+            where: eq(outreachApprovals.leadOutreachId, outreach.id),
+          }),
+          db.query.outreachEditMessages.findMany({
+            where: eq(outreachEditMessages.leadOutreachId, outreach.id),
+            orderBy: [asc(outreachEditMessages.createdAt)],
+          }),
+        ])
+      : [null, []];
 
     const upNext = deriveUpNext(lead.status, scheduleRows);
-
-    let networkSummary: LeadDetailRecord["network"] = [];
-    try {
-      networkSummary = await getLeadNetworkSummary(id);
-    } catch (networkErr) {
-      console.error("[api/leads/[id]] network summary failed:", networkErr);
-    }
 
     const record: LeadDetailRecord = {
       id: lead.id,
@@ -118,7 +114,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           }
         : undefined,
       upNext,
-      network: networkSummary,
+      network: [],
       giftingIntelligence: account.intelNotes ?? research?.giftingHook ?? undefined,
       companyOverview: (account.companyOverview as import("@/lib/company-overview").CompanyOverview | null) ?? undefined,
       accountId: account.id,
@@ -130,8 +126,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json({ lead: record });
   } catch (e) {
-    console.error("[api/leads/[id]]", e);
-    return NextResponse.json({ error: "Failed to load lead" }, { status: 500 });
+    return handleApiError(e, "[api/leads/[id]]");
   }
 }
 
@@ -187,6 +182,7 @@ function deriveUpNext(
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
+    const ctx = await requireTenantContext();
     const body = await req.json();
     const { status: nextStatus, closedDealAmount } = body as {
       status?: string;
@@ -198,7 +194,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
-    if (!lead) {
+    if (!lead || lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
@@ -238,6 +234,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
 
     await logAudit({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      actorId: ctx.userId,
       action: `lead.status.${nextStatus}`,
       entityType: "lead",
       entityId: id,
@@ -246,8 +245,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ ok: true, status: nextStatus });
   } catch (e) {
-    console.error("[api/leads/[id] PATCH]", e);
-    return NextResponse.json({ error: "Status update failed" }, { status: 500 });
+    return handleApiError(e, "[api/leads/[id] PATCH]");
   }
 }
 

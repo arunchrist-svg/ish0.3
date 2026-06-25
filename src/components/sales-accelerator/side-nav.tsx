@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ChevronLeft, Contact, Home,
-  Pin, Rocket, Settings, Telescope, User, GitFork,
+  Mail, Pin, Rocket, Settings, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CircleButton } from "@/design-system";
@@ -29,6 +29,7 @@ const mainNav: NavItemEntry[] = [
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
   { icon: Rocket, label: "Lead Accelerator", href: "/leads", key: "lead-accelerator" },
+  { icon: Mail, label: "Email", href: "/email", key: "email" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
 ];
 

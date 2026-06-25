@@ -15,10 +15,14 @@ export const approvalStatus = pgEnum("approval_status", ["pending", "approved", 
 
 // ─── Tenants & Workspaces (SaaS scaffold) ─────────────────────────────────────
 export const tenants = pgTable("tenants", {
-  id:        uuid("id").defaultRandom().primaryKey(),
-  name:      text("name").notNull(),
-  plan:      text("plan").notNull().default("starter"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+  id:                uuid("id").defaultRandom().primaryKey(),
+  name:              text("name").notNull(),
+  plan:              text("plan").notNull().default("starter"),
+  onboardingStatus:  text("onboarding_status").notNull().default("pending"),
+  onboardingStep:    integer("onboarding_step").notNull().default(1),
+  stripeCustomerId:  text("stripe_customer_id"),
+  demoMode:          boolean("demo_mode").notNull().default(true),
+  createdAt:         timestamp("created_at").defaultNow().notNull(),
 });
 
 export const workspaces = pgTable("workspaces", {
@@ -31,7 +35,113 @@ export const workspaces = pgTable("workspaces", {
 export const workspaceSettings = pgTable("workspace_settings", {
   workspaceId:      uuid("workspace_id").primaryKey().references(() => workspaces.id),
   enrichmentConfig: jsonb("enrichment_config").notNull().default({}),
+  emailConfig:      jsonb("email_config").notNull().default({}),
   updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+});
+
+
+// ─── SaaS Auth & Billing ──────────────────────────────────────────────────────
+export const users = pgTable("users", {
+  id:           uuid("id").defaultRandom().primaryKey(),
+  email:        text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  googleId:     text("google_id").unique(),
+  platformRole: text("platform_role").notNull().default("user"),
+  name:         text("name").notNull(),
+  createdAt:    timestamp("created_at").defaultNow().notNull(),
+});
+
+export const sessions = pgTable("sessions", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  token:     text("token").notNull().unique(),
+  userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const orgMembers = pgTable("org_members", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId:  uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  role:      text("role").notNull().default("owner"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userTenantIdx: uniqueIndex("org_members_user_tenant_idx").on(table.userId, table.tenantId),
+}));
+
+
+export const orgInvites = pgTable("org_invites", {
+  id:         uuid("id").defaultRandom().primaryKey(),
+  tenantId:   uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  email:      text("email").notNull(),
+  role:       text("role").notNull().default("member"),
+  token:      text("token").notNull().unique(),
+  invitedBy:  uuid("invited_by").notNull().references(() => users.id),
+  expiresAt:  timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt:  timestamp("created_at").defaultNow().notNull(),
+});
+
+export const plans = pgTable("plans", {
+  id:              uuid("id").defaultRandom().primaryKey(),
+  slug:            text("slug").notNull().unique(),
+  name:            text("name").notNull(),
+  priceCents:      integer("price_cents").notNull(),
+  includedCredits: integer("included_credits").notNull(),
+  seatLimit:       integer("seat_limit").notNull().default(2),
+  features:        jsonb("features").notNull().default({}),
+  stripePriceId:   text("stripe_price_id"),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+});
+
+export const subscriptions = pgTable("subscriptions", {
+  id:                   uuid("id").defaultRandom().primaryKey(),
+  tenantId:             uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }).unique(),
+  planId:               uuid("plan_id").notNull().references(() => plans.id),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  status:               text("status").notNull().default("trialing"),
+  currentPeriodStart:   timestamp("current_period_start"),
+  currentPeriodEnd:     timestamp("current_period_end"),
+  createdAt:            timestamp("created_at").defaultNow().notNull(),
+});
+
+export const creditBalances = pgTable("credit_balances", {
+  tenantId:    uuid("tenant_id").primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
+  balance:     integer("balance").notNull().default(0),
+  periodStart: timestamp("period_start"),
+  periodEnd:   timestamp("period_end"),
+  updatedAt:   timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const creditTransactions = pgTable("credit_transactions", {
+  id:             uuid("id").defaultRandom().primaryKey(),
+  tenantId:       uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  amount:         integer("amount").notNull(),
+  action:         text("action").notNull(),
+  referenceId:    text("reference_id"),
+  idempotencyKey: text("idempotency_key").unique(),
+  metadata:       jsonb("metadata").default({}),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
+});
+
+
+export const usageEvents = pgTable("usage_events", {
+  id:             uuid("id").defaultRandom().primaryKey(),
+  tenantId:       uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  action:         text("action").notNull(),
+  quantity:       integer("quantity").notNull().default(1),
+  creditsCharged: integer("credits_charged").notNull().default(0),
+  metadata:       jsonb("metadata").default({}),
+  createdAt:      timestamp("created_at").defaultNow().notNull(),
+});
+
+export const conversionEvents = pgTable("conversion_events", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  tenantId:  uuid("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
+  userId:    uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  event:     text("event").notNull(),
+  metadata:  jsonb("metadata").default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // ─── Campaigns ────────────────────────────────────────────────────────────────
@@ -127,6 +237,7 @@ export const leads = pgTable("leads", {
   tags:         jsonb("tags").$type<string[]>().default([]),
   researcherEligible: boolean("researcher_eligible").notNull().default(false),
   createdAt:    timestamp("created_at").defaultNow().notNull(),
+  lastReplyContent: text("last_reply_content"),
   updatedAt:    timestamp("updated_at").defaultNow().notNull(),
   isPinned:     boolean("is_pinned").default(false),
 });
@@ -196,6 +307,7 @@ export const outreachApprovals = pgTable("outreach_approvals", {
 });
 
 // ─── Outreach Schedule (Sequencer) ───────────────────────────────────────────
+// status values: "scheduled" | "sent" | "cancelled"
 export const outreachSchedule = pgTable("outreach_schedule", {
   id:            uuid("id").defaultRandom().primaryKey(),
   leadId:        uuid("lead_id").notNull().references(() => leads.id),
@@ -204,9 +316,11 @@ export const outreachSchedule = pgTable("outreach_schedule", {
   sequenceDay:   integer("sequence_day").notNull(),
   scheduledFor:  timestamp("scheduled_for").notNull(),
   sentAt:        timestamp("sent_at"),
+  openedAt:      timestamp("opened_at"),
   status:        text("status").notNull().default("scheduled"),
   sendMode:      sendMode("send_mode").default("dry_run"),
   resendId:      text("resend_id"),
+  trackingToken: text("tracking_token"),
   createdAt:     timestamp("created_at").defaultNow().notNull(),
 });
 

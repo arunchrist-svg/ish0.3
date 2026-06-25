@@ -22,7 +22,8 @@ export function SettingsNav({ value, onChange, items }: SettingsNavProps) {
 
   return (
     <aside className="settings-nav-rail ish-glass-sidebar flex h-full w-[200px] shrink-0 flex-col border-r border-white/50 p-[22px_16px]">
-      <span className="mb-5 text-lg font-bold text-ish-ink">Settings</span>
+      <div className="settings-nav-stripe mb-4 h-1 w-full rounded-full" aria-hidden />
+      <span className="mb-5 text-lg font-bold tracking-tight text-ish-ink">Settings</span>
       <nav ref={containerRef} className="relative flex flex-col">
         <SlidingHighlight rect={rect} ready={ready} />
         {items.map((item) => {

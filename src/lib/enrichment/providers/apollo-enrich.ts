@@ -1,4 +1,5 @@
 import { normalizeLinkedInUrl } from "@/lib/utils";
+import { getApolloApiKey } from "../request-context";
 import type { EnrichmentInput, EnrichmentProvider, EnrichmentResult } from "../enrich-types";
 import { parseName } from "../provider-utils";
 import { sanitizeEmail, sanitizePhone } from "../validate-contact";
@@ -7,7 +8,7 @@ import { hasApolloKey } from "../config";
 const BASE = "https://api.apollo.io/v1";
 
 async function apolloPost(path: string, body: object) {
-  const key = process.env.APOLLO_API_KEY;
+  const key = getApolloApiKey();
   if (!key) throw new Error("APOLLO_API_KEY not set");
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",

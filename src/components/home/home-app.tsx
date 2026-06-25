@@ -243,6 +243,7 @@ export function HomeApp() {
   const [contacts, setContacts] = useState<number>(0);
   const [tavilyUsage, setTavilyUsage] = useState<TavilyUsage | null>(null);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -251,12 +252,16 @@ export function HomeApp() {
     else setRefreshing(true);
 
     try {
+      const meRes = await fetch('/api/auth/me').then((r) => r.json()).catch(() => ({}));
+      const superadmin = meRes.isSuperadmin === true;
+      setIsSuperadmin(superadmin);
+
       const [funnelRes, leadsRes, contactsRes, tavilyRes, llmRes] = await Promise.allSettled([
         fetch("/api/funnel").then((r) => r.json()),
         fetch("/api/leads").then((r) => r.json()),
         fetch("/api/contacts").then((r) => r.json()),
-        fetch("/api/usage/tavily").then((r) => r.json()),
-        fetch("/api/usage/llm").then((r) => r.json()),
+        superadmin ? fetch("/api/usage/tavily").then((r) => r.json()) : Promise.resolve(null),
+        superadmin ? fetch("/api/usage/llm").then((r) => r.json()) : Promise.resolve(null),
       ]);
 
       if (funnelRes.status === "fulfilled") setFunnel(funnelRes.value as FunnelData);
@@ -268,8 +273,8 @@ export function HomeApp() {
         const arr = Array.isArray(contactsRes.value) ? contactsRes.value : [];
         setContacts(arr.length);
       }
-      if (tavilyRes.status === "fulfilled") setTavilyUsage(tavilyRes.value as TavilyUsage);
-      if (llmRes.status === "fulfilled") setLlmConfig(llmRes.value as LlmConfig);
+      if (tavilyRes.status === "fulfilled" && tavilyRes.value) setTavilyUsage(tavilyRes.value as TavilyUsage);
+      if (llmRes.status === "fulfilled" && llmRes.value) setLlmConfig(llmRes.value as LlmConfig);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -463,7 +468,8 @@ export function HomeApp() {
               </div>
             </PanelCard>
 
-            {/* Usage */}
+            {/* Usage — superadmin only (platform keys) */}
+            {isSuperadmin && (
             <PanelCard>
               <div className="mb-4 flex items-center gap-2">
                 <div className="flex size-6 items-center justify-center rounded-full bg-blue-100">
@@ -499,6 +505,7 @@ export function HomeApp() {
                 </div>
               )}
             </PanelCard>
+            )}
 
           </div>
         </div>

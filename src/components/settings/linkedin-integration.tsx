@@ -96,9 +96,9 @@ export function LinkedInIntegration() {
   return (
     <>
       {!status?.configured && (
-        <SettingsGroup title="Setup Required">
-          <p className="px-4 py-4 text-[13px] leading-relaxed text-amber-900">
-            Add LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, and LINKEDIN_REDIRECT_URI to .env.local to enable OAuth.
+        <SettingsGroup title="LinkedIn OAuth">
+          <p className="px-4 py-4 text-[13px] leading-relaxed text-ish-ink-soft">
+            LinkedIn sign-in is not enabled yet. You can still import a Connections.csv export below once your account is linked by your workspace admin.
           </p>
         </SettingsGroup>
       )}

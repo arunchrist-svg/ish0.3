@@ -12,11 +12,11 @@ export function SettingsGroup({ title, footer, children, className }: SettingsGr
   return (
     <section className={cn("mb-7", className)}>
       {title ? (
-        <h3 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-ish-ink-faint">
+        <h3 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ish-ink-faint">
           {title}
         </h3>
       ) : null}
-      <div className="settings-group overflow-hidden rounded-2xl border border-ish-border/40 bg-white/85 shadow-[0_1px_3px_rgba(20,20,30,0.04)] backdrop-blur-xl">
+      <div className="settings-group overflow-hidden rounded-2xl border border-ish-border/40 bg-white/85 shadow-[var(--shadow-ish-sm)] backdrop-blur-xl transition-shadow duration-300 hover:shadow-[var(--shadow-ish)]">
         {children}
       </div>
       {footer ? (
@@ -27,7 +27,7 @@ export function SettingsGroup({ title, footer, children, className }: SettingsGr
 }
 
 export function SettingsGroupDivider() {
-  return <div className="mx-4 h-px bg-ish-border/70" aria-hidden />;
+  return <div className="mx-4 h-px bg-ish-border/60" aria-hidden />;
 }
 
 type SettingsRowProps = {
@@ -44,8 +44,8 @@ export function SettingsRow({ children, className, onClick, as }: SettingsRowPro
       type={Comp === "button" ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors",
-        onClick && "hover:bg-black/[0.025] active:bg-black/[0.04]",
+        "flex w-full items-center gap-3 px-4 py-3.5 text-left transition-[background-color,transform] duration-200",
+        onClick && "cursor-pointer hover:bg-black/[0.025] active:scale-[0.995] active:bg-black/[0.04]",
         className,
       )}
     >

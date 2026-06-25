@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Send, Sparkles, Wand2 } from "lucide-react";
+import { Loader2, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { reviseDraft } from "@/lib/api-client";
 import type { EditMessage, WriterDraft } from "@/lib/api-client";
+import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
 
 const QUICK_PROMPTS = [
@@ -18,14 +19,21 @@ type Props = {
   leadOutreachId: string;
   messages: EditMessage[];
   disabled?: boolean;
+  embedded?: boolean;
   onDraftUpdated: (draft: WriterDraft, messages: EditMessage[]) => void;
 };
 
-export function EmailEditChat({ leadOutreachId, messages: initialMessages, disabled, onDraftUpdated }: Props) {
+export function EmailEditChat({
+  leadOutreachId,
+  messages: initialMessages,
+  disabled,
+  embedded = false,
+  onDraftUpdated,
+}: Props) {
   const [messages, setMessages] = useState<EditMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [revising, setRevising] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -33,7 +41,7 @@ export function EmailEditChat({ leadOutreachId, messages: initialMessages, disab
   }, [leadOutreachId, initialMessages]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, revising]);
 
   async function sendMessage(text: string) {
@@ -76,66 +84,64 @@ export function EmailEditChat({ leadOutreachId, messages: initialMessages, disab
     }
   }
 
+  const pad = embedded ? "px-4 sm:px-5" : "px-4 sm:px-5";
+
   return (
-    <div className="flex h-full min-h-[320px] flex-col">
-      <div className="flex items-center gap-2.5 border-b border-ish-border/80 px-4 py-3">
-        <div className="flex size-8 items-center justify-center rounded-full bg-ish-black text-white shadow-[var(--shadow-ish-sm)]">
-          <Sparkles className="size-3.5" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-bold text-ish-ink">Edit with AI</div>
-          <div className="text-[11px] text-ish-ink-faint">Changes update the draft instantly</div>
+    <div className={cn("flex flex-col", embedded && "bg-transparent")}>
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          pad,
+          embedded ? "border-t border-ish-border/50 bg-ish-canvas/30 py-2.5" : "py-3",
+        )}
+      >
+        <Sparkles className={cn("shrink-0 text-ish-ink-faint", embedded ? "size-3.5" : "hidden")} />
+        {!embedded && (
+          <div className="flex size-8 items-center justify-center rounded-full bg-ish-black text-white shadow-[var(--shadow-ish-sm)]">
+            <Sparkles className="size-3.5" />
+          </div>
+        )}
+        <div className={cn(text.label, embedded ? "text-ish-ink-faint" : cn(text.cardTitle, "text-[12px] text-ish-ink"))}>
+          Edit with AI
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-        {messages.length === 0 && !revising ? (
-          <div className="flex h-full min-h-[140px] flex-col items-center justify-center rounded-[14px] border border-dashed border-ish-border/80 bg-white/70 px-4 py-6 text-center">
-            <div className="mb-2 flex size-10 items-center justify-center rounded-full bg-ish-yellow-soft">
-              <Wand2 className="size-4 text-ish-ink-soft" />
-            </div>
-            <p className="text-[12px] font-semibold text-ish-ink">Refine your email</p>
-            <p className="mt-1 max-w-[220px] text-[11px] leading-relaxed text-ish-ink-faint">
-              Ask for tone changes, shorter copy, or tweak the greeting and subject lines.
-            </p>
-          </div>
-        ) : (
-          <>
-            {messages.map((msg) => (
+      {(messages.length > 0 || revising) && (
+        <div className={cn("space-y-3 pb-2", pad)}>
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={cn("flex flex-col gap-1", msg.role === "user" ? "items-end" : "items-start")}
+            >
+              <span className={cn(text.label, "px-1")}>{msg.role === "user" ? "You" : "AI"}</span>
               <div
-                key={msg.id}
-                className={cn("flex flex-col gap-1", msg.role === "user" ? "items-end" : "items-start")}
+                className={cn(
+                  "max-w-[92%] rounded-[14px] px-3.5 py-2.5 sm:max-w-[85%]",
+                  text.bodySoft,
+                  msg.role === "user"
+                    ? "rounded-br-[4px] bg-ish-black text-white"
+                    : "rounded-bl-[4px] border border-ish-border/50 bg-ish-canvas/50 text-ish-ink",
+                )}
               >
-                <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                  {msg.role === "user" ? "You" : "AI"}
-                </span>
-                <div
-                  className={cn(
-                    "max-w-[92%] rounded-[14px] px-3.5 py-2.5 text-[12.5px] leading-relaxed",
-                    msg.role === "user"
-                      ? "rounded-br-[4px] bg-ish-black text-white"
-                      : "rounded-bl-[4px] border border-ish-border bg-white text-ish-ink shadow-[var(--shadow-ish-sm)]",
-                  )}
-                >
-                  {msg.content}
-                </div>
+                {msg.content}
               </div>
-            ))}
-            {revising && (
-              <div className="flex flex-col items-start gap-1">
-                <span className="px-1 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">AI</span>
-                <div className="flex items-center gap-2 rounded-[14px] rounded-bl-[4px] border border-ish-border bg-white px-3.5 py-2.5 text-[12px] text-ish-ink-faint shadow-[var(--shadow-ish-sm)]">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  Updating draft…
-                </div>
+            </div>
+          ))}
+          {revising && (
+            <div className="flex flex-col items-start gap-1">
+              <span className={cn(text.label, "px-1")}>AI</span>
+              <div className={cn("flex items-center gap-2 rounded-[14px] rounded-bl-[4px] border border-ish-border/50 bg-ish-canvas/50 px-3.5 py-2.5", text.caption)}>
+                <Loader2 className="size-3.5 animate-spin" />
+                Updating draft…
               </div>
-            )}
-          </>
-        )}
-      </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
 
       {!disabled ? (
-        <div className="mt-auto border-t border-ish-border/80 bg-white/80 px-4 py-3 backdrop-blur-sm">
+        <div className={cn(pad, "pb-4 pt-1", !embedded && "border-t border-ish-border/50 bg-white/70 py-3 backdrop-blur-sm")}>
           <div className="mb-2.5 flex flex-wrap gap-1.5">
             {QUICK_PROMPTS.map((prompt) => (
               <button
@@ -143,7 +149,11 @@ export function EmailEditChat({ leadOutreachId, messages: initialMessages, disab
                 type="button"
                 disabled={revising}
                 onClick={() => sendMessage(prompt)}
-                className="rounded-full border border-ish-border bg-white px-2.5 py-1 text-[10px] font-semibold text-ish-ink-soft transition-colors hover:border-ish-ink/20 hover:bg-ish-canvas hover:text-ish-ink disabled:opacity-40"
+                className={cn(
+                  "rounded-full border border-ish-border/50 px-2.5 py-1 font-semibold transition-colors",
+                  "text-[10px] text-ish-ink-soft hover:border-ish-stratus-blue/30 hover:bg-ish-canvas hover:text-ish-ink disabled:opacity-40",
+                  embedded ? "bg-ish-canvas/60" : "bg-white",
+                )}
               >
                 {prompt}
               </button>
@@ -159,7 +169,12 @@ export function EmailEditChat({ leadOutreachId, messages: initialMessages, disab
               disabled={revising}
               rows={2}
               placeholder="e.g. change greeting to Hi Vikram, mention bulk pricing…"
-              className="min-h-[44px] max-h-[100px] min-w-0 flex-1 resize-none rounded-[14px] border border-ish-border bg-white px-3.5 py-2.5 text-[12px] leading-relaxed text-ish-ink outline-none placeholder:text-ish-ink-faint focus:border-ish-black disabled:opacity-50"
+              className={cn(
+                "min-h-[44px] max-h-[100px] min-w-0 flex-1 resize-none rounded-[14px] border border-ish-border/50 px-3.5 py-2.5",
+                text.bodySoft,
+                "outline-none placeholder:text-ish-ink-faint focus:border-ish-stratus-blue/40 focus:ring-2 focus:ring-ish-stratus-blue/12 disabled:opacity-50",
+                embedded ? "bg-ish-canvas/40" : "bg-white",
+              )}
             />
             <button
               type="submit"
@@ -170,10 +185,10 @@ export function EmailEditChat({ leadOutreachId, messages: initialMessages, disab
               {revising ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </button>
           </form>
-          <p className="mt-1.5 text-center text-[10px] text-ish-ink-faint">Enter to send · Shift+Enter for new line</p>
+          <p className={cn(text.caption, "mt-1.5 text-center text-ish-ink-faint")}>Enter to send · Shift+Enter for new line</p>
         </div>
       ) : (
-        <p className="border-t border-ish-border/80 px-4 py-3 text-center text-[11px] text-ish-ink-faint">
+        <p className={cn(text.caption, "border-t border-ish-border/50 px-4 py-3 text-center sm:px-5")}>
           Chat editing is disabled after approval or rejection.
         </p>
       )}

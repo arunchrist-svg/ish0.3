@@ -7,7 +7,7 @@ import {
   LINKEDIN_MEMBER_COOKIE,
   LINKEDIN_STATE_COOKIE,
 } from "@/lib/linkedin/oauth";
-import { getDefaultTenantContext } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
 
   try {
     const user = await exchangeCodeForUser(code);
-    const { tenantId, workspaceId } = await getDefaultTenantContext();
+    const { tenantId, workspaceId } = await requireTenantContext();
 
     const existing = await db.query.teamMembers.findFirst({
       where: eq(teamMembers.linkedInSub, user.sub),

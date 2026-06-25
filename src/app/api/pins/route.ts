@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext } from "@/lib/tenant";
 import { db } from "@/db";
 import { leads, accounts, contacts } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and } from "drizzle-orm";
 
 export async function GET() {
   try {
+    const ctx = await requireTenantContext();
     const pinnedLeads = await db
       .select({
         id: leads.id,
@@ -23,7 +25,7 @@ export async function GET() {
       .from(leads)
       .innerJoin(contacts, eq(leads.contactId, contacts.id))
       .innerJoin(accounts, eq(leads.accountId, accounts.id))
-      .where(eq(leads.isPinned, true))
+      .where(and(eq(leads.tenantId, ctx.tenantId), eq(leads.isPinned, true)))
       .orderBy(desc(leads.updatedAt));
 
     const pinnedAccounts = await db
@@ -39,7 +41,7 @@ export async function GET() {
         updatedAt: accounts.updatedAt,
       })
       .from(accounts)
-      .where(eq(accounts.isPinned, true))
+      .where(and(eq(accounts.tenantId, ctx.tenantId), eq(accounts.isPinned, true)))
       .orderBy(desc(accounts.updatedAt));
 
     return NextResponse.json({

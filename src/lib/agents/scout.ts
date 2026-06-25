@@ -6,10 +6,9 @@ import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/con
 import { SCOUT_CITIES } from "@/lib/scouting-data";
 import type { DataMode } from "@/lib/enrichment/types";
 
-const DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001";
-const DEFAULT_WORKSPACE = "00000000-0000-0000-0000-000000000002";
-
 export type ScoutBatchParams = {
+  tenantId: string;
+  workspaceId: string;
   cities?: string[];
   industries?: string[];
   dataMode?: DataMode;
@@ -25,7 +24,7 @@ export type ScoutBatchResult = {
   errors: string[];
 };
 
-export async function runScoutBatch(params: ScoutBatchParams = {}): Promise<ScoutBatchResult> {
+export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
   const runId = randomUUID();
   const cities = params.cities?.length ? params.cities : [...SCOUT_CITIES];
   const industries = params.industries ?? [];
@@ -38,16 +37,16 @@ export async function runScoutBatch(params: ScoutBatchParams = {}): Promise<Scou
   let leadsSkipped = 0;
 
   await logAudit({
-    tenantId: DEFAULT_TENANT,
-    workspaceId: DEFAULT_WORKSPACE,
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
     action: "scout.batch.started",
     entityType: "scout_run",
     metadata: { runId, cities, industries, dataMode, companyLimit, maxCompanies },
   });
 
   const discovery = await discoverCompanies({
-    tenantId: DEFAULT_TENANT,
-    workspaceId: DEFAULT_WORKSPACE,
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
     cities,
     industries,
     dataMode,
@@ -61,8 +60,8 @@ export async function runScoutBatch(params: ScoutBatchParams = {}): Promise<Scou
   for (const company of toProcess) {
     try {
       const { people } = await discoverPeople({
-        tenantId: DEFAULT_TENANT,
-        workspaceId: DEFAULT_WORKSPACE,
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
         companyName: company.name,
         companyDomain: company.domain,
         companyWebsite: company.website,
@@ -81,6 +80,8 @@ export async function runScoutBatch(params: ScoutBatchParams = {}): Promise<Scou
         company,
         dataMode,
         leadSource: "scout_agent",
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
       });
 
       leadsSaved += result.saved.length;
@@ -92,8 +93,8 @@ export async function runScoutBatch(params: ScoutBatchParams = {}): Promise<Scou
   }
 
   await logAudit({
-    tenantId: DEFAULT_TENANT,
-    workspaceId: DEFAULT_WORKSPACE,
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
     action: "scout.batch.completed",
     entityType: "scout_run",
     metadata: { runId, companiesDiscovered: discovery.companies.length, leadsSaved, leadsSkipped, errors: errors.length },

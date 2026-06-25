@@ -12,9 +12,8 @@ import {
   DELIVERABILITY_PASS_THRESHOLD,
 } from "@/lib/agents/writer-scoring";
 
-const PROMPT_VERSION = "v1.2";
+const PROMPT_VERSION = "v1.3";
 const MAX_REVISIONS = 2;
-
 
 const FEW_SHOT = `
 ---
@@ -49,6 +48,8 @@ ISH Gifting Team
 
 export type WriterOptions = {
   outreachTemplate?: OutreachTemplateId;
+  followUpMode?: "follow_up" | "final_reminder";
+  originalEmailBody?: string;
 };
 
 export async function runWriter(leadId: string, options?: WriterOptions): Promise<string> {
@@ -59,7 +60,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
 
-  if (isManualStage(lead.status)) {
+  if (isManualStage(lead.status) && !options?.followUpMode) {
     throw new Error(`Cannot generate draft for lead in ${lead.status} stage`);
   }
 
@@ -79,9 +80,24 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const confidenceTier = research?.confidenceTier ?? "low";
   const giftingHook = research?.giftingHook ?? "";
   const employees = account.employees ?? "100+";
-  const template = getOutreachTemplate(options?.outreachTemplate);
 
-  const systemPrompt = `You are ISH's outreach writer. Write personalised, warm, concise corporate gifting emails.
+  const isFollowUp = !!options?.followUpMode;
+  const template = getOutreachTemplate(options?.followUpMode ?? options?.outreachTemplate);
+
+  const systemPrompt = isFollowUp
+    ? `You are ISH's outreach writer. Write short, warm, personalised follow-up emails for corporate gifting.
+Rules from knowledge base:
+${rules}
+
+Output ONLY valid JSON:
+{
+  "subjectA": "string (Re: prefix, references company or contact name)",
+  "subjectB": "string (alternative subject)",
+  "emailBody": "string (plain text, max ${options?.followUpMode === "final_reminder" ? "70" : "80"} words)",
+  "outreachGoal": "one sentence",
+  "templateVariant": "${options?.followUpMode}"
+}`
+    : `You are ISH's outreach writer. Write personalised, warm, concise corporate gifting emails.
 Rules from knowledge base:
 ${rules}
 
@@ -97,13 +113,27 @@ Output ONLY valid JSON with this shape:
   "templateVariant": "high_confidence|low_confidence"
 }`;
 
-  const userPrompt = `Write an email for:
-Company: ${account.name}, ${account.city ?? "India"}, ${account.industry ?? "Corporate"}
+  const baseUserPrompt = `Company: ${account.name}, ${account.city ?? "India"}, ${account.industry ?? "Corporate"}
 Employees: ${employees}
 Contact: ${contact.firstName ?? contact.name}, ${contact.title ?? "HR/Admin"}
 Confidence tier: ${confidenceTier}
 Gifting hook: ${giftingHook || "Diwali season gifting for employees"}
-Intel: ${account.intelNotes ?? "none"}
+Intel: ${account.intelNotes ?? "none"}`;
+
+  const userPrompt = isFollowUp
+    ? `${baseUserPrompt}
+
+This is email #${options?.followUpMode === "follow_up" ? "2" : "3"} of 3 in the sequence.
+
+Original email already sent to this lead:
+"""
+${options?.originalEmailBody ?? ""}
+"""
+
+${template.ctaInstruction}
+Sign off with "ISH Gifting Team"`
+    : `Write an email for:
+${baseUserPrompt}
 
 Outreach template: ${template.label}
 ${template.ctaInstruction}
@@ -123,35 +153,41 @@ Rules:
   let revisionCount = 0;
   let revisionTimeout = false;
 
-  // Deliverability revision loop
-  for (let attempt = 0; attempt <= MAX_REVISIONS; attempt++) {
+  const maxRevisions = isFollowUp ? 1 : MAX_REVISIONS;
+
+  for (let attempt = 0; attempt <= maxRevisions; attempt++) {
     const raw = await callLLM({
       tier: "fast",
       system: systemPrompt,
       prompt: attempt === 0
         ? userPrompt
         : `${userPrompt}\n\nPrevious draft failed deliverability check. Issues: ${await getDeliverabilityIssues(emailBody)}. Please revise.`,
-      maxTokens: 1024,
+      maxTokens: isFollowUp ? 512 : 1024,
     });
 
     let parsed: { subjectA?: string; subjectB?: string; emailBody?: string; outreachGoal?: string; templateVariant?: string } = {};
     try {
       parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
     } catch {
-      parsed = { subjectA: `Diwali gifts for ${account.name}`, subjectB: `Diwali gifting for your team`, emailBody: raw.slice(0, 800), outreachGoal: "Book a call" };
+      parsed = {
+        subjectA: `Re: Diwali gifts for ${account.name}`,
+        subjectB: `Following up, ${contact.firstName ?? contact.name}`,
+        emailBody: raw.slice(0, 600),
+        outreachGoal: template.label,
+      };
     }
 
     emailBody = parsed.emailBody ?? "";
-    subjectA = parsed.subjectA ?? `Diwali gifts for ${account.name}`;
-    subjectB = parsed.subjectB ?? `Diwali gifting, ${contact.firstName ?? contact.name}`;
-    templateVariant = template.id;
+    subjectA = parsed.subjectA ?? `Re: Diwali gifts for ${account.name}`;
+    subjectB = parsed.subjectB ?? `Following up, ${contact.firstName ?? contact.name}`;
+    templateVariant = options?.followUpMode ?? template.id;
     outreachGoal = template.label;
 
     const delivScore = await scoreDeliverability(emailBody, subjectA);
     revisionCount = attempt;
 
-    if (delivScore >= DELIVERABILITY_PASS_THRESHOLD || attempt === MAX_REVISIONS) {
-      if (attempt === MAX_REVISIONS && delivScore < DELIVERABILITY_PASS_THRESHOLD) {
+    if (delivScore >= DELIVERABILITY_PASS_THRESHOLD || attempt === maxRevisions) {
+      if (attempt === maxRevisions && delivScore < DELIVERABILITY_PASS_THRESHOLD) {
         revisionTimeout = true;
       }
 
@@ -179,8 +215,10 @@ Rules:
         })
         .returning();
 
-      await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
-      await db.insert(yieldFunnel).values({ leadId, stage: "draft_ready", metadata: { rubricTotal, delivScore } });
+      if (!isFollowUp) {
+        await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
+        await db.insert(yieldFunnel).values({ leadId, stage: "draft_ready", metadata: { rubricTotal, delivScore } });
+      }
 
       return outreach.id;
     }
@@ -188,4 +226,3 @@ Rules:
 
   throw new Error("Writer revision loop failed");
 }
-

@@ -1,55 +1,64 @@
 import { NextResponse } from "next/server";
-import { db, leads, contacts, accounts, leadResearch, outreachApprovals, leadOutreach, outreachSchedule } from "@/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { requireTenantContext } from "@/lib/tenant";
+import { handleApiError } from "@/lib/api-errors";
+import { db, leads, contacts, accounts } from "@/db";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import { runResearcherLite } from "@/lib/agents/researcher-lite";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 
 export async function GET(req: Request) {
   try {
+    const ctx = await requireTenantContext();
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
+    const statuses = statusFilter ? statusFilter.split(",").filter(Boolean) : null;
 
     const rows = await db
       .select({
-        lead: leads,
-        contact: contacts,
-        account: accounts,
+        id: leads.id,
+        status: leads.status,
+        score: leads.score,
+        researcherEligible: leads.researcherEligible,
+        name: contacts.name,
+        title: contacts.title,
+        emailStatus: contacts.emailStatus,
+        company: accounts.name,
+        city: accounts.city,
       })
       .from(leads)
       .innerJoin(contacts, eq(contacts.id, leads.contactId))
       .innerJoin(accounts, eq(accounts.id, leads.accountId))
+      .where(
+        statuses?.length
+          ? and(eq(leads.tenantId, ctx.tenantId), inArray(leads.status, statuses))
+          : eq(leads.tenantId, ctx.tenantId),
+      )
       .orderBy(desc(leads.createdAt))
       .limit(100);
 
-    const filtered = statusFilter
-      ? rows.filter((r) => statusFilter.split(",").includes(r.lead.status))
-      : rows;
-
-    const queue: LeadQueueItem[] = filtered.map((r) => ({
-      id: r.lead.id,
-      name: r.contact.name,
-      title: r.contact.title ?? "—",
-      company: r.account.name,
-      city: r.account.city ?? "—",
-      score: r.lead.score ?? 60,
-      status: r.lead.status,
-      action: deriveQueueAction(r.lead.status),
-      emailStatus: r.contact.emailStatus ?? "missing",
+    const queue: LeadQueueItem[] = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      title: r.title ?? "—",
+      company: r.company,
+      city: r.city ?? "—",
+      score: r.score ?? 60,
+      status: r.status,
+      action: deriveQueueAction(r.status),
+      emailStatus: r.emailStatus ?? "missing",
       nextActionDate: undefined,
     }));
 
-    // Async kick off researcher for scouted leads (non-blocking)
-    const scoutedLeads = filtered.filter((r) => r.lead.status === "scouted" && r.lead.researcherEligible);
+    const scoutedLeads = rows.filter((r) => r.status === "scouted" && r.researcherEligible);
     for (const row of scoutedLeads.slice(0, 3)) {
-      runResearcherLite(row.lead.id).catch((e) =>
-        console.error("[researcher-lite] failed for", row.lead.id, e),
+      runResearcherLite(row.id).catch((e) =>
+        console.error("[researcher-lite] failed for", row.id, e),
       );
     }
 
     return NextResponse.json({ leads: queue });
   } catch (e) {
-    console.error("[api/leads]", e);
-    return NextResponse.json({ error: "Failed to load leads" }, { status: 500 });
+    return handleApiError(e, "[api/leads]");
   }
 }

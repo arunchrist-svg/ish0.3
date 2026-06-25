@@ -1,7 +1,26 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE } from "@/lib/auth/session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/api/auth/linkedin", "/_next", "/favicon.ico"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/signup",
+  "/pricing",
+  "/onboarding",
+  "/api/auth/login",
+  "/api/auth/signup",
+  "/api/auth/google",
+  "/api/auth/accept-invite",
+  "/api/auth/invite",
+  "/invite",
+  "/invite",
+  "/api/auth/logout",
+  "/api/auth/linkedin",
+  "/api/webhooks/stripe", "/api/billing/plans",
+  "/api/track/open",
+  "/_next",
+  "/favicon.ico",
+];
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -10,12 +29,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const session = request.cookies.get("ish_session");
-  if (!session || session.value !== "authenticated") {
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();
