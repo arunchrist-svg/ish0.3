@@ -4,18 +4,24 @@ import { eq } from "drizzle-orm";
 import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
 import { buildEmailHtml } from "@/lib/email/templates";
-import { logAudit } from "@/lib/audit";
-import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { getResolvedEmailConfig} from "@/lib/settings/email-settings";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
+import { assertSenderPreflight } from "@/lib/email/sender-preflight";
+import { logAudit } from "@/lib/audit";
+import { generateRfcMessageId } from "@/lib/email/threading";
+import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
+import { loadSequenceDrafts } from "@/lib/agents/writer-sequence";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
-    const { approvalId } = await req.json();
+    requirePipelineWrite(ctx);
+    const { approvalId, overridePreflight } = await req.json();
     if (!approvalId) return NextResponse.json({ error: "approvalId required" }, { status: 400 });
 
     const approval = await db.query.outreachApprovals.findFirst({
@@ -37,7 +43,9 @@ export async function POST(req: Request) {
     });
     if (!leadRow || leadRow.tenantId !== ctx.tenantId) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
-    if (isManualStage(leadRow.status) || isPastReplyStage(leadRow.status)) {
+    const isReplySend = outreach.templateVariant === "reply" || leadRow.status === "replied";
+
+    if (!isReplySend && (isManualStage(leadRow.status) || isPastReplyStage(leadRow.status))) {
       return NextResponse.json({ error: "Lead is past outreach stage" }, { status: 400 });
     }
 
@@ -47,57 +55,124 @@ export async function POST(req: Request) {
       await assertPlanEntitlement(ctx.tenantId, "live_send");
       await assertCredits(ctx.tenantId, "email.live", 1);
     }
+
+    const preflight = await assertSenderPreflight(emailConfig, ctx.workspaceId, {
+      override: Boolean(overridePreflight),
+    });
+    if (overridePreflight && preflight.hasCritical) {
+      await logAudit({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        action: "outreach.preflight_override",
+        entityType: "lead",
+        entityId: approval.leadId,
+        metadata: { issues: preflight.issues },
+      });
+    }
+
+    const thread = await loadThreadContext(approval.leadId, leadRow);
+    const fallbackSubject = approval.subjectUsed ?? outreach.subjectA ?? "Diwali gifting for your team";
+    const subject = resolveOutboundSubject({
+      isReplySend,
+      rootSubject: thread.rootSubject,
+      fallbackSubject,
+    });
+
+    const threadHeaders = resolveThreadHeaders({
+      isReplySend,
+      isFollowUp: false,
+      rootMessageId: thread.rootMessageId,
+      inboundMessageId: thread.inboundMessageId,
+      referencesChain: thread.referencesChain,
+    });
+
+    const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@ish.local";
+    const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();
 
     const result = await sendEmail({
       workspaceId: ctx.workspaceId,
       to: contact.email ?? "",
-      subject: approval.subjectUsed ?? outreach.subjectA ?? "Diwali gifting for your team",
+      subject,
       html: buildEmailHtml({
         body: outreach.emailBody ?? "",
         trackingToken: email1TrackingToken,
         appUrl: emailConfig.appUrl,
+        emailStyle: emailConfig.emailStyle,
       }),
       replyTo: emailConfig.replyToAddress,
+      messageId: rfcMessageId,
+      inReplyTo: threadHeaders.inReplyTo,
+      references: threadHeaders.references,
     });
 
-    // Update lead status
-    await db.update(leads).set({ status: "outreached" }).where(eq(leads.id, approval.leadId));
-    await db.insert(yieldFunnel).values({
-      leadId: approval.leadId,
-      stage: "outreached",
-      metadata: { sendMode: result.mode, messageId: result.messageId },
-    });
-
-    // Record day-0 (initial email) in schedule for tracking
     const sendMode = emailConfig.sendMode;
-    await db.insert(outreachSchedule).values({
+    const scheduleBase = {
       leadId: approval.leadId,
       approvalId,
-      channel: "email",
-      sequenceDay: 0,
+      channel: "email" as const,
       scheduledFor: new Date(),
       sentAt: new Date(),
-      status: "sent",
+      status: "sent" as const,
       sendMode,
-      resendId: result.messageId, // provider message id (SMTP or Resend)
+      resendId: result.messageId,
+      rfcMessageId,
+      inReplyTo: threadHeaders.inReplyTo ?? null,
+      referencesChain: threadHeaders.references ?? null,
+      subjectSent: subject,
+      bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
       trackingToken: email1TrackingToken,
-    });
+    };
 
-    // Schedule follow-ups from email config
-    const cadence = emailConfig.cadenceDays;
-    const now = Date.now();
-    for (const day of cadence) {
-      const scheduledFor = new Date(now + day * 24 * 60 * 60 * 1000);
+    if (isReplySend) {
       await db.insert(outreachSchedule).values({
-        leadId: approval.leadId,
-        approvalId,
-        channel: "email",
-        sequenceDay: day,
-        scheduledFor,
-        sendMode,
-        trackingToken: crypto.randomUUID(),
+        ...scheduleBase,
+        sequenceDay: -1,
+        emailKind: "outbound_reply",
       });
+      await db.insert(yieldFunnel).values({
+        leadId: approval.leadId,
+        stage: "replied",
+        metadata: { sendMode: result.mode, messageId: rfcMessageId, kind: "reply_sent" },
+      });
+    } else {
+      await db.update(leads).set({
+        status: "outreached",
+        threadRootMessageId: rfcMessageId,
+        threadRootSubject: subject,
+      }).where(eq(leads.id, approval.leadId));
+      await db.insert(yieldFunnel).values({
+        leadId: approval.leadId,
+        stage: "outreached",
+        metadata: { sendMode: result.mode, messageId: rfcMessageId },
+      });
+
+      await db.insert(outreachSchedule).values({
+        ...scheduleBase,
+        sequenceDay: 0,
+        emailKind: "initial",
+      });
+
+      const cadence = emailConfig.cadenceDays;
+      const now = Date.now();
+      const sequenceDrafts = await loadSequenceDrafts(approval.leadId);
+      for (let i = 0; i < cadence.length; i++) {
+        const day = cadence[i];
+        const scheduledFor = new Date(now + day * 24 * 60 * 60 * 1000);
+        const linkedDraft = sequenceDrafts.find((d) => d.sequencePosition === i + 2);
+        await db.insert(outreachSchedule).values({
+          leadId: approval.leadId,
+          approvalId,
+          channel: "email",
+          sequenceDay: day,
+          scheduledFor,
+          sendMode,
+          trackingToken: crypto.randomUUID(),
+          status: "scheduled",
+          emailKind: "followup",
+          draftLeadOutreachId: linkedDraft?.id ?? null,
+        });
+      }
     }
 
     if (emailConfig.sendMode === "live") {
@@ -111,10 +186,10 @@ export async function POST(req: Request) {
       action: "outreach.sent",
       entityType: "lead",
       entityId: approval.leadId,
-      metadata: { mode: result.mode, messageId: result.messageId, subject: result.subject },
+      metadata: { mode: result.mode, messageId: rfcMessageId, subject: result.subject, threaded: Boolean(threadHeaders.inReplyTo) },
     });
 
-    return NextResponse.json({ mode: result.mode, messageId: result.messageId });
+    return NextResponse.json({ mode: result.mode, messageId: rfcMessageId, to: result.to });
   } catch (e) {
     return handleApiError(e, "[api/outreach/send]");
   }

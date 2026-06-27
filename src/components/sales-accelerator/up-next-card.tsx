@@ -8,6 +8,8 @@ import { Button, CircleButton, PanelCard, SectionHeader } from "@/design-system"
 import { enrichLead } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
+
+import { hasUsableEmail, shouldSuggestWriteEmail } from "@/lib/enrichment/contact-emails";
 import { AppModal } from "@/components/ui/app-modal";
 import { toast } from "sonner";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
@@ -20,12 +22,7 @@ const iconMap = {
 };
 
 function needsEnrich(lead: LeadDetailRecord) {
-  return (
-    !lead.title || lead.title === "—" ||
-    !lead.email || lead.email === "—" ||
-    lead.emailStatus === "missing" || lead.emailStatus === "generic" ||
-    (lead.emailConfidence ?? 0) < 55
-  );
+  return !hasUsableEmail(lead.email, lead.emailStatus);
 }
 
 function ActionCard({
@@ -183,13 +180,19 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
   const [paidDialogOpen, setPaidDialogOpen] = useState(false);
 
   const showEnrich = needsEnrich(lead);
-  const showWriteEmail = !showEnrich && !hasEmailDraft && isContactReadyStage(lead.status);
+  const showWriteEmail = !showEnrich && shouldSuggestWriteEmail(lead.email, lead.emailStatus, lead.status, hasEmailDraft);
   const showReviewEmail = !showEnrich && hasEmailDraft && lead.status === "draft_ready";
+  const emailThread = lead.emailThread;
+  const showEmailThreadStep =
+    emailThread &&
+    emailThread.phase !== "compose" &&
+    emailThread.nextStep.primaryAction;
 
   const mailTaskTitles = new Set([
     "Generate Email Draft",
     "Review & Approve Email",
     "Write outreach email",
+    "Write Email",
     "Review email draft",
     "Find contact email",
   ]);
@@ -197,6 +200,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
     if (showEnrich || showWriteEmail || showReviewEmail) {
       if (mailTaskTitles.has(t.title)) return false;
     }
+    if (showEmailThreadStep && (t.title === "Send reply in thread" || t.title === "Awaiting prospect reply")) return false;
     return true;
   });
 
@@ -265,11 +269,22 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
 
       {showWriteEmail && (
         <ActionCard
-          title="Write outreach email"
-          step="Step 1 · Ready now"
-          desc="Write a personalized outreach email for this contact"
+          title="Write Email"
+          step="Suggested next step"
+          desc="This contact has an email — start personalized outreach"
           icon={Mail}
           primaryLabel="Write Email"
+          onPrimary={onOpenEmailTab}
+        />
+      )}
+
+      {showEmailThreadStep && emailThread && (
+        <ActionCard
+          title={emailThread.nextStep.title}
+          step="Email outreach"
+          desc={emailThread.nextStep.description}
+          icon={Mail}
+          primaryLabel={emailThread.nextStep.primaryAction ?? "Open Email"}
           onPrimary={onOpenEmailTab}
         />
       )}

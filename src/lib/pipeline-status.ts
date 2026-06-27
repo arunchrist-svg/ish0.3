@@ -77,6 +77,11 @@ export function isContactReadyStage(status: string): boolean {
   return ["scouted", "prefiltered", "researched"].includes(status);
 }
 
+export function isEmailOutreachStarted(status: string, hasDraft: boolean): boolean {
+  if (hasDraft) return true;
+  return isEmailStage(status) || status === "replied" || isPastReplyStage(status);
+}
+
 export function isEmailStage(status: string): boolean {
   return ["draft_ready", "approved", "outreached"].includes(status);
 }

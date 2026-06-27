@@ -4,7 +4,11 @@ export type SendParams = {
   to: string;
   subject: string;
   html: string;
+  text?: string;
   replyTo?: string;
+  messageId?: string;
+  inReplyTo?: string;
+  references?: string;
 };
 
 export type SendResult = {

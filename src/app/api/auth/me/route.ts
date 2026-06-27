@@ -3,7 +3,7 @@ import { getSessionTokenFromCookies, getSessionUser } from "@/lib/auth/session";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 import { getCreditBalance } from "@/lib/billing/credits";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { canManageTeam } from "@/lib/auth/platform";
+import { getPermissionFlags } from "@/lib/auth/permissions";
 import { db, tenants } from "@/db";
 import { eq } from "drizzle-orm";
 
@@ -19,12 +19,14 @@ export async function GET() {
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
     const credits = await getCreditBalance(ctx.tenantId);
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+    const permissions = getPermissionFlags(ctx);
 
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name },
       tenant: {
         id: ctx.tenantId,
         name: tenant?.name,
+        slug: ctx.tenantSlug,
         plan: tenant?.plan,
         demoMode: ctx.demoMode,
         onboardingStatus: ctx.onboardingStatus,
@@ -34,7 +36,8 @@ export async function GET() {
       role: ctx.role,
       platformRole: ctx.platformRole,
       isSuperadmin: ctx.isSuperadmin,
-      canManageTeam: canManageTeam(ctx.role, ctx.platformRole),
+      mustChangePassword: ctx.mustChangePassword,
+      permissions,
       sendMode: emailConfig.sendMode,
       credits,
     });

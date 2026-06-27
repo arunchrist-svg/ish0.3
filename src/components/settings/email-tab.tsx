@@ -3,7 +3,15 @@
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsSelectRow } from "@/components/settings/settings-select-row";
 import { SettingsNumberRow } from "@/components/settings/settings-number-row";
-import { EMAIL_PROVIDER_OPTIONS, EMAIL_SEND_MODE_OPTIONS } from "@/lib/email/config";
+import {
+  EMAIL_PROVIDER_OPTIONS,
+  EMAIL_SEND_MODE_OPTIONS,
+  EMAIL_STYLE_OPTIONS,
+  type BrandConfig,
+  type BrandSlug,
+  type CampaignMode,
+} from "@/lib/email/config";
+import { BRAND_PRESET_OPTIONS, CAMPAIGN_MODE_OPTIONS, resolveBrandConfig } from "@/lib/email/brand-presets";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2, XCircle } from "lucide-react";
@@ -233,6 +241,64 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
         </SettingsGroup>
       )}
 
+      <SettingsGroup title="Brand & Campaign" footer="Writer uses this to tailor product language and CTAs for your company.">
+        {BRAND_PRESET_OPTIONS.map((option, i) => (
+          <SettingsSelectRow
+            key={option.value}
+            label={option.label}
+            desc={option.desc}
+            selected={config.brandConfig?.brandSlug === option.value}
+            onSelect={() => {
+              const preset = resolveBrandConfig({ brandSlug: option.value as BrandSlug });
+              onUpdate("brandConfig", preset);
+            }}
+            showDivider={i > 0}
+          />
+        ))}
+        <SettingsGroupDivider />
+        {CAMPAIGN_MODE_OPTIONS.map((option, i) => (
+          <SettingsSelectRow
+            key={option.value}
+            label={option.label}
+            desc={option.desc}
+            selected={config.campaignMode === option.value}
+            onSelect={() => onUpdate("campaignMode", option.value as CampaignMode)}
+            showDivider={i > 0}
+          />
+        ))}
+        <SettingsGroupDivider />
+        <SettingsTextRow
+          label="Product summary"
+          desc="Injected into Writer prompts"
+          value={config.brandConfig?.productSummary ?? ""}
+          onChange={(v) =>
+            onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), productSummary: v })
+          }
+          placeholder="What you sell and key pricing"
+          showDivider
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Inbox style" footer="Primary inbox sends personal 1:1 emails. Marketing adds unsubscribe footer and may land in Promotions/Forums.">
+        {EMAIL_STYLE_OPTIONS.map((option, i) => (
+          <SettingsSelectRow
+            key={option.value}
+            label={option.label}
+            desc={option.desc}
+            badge={option.badge}
+            selected={config.emailStyle === option.value}
+            onSelect={() => onUpdate("emailStyle", option.value)}
+            showDivider={i > 0}
+          />
+        ))}
+        <SettingsGroupDivider />
+        <SettingsRow className="flex-col items-stretch gap-1 px-3 py-3">
+          <p className="text-[12px] leading-relaxed text-ish-ink-soft">
+            Tip: drag a test email to Gmail <strong>Primary</strong> and add the sender to Contacts. Use a company domain for production.
+          </p>
+        </SettingsRow>
+      </SettingsGroup>
+
       <SettingsGroup title="Send mode" footer={sendModeFooter}>
         {EMAIL_SEND_MODE_OPTIONS.map((mode, i) => {
           const disabled = mode.value === "live" && !canSelectLive && config.sendMode !== "live";
@@ -276,6 +342,14 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
           placeholder="you@gmail.com"
           showDivider
         />
+        <SettingsTextRow
+          label="DKIM selector"
+          desc="Optional — from your ESP (e.g. google, default, k1). Improves DKIM detection accuracy."
+          value={config.dkimSelector ?? ""}
+          onChange={(v) => onUpdate("dkimSelector", v)}
+          placeholder="google"
+          showDivider
+        />
         {(config.sendMode === "test" || config.testRecipient) && (
           <SettingsTextRow
             label="Test recipient"
@@ -287,6 +361,19 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
             showDivider
           />
         )}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Send limits"
+        footer="Live sends are blocked when the daily cap per sending domain is exceeded (critical preflight).">
+        <SettingsTextRow
+          label="Daily cap per domain"
+          desc="Max live sends in a rolling 24h window before preflight blocks"
+          value={String(config.dailySendCapPerDomain ?? 50)}
+          onChange={(v) => onUpdate("dailySendCapPerDomain", Math.max(1, Number(v) || 50))}
+          placeholder="50"
+          type="number"
+        />
       </SettingsGroup>
 
       <SettingsGroup

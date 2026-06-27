@@ -42,7 +42,7 @@ export async function POST(req: Request) {
 
       const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, normalizedEmail)).limit(1);
       if (existing.length) {
-        return NextResponse.json({ error: "Account already exists — sign in instead" }, { status: 409 });
+        return NextResponse.json({ error: "Account already exists. Sign in instead." }, { status: 409 });
       }
 
       const passwordHash = await hashPassword(password);
@@ -51,10 +51,10 @@ export async function POST(req: Request) {
         .values({ email: normalizedEmail, passwordHash, name: name.trim() })
         .returning();
 
-      await acceptInvite({ token: inviteToken, userId: user.id });
+      const accepted = await acceptInvite({ token: inviteToken, userId: user.id });
 
-      const token = await createSession(user.id);
-      const res = NextResponse.json({ ok: true, redirect: "/" });
+      const token = await createSession(user.id, accepted.tenantId);
+      const res = NextResponse.json({ ok: true, redirect: accepted.redirect });
       res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
       return res;
     }
@@ -78,13 +78,13 @@ export async function POST(req: Request) {
       .values({ email: normalizedEmail, passwordHash, name: name.trim() })
       .returning();
 
-    await provisionNewTenant({
+    const { tenantId } = await provisionNewTenant({
       userId: user.id,
       orgName: orgName?.trim() || `${name.trim()}'s Organization`,
       workspaceName: workspaceName?.trim() || "Main Workspace",
     });
 
-    const token = await createSession(user.id);
+    const token = await createSession(user.id, tenantId);
     const res = NextResponse.json({ ok: true, redirect: "/onboarding" });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
     return res;

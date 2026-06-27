@@ -3,6 +3,7 @@ import { enrichCompanyOverview } from "@/lib/enrichment/company-overview";
 import type { CompanyOverviewInput } from "@/lib/company-overview";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {

@@ -48,7 +48,7 @@ describe("AGENT-API-001 scout route", () => {
       platformRole: "user",
       isSuperadmin: false,
       onboardingStatus: "complete",
-      onboardingStep: 6,
+      onboardingStep: 5,
       demoMode: true,
     });
 
@@ -82,7 +82,7 @@ describe("AGENT-API-001 scout route", () => {
       platformRole: "user",
       isSuperadmin: false,
       onboardingStatus: "complete",
-      onboardingStep: 6,
+      onboardingStep: 5,
       demoMode: true,
     });
 

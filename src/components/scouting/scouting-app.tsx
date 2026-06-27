@@ -743,7 +743,7 @@ export function ScoutingApp() {
     peopleWarnings: string[],
   ) {
     let doneCount = 0;
-    await mapWithConcurrency(selected, 3, async (company) => {
+    await mapWithConcurrency(selected, 5, async (company) => {
       const { people: results, warnings, errors } = await scoutPeople({
         companyName: company.name,
         companyDomain: resolveCompanyDomain(company._raw),
@@ -876,6 +876,7 @@ export function ScoutingApp() {
         const result = await scoutSave({
           people: persons.map((p) => p._raw),
           company: company._raw,
+          dataMode,
         });
         totalSaved += result.saved.length;
         allSkipped.push(...result.skipped);
@@ -1088,9 +1089,9 @@ export function ScoutingApp() {
                           : "Finding decision-makers"
                       }
                       hints={[
-                        "Identifying key contacts",
+                        "Searching LinkedIn profiles",
                         "Matching seniority & titles",
-                        "Checking engagement signals",
+                        "Ranking key decision-makers",
                       ]}
                       compact
                     />

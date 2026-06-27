@@ -3,10 +3,12 @@ import { runScoutBatch } from "@/lib/agents/scout";
 import { requireTenantContext } from "@/lib/tenant";
 import type { DataMode } from "@/lib/enrichment/types";
 import { handleApiError } from "@/lib/api-errors";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = await req.json().catch(() => ({}));
     const {
       cities,

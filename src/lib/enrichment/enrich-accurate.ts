@@ -27,6 +27,7 @@ export interface EnrichContactAccurateOptions {
   paidOnly?: boolean;
   freeOnly?: boolean;
   stopOnPersonalEmail?: boolean;
+  preferredChain?: EnrichmentProviderId[];
 }
 
 export interface ProviderAttempt {
@@ -43,6 +44,11 @@ export interface ScoredCandidate {
 }
 
 function getProviderChain(options: EnrichContactAccurateOptions): EnrichmentProviderId[] {
+  if (options.preferredChain?.length) {
+    return options.preferredChain.filter((id) =>
+      PAID_PROVIDER_IDS.has(id) ? isProviderConfigured(id) : true,
+    );
+  }
   if (options.paidOnly) {
     return PAID_ENRICH_PROVIDER_ORDER.filter(isProviderConfigured);
   }

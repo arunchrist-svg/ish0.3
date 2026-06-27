@@ -4,7 +4,7 @@ import { Check } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { stratusPalette, stratusGradient, stratusPaletteLegend } from "@/design-system";
 import { cn } from "@/lib/utils";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/providers/theme-provider";
 
 function ThemePreview({ variant }: { variant: "light" | "stratus" }) {
   const isStratus = variant === "stratus";

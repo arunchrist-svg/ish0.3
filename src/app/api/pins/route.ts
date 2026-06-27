@@ -3,6 +3,7 @@ import { requireTenantContext } from "@/lib/tenant";
 import { db } from "@/db";
 import { leads, accounts, contacts } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function GET() {
   try {
@@ -56,12 +57,14 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const { type, id, pinned } = await req.json();
 
     if (type === "lead") {
-      await db.update(leads).set({ isPinned: pinned }).where(eq(leads.id, id));
+      await db.update(leads).set({ isPinned: pinned }).where(and(eq(leads.id, id), eq(leads.tenantId, ctx.tenantId)));
     } else if (type === "company") {
-      await db.update(accounts).set({ isPinned: pinned }).where(eq(accounts.id, id));
+      await db.update(accounts).set({ isPinned: pinned }).where(and(eq(accounts.id, id), eq(accounts.tenantId, ctx.tenantId)));
     } else {
       return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }

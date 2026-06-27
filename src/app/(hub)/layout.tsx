@@ -5,6 +5,9 @@ import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 export default async function HubLayout({ children }: { children: React.ReactNode }) {
   try {
     const ctx = await requireTenantContext();
+    if (ctx.mustChangePassword) {
+      redirect("/change-password");
+    }
     if (ctx.onboardingStatus !== "complete") {
       redirect("/onboarding");
     }

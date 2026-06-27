@@ -12,6 +12,8 @@ export {
   canWritePipeline,
   isReadOnly,
   canChangeMemberRole,
+  requirePipelineWrite,
+  getPermissionFlags,
 } from "@/lib/auth/permissions";
 
 export async function getPlatformUser() {

@@ -8,18 +8,21 @@ import type { EditMessage, WriterDraft } from "@/lib/api-client";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
 
-const QUICK_PROMPTS = [
+const BASE_QUICK_PROMPTS = [
   "Make it shorter",
   "More formal tone",
   "Stronger CTA",
   "Fix the subject lines",
 ];
 
+const CONTENT_SCORE_PROMPT = "Make Content score higher";
+
 type Props = {
   leadOutreachId: string;
   messages: EditMessage[];
   disabled?: boolean;
   embedded?: boolean;
+  contentScore?: number;
   onDraftUpdated: (draft: WriterDraft, messages: EditMessage[]) => void;
 };
 
@@ -28,6 +31,7 @@ export function EmailEditChat({
   messages: initialMessages,
   disabled,
   embedded = false,
+  contentScore,
   onDraftUpdated,
 }: Props) {
   const [messages, setMessages] = useState<EditMessage[]>(initialMessages);
@@ -43,6 +47,11 @@ export function EmailEditChat({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, revising]);
+
+  const quickPrompts = [
+    ...(contentScore == null || contentScore < 80 ? [CONTENT_SCORE_PROMPT] : []),
+    ...BASE_QUICK_PROMPTS,
+  ];
 
   async function sendMessage(text: string) {
     const trimmed = text.trim();
@@ -84,30 +93,12 @@ export function EmailEditChat({
     }
   }
 
-  const pad = embedded ? "px-4 sm:px-5" : "px-4 sm:px-5";
+  const pad = "px-4 sm:px-5";
 
   return (
     <div className={cn("flex flex-col", embedded && "bg-transparent")}>
-      <div
-        className={cn(
-          "flex items-center gap-2",
-          pad,
-          embedded ? "border-t border-ish-border/50 bg-ish-canvas/30 py-2.5" : "py-3",
-        )}
-      >
-        <Sparkles className={cn("shrink-0 text-ish-ink-faint", embedded ? "size-3.5" : "hidden")} />
-        {!embedded && (
-          <div className="flex size-8 items-center justify-center rounded-full bg-ish-black text-white shadow-[var(--shadow-ish-sm)]">
-            <Sparkles className="size-3.5" />
-          </div>
-        )}
-        <div className={cn(text.label, embedded ? "text-ish-ink-faint" : cn(text.cardTitle, "text-[12px] text-ish-ink"))}>
-          Edit with AI
-        </div>
-      </div>
-
       {(messages.length > 0 || revising) && (
-        <div className={cn("space-y-3 pb-2", pad)}>
+        <div className={cn("space-y-3 pb-2 pt-2", pad)}>
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -141,9 +132,25 @@ export function EmailEditChat({
       )}
 
       {!disabled ? (
-        <div className={cn(pad, "pb-4 pt-1", !embedded && "border-t border-ish-border/50 bg-white/70 py-3 backdrop-blur-sm")}>
-          <div className="mb-2.5 flex flex-wrap gap-1.5">
-            {QUICK_PROMPTS.map((prompt) => (
+        <div
+          className={cn(
+            pad,
+            "pb-4",
+            embedded ? "border-t border-ish-border/50 bg-ish-canvas/30 pt-2.5" : "border-t border-ish-border/50 bg-white/70 py-3 backdrop-blur-sm",
+          )}
+        >
+          <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+            {embedded ? (
+              <Sparkles className="size-3.5 shrink-0 text-ish-ink-faint" aria-hidden />
+            ) : (
+              <div
+                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ish-black text-white shadow-[var(--shadow-ish-sm)]"
+                aria-hidden
+              >
+                <Sparkles className="size-3.5" />
+              </div>
+            )}
+            {quickPrompts.map((prompt) => (
               <button
                 key={prompt}
                 type="button"
@@ -185,7 +192,6 @@ export function EmailEditChat({
               {revising ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </button>
           </form>
-          <p className={cn(text.caption, "mt-1.5 text-center text-ish-ink-faint")}>Enter to send · Shift+Enter for new line</p>
         </div>
       ) : (
         <p className={cn(text.caption, "border-t border-ish-border/50 px-4 py-3 text-center sm:px-5")}>

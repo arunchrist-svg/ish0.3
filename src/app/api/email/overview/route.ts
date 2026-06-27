@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireTenantContext } from "@/lib/tenant";
+import { handleApiError } from "@/lib/api-errors";
 import { db, outreachSchedule, leads, contacts, accounts, leadOutreach } from "@/db";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
 
@@ -17,11 +19,16 @@ export type LeadEmailRow = {
   status: "active" | "hot" | "replied" | "stopped" | "draft_ready";
   leadStatus: string;
   hasDraftReady: boolean;
+  hasInboundReply: boolean;
+  hasReplyDraft: boolean;
+  hasOutboundReply: boolean;
+  threadStage: "sequence" | "awaiting_reply" | "they_replied" | "reply_draft" | "reply_sent" | "complete";
 };
 
 export async function GET() {
   try {
-    // Fetch all outreach schedule rows with lead/contact/account info
+    const ctx = await requireTenantContext();
+    // Fetch outreach schedule rows for this workspace
     const rows = await db
       .select({
         scheduleId: outreachSchedule.id,
@@ -31,6 +38,7 @@ export async function GET() {
         scheduledFor: outreachSchedule.scheduledFor,
         sentAt: outreachSchedule.sentAt,
         openedAt: outreachSchedule.openedAt,
+        emailKind: outreachSchedule.emailKind,
         leadStatus: leads.status,
         contactName: contacts.name,
         contactEmail: contacts.email,
@@ -41,7 +49,8 @@ export async function GET() {
       .from(outreachSchedule)
       .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
       .innerJoin(contacts, eq(leads.contactId, contacts.id))
-      .innerJoin(accounts, eq(leads.accountId, accounts.id));
+      .innerJoin(accounts, eq(leads.accountId, accounts.id))
+      .where(eq(leads.workspaceId, ctx.workspaceId));
 
     // Check for reply drafts ready
     const replyDrafts = await db
@@ -89,6 +98,18 @@ export async function GET() {
         status = "active";
       }
 
+      const hasInboundReply = leadRows.some((r) => r.scheduleStatus === "sent" && r.emailKind === "inbound_reply")
+        || first.leadStatus === "replied";
+      const hasOutboundReply = sentRows.some((r) => r.emailKind === "outbound_reply" || r.sequenceDay === -1);
+      const hasReplyDraft = replyDraftLeadIds.has(leadId) && first.leadStatus === "replied" && !hasOutboundReply;
+
+      let threadStage: LeadEmailRow["threadStage"] = "sequence";
+      if (hasOutboundReply) threadStage = "reply_sent";
+      else if (hasReplyDraft) threadStage = "reply_draft";
+      else if (hasInboundReply || first.leadStatus === "replied") threadStage = "they_replied";
+      else if (first.leadStatus === "outreached" && sentRows.length > 0) threadStage = "awaiting_reply";
+      else if (scheduledRows.length === 0 && sentRows.length > 0 && first.leadStatus !== "replied") threadStage = "complete";
+
       result.push({
         leadId,
         contactName: first.contactName,
@@ -104,6 +125,10 @@ export async function GET() {
         status,
         leadStatus: first.leadStatus,
         hasDraftReady,
+        hasInboundReply,
+        hasReplyDraft,
+        hasOutboundReply,
+        threadStage,
       });
     }
 
@@ -133,7 +158,6 @@ export async function GET() {
       stopped,
     });
   } catch (e) {
-    console.error("[api/email/overview]", e);
-    return NextResponse.json({ error: "Failed to load email overview" }, { status: 500 });
+    return handleApiError(e, "[api/email/overview]");
   }
 }

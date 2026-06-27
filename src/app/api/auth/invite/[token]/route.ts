@@ -11,6 +11,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ token: 
     email: invite.email,
     role: invite.role,
     tenantName: invite.tenantName,
+    tenantSlug: invite.tenantSlug,
     expiresAt: invite.expiresAt,
   });
 }

@@ -16,6 +16,7 @@ export async function GET() {
       .select({
         id: orgMembers.id,
         role: orgMembers.role,
+        status: orgMembers.status,
         createdAt: orgMembers.createdAt,
         name: users.name,
         email: users.email,

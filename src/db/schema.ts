@@ -17,6 +17,7 @@ export const approvalStatus = pgEnum("approval_status", ["pending", "approved", 
 export const tenants = pgTable("tenants", {
   id:                uuid("id").defaultRandom().primaryKey(),
   name:              text("name").notNull(),
+  slug:              text("slug").notNull().unique(),
   plan:              text("plan").notNull().default("starter"),
   onboardingStatus:  text("onboarding_status").notNull().default("pending"),
   onboardingStep:    integer("onboarding_step").notNull().default(1),
@@ -47,14 +48,16 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"),
   googleId:     text("google_id").unique(),
   platformRole: text("platform_role").notNull().default("user"),
-  name:         text("name").notNull(),
-  createdAt:    timestamp("created_at").defaultNow().notNull(),
+  name:                 text("name").notNull(),
+  mustChangePassword:   boolean("must_change_password").notNull().default(false),
+  createdAt:            timestamp("created_at").defaultNow().notNull(),
 });
 
 export const sessions = pgTable("sessions", {
   id:        uuid("id").defaultRandom().primaryKey(),
   token:     text("token").notNull().unique(),
   userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId:  uuid("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -64,6 +67,7 @@ export const orgMembers = pgTable("org_members", {
   userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   tenantId:  uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   role:      text("role").notNull().default("owner"),
+  status:    text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userTenantIdx: uniqueIndex("org_members_user_tenant_idx").on(table.userId, table.tenantId),
@@ -77,6 +81,7 @@ export const orgInvites = pgTable("org_invites", {
   role:       text("role").notNull().default("member"),
   token:      text("token").notNull().unique(),
   invitedBy:  uuid("invited_by").notNull().references(() => users.id),
+  invitedBySuperadmin: boolean("invited_by_superadmin").notNull().default(false),
   expiresAt:  timestamp("expires_at").notNull(),
   acceptedAt: timestamp("accepted_at"),
   createdAt:  timestamp("created_at").defaultNow().notNull(),
@@ -205,6 +210,7 @@ export const contacts = pgTable("contacts", {
   emailConfidence: integer("email_confidence"),
   enrichmentSource: text("enrichment_source"),
   enrichmentProvider: text("enrichment_provider"),
+  alternateEmails: jsonb("alternate_emails").$type<import("@/lib/enrichment/contact-emails").ContactEmailEntry[]>().default([]),
   phone:           text("phone"),
   linkedIn:        text("linkedin"),
   bio:             text("bio"),
@@ -238,6 +244,9 @@ export const leads = pgTable("leads", {
   researcherEligible: boolean("researcher_eligible").notNull().default(false),
   createdAt:    timestamp("created_at").defaultNow().notNull(),
   lastReplyContent: text("last_reply_content"),
+  lastInboundMessageId: text("last_inbound_message_id"),
+  threadRootMessageId: text("thread_root_message_id"),
+  threadRootSubject: text("thread_root_subject"),
   updatedAt:    timestamp("updated_at").defaultNow().notNull(),
   isPinned:     boolean("is_pinned").default(false),
 });
@@ -279,6 +288,7 @@ export const leadOutreach = pgTable("lead_outreach", {
   templateVariant:   text("template_variant"),
   outreachGoal:      text("outreach_goal"),
   confidenceTier:    text("confidence_tier"),
+  sequencePosition:  integer("sequence_position"),
   createdAt:         timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -320,6 +330,13 @@ export const outreachSchedule = pgTable("outreach_schedule", {
   status:        text("status").notNull().default("scheduled"),
   sendMode:      sendMode("send_mode").default("dry_run"),
   resendId:      text("resend_id"),
+  rfcMessageId:  text("rfc_message_id"),
+  inReplyTo:     text("in_reply_to"),
+  referencesChain: text("references_chain"),
+  emailKind:     text("email_kind"),
+  subjectSent:   text("subject_sent"),
+  bodySnippet:   text("body_snippet"),
+  draftLeadOutreachId: uuid("draft_lead_outreach_id").references(() => leadOutreach.id),
   trackingToken: text("tracking_token"),
   createdAt:     timestamp("created_at").defaultNow().notNull(),
 });

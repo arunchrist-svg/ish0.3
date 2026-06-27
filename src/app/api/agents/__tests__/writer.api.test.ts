@@ -67,7 +67,7 @@ const tenantCtx = {
   platformRole: "user",
   isSuperadmin: false,
   onboardingStatus: "complete",
-  onboardingStep: 6,
+  onboardingStep: 5,
   demoMode: true,
 };
 

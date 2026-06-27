@@ -5,7 +5,7 @@ export const OUTREACH_TEMPLATES = [
     shortLabel: "Gift Sampling",
     description: "Offer a complimentary tasting box to their desk or office",
     ctaInstruction:
-      "Primary CTA: offer to send a complimentary ISH Diwali tasting sample to their desk. Ask for delivery address and approximate team size.",
+      "Primary CTA: offer a complimentary Diwali tasting sample. Ask if they are open to receiving one. Do NOT ask for address, phone, or team size in email #1; offer to coordinate details after they reply.",
   },
   {
     id: "meet_online",
@@ -13,7 +13,7 @@ export const OUTREACH_TEMPLATES = [
     shortLabel: "Meet Online",
     description: "Book a short video call to showcase the gift range",
     ctaInstruction:
-      "Primary CTA: invite them to a 15-min online presentation of our Diwali gifting range via Google Meet or Teams.",
+      "Primary CTA: invite them to a 15-min online presentation of our Diwali gifting range. Ask if a brief call this week works. No harvesting of personal info.",
   },
   {
     id: "meet_in_person",
@@ -21,7 +21,7 @@ export const OUTREACH_TEMPLATES = [
     shortLabel: "Meet In Person",
     description: "Schedule an in-person tasting session at their office",
     ctaInstruction:
-      "Primary CTA: propose a 15-min in-person visit to present sweet samples and hampers at their office.",
+      "Primary CTA: propose a 15-min in-person visit to present samples. Ask if they are open to a short visit. Do not ask for address or headcount in email #1.",
   },
   {
     id: "follow_up",
@@ -35,7 +35,7 @@ export const OUTREACH_TEMPLATES = [
     id: "final_reminder",
     label: "Final Reminder",
     shortLabel: "Final",
-    description: "Last respectful note — no pressure, leave the door open",
+    description: "Last respectful note. No pressure, leave the door open",
     ctaInstruction:
       "This is the final note in the sequence. Be warm and respectful. Say this is your last email so you don't clutter their inbox. Leave the door open for when the time is right. No pressure. Under 70 words.",
   },

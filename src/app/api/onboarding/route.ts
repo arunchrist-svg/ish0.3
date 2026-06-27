@@ -1,20 +1,28 @@
 import { NextResponse } from "next/server";
-import { db, tenants, workspaceSettings, users } from "@/db";
+import { db, tenants } from "@/db";
 import { eq } from "drizzle-orm";
-import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
-import { saveWorkspaceEmailOverrides, verifyEmailConnection } from "@/lib/settings/email-settings";
+import { requireTenantContext } from "@/lib/tenant";
 import { saveWorkspaceEnrichmentOverrides } from "@/lib/settings/workspace-settings";
-import type { EmailConfig } from "@/lib/email/config";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
-import { sendEmail } from "@/lib/email/email-sender";
 import { handleApiError } from "@/lib/api-errors";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
+
+/** Map legacy 6-step onboarding (with email at step 3) to 5-step flow. */
+export function normalizeOnboardingStep(step: number): number {
+  if (step <= 2) return step;
+  if (step === 3) return 3;
+  if (step === 4) return 4;
+  if (step === 5) return 5;
+  return 5;
+}
 
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
+    const rawStep = tenant?.onboardingStep ?? 1;
     return NextResponse.json({
-      step: tenant?.onboardingStep ?? 1,
+      step: tenant?.onboardingStatus === "complete" ? 5 : normalizeOnboardingStep(rawStep),
       status: tenant?.onboardingStatus ?? "pending",
       orgName: tenant?.name,
     });
@@ -26,14 +34,14 @@ export async function GET() {
 type OnboardingBody =
   | { step: 1; orgName: string; workspaceName?: string }
   | { step: 2; planSlug: string }
-  | { step: 3; emailConfig: Partial<EmailConfig>; sendTest?: boolean }
-  | { step: 4; enrichmentConfig: Partial<EnrichmentConfig> }
-  | { step: 5; skip?: boolean }
-  | { step: 6; complete?: boolean };
+  | { step: 3; enrichmentConfig: Partial<EnrichmentConfig> }
+  | { step: 4; skip?: boolean }
+  | { step: 5; complete?: boolean };
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = (await req.json()) as OnboardingBody;
 
     if (body.step === 1) {
@@ -57,68 +65,20 @@ export async function POST(req: Request) {
     }
 
     if (body.step === 3) {
-      const config = await saveWorkspaceEmailOverrides({
-        ...body.emailConfig,
-        sendMode: body.emailConfig.sendMode ?? "test",
-      });
-
-      if (body.sendTest) {
-        if (config.provider === "smtp") {
-          const verified = await verifyEmailConnection(body.emailConfig);
-          if (!verified.smtpConfigured) {
-            return NextResponse.json({ error: "SMTP connection failed", hint: verified.smtpHint }, { status: 400 });
-          }
-        }
-
-        const [user] = await db.select().from(users).where(eq(users.id, ctx.userId)).limit(1);
-        const testTo = config.testRecipient || user?.email;
-        if (!testTo) {
-          return NextResponse.json({ error: "Test recipient required" }, { status: 400 });
-        }
-
-        await sendEmail({
-          to: testTo,
-          subject: "Verify your outreach email setup",
-          html: "<p>Your email configuration is working. You can now send test outreach from the platform.</p>",
-        });
-
-        const [existing] = await db
-          .select()
-          .from(workspaceSettings)
-          .where(eq(workspaceSettings.workspaceId, ctx.workspaceId))
-          .limit(1);
-
-        const emailConfig = {
-          ...(existing?.emailConfig as object),
-          ...body.emailConfig,
-          verifiedAt: new Date().toISOString(),
-        };
-
-        await db
-          .update(workspaceSettings)
-          .set({ emailConfig, updatedAt: new Date() })
-          .where(eq(workspaceSettings.workspaceId, ctx.workspaceId));
-      }
-
+      await saveWorkspaceEnrichmentOverrides(body.enrichmentConfig);
       await db.update(tenants).set({ onboardingStep: 4 }).where(eq(tenants.id, ctx.tenantId));
-      return NextResponse.json({ ok: true, nextStep: 4, config });
+      return NextResponse.json({ ok: true, nextStep: 4 });
     }
 
     if (body.step === 4) {
-      await saveWorkspaceEnrichmentOverrides(body.enrichmentConfig);
       await db.update(tenants).set({ onboardingStep: 5 }).where(eq(tenants.id, ctx.tenantId));
       return NextResponse.json({ ok: true, nextStep: 5 });
     }
 
     if (body.step === 5) {
-      await db.update(tenants).set({ onboardingStep: 6 }).where(eq(tenants.id, ctx.tenantId));
-      return NextResponse.json({ ok: true, nextStep: 6 });
-    }
-
-    if (body.step === 6) {
       await db
         .update(tenants)
-        .set({ onboardingStatus: "complete", onboardingStep: 6 })
+        .set({ onboardingStatus: "complete", onboardingStep: 5 })
         .where(eq(tenants.id, ctx.tenantId));
       return NextResponse.json({ ok: true, redirect: "/" });
     }

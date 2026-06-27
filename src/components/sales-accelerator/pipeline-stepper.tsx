@@ -31,7 +31,7 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
 
 export function PipelineStepper({ stage }: Props) {
   return (
-    <div className="border-t border-white/30 px-[22px] pb-[22px] pt-3">
+    <div className="border-t border-black/[0.06] px-[22px] pb-[18px] pt-3">
       <div className="flex min-w-0 items-center overflow-x-auto scrollbar-none">
         {STAGES.map((s, i) => (
           <StageNode

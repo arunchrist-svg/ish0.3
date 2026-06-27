@@ -10,12 +10,21 @@ export function generateSessionToken(): string {
   return randomBytes(32).toString("hex");
 }
 
-export async function createSession(userId: string): Promise<string> {
+export async function createSession(userId: string, tenantId?: string | null): Promise<string> {
   const token = generateSessionToken();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
 
-  await db.insert(sessions).values({ token, userId, expiresAt });
+  await db.insert(sessions).values({
+    token,
+    userId,
+    tenantId: tenantId ?? null,
+    expiresAt,
+  });
   return token;
+}
+
+export async function updateSessionTenant(token: string, tenantId: string | null): Promise<void> {
+  await db.update(sessions).set({ tenantId }).where(eq(sessions.token, token));
 }
 
 export async function deleteSession(token: string): Promise<void> {
@@ -26,9 +35,14 @@ export type SessionUser = {
   id: string;
   email: string;
   name: string;
+  mustChangePassword: boolean;
 };
 
-export async function getSessionUser(token: string | undefined): Promise<SessionUser | null> {
+export type SessionRecord = SessionUser & {
+  tenantId: string | null;
+};
+
+export async function getSessionRecord(token: string | undefined): Promise<SessionRecord | null> {
   if (!token) return null;
 
   const [row] = await db
@@ -36,6 +50,8 @@ export async function getSessionUser(token: string | undefined): Promise<Session
       id: users.id,
       email: users.email,
       name: users.name,
+      mustChangePassword: users.mustChangePassword,
+      tenantId: sessions.tenantId,
       expiresAt: sessions.expiresAt,
     })
     .from(sessions)
@@ -44,7 +60,24 @@ export async function getSessionUser(token: string | undefined): Promise<Session
     .limit(1);
 
   if (!row) return null;
-  return { id: row.id, email: row.email, name: row.name };
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    mustChangePassword: row.mustChangePassword,
+    tenantId: row.tenantId,
+  };
+}
+
+export async function getSessionUser(token: string | undefined): Promise<SessionUser | null> {
+  const record = await getSessionRecord(token);
+  if (!record) return null;
+  return {
+    id: record.id,
+    email: record.email,
+    name: record.name,
+    mustChangePassword: record.mustChangePassword,
+  };
 }
 
 export async function getSessionTokenFromCookies(): Promise<string | undefined> {

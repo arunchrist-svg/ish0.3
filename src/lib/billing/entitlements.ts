@@ -1,5 +1,5 @@
-import { db, plans, tenants, orgMembers, subscriptions } from "@/db";
-import { eq, count } from "drizzle-orm";
+import { db, plans, tenants, orgMembers, orgInvites, subscriptions } from "@/db";
+import { and, eq, count, isNull, gt } from "drizzle-orm";
 import type { DataMode } from "@/lib/enrichment/config";
 import { ForbiddenError } from "@/lib/tenant";
 
@@ -40,11 +40,21 @@ export async function assertPlanEntitlement(
   }
 
   if (check === "invite_seat" && plan) {
-    const [{ total }] = await db
-      .select({ total: count() })
+    const [{ members }] = await db
+      .select({ members: count() })
       .from(orgMembers)
-      .where(eq(orgMembers.tenantId, tenantId));
-    if (total >= plan.seatLimit) {
+      .where(and(eq(orgMembers.tenantId, tenantId), eq(orgMembers.status, "active")));
+    const [{ pending }] = await db
+      .select({ pending: count() })
+      .from(orgInvites)
+      .where(
+        and(
+          eq(orgInvites.tenantId, tenantId),
+          isNull(orgInvites.acceptedAt), gt(orgInvites.expiresAt, new Date()),
+        ),
+      );
+    const used = (members ?? 0) + (pending ?? 0);
+    if (used >= plan.seatLimit) {
       throw new ForbiddenError(`Seat limit reached (${plan.seatLimit}). Upgrade your plan.`);
     }
   }

@@ -48,7 +48,7 @@ async function main() {
     if (membership) {
       await db
         .update(tenants)
-        .set({ onboardingStatus: "complete", onboardingStep: 6, demoMode: true, name: "India Sweet House" })
+        .set({ onboardingStatus: "complete", onboardingStep: 5, demoMode: true, name: "India Sweet House", slug: "india-sweet-house" })
         .where(eq(tenants.id, membership.tenantId));
     }
   } else {

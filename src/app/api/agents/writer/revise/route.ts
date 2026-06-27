@@ -5,10 +5,12 @@ import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const { leadOutreachId, message } = await req.json();
     if (!leadOutreachId) return NextResponse.json({ error: "leadOutreachId required" }, { status: 400 });
     if (!message?.trim()) return NextResponse.json({ error: "message required" }, { status: 400 });

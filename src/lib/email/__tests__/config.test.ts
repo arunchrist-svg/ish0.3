@@ -111,7 +111,7 @@ describe("EMAIL-UNIT-001 additional config cases", () => {
   });
 
   it("clamps single cadence day to minimum of 1", () => {
-    const resolved = resolveEmailConfig({ cadenceDays: [0] });
+    const resolved = resolveEmailConfig({ cadenceDays: [0, 7] });
     expect(resolved.cadenceDays[0]).toBe(1);
   });
 

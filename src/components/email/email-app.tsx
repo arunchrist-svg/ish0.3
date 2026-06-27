@@ -112,32 +112,49 @@ function KpiTile({
 
 // ─── Sequence progress ──────────────────────────────────────────────────────
 
-function SequenceProgress({ row }: { row: LeadEmailRow }) {
+type ProgressStep = { id: string; label: string; done: boolean; active: boolean };
+
+function outreachSteps(row: LeadEmailRow): ProgressStep[] {
+  const e1 = row.emailsSent > 0 && row.lastEmailDay >= 0;
+  const e2 = row.lastEmailDay >= 3;
+  const e3 = row.lastEmailDay >= 7;
+  const replied = row.hasInboundReply || row.leadStatus === "replied";
+  const draft = row.hasReplyDraft;
+  const sentReply = row.hasOutboundReply;
+
+  return [
+    { id: "e1", label: "E1", done: e1, active: !e1 && row.threadStage === "sequence" },
+    { id: "e2", label: "E2", done: e2, active: row.nextEmailDay === 3 },
+    { id: "e3", label: "E3", done: e3, active: row.nextEmailDay === 7 },
+    { id: "rep", label: "Replied", done: replied, active: row.threadStage === "awaiting_reply" },
+    { id: "draft", label: "Draft", done: draft || sentReply, active: row.threadStage === "reply_draft" },
+    { id: "sent", label: "Sent", done: sentReply, active: false },
+  ];
+}
+
+function OutreachProgress({ row }: { row: LeadEmailRow }) {
+  const steps = outreachSteps(row);
   return (
-    <div className="flex items-center gap-1">
-      {SEQUENCE_DAYS.map((day, i) => {
-        const sent = row.emailsSent > 0 && day <= row.lastEmailDay;
-        const isNext = row.nextEmailDay === day;
-        return (
-          <div key={day} className="flex items-center gap-1">
-            <div
-              className={cn(
-                "flex h-6 min-w-[52px] items-center justify-center rounded-full px-2 text-[9px] font-bold uppercase tracking-wide transition-colors",
-                sent
-                  ? "bg-ish-black text-white"
-                  : isNext
-                    ? "bg-ish-yellow text-ish-ink ring-2 ring-ish-yellow/50"
-                    : "bg-ish-canvas text-ish-ink-faint",
-              )}
-            >
-              {EMAIL_DAY_LABEL[day]?.replace("Email ", "E") ?? `D${day}`}
-            </div>
-            {i < SEQUENCE_DAYS.length - 1 && (
-              <div className={cn("h-px w-3", sent ? "bg-ish-black/30" : "bg-ish-border")} />
+    <div className="flex flex-wrap items-center gap-1">
+      {steps.map((step, i) => (
+        <div key={step.id} className="flex items-center gap-1">
+          <div
+            className={cn(
+              "flex h-6 min-w-[44px] items-center justify-center rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
+              step.done
+                ? "bg-ish-black text-white"
+                : step.active
+                  ? "bg-ish-yellow text-ish-ink ring-2 ring-ish-yellow/50"
+                  : "bg-ish-canvas text-ish-ink-faint",
             )}
+          >
+            {step.label}
           </div>
-        );
-      })}
+          {i < steps.length - 1 && (
+            <div className={cn("h-px w-2", step.done ? "bg-ish-black/30" : "bg-ish-border")} />
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -159,10 +176,31 @@ function StatusPill({ row }: { row: LeadEmailRow }) {
       </span>
     );
   }
-  if (row.status === "replied") {
+  if (row.threadStage === "reply_sent") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-ish-green-soft px-2.5 py-1 text-[10px] font-bold text-ish-green ring-1 ring-ish-green/20">
-        <MessageSquare className="size-3" /> Replied
+        <MessageSquare className="size-3" /> Reply sent
+      </span>
+    );
+  }
+  if (row.threadStage === "reply_draft") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-ish-yellow-soft px-2.5 py-1 text-[10px] font-bold text-ish-ink ring-1 ring-ish-yellow/40">
+        <Zap className="size-3" /> Reply draft ready
+      </span>
+    );
+  }
+  if (row.threadStage === "they_replied" || row.status === "replied") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-ish-green-soft px-2.5 py-1 text-[10px] font-bold text-ish-green ring-1 ring-ish-green/20">
+        <MessageSquare className="size-3" /> They replied
+      </span>
+    );
+  }
+  if (row.threadStage === "awaiting_reply") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-ish-canvas px-2.5 py-1 text-[10px] font-bold text-ish-ink-soft ring-1 ring-ish-border">
+        <Clock className="size-3" /> Awaiting reply
       </span>
     );
   }
@@ -225,7 +263,7 @@ function LeadCard({ row, onNavigate }: { row: LeadEmailRow; onNavigate: (id: str
           )}
 
           <div className="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <SequenceProgress row={row} />
+            <OutreachProgress row={row} />
             <StatusPill row={row} />
           </div>
         </div>
@@ -309,6 +347,7 @@ export function EmailApp() {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [search, setSearch] = useState("");
   const [runningSequencer, setRunningSequencer] = useState(false);
+  const [checkingReplies, setCheckingReplies] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -335,6 +374,16 @@ export function EmailApp() {
       await load();
     } finally {
       setRunningSequencer(false);
+    }
+  };
+
+  const handleCheckReplies = async () => {
+    setCheckingReplies(true);
+    try {
+      await fetch("/api/replies/poll", { method: "POST" });
+      await load();
+    } finally {
+      setCheckingReplies(false);
     }
   };
 
@@ -379,15 +428,26 @@ export function EmailApp() {
           title="Email Outreach"
           subtitle="Track sequences, opens, reply drafts, and due follow-ups across your pipeline"
           action={
-            <button
-              type="button"
-              onClick={() => void handleRunSequencer()}
-              disabled={runningSequencer}
-              className="inline-flex items-center gap-2 rounded-[14px] bg-ish-black px-4 py-2.5 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-black/90 disabled:opacity-60"
-            >
-              <Send className="size-3.5" />
-              {runningSequencer ? "Sending…" : "Run Sequencer"}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void handleCheckReplies()}
+                disabled={checkingReplies}
+                className="inline-flex items-center gap-2 rounded-[14px] border border-ish-border bg-white px-4 py-2.5 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:border-ish-ink/20 disabled:opacity-60"
+              >
+                <Inbox className="size-3.5" />
+                {checkingReplies ? "Checking…" : "Check replies"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRunSequencer()}
+                disabled={runningSequencer}
+                className="inline-flex items-center gap-2 rounded-[14px] bg-ish-black px-4 py-2.5 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-black/90 disabled:opacity-60"
+              >
+                <Send className="size-3.5" />
+                {runningSequencer ? "Sending…" : "Run Sequencer"}
+              </button>
+            </div>
           }
         />
 

@@ -3,10 +3,12 @@ import { db, leadOutreach, leads } from "@/db";
 import { eq } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function PATCH(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = await req.json();
     const { leadOutreachId, emailBody, subjectA, subjectB } = body as {
       leadOutreachId: string;

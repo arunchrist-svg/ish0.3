@@ -19,8 +19,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full stratus`}>
       <body className="min-h-full antialiased">
+        <script
+          id="theme-init"
+          dangerouslySetInnerHTML={{
+            __html: `(() => { try { const t = localStorage.getItem('theme') || 'stratus'; const themes = ['light','stratus']; const root = document.documentElement; themes.forEach((name) => root.classList.remove(name)); if (themes.includes(t)) root.classList.add(t); else root.classList.add('stratus'); } catch { document.documentElement.classList.add('stratus'); } })();`,
+          }}
+        />
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

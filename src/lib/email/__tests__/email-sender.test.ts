@@ -112,6 +112,26 @@ describe("sendEmail", () => {
     expect(to).toBe("lead@example.com");
   });
 
+  it("passes threading headers to smtp transport", async () => {
+    getResolvedEmailConfig.mockResolvedValue(smtpConfig({ sendMode: "live" }));
+    await sendEmail({
+      to: "lead@example.com",
+      subject: "Re: Hi",
+      html: "<p>hi</p>",
+      messageId: "<out@test.com>",
+      inReplyTo: "<in@test.com>",
+      references: "<root@test.com> <in@test.com>",
+    });
+    const params = smtpSend.mock.calls[0][0] as {
+      messageId?: string;
+      inReplyTo?: string;
+      references?: string;
+    };
+    expect(params.messageId).toBe("<out@test.com>");
+    expect(params.inReplyTo).toBe("<in@test.com>");
+    expect(params.references).toContain("<root@test.com>");
+  });
+
   it("dispatches to resend transport when provider is resend", async () => {
     process.env.RESEND_API_KEY = "re_test_key";
     getResolvedEmailConfig.mockResolvedValue(

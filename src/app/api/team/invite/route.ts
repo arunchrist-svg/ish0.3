@@ -24,12 +24,9 @@ export async function POST(req: Request) {
       invitedBy: ctx.userId,
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3002";
-    const inviteUrl = `${appUrl}/signup?invite=${invite.token}`;
-
     return NextResponse.json({
       ok: true,
-      inviteUrl,
+      inviteUrl: invite.inviteUrl,
       expiresAt: invite.expiresAt,
     });
   } catch (e) {

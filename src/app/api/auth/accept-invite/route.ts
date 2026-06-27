@@ -40,9 +40,9 @@ export async function POST(req: Request) {
       userId = user.id;
     }
 
-    await acceptInvite({ token, userId });
-    const sessionToken = await createSession(userId);
-    const res = NextResponse.json({ ok: true, redirect: "/" });
+    const accepted = await acceptInvite({ token, userId });
+    const sessionToken = await createSession(userId, accepted.tenantId);
+    const res = NextResponse.json({ ok: true, redirect: accepted.redirect });
     res.cookies.set(SESSION_COOKIE, sessionToken, sessionCookieOptions(sessionToken));
     return res;
   } catch (e) {

@@ -4,6 +4,7 @@ import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/bi
 import { discoverPeopleBatch, discoverPeopleBatchStream } from "@/lib/enrichment/waterfall";
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 type BatchCompanyInput = {
   id: string;
@@ -27,6 +28,7 @@ function mapCompanies(companies: BatchCompanyInput[]) {
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const url = new URL(req.url);
     const stream = url.searchParams.get("stream") === "1";
     const body = await req.json();
@@ -65,7 +67,7 @@ export async function POST(req: Request) {
       limit: batchLimit,
       seniority,
       departments,
-      concurrency: 3,
+      concurrency: Math.min(parseInt(process.env.SCOUT_PEOPLE_CONCURRENCY ?? "5", 10) || 5, 8),
     };
 
     if (stream) {

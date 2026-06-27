@@ -1,7 +1,9 @@
 import { callLLM } from "@/lib/llm";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch } from "@/db";
 import { eq, desc } from "drizzle-orm";
-import { scoreDeliverability, scoreRubric, deliverabilityVerdict } from "@/lib/agents/writer-scoring";
+import { scoreSpamMeter, deliverabilityVerdict } from "@/lib/agents/writer-scoring";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
 
 const PROMPT_VERSION = "v1.0-reply";
 
@@ -13,6 +15,8 @@ export async function runReplyWriter(leadId: string): Promise<string> {
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
 
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const senderFirstName = emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
 
@@ -32,7 +36,7 @@ export async function runReplyWriter(leadId: string): Promise<string> {
     throw new Error("No reply content available to draft a response");
   }
 
-  const systemPrompt = `You are ISH's sales writer. You craft warm, specific, natural email replies for a corporate gifting company — India Sweet House (ISH).
+  const systemPrompt = `You are ISH's sales writer. You craft warm, specific, natural email replies for a corporate gifting company, India Sweet House (ISH).
 
 Output ONLY valid JSON:
 {
@@ -62,8 +66,8 @@ ${replyContent}
 Instructions:
 - Respond naturally and specifically to what they said
 - Move toward the next step: booking a call, confirming a sample, or answering their question
-- Keep it warm, short, and human — no corporate fluff
-- Sign off with "Warm regards, ISH Gifting Team"
+- Keep it warm, short, and human. No corporate fluff
+- Sign off with sender first name only
 - Max 120 words`;
 
   const raw = await callLLM({
@@ -85,14 +89,22 @@ Instructions:
     };
   }
 
+  const threadRoot =
+    (lead as typeof leads.$inferSelect & { threadRootSubject?: string | null }).threadRootSubject ??
+    (originalOutreach?.subjectA ? stripReplyPrefix(originalOutreach.subjectA) : `Diwali gifting for ${account.name}`);
+
   const emailBody = parsed.emailBody ?? "";
-  const subjectA = parsed.subjectA ?? `Re: Diwali gifting for ${account.name}`;
-  const subjectB = parsed.subjectB ?? `Your reply — ${account.name}`;
+  const subjectA = normalizeReplySubject(parsed.subjectA ? stripReplyPrefix(parsed.subjectA) : threadRoot);
+  const subjectB = normalizeReplySubject(parsed.subjectB ? stripReplyPrefix(parsed.subjectB) : threadRoot);
   const outreachGoal = parsed.outreachGoal ?? "Continue conversation";
 
-  const delivScore = await scoreDeliverability(emailBody, subjectA);
-  const rubric = await scoreRubric({ subjectA, emailBody, contact, account });
-  const rubricTotal = Object.values(rubric).reduce((s, v) => s + v, 0);
+  const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
+  const spamResult = scoreSpamMeter(emailBody, subjectA, {
+    emailStyle: emailConfig.emailStyle,
+    fromName: emailConfig.fromName,
+    contactFirstName,
+  });
+  const delivScore = spamResult.inboxScore;
 
   const [outreach] = await db
     .insert(leadOutreach)
@@ -105,8 +117,6 @@ Instructions:
       emailBody,
       deliverabilityScore: delivScore,
       deliverabilityVerdict: deliverabilityVerdict(delivScore),
-      rubricScore: rubric as Record<string, number>,
-      rubricTotal,
       revisionCount: 0,
       templateVariant: "reply",
       outreachGoal,

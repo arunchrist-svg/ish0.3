@@ -14,12 +14,19 @@ import { domainFromWebsite } from "./provider-utils";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import { resolveEnrichmentConfig } from "./config";
 import { loadWorkspaceEnrichmentOverrides } from "@/lib/settings/workspace-settings";
+import { providerChainForEnrichSetting } from "./provider-config";
+import type { EnrichProvider } from "./config";
 import { callLLM } from "@/lib/llm";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
 import { tavilySearch } from "./tavily-client";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "./types";
 import type { EnrichmentProviderId } from "./enrich-types";
+import {
+  type ContactEmailEntry,
+  mergeAlternateEmails,
+} from "./contact-emails";
+import type { ScoredCandidate } from "./enrich-accurate";
 
 export type EnrichMode = "free" | "paid";
 
@@ -36,6 +43,8 @@ export type EnrichContactResult = {
   providerId?: EnrichmentProviderId;
   message?: string;
   attempts?: unknown;
+  alternateEmails?: ContactEmailEntry[];
+  discoveredEmails?: ContactEmailEntry[];
 };
 
 function websiteUrlFromCompany(company: { domain?: string; website?: string }): string | undefined {
@@ -65,6 +74,25 @@ async function emailStatusFromVerify(email?: string): Promise<EnrichContactResul
   if (!email) return "missing";
   const result = await verifyEmail(email);
   return result.status;
+}
+
+
+async function emailsFromCandidates(candidates: ScoredCandidate[]): Promise<ContactEmailEntry[]> {
+  const entries: ContactEmailEntry[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const email = sanitizeEmail(candidate.contact.email);
+    if (!email || seen.has(email.toLowerCase())) continue;
+    seen.add(email.toLowerCase());
+    entries.push({
+      email,
+      emailStatus: await emailStatusFromVerify(email),
+      emailConfidence: candidate.score,
+      enrichmentSource: providerToSource(candidate.providerId),
+      enrichmentProvider: candidate.providerId,
+    });
+  }
+  return entries.sort((a, b) => (b.emailConfidence ?? 0) - (a.emailConfidence ?? 0));
 }
 
 async function fillMissingTitle(input: EnrichmentInput): Promise<string | undefined> {
@@ -106,6 +134,8 @@ export async function enrichPersonContact(params: {
   company: ScoutCompanyResult;
   mode: EnrichMode;
   dataMode?: DataMode;
+  enrichProvider?: EnrichProvider;
+  refetch?: boolean;
 }): Promise<EnrichContactResult> {
   const input = toEnrichmentInput(params.person, params.company);
   const named = acceptOptions(params.person);
@@ -118,7 +148,7 @@ export async function enrichPersonContact(params: {
   const existingEmail = sanitizeEmail(params.person.email);
   const existingPhone = sanitizePhone(params.person.phone);
 
-  if (existingEmail && params.mode === "free" && !isGenericCompanyEmail(existingEmail)) {
+  if (existingEmail && params.mode === "free" && !isGenericCompanyEmail(existingEmail) && !params.refetch) {
     const confidence = 60;
     return {
       email: existingEmail,
@@ -132,11 +162,16 @@ export async function enrichPersonContact(params: {
     };
   }
 
+  const dataMode = params.dataMode ?? ((process.env.DEFAULT_DATA_MODE ?? "free") as DataMode);
+  const enrichProvider = params.enrichProvider ?? "website_email";
+  const preferredChain = providerChainForEnrichSetting(enrichProvider, dataMode);
+
   const result = await enrichContactAccurate(input, {
     allowPaid: params.mode === "paid",
     paidOnly: params.mode === "paid",
     freeOnly: params.mode === "free",
     stopOnPersonalEmail: params.mode === "free",
+    preferredChain: preferredChain.length ? preferredChain : undefined,
   });
 
   if (!result.contact) {
@@ -154,6 +189,7 @@ export async function enrichPersonContact(params: {
     };
   }
 
+  const discoveredEmails = await emailsFromCandidates(result.candidates ?? []);
   const gated = applyVerificationGate(input, result.contact);
   let email = sanitizeEmail(gated.email);
   const phone = sanitizePhone(gated.phone) ?? existingPhone;
@@ -180,6 +216,7 @@ export async function enrichPersonContact(params: {
     providerId: result.providerId,
     message: result.message,
     attempts: result.attempts,
+    discoveredEmails,
   };
 }
 
@@ -187,6 +224,7 @@ export async function enrichLeadById(params: {
   leadId: string;
   mode: EnrichMode;
   dataMode?: DataMode;
+  refetch?: boolean;
 }): Promise<EnrichContactResult & { leadId: string; contactId: string; success: boolean }> {
   const rows = await db
     .select({ lead: leads, contact: contacts, account: accounts })
@@ -224,6 +262,7 @@ export async function enrichLeadById(params: {
     company,
     mode: params.mode,
     dataMode: params.dataMode,
+    refetch: params.refetch,
   });
 
   const named = acceptOptions(person);
@@ -245,6 +284,12 @@ export async function enrichLeadById(params: {
   const nextTitle = enriched.title?.trim() || contact.title || undefined;
   const nextStatus = nextEmail ? enriched.emailStatus : (contact.emailStatus ?? "missing");
 
+  const alternateEmails = mergeAlternateEmails(
+    nextEmail,
+    (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+    enriched.discoveredEmails ?? [],
+  );
+
   await db
     .update(contacts)
     .set({
@@ -256,6 +301,7 @@ export async function enrichLeadById(params: {
       emailConfidence: enriched.emailConfidence || contact.emailConfidence,
       enrichmentSource: enriched.enrichmentSource ?? contact.enrichmentSource,
       enrichmentProvider: enriched.enrichmentProvider ?? contact.enrichmentProvider,
+      alternateEmails,
       updatedAt: new Date(),
     })
     .where(eq(contacts.id, contact.id));
@@ -286,6 +332,7 @@ export async function enrichLeadById(params: {
     phone: nextPhone ?? undefined,
     title: nextTitle,
     emailStatus: nextEmail ? nextStatus : "missing",
+    alternateEmails,
   };
 }
 

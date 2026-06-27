@@ -144,9 +144,19 @@ function SignupForm() {
           </p>
         ) : null}
 
+        {!name.trim() || password.length < 8 ? (
+          <p className="text-center text-[12px] text-ish-ink-soft">
+            {!name.trim() && password.length < 8
+              ? "Enter your name and a password (8+ characters) to continue."
+              : !name.trim()
+                ? "Enter your name to continue."
+                : "Password must be at least 8 characters."}
+          </p>
+        ) : null}
+
         <Button
           type="submit"
-          disabled={loading || !name || password.length < 8}
+          disabled={loading}
           className={cn(
             "h-12 w-full rounded-2xl bg-ish-black text-[14px] font-bold text-white",
             "hover:bg-ish-black/90 disabled:opacity-50",

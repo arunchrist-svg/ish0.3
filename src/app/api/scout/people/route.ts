@@ -4,10 +4,12 @@ import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/bi
 import { discoverPeople } from "@/lib/enrichment/waterfall";
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = await req.json();
     const {
       companyName,

@@ -1,4 +1,18 @@
+import { resolveBrandConfig } from "@/lib/email/brand-presets";
+
 export type EmailSendMode = "dry_run" | "test" | "live";
+export type EmailStyle = "primary" | "marketing";
+export type BrandSlug = "ish" | "prestige" | "custom";
+export type CampaignMode = "diwali_gifting" | "mass_ordering" | "festival_bundle" | "custom";
+
+export type BrandConfig = {
+  brandSlug: BrandSlug;
+  brandName: string;
+  vertical: string;
+  productSummary: string;
+  buyerPersonas: string[];
+  toneNotes?: string;
+};
 export type EmailProvider = "smtp" | "resend";
 
 export type EmailConfig = {
@@ -18,6 +32,19 @@ export type EmailConfig = {
   appUrl: string;
   resendApiKey?: string;
   verifiedAt?: string;
+  lastReplyPollAt?: string;
+  processedReplyMessageIds?: string[];
+  emailStyle: EmailStyle;
+  brandConfig: BrandConfig;
+  campaignMode: CampaignMode;
+  campaignNotes?: string;
+  dailySendCapPerDomain?: number;
+  dkimSelector?: string;
+  senderHealthCache?: {
+    checkedAt: string;
+    fromAddress: string;
+    result: unknown;
+  };
 };
 
 export type SmtpCredentials = {
@@ -50,6 +77,25 @@ export const EMAIL_PROVIDER_OPTIONS: {
     value: "resend",
     label: "Resend",
     desc: "Send via Resend API. Better for serverless deploys (e.g. Vercel).",
+  },
+];
+
+export const EMAIL_STYLE_OPTIONS: {
+  value: EmailStyle;
+  label: string;
+  desc: string;
+  badge?: string;
+}[] = [
+  {
+    value: "primary",
+    label: "Primary inbox (1:1)",
+    desc: "Personal sales email — no bulk headers or marketing footer. Best for cold outreach.",
+    badge: "Recommended",
+  },
+  {
+    value: "marketing",
+    label: "Marketing",
+    desc: "Includes unsubscribe footer and tracking pixel. May land in Promotions/Forums.",
   },
 ];
 
@@ -123,6 +169,10 @@ export function getDefaultEmailConfig(): EmailConfig {
     testRecipient,
     cadenceDays: [3, 7],
     appUrl,
+    emailStyle: (process.env.EMAIL_STYLE === "marketing" ? "marketing" : "primary") as EmailStyle,
+    brandConfig: resolveBrandConfig({ brandSlug: "ish" }),
+    campaignMode: "diwali_gifting",
+    dailySendCapPerDomain: 50,
   };
 }
 
@@ -134,6 +184,10 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
   const day1 = Math.max(1, Math.min(14, cadence[0] ?? 3));
   const day2 = Math.max(day1 + 1, Math.min(30, cadence[1] ?? 7));
 
+  const brandConfig = resolveBrandConfig(merged.brandConfig);
+  const emailStyle = merged.emailStyle ?? "primary";
+  const campaignMode = merged.campaignMode ?? "diwali_gifting";
+
   return {
     ...merged,
     provider: merged.provider ?? "smtp",
@@ -144,6 +198,10 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     smtpPass: merged.smtpPass ?? "",
     cadenceDays: [day1, day2],
     sendMode: merged.sendMode ?? "dry_run",
+    emailStyle,
+    brandConfig,
+    campaignMode,
+    dailySendCapPerDomain: merged.dailySendCapPerDomain ?? 50,
   };
 }
 

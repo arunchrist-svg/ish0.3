@@ -61,18 +61,20 @@ async function main() {
     .values({
       id: TEST_TENANT_ID,
       name: "ISH Test Org",
+      slug: "ish-test-org",
       plan: "growth",
       onboardingStatus: "complete",
-      onboardingStep: 6,
+      onboardingStep: 5,
       demoMode: true,
     })
     .onConflictDoUpdate({
       target: schema.tenants.id,
       set: {
         onboardingStatus: "complete",
-        onboardingStep: 6,
+        onboardingStep: 5,
         demoMode: true,
         plan: "growth",
+        slug: "ish-test-org",
       },
     });
 

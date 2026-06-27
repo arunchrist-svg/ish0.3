@@ -4,6 +4,7 @@ import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/bi
 import { discoverCompanies } from "@/lib/enrichment/waterfall";
 import { checkDiscoveryPrerequisites } from "@/lib/enrichment/discovery-prerequisites";
 import type { DataMode } from "@/lib/enrichment/types";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 import {
   getResolvedWorkspaceEnrichmentConfig,
   loadWorkspaceEnrichmentOverrides,
@@ -12,6 +13,7 @@ import {
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = await req.json();
     const {
       cities = [],

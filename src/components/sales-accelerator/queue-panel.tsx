@@ -79,7 +79,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh }: Props) {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
           <input
             ref={inputRef}
-            type="search"
+            type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search name, company…"

@@ -1,25 +1,41 @@
 import { db, tenants, workspaces, workspaceSettings, orgMembers, plans, subscriptions, creditBalances } from "@/db";
 import { eq } from "drizzle-orm";
+import { slugifyTenantName, normalizeTenantSlug } from "@/lib/auth/slug";
 
 const TRIAL_CREDITS = 200;
 
-export async function provisionNewTenant(params: {
-  userId: string;
+async function resolveUniqueSlug(baseName: string, explicitSlug?: string): Promise<string> {
+  const base = normalizeTenantSlug(explicitSlug ?? slugifyTenantName(baseName));
+  let candidate = base;
+  let n = 0;
+  while (true) {
+    const [existing] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, candidate)).limit(1);
+    if (!existing) return candidate;
+    n += 1;
+    candidate = `${base}-${n}`;
+  }
+}
+
+export async function provisionTenantShell(params: {
   orgName: string;
   workspaceName: string;
   planSlug?: string;
-}): Promise<{ tenantId: string; workspaceId: string }> {
+  slug?: string;
+}): Promise<{ tenantId: string; workspaceId: string; slug: string }> {
   const planSlug = params.planSlug ?? "starter";
 
   const [plan] = await db.select().from(plans).where(eq(plans.slug, planSlug)).limit(1);
   if (!plan) throw new Error(`Plan not found: ${planSlug}`);
 
+  const slug = await resolveUniqueSlug(params.orgName, params.slug);
+
   const [tenant] = await db
     .insert(tenants)
     .values({
       name: params.orgName,
+      slug,
       plan: planSlug,
-      onboardingStatus: "in_progress",
+      onboardingStatus: "pending",
       onboardingStep: 1,
       demoMode: true,
     })
@@ -34,12 +50,6 @@ export async function provisionNewTenant(params: {
     workspaceId: workspace.id,
     enrichmentConfig: { dataMode: (plan.features as { enrichmentMode?: string })?.enrichmentMode ?? "free" },
     emailConfig: { sendMode: "dry_run" },
-  });
-
-  await db.insert(orgMembers).values({
-    userId: params.userId,
-    tenantId: tenant.id,
-    role: "owner",
   });
 
   await db.insert(subscriptions).values({
@@ -57,5 +67,34 @@ export async function provisionNewTenant(params: {
     periodEnd: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
   });
 
-  return { tenantId: tenant.id, workspaceId: workspace.id };
+  return { tenantId: tenant.id, workspaceId: workspace.id, slug };
+}
+
+export async function provisionNewTenant(params: {
+  userId: string;
+  orgName: string;
+  workspaceName: string;
+  planSlug?: string;
+  slug?: string;
+}): Promise<{ tenantId: string; workspaceId: string; slug: string }> {
+  const { tenantId, workspaceId, slug } = await provisionTenantShell({
+    orgName: params.orgName,
+    workspaceName: params.workspaceName,
+    planSlug: params.planSlug,
+    slug: params.slug,
+  });
+
+  await db.insert(orgMembers).values({
+    userId: params.userId,
+    tenantId,
+    role: "owner",
+    status: "active",
+  });
+
+  await db
+    .update(tenants)
+    .set({ onboardingStatus: "in_progress", onboardingStep: 1 })
+    .where(eq(tenants.id, tenantId));
+
+  return { tenantId, workspaceId, slug };
 }

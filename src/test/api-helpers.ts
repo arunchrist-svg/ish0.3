@@ -4,6 +4,7 @@ import { createSession } from "@/lib/auth/session";
 import { sessionMock } from "./session-mock";
 
 export const TEST_USER_EMAIL = "test@ish.local";
+export const TEST_TENANT_ID = "00000000-0000-0000-0000-000000000101";
 export const TEST_USER_PASSWORD = process.env.TEST_USER_PASSWORD ?? "Test-ISH-2026!";
 export const TEST_LEAD_DRAFT_READY_ID = "00000000-0000-0000-0000-000000000112";
 export const TEST_LEAD_REPLIED_ID = "00000000-0000-0000-0000-000000000113";
@@ -26,7 +27,7 @@ export async function getTestUserId(): Promise<string> {
 
 export async function authenticateTestUser(): Promise<string> {
   const userId = await getTestUserId();
-  const token = await createSession(userId);
+  const token = await createSession(userId, TEST_TENANT_ID);
   sessionMock.token = token;
   return token;
 }

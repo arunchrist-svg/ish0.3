@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Mail, Building2, CreditCard, Settings, Users, Rocket } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Building2, CreditCard, Settings, Users, Rocket, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, text } from "@/design-system";
-import { EMAIL_PROVIDER_OPTIONS, EMAIL_SEND_MODE_OPTIONS } from "@/lib/email/config";
 
 type Plan = {
   slug: string;
@@ -18,10 +18,9 @@ type Plan = {
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
   { id: 2, label: "Plan", icon: CreditCard },
-  { id: 3, label: "Email", icon: Mail },
-  { id: 4, label: "Preferences", icon: Settings },
-  { id: 5, label: "Team", icon: Users },
-  { id: 6, label: "Launch", icon: Rocket },
+  { id: 3, label: "Preferences", icon: Settings },
+  { id: 4, label: "Team", icon: Users },
+  { id: 5, label: "Launch", icon: Rocket },
 ];
 
 export default function OnboardingPage() {
@@ -30,19 +29,9 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [userEmail, setUserEmail] = useState("");
 
   const [orgName, setOrgName] = useState("");
   const [planSlug, setPlanSlug] = useState("starter");
-  const [emailProvider, setEmailProvider] = useState<"smtp" | "resend">("smtp");
-  const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
-  const [smtpPort, setSmtpPort] = useState("587");
-  const [smtpUser, setSmtpUser] = useState("");
-  const [smtpPass, setSmtpPass] = useState("");
-  const [fromAddress, setFromAddress] = useState("");
-  const [fromName, setFromName] = useState("");
-  const [testRecipient, setTestRecipient] = useState("");
-  const [sendMode, setSendMode] = useState<"dry_run" | "test" | "live">("test");
   const [dataMode, setDataMode] = useState<"free" | "auto" | "paid">("free");
 
   useEffect(() => {
@@ -63,8 +52,6 @@ export default function OnboardingPage() {
       }
       if (meRes.ok) {
         const data = await meRes.json();
-        setUserEmail(data.user?.email ?? "");
-        setTestRecipient(data.user?.email ?? "");
         if (data.tenant?.name && data.tenant.name !== "India Sweet House") {
           setOrgName(data.tenant.name);
         }
@@ -116,48 +103,25 @@ export default function OnboardingPage() {
       return;
     }
     if (!res.ok) {
-      setError(data.error ?? "Checkout unavailable — continue with trial");
+      setError(data.error ?? "Checkout unavailable. Continue with trial.");
       const trial = await submitStep({ step: 2, planSlug });
       if (trial) setStep(trial.nextStep);
     }
   }
 
-  async function handleEmailSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const data = await submitStep({
-      step: 3,
-      sendTest: true,
-      emailConfig: {
-        provider: emailProvider,
-        sendMode,
-        smtpHost,
-        smtpPort: Number(smtpPort),
-        smtpSecure: false,
-        smtpUser,
-        smtpPass,
-        fromAddress,
-        fromName: fromName || orgName,
-        testRecipient: testRecipient || userEmail,
-        replyToAddress: fromAddress,
-        replyToName: fromName || orgName,
-      },
-    });
-    if (data) setStep(data.nextStep);
-  }
-
   async function handlePrefsSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const data = await submitStep({ step: 4, enrichmentConfig: { dataMode } });
+    const data = await submitStep({ step: 3, enrichmentConfig: { dataMode } });
     if (data) setStep(data.nextStep);
   }
 
   async function handleTeamSkip() {
-    const data = await submitStep({ step: 5, skip: true });
+    const data = await submitStep({ step: 4, skip: true });
     if (data) setStep(data.nextStep);
   }
 
   async function handleComplete() {
-    const data = await submitStep({ step: 6, complete: true });
+    const data = await submitStep({ step: 5, complete: true });
     if (data?.redirect) router.push(data.redirect);
   }
 
@@ -166,7 +130,7 @@ export default function OnboardingPage() {
       <div className="mb-10">
         <h1 className={cn("mb-2", text.display)}>Set up your workspace</h1>
         <p className="text-sm text-ish-ink-soft">
-          Complete these steps before accessing your sales hub. Your data stays private to your organization.
+          Complete these steps before accessing your sales hub. Email sending is configured later in Settings.
         </p>
       </div>
 
@@ -244,64 +208,9 @@ export default function OnboardingPage() {
       )}
 
       {step === 3 && (
-        <form onSubmit={handleEmailSubmit} className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
-          <h2 className="text-lg font-semibold">Email setup</h2>
-          <p className="text-sm text-ish-ink-soft">Configure how outreach emails are sent from your workspace. A test email is required to continue.</p>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {EMAIL_PROVIDER_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setEmailProvider(opt.value)}
-                className={cn(
-                  "rounded-xl border p-3 text-left text-sm",
-                  emailProvider === opt.value ? "border-ish-black" : "border-ish-border",
-                )}
-              >
-                <div className="font-medium">{opt.label}</div>
-                <div className="text-xs text-ish-ink-soft">{opt.desc}</div>
-              </button>
-            ))}
-          </div>
-
-          {emailProvider === "smtp" && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="SMTP host" className="rounded-xl border px-4 py-3" />
-              <input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="Port" className="rounded-xl border px-4 py-3" />
-              <input value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="SMTP user" className="rounded-xl border px-4 py-3" required />
-              <input type="password" value={smtpPass} onChange={(e) => setSmtpPass(e.target.value)} placeholder="SMTP password / app password" className="rounded-xl border px-4 py-3" required />
-            </div>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <input value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} placeholder="From email" className="rounded-xl border px-4 py-3" required />
-            <input value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="From name" className="rounded-xl border px-4 py-3" />
-            <input value={testRecipient} onChange={(e) => setTestRecipient(e.target.value)} placeholder="Test recipient" className="rounded-xl border px-4 py-3 sm:col-span-2" required />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {EMAIL_SEND_MODE_OPTIONS.filter((m) => m.value !== "live").map((m) => (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => setSendMode(m.value)}
-                className={cn("rounded-lg border px-3 py-1.5 text-xs", sendMode === m.value ? "border-ish-black bg-ish-black text-white" : "border-ish-border")}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          <Button type="submit" disabled={loading} className="w-full">
-            {loading ? <Loader2 className="size-4 animate-spin" /> : "Save & send test email"}
-          </Button>
-        </form>
-      )}
-
-      {step === 4 && (
         <form onSubmit={handlePrefsSubmit} className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
           <h2 className="text-lg font-semibold">Enrichment preferences</h2>
+          <p className="text-sm text-ish-ink-soft">Choose how contact and company data is enriched during scouting.</p>
           <div className="flex gap-3">
             {(["free", "auto", "paid"] as const).map((mode) => (
               <button
@@ -318,19 +227,31 @@ export default function OnboardingPage() {
         </form>
       )}
 
-      {step === 5 && (
+      {step === 4 && (
         <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
           <h2 className="text-lg font-semibold">Invite your team</h2>
-          <p className="text-sm text-ish-ink-soft">You can invite teammates from Settings → Team after launch. Each user only sees your organization&apos;s data.</p>
+          <p className="text-sm text-ish-ink-soft">
+            Invite teammates from Settings → Team after launch. Each user only sees your organization&apos;s data.
+          </p>
           <Button type="button" onClick={handleTeamSkip} disabled={loading} className="w-full">Skip for now</Button>
         </div>
       )}
 
-      {step === 6 && (
+      {step === 5 && (
         <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8 text-center">
           <Rocket className="mx-auto size-12 text-ish-black" />
           <h2 className="text-lg font-semibold">You&apos;re ready to scout</h2>
-          <p className="text-sm text-ish-ink-soft">Your workspace is configured with isolated data and email setup complete.</p>
+          <p className="text-sm text-ish-ink-soft">
+            Your workspace is ready. Configure outreach email anytime under{" "}
+            <Link href="/settings?tab=email" className="font-medium text-ish-ink underline">
+              Settings → Email
+            </Link>
+            .
+          </p>
+          <div className="flex items-center justify-center gap-2 rounded-xl bg-ish-app/80 px-4 py-3 text-[12px] text-ish-ink-soft">
+            <Mail className="size-4 shrink-0" />
+            SMTP, Resend, send mode, and test sends live in Settings, not setup.
+          </div>
           <Button type="button" onClick={handleComplete} disabled={loading} className="w-full">
             {loading ? <Loader2 className="size-4 animate-spin" /> : "Enter Sales Hub"}
           </Button>

@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 import type { EmailConfig } from "@/lib/email/config";
 import { formatFromAddress, getResendStatus } from "@/lib/email/config";
+import { htmlToPlainText } from "@/lib/email/plain-text";
 import type { MailTransport, ProviderStatus, SendParams, SendResult } from "@/lib/email/types";
 
 const resendClients = new Map<string, Resend>();
@@ -34,12 +35,24 @@ export const resendTransport: MailTransport = {
     const timestamp = new Date().toISOString();
 
     const resend = getResend(config.resendApiKey);
+    const text = params.text ?? htmlToPlainText(params.html);
+    const headers: Record<string, string> = {};
+    if (params.messageId) headers["Message-ID"] = params.messageId;
+    if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
+    if (params.references) headers["References"] = params.references;
+    if (config.emailStyle === "marketing" && replyTo) {
+      headers["List-Unsubscribe"] = `<mailto:${replyTo}?subject=unsubscribe>`;
+      headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+    }
+
     const { data, error } = await resend.emails.send({
       from,
       to,
       subject: params.subject,
       html: params.html,
+      text,
       replyTo,
+      headers,
     });
 
     if (error) throw new Error(`Resend error: ${JSON.stringify(error)}`);
@@ -47,7 +60,7 @@ export const resendTransport: MailTransport = {
     return {
       mode: config.sendMode,
       provider: "resend",
-      messageId: data?.id,
+      messageId: params.messageId ?? data?.id,
       to,
       subject: params.subject,
       timestamp,

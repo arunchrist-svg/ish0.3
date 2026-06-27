@@ -75,27 +75,41 @@ export async function searchPeopleViaTavily(params: {
   ].filter(Boolean) as string[];
 
   const allResults: { title: string; url: string; content: string }[] = [];
-  let lastError: Error | null = null;
+  const errors: Error[] = [];
+  let quotaHit = false;
   const perQueryLimit = optimizedMaxResults(Math.ceil(limit / 2));
 
-  for (const q of queries.slice(0, 2)) {
-    try {
-      const res = await tavilySearch(q, perQueryLimit);
-      allResults.push(...res);
-      if (allResults.length >= limit) break;
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      console.error("[people-search] Tavily query failed:", q, lastError.message);
-      if (isTavilyQuotaError(lastError.message)) break;
-    }
-  }
+  const tavilyBatches = await Promise.all(
+    queries.slice(0, 2).map(async (q) => {
+      try {
+        return await tavilySearch(q, perQueryLimit);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error("[people-search] Tavily query failed:", q, err.message);
+        if (isTavilyQuotaError(err.message)) quotaHit = true;
+        errors.push(err);
+        return [] as { title: string; url: string; content: string }[];
+      }
+    }),
+  );
+  for (const batch of tavilyBatches) allResults.push(...batch);
 
   if (!allResults.length) {
+    if (quotaHit) {
+      throw new TavilyQuotaError(TAVILY_QUOTA_PEOPLE_MSG);
+    }
+    const lastError = errors[errors.length - 1];
     if (lastError && isTavilyQuotaError(lastError.message)) {
       throw new TavilyQuotaError(TAVILY_QUOTA_PEOPLE_MSG);
     }
     if (lastError) throw lastError;
     return [];
+  }
+
+  const heuristic = parsePeopleFromSearchResults(allResults, limit, `${dataSource}_heuristic`);
+  const keyDmCount = heuristic.filter((p) => p.isKeyDM).length;
+  if (heuristic.length >= limit || (heuristic.length > 0 && keyDmCount > 0)) {
+    return heuristic.slice(0, limit);
   }
 
   if (hasLLMKey()) {
@@ -130,5 +144,5 @@ Return up to ${limit} people.`,
     }
   }
 
-  return parsePeopleFromSearchResults(allResults, limit, `${dataSource}_heuristic`);
+  return heuristic.slice(0, limit);
 }

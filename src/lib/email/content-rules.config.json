@@ -1,0 +1,65 @@
+{
+  "infoAskPhrases": [
+    "address",
+    "delivery address",
+    "shipping address",
+    "delivery details",
+    "shipping details",
+    "phone number",
+    "headcount",
+    "team size",
+    "how many people",
+    "how many employees",
+    "number of employees",
+    "budget",
+    "your team of",
+    "confirm quantities",
+    "coordinate the details",
+    "coordinate delivery",
+    "send a sample to",
+    "ship a sample"
+  ],
+  "softExitPhrases": [
+    "no need to reply",
+    "not interested",
+    "happy to pass",
+    "happy to step back",
+    "happy to leave it",
+    "no worries",
+    "feel free to pass",
+    "no pressure",
+    "if this isn't relevant",
+    "if not relevant",
+    "if timing is off",
+    "if the timing"
+  ],
+  "commercialSignals": [
+    "per person",
+    "bulk pricing",
+    "starting from",
+    "offer",
+    "pricing",
+    "\u20b9",
+    "$",
+    "discount"
+  ],
+  "personalInboxDomains": [
+    "gmail.com",
+    "googlemail.com",
+    "yahoo.com",
+    "yahoo.co.in",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "icloud.com"
+  ],
+  "dkimSelectors": [
+    "google",
+    "default",
+    "selector1",
+    "selector2",
+    "k1",
+    "smtp",
+    "mail"
+  ]
+}

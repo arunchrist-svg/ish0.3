@@ -11,7 +11,7 @@ type Props = {
 };
 
 const SAVE_HINTS = [
-  "Running free email lookup",
+  "Fetching email per enrichment settings",
   "Verifying email format & MX records",
   "Checking gifting relevance",
   "Adding contacts to your leads queue",

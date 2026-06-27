@@ -8,15 +8,16 @@ type Props = {
   contactName?: string;
   companyName?: string;
   className?: string;
+  sequenceLabel?: string;
 };
 
 const DEFAULT_HINTS = [
   "Pulling company intel & gifting hooks",
   "Matching ISH tone & season rules",
-  "Scoring deliverability & personalisation",
+  "Checking inbox safety",
 ];
 
-export function WritingLoader({ contactName, companyName, className }: Props) {
+export function WritingLoader({ contactName, companyName, className, sequenceLabel }: Props) {
   const [hintIndex, setHintIndex] = useState(0);
 
   const hints = companyName
@@ -35,9 +36,11 @@ export function WritingLoader({ contactName, companyName, className }: Props) {
     return () => clearInterval(id);
   }, [hints]);
 
-  const message = contactName
-    ? `Writing for ${contactName}`
-    : "Crafting your email";
+  const message = sequenceLabel
+    ? sequenceLabel
+    : contactName
+      ? `Writing for ${contactName}`
+      : "Crafting your email";
 
   return (
     <div

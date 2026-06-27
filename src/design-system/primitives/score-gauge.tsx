@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { getScoreColor } from "@/design-system/tokens/colors";
 
 const SIZE_CONFIG = {
   sm: { size: 44, r: 15, tick: 4, strokeWidth: 2.5, fontSize: 11 },
@@ -8,12 +9,6 @@ const SIZE_CONFIG = {
 } as const;
 
 type ScoreGaugeSize = keyof typeof SIZE_CONFIG;
-
-function getFilledColor(score: number) {
-  if (score >= 75) return "#3FBE82";
-  if (score >= 50) return "#E8A000";
-  return "#E57373";
-}
 
 type Props = {
   score: number;
@@ -33,7 +28,7 @@ export function ScoreGauge({
   const center = dim / 2;
   const segments = 40;
   const filled = Math.round((Math.min(100, Math.max(0, score)) / 100) * segments);
-  const filledColor = getFilledColor(score);
+  const filledColor = getScoreColor(score);
 
   const gauge = (
     <div

@@ -160,6 +160,7 @@ export async function scoutPeopleBatchStream(
 export async function scoutSave(params: {
   people: ScoutPersonResult[];
   company: ScoutCompanyResult;
+  dataMode?: DataMode;
 }): Promise<{ saved: { leadId: string; name: string; emailStatus: string }[]; skipped: { name: string; reason: string }[] }> {
   return post("/api/scout/save", params);
 }
@@ -196,14 +197,33 @@ export async function fetchLead(id: string): Promise<LeadDetailRecord> {
 
 export async function runWriter(
   leadId: string,
-  options?: { outreachTemplate?: string },
+  options?: { outreachTemplate?: string; mode?: "sequence" | "single" },
 ): Promise<WriterDraft> {
-  const data = await post<{ draft: WriterDraft }>("/api/agents/writer/run", {
+  const data = await post<{ draft: WriterDraft; drafts?: WriterDraft[] }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
+    mode: options?.mode ?? "sequence",
   });
   return data.draft;
 }
+
+export async function runWriterSequence(
+  leadId: string,
+  options?: { outreachTemplate?: string },
+): Promise<WriterDraft[]> {
+  const data = await post<{ drafts: WriterDraft[]; draft: WriterDraft }>("/api/agents/writer/run", {
+    leadId,
+    outreachTemplate: options?.outreachTemplate,
+    mode: "sequence",
+  });
+  return data.drafts ?? [data.draft];
+}
+
+export async function runReplyWriter(leadId: string): Promise<WriterDraft> {
+  const data = await post<{ draft: WriterDraft }>("/api/agents/writer/reply", { leadId });
+  return data.draft;
+}
+
 
 export async function reviseDraft(
   leadOutreachId: string,
@@ -242,12 +262,46 @@ export async function approveOutreach(params: {
   subjectUsed?: string;
   rejectReason?: string;
   rejectNote?: string;
-}): Promise<void> {
-  await post("/api/outreach/approve", params);
+}): Promise<{ approvalId: string }> {
+  return post<{ approvalId: string }>("/api/outreach/approve", params);
 }
 
-export async function sendOutreach(approvalId: string): Promise<{ mode: string; messageId?: string }> {
-  return post("/api/outreach/send", { approvalId });
+export type SenderPreflightIssue = { id: string; label: string; severity: string };
+
+export class SenderPreflightApiError extends Error {
+  code = "SENDER_PREFLIGHT_FAILED" as const;
+  issues: SenderPreflightIssue[];
+  canOverride: boolean;
+
+  constructor(message: string, issues: SenderPreflightIssue[], canOverride: boolean) {
+    super(message);
+    this.name = "SenderPreflightApiError";
+    this.issues = issues;
+    this.canOverride = canOverride;
+  }
+}
+
+export async function sendOutreach(
+  approvalId: string,
+  options?: { overridePreflight?: boolean },
+): Promise<{ mode: string; messageId?: string; to?: string }> {
+  const res = await fetch("/api/outreach/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ approvalId, overridePreflight: options?.overridePreflight }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (data.code === "SENDER_PREFLIGHT_FAILED") {
+      throw new SenderPreflightApiError(
+        data.error ?? "Sender preflight failed",
+        data.issues ?? [],
+        data.canOverride ?? true,
+      );
+    }
+    throw new Error(data.error ?? res.statusText);
+  }
+  return data;
 }
 
 
@@ -276,6 +330,14 @@ export type LeadQueueItem = {
   nextActionDate?: string;
 };
 
+export type ContactEmailEntry = {
+  email: string;
+  emailStatus: string;
+  emailConfidence?: number;
+  enrichmentSource?: string;
+  enrichmentProvider?: string;
+};
+
 export type LeadDetailRecord = {
   id: string;
   name: string;
@@ -286,6 +348,7 @@ export type LeadDetailRecord = {
   city: string;
   employees: string;
   email: string;
+  emails: ContactEmailEntry[];
   emailStatus: string;
   emailConfidence?: number;
   enrichmentSource?: string;
@@ -309,6 +372,8 @@ export type LeadDetailRecord = {
     scoreFactors: { label: string; bold: string }[];
   };
   outreach?: WriterDraft;
+  outreachSequence?: WriterDraft[];
+  emailThread?: EmailThread;
   upNext: UpNextItem[];
   network: {
     name: string;
@@ -342,6 +407,8 @@ export type WriterDraft = {
   emailBody?: string;
   deliverabilityScore?: number;
   deliverabilityVerdict?: string;
+  inboxScore?: number;
+  spamFactors?: { label: string; delta: number }[];
   rubricScore?: Record<string, number>;
   rubricTotal?: number;
   draftSource: string;
@@ -352,7 +419,65 @@ export type WriterDraft = {
   outreachGoal?: string;
   confidenceTier?: string;
   approvalStatus: string;
+  replySent?: boolean;
+  sequencePosition?: number;
   editMessages?: EditMessage[];
+};
+
+
+export type ThreadPhase =
+  | "compose"
+  | "outreached"
+  | "awaiting_reply"
+  | "they_replied"
+  | "drafting_reply"
+  | "reply_sent"
+  | "complete";
+
+export type BarMode = "hidden" | "drafts" | "sequence" | "reply";
+
+export type BarNodeState = "done" | "current" | "upcoming" | "scheduled";
+
+export type BarNodeKind = "draft" | "sent" | "scheduled" | "inbound" | "reply_draft";
+
+export type BarNode = {
+  id: string;
+  label: string;
+  state: BarNodeState;
+  kind: BarNodeKind;
+  outreachId?: string;
+  scheduleId?: string;
+  daysUntil?: number;
+  subject?: string;
+  body?: string;
+  snippet?: string;
+  at?: string;
+  action?: "draft_reply";
+};
+
+export type ThreadEvent = {
+  id: string;
+  kind: "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
+  label: string;
+  subject?: string;
+  snippet?: string;
+  body?: string;
+  at?: string;
+  status: "sent" | "scheduled" | "cancelled" | "draft";
+  sequenceDay?: number;
+};
+
+export type EmailThread = {
+  threadRootSubject?: string;
+  phase: ThreadPhase;
+  nextAction: "send_reply" | "await_reply" | "followup_due" | "compose" | "complete";
+  nextStep: { title: string; description: string; primaryAction?: string };
+  barMode: BarMode;
+  barNodes: BarNode[];
+  selectedNodeId?: string;
+  events: ThreadEvent[];
+  inboundSnippet?: string;
+  showComposeZone: boolean;
 };
 
 export type UpNextItem = {
@@ -365,7 +490,7 @@ export type UpNextItem = {
 };
 export async function enrichLead(
   leadId: string,
-  options: { mode: "free" | "paid" } = { mode: "free" },
+  options: { mode: "free" | "paid"; refetch?: boolean } = { mode: "free" },
 ): Promise<{
   success: boolean;
   enrichment: {
@@ -378,9 +503,10 @@ export async function enrichLead(
     enrichmentProvider?: string;
     title?: string | null;
     message?: string;
+    alternateEmails?: ContactEmailEntry[];
   };
 }> {
-  return post("/api/leads/" + leadId + "/enrich", { mode: options.mode });
+  return post("/api/leads/" + leadId + "/enrich", { mode: options.mode, refetch: options.refetch });
 }
 
 
@@ -506,4 +632,31 @@ export async function fetchLeadNetworkSummary(
 export async function fetchLeadNetwork(id: string): Promise<NetworkGraph> {
   const data = await get<{ graph: NetworkGraph }>(`/api/leads/${id}/network`);
   return data.graph;
+}
+
+
+export type SenderHealthResponse = {
+  issues: { id: string; label: string; severity: string }[];
+  sendsLast24h: number;
+  dailyCap: number;
+  personalInboxSender: boolean;
+  canSendLive: boolean;
+  hasCritical: boolean;
+  domainAuth: {
+    domain: string;
+    status: "pass" | "partial" | "fail" | "unsupported";
+    label: string;
+    passCount: number;
+    checks: {
+      spf: { found: boolean; valid: boolean };
+      dmarc: { found: boolean; valid: boolean; policy?: string | null; warning?: string | null };
+      dkim: { found: boolean; valid: boolean; selector?: string; note?: string };
+    };
+  };
+};
+
+export async function fetchSenderHealth(): Promise<SenderHealthResponse> {
+  const res = await fetch("/api/email/sender-health");
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed to load sender health");
+  return res.json();
 }

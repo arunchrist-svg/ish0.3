@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ChevronLeft, Contact, Home,
-  Mail, Pin, Rocket, Settings, Telescope, User, GitFork,
+  Mail, Pin, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CircleButton } from "@/design-system";
@@ -139,6 +139,13 @@ function NavItemRow({
 
 export function SideNav() {
   const pathname = usePathname();
+  const [isSuperadmin, setIsSuperadmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setIsSuperadmin(Boolean(data?.isSuperadmin)));
+  }, []);
   const activeKey = getActiveKey(pathname);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -227,6 +234,16 @@ export function SideNav() {
 
         <div className="mt-2">
           <div className="mb-2 border-t border-ish-border" />
+          {isSuperadmin ? (
+            <NavItemRow
+              item={{ icon: Shield, label: "Platform Admin", href: "/admin", key: "platform-admin" }}
+              pathname={pathname}
+              pendingKey={pendingKey}
+              collapsed={collapsed}
+              register={register}
+              onNavigate={setPendingKey}
+            />
+          ) : null}
           {bottomNav.map((item) => (
             <NavItemRow
               key={item.key}

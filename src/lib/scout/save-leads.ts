@@ -11,6 +11,9 @@ import {
   shouldAutoAcceptEmail,
   isNamedPerson,
 } from "@/lib/enrichment/enrich-lead";
+import type { EnrichmentConfig } from "@/lib/enrichment/config";
+import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
+import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
 
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
@@ -87,10 +90,16 @@ export async function saveScoutLeads(params: {
   leadSource?: string;
   tenantId: string;
   workspaceId: string;
+  enrichmentConfig?: EnrichmentConfig;
 }): Promise<SaveLeadsResult> {
   const { people, company, tenantId, workspaceId } = params;
   const dataMode = (params.dataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
   const leadSource = params.leadSource ?? "scout";
+  const cfg =
+    params.enrichmentConfig ??
+    (await getResolvedWorkspaceEnrichmentConfig({ dataMode }));
+  const shouldEnrich = cfg.enrichOnImport && cfg.enrichProvider !== "none";
+  const enrichMode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
   let resolvedAccountId: string;
   const [account] = await db
     .insert(accounts)
@@ -138,33 +147,37 @@ export async function saveScoutLeads(params: {
     let enrichAttempts: unknown;
     let resolvedTitle = person.title;
 
-    // Always run free email enrichment when adding scout leads
-    const enriched = await enrichPersonContact({
-      person: {
-        ...person,
-        email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
-      },
-      company,
-      mode: "free",
-      dataMode,
-    });
-    enrichAttempts = enriched.attempts;
-    const named = isNamedPerson(person.name);
-    resolvedTitle = enriched.title ?? person.title;
-    if (
-      enriched.email &&
-      shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
-    ) {
-      resolvedEmail = enriched.email;
-      resolvedPhone = enriched.phone ?? resolvedPhone;
-      emailConfidence = enriched.emailConfidence;
-      enrichmentSource = enriched.enrichmentSource;
-      enrichmentProvider = enriched.enrichmentProvider;
-    } else if (enriched.email && !named) {
-      emailConfidence = enriched.emailConfidence;
-      enrichmentSource = enriched.enrichmentSource;
-      enrichmentProvider = enriched.enrichmentProvider;
-    } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && named) {
+    if (shouldEnrich) {
+      const enriched = await enrichPersonContact({
+        person: {
+          ...person,
+          email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
+        },
+        company,
+        mode: enrichMode,
+        dataMode: cfg.dataMode,
+        enrichProvider: cfg.enrichProvider,
+      });
+      enrichAttempts = enriched.attempts;
+      const named = isNamedPerson(person.name);
+      resolvedTitle = enriched.title ?? person.title;
+      if (
+        enriched.email &&
+        shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
+      ) {
+        resolvedEmail = enriched.email;
+        resolvedPhone = enriched.phone ?? resolvedPhone;
+        emailConfidence = enriched.emailConfidence;
+        enrichmentSource = enriched.enrichmentSource;
+        enrichmentProvider = enriched.enrichmentProvider;
+      } else if (enriched.email && !named) {
+        emailConfidence = enriched.emailConfidence;
+        enrichmentSource = enriched.enrichmentSource;
+        enrichmentProvider = enriched.enrichmentProvider;
+      } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && named) {
+        resolvedEmail = undefined;
+      }
+    } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && isNamedPerson(person.name)) {
       resolvedEmail = undefined;
     }
 

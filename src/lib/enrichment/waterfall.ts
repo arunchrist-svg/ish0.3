@@ -6,8 +6,6 @@ import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
 import { companyCityMatchesSelection } from "./city-search";
-import { enrichPersonContact } from "./enrich-lead";
-import { shouldAutoAcceptEmail, isNamedPerson } from "./confidence";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -521,38 +519,9 @@ export async function discoverPeople(params: {
     }
   }
 
-  // ── Step 3: Free email enrichment per person ─────────────────────────────
-  if (cfg.enrichProvider !== "none") {
-    const companyCtx = {
-      name: params.companyName,
-      domain: resolvedDomain,
-      website: params.companyWebsite,
-      city: undefined,
-      dataSource: "scout",
-    };
-    await mapWithConcurrency(external, 2, async (person) => {
-      if (person.email && person.emailStatus !== "missing") return;
-      try {
-        const enriched = await enrichPersonContact({
-          person,
-          company: companyCtx,
-          mode: "free",
-          dataMode: params.dataMode,
-        });
-        const named = isNamedPerson(person.name);
-        if (enriched.email && shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })) {
-          person.email = enriched.email;
-          person.emailStatus = enriched.emailStatus;
-          if (enriched.phone && !person.phone) person.phone = enriched.phone;
-        }
-        if (enriched.title && !person.title) person.title = enriched.title;
-      } catch (e) {
-        console.error("[waterfall:enrich]", person.name, e);
-      }
-    });
-  }
+  // Email/phone enrichment runs on save (save-leads.ts) — skip here for faster scout preview.
 
-  // ── Step 4: Filter + rank by selected roles ─────────────────────────────
+  // ── Step 3: Filter + rank by selected roles ─────────────────────────────
   const allPeople = [...companyContacts.map(contactToResult), ...external];
   let finalPeople: ScoutPersonResult[];
   if (activeSeniority.length > 0 || activeDepartments.length > 0) {
@@ -601,7 +570,7 @@ export async function discoverPeopleBatch(params: {
   }
 
   const results: Record<string, PeopleDiscoveryResult> = {};
-  const { companies, concurrency = 3, ...discoverParams } = params;
+  const { companies, concurrency = 5, ...discoverParams } = params;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
     results[company.id] = await discoverPeople({
@@ -640,7 +609,7 @@ export async function discoverPeopleBatchStream(
     console.error("[waterfall:batch_accounts] failed:", e);
   }
 
-  const { companies, concurrency = 3, ...discoverParams } = params;
+  const { companies, concurrency = 5, ...discoverParams } = params;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
     const result = await discoverPeople({

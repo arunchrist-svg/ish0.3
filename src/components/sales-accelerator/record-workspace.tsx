@@ -11,11 +11,14 @@ import { LeadScoreCard } from "@/components/sales-accelerator/lead-score-card";
 import { BottomCards } from "@/components/sales-accelerator/bottom-cards";
 import { RelationshipAnalyticsPanel } from "@/components/network/relationship-analytics-panel";
 import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
-import { fetchLead, fetchLeadNetworkSummary } from "@/lib/api-client";
+import { enrichLead, fetchLead, fetchLeadNetworkSummary } from "@/lib/api-client";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { showError } from "@/lib/toast";
+import { toast } from "sonner";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
+import { hasUsableEmail } from "@/lib/enrichment/contact-emails";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
+import { WorkspaceLoader } from "@/components/sales-accelerator/workspace-loader";
 
 type Props = {
   leadId: string;
@@ -24,12 +27,13 @@ type Props = {
 };
 
 function confidenceTierFromLead(lead: LeadDetailRecord): string {
-  if (!lead.email || lead.email === "—") return "missing";
+  if (!hasUsableEmail(lead.email, lead.emailStatus)) return "missing";
   if (lead.emailStatus === "generic") return "generic";
   if ((lead.emailConfidence ?? 0) >= 55) return "good";
   if ((lead.emailConfidence ?? 0) >= 40) return "generic";
   if ((lead.emailConfidence ?? 0) > 0) return "low";
-  return lead.emailStatus === "verified" || lead.emailStatus === "unverified" ? "good" : "missing";
+  if (lead.emailStatus === "verified") return "good";
+  return "low";
 }
 
 function toRecord(lead: LeadDetailRecord) {
@@ -124,6 +128,27 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
     }
   }
 
+  async function handleRefetchEmails(mode: "free" | "paid") {
+    if (!lead) return;
+    try {
+      const result = await enrichLead(lead.id, { mode, refetch: true });
+      const found = result.enrichment.alternateEmails?.length ?? 0;
+      if (result.enrichment.email && found > 0) {
+        toast.success(`Found ${found + 1} email${found ? "s" : ""} for ${lead.name}`);
+      } else if (result.enrichment.email) {
+        toast.success(result.enrichment.message ?? "Email lookup complete");
+      } else if (result.enrichment.message) {
+        toast.info(result.enrichment.message);
+      } else {
+        toast.info(mode === "paid" ? "Paid enrich completed — no new email found" : "No new email found via free sources");
+      }
+      await refreshInline(false);
+      onLeadUpdated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Enrichment failed");
+    }
+  }
+
   function applyDraft(draft: WriterDraft) {
     setLead((prev) =>
       prev
@@ -167,9 +192,10 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
 
   if (loading) {
     return (
-      <div className="flex min-w-0 flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
-        <span className="mr-2 animate-spin">⟳</span> Loading…
-      </div>
+      <WorkspaceLoader
+        contactName={initialLead?.name ?? undefined}
+        companyName={initialLead?.company ?? undefined}
+      />
     );
   }
 
@@ -203,11 +229,12 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
           <ActionLoader variant="refresh" contactName={lead.name} />
         </div>
       )}
-      <div className="overflow-hidden rounded-[22px] bg-ish-yellow-gradient">
-        <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} />
-        <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
-      </div>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white">
+      <div className="ish-record-card overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-ish-sm)]">
+        <div className="bg-ish-yellow-gradient">
+          <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} />
+          <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
+        </div>
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white">
         <div className="px-[22px] pt-4">
           <TabsList className="h-auto gap-1.5 bg-transparent p-0">
             {TABS.map((tab) => (
@@ -232,9 +259,11 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
             <ContactCard
               record={record}
               current={current}
+              emails={lead.emails}
               emailConfidence={lead.emailConfidence}
               confidenceTier={confidenceTierFromLead(lead)}
               enrichmentSource={lead.enrichmentSource}
+              onRefetchEmails={handleRefetchEmails}
             />
             <UpNextPanel
               tasks={record.upNext}
@@ -283,6 +312,10 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
               onLeadUpdated();
             }}
             onSilentRefresh={() => load({ silent: true })}
+            onSent={() => {
+              load({ silent: true });
+              onLeadUpdated();
+            }}
           />
         </TabsContent>
 
@@ -299,7 +332,8 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
             {tab} view coming soon.
           </TabsContent>
         ))}
-      </Tabs>
+        </Tabs>
+      </div>
     </div>
   );
 }

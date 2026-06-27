@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
-import { eq, desc, asc } from "drizzle-orm";
-import { canManuallyAdvance, parseDealAmount } from "@/lib/pipeline-status";
+import { eq, desc, asc, and, inArray, isNotNull } from "drizzle-orm";
+import { canManuallyAdvance, isEmailOutreachStarted, parseDealAmount } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
-import { toEditMessage } from "@/lib/agents/writer-draft";
+import { toWriterDraft } from "@/lib/agents/writer-draft";
+import { buildContactEmails, hasUsableEmail } from "@/lib/enrichment/contact-emails";
+import { buildEmailThread } from "@/lib/email/email-thread";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -31,7 +35,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    const [research, outreach, scheduleRows] = await Promise.all([
+    const [research, outreach, scheduleRows, sequenceDraftRows, emailConfig] = await Promise.all([
       db.query.leadResearch.findFirst({ where: eq(leadResearch.leadId, id) }),
       db.query.leadOutreach.findFirst({
         where: eq(leadOutreach.leadId, id),
@@ -42,21 +46,90 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .from(outreachSchedule)
         .where(eq(outreachSchedule.leadId, id))
         .orderBy(outreachSchedule.scheduledFor),
+      db.query.leadOutreach.findMany({
+        where: and(eq(leadOutreach.leadId, id), isNotNull(leadOutreach.sequencePosition)),
+        orderBy: [asc(leadOutreach.sequencePosition)],
+      }),
+      getResolvedEmailConfig(lead.workspaceId),
     ]);
 
-    const [approval, editMessages] = outreach
+    const replyDraftRow = outreach?.templateVariant === "reply" ? outreach : null;
+    const activeOutreach = replyDraftRow ?? (sequenceDraftRows[0] ?? outreach ?? null);
+
+    const [approval, editMessages, replySentRow] = activeOutreach
       ? await Promise.all([
           db.query.outreachApprovals.findFirst({
-            where: eq(outreachApprovals.leadOutreachId, outreach.id),
+            where: eq(outreachApprovals.leadOutreachId, activeOutreach.id),
+            orderBy: [desc(outreachApprovals.createdAt)],
           }),
           db.query.outreachEditMessages.findMany({
-            where: eq(outreachEditMessages.leadOutreachId, outreach.id),
+            where: eq(outreachEditMessages.leadOutreachId, activeOutreach.id),
             orderBy: [asc(outreachEditMessages.createdAt)],
           }),
+          activeOutreach.templateVariant === "reply"
+            ? db.query.outreachApprovals
+                .findFirst({
+                  where: eq(outreachApprovals.leadOutreachId, activeOutreach.id),
+                  orderBy: [desc(outreachApprovals.createdAt)],
+                })
+                .then(async (latestApproval) => {
+                  if (!latestApproval) return null;
+                  return db.query.outreachSchedule.findFirst({
+                    where: and(
+                      eq(outreachSchedule.approvalId, latestApproval.id),
+                      eq(outreachSchedule.status, "sent"),
+                    ),
+                  });
+                })
+            : Promise.resolve(null),
         ])
-      : [null, []];
+      : [null, [], null];
 
-    const upNext = deriveUpNext(lead.status, scheduleRows);
+
+    const approvalIds = scheduleRows.map((r) => r.approvalId).filter((id): id is string => Boolean(id));
+    const approvalOutreachRows =
+      approvalIds.length > 0
+        ? await db
+            .select({
+              approvalId: outreachApprovals.id,
+              emailBody: leadOutreach.emailBody,
+            })
+            .from(outreachApprovals)
+            .innerJoin(leadOutreach, eq(leadOutreach.id, outreachApprovals.leadOutreachId))
+            .where(inArray(outreachApprovals.id, approvalIds))
+        : [];
+    const outreachBodiesByApprovalId = Object.fromEntries(
+      approvalOutreachRows
+        .filter((r) => r.emailBody)
+        .map((r) => [r.approvalId, r.emailBody as string]),
+    );
+
+    const repliedFunnel = await db.query.yieldFunnel.findFirst({
+      where: and(eq(yieldFunnel.leadId, id), eq(yieldFunnel.stage, "replied")),
+      orderBy: [desc(yieldFunnel.enteredAt)],
+    });
+
+    const replyDraftSent = Boolean(replySentRow);
+    const outreachSequence = sequenceDraftRows.map((d) => toWriterDraft(d, { sequencePosition: d.sequencePosition ?? undefined }));
+    const emailThread = buildEmailThread({
+      lead,
+      scheduleRows,
+      sequenceDrafts: sequenceDraftRows,
+      latestOutreach: activeOutreach ?? null,
+      replyDraftSent,
+      outreachBodiesByApprovalId,
+      inboundReplyAt: repliedFunnel?.enteredAt?.toISOString() ?? null,
+      cadenceDays: emailConfig.cadenceDays,
+    });
+    const upNext = deriveUpNext(
+      lead.status,
+      scheduleRows,
+      contact.email,
+      contact.emailStatus,
+      Boolean(outreach),
+      outreach,
+      replyDraftSent,
+    );
 
     const record: LeadDetailRecord = {
       id: lead.id,
@@ -68,6 +141,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       city: account.city ?? "—",
       employees: account.employees ?? "—",
       email: contact.email ?? "—",
+      emails: buildContactEmails({
+        primaryEmail: contact.email,
+        emailStatus: contact.emailStatus,
+        emailConfidence: contact.emailConfidence,
+        enrichmentSource: contact.enrichmentSource,
+        enrichmentProvider: contact.enrichmentProvider,
+        alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
+      }),
       emailStatus: contact.emailStatus ?? "missing",
       emailConfidence: contact.emailConfidence ?? undefined,
       enrichmentSource: contact.enrichmentSource ?? undefined,
@@ -92,27 +173,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             scoreFactors: (research.scoreFactors as { label: string; bold: string }[]) ?? [],
           }
         : undefined,
-      outreach: outreach
-        ? {
-            id: outreach.id,
-            subjectA: outreach.subjectA ?? undefined,
-            subjectB: outreach.subjectB ?? undefined,
-            emailBody: outreach.emailBody ?? undefined,
-            deliverabilityScore: outreach.deliverabilityScore ?? undefined,
-            deliverabilityVerdict: outreach.deliverabilityVerdict ?? undefined,
-            rubricScore: (outreach.rubricScore as Record<string, number>) ?? undefined,
-            rubricTotal: outreach.rubricTotal ?? undefined,
-            draftSource: outreach.draftSource,
-            promptVersion: outreach.promptVersion ?? undefined,
-            revisionCount: outreach.revisionCount ?? 0,
-            revisionTimeout: outreach.revisionTimeout ?? false,
-            templateVariant: outreach.templateVariant ?? undefined,
-            outreachGoal: outreach.outreachGoal ?? undefined,
-            confidenceTier: outreach.confidenceTier ?? undefined,
+      outreach: activeOutreach
+        ? toWriterDraft(activeOutreach, {
             approvalStatus: approval?.status ?? "pending",
-            editMessages: editMessages.map(toEditMessage),
-          }
+            replySent: Boolean(replySentRow),
+            editMessages,
+            sequencePosition: activeOutreach.sequencePosition ?? undefined,
+          })
         : undefined,
+      outreachSequence: outreachSequence.length ? outreachSequence : undefined,
       upNext,
       network: [],
       giftingIntelligence: account.intelNotes ?? research?.giftingHook ?? undefined,
@@ -122,6 +191,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       giftScore: account.giftScore ?? undefined,
       giftBudget: account.giftBudget ?? undefined,
       isPinned: lead.isPinned ?? false,
+      emailThread,
     };
 
     return NextResponse.json({ lead: record });
@@ -139,17 +209,23 @@ function gradeFromScore(score: number): string {
 function deriveUpNext(
   status: string,
   schedule: (typeof outreachSchedule.$inferSelect)[],
+  email?: string | null,
+  emailStatus?: string | null,
+  hasDraft = false,
+  outreach?: typeof leadOutreach.$inferSelect | null,
+  replyDraftSent = false,
 ): LeadDetailRecord["upNext"] {
   const tasks: LeadDetailRecord["upNext"] = [];
 
-  if (status === "researched" || status === "scouted" || status === "prefiltered") {
+  const canSuggestWrite = hasUsableEmail(email, emailStatus) && !isEmailOutreachStarted(status, hasDraft);
+  if ((status === "researched" || status === "scouted" || status === "prefiltered") && canSuggestWrite) {
     tasks.push({
-      title: "Generate Email Draft",
-      step: "Step 1 · Ready now",
-      desc: "Write a personalized outreach email for this contact",
+      title: "Write Email",
+      step: "Suggested next step",
+      desc: "This contact has an email — start personalized outreach",
       icon: "mail",
       active: true,
-      primaryAction: "Generate",
+      primaryAction: "Write Email",
     });
   }
 
@@ -164,7 +240,38 @@ function deriveUpNext(
     });
   }
 
-  const pending = schedule.filter((s) => s.status === "scheduled");
+  if (status === "outreached") {
+    tasks.push({
+      title: "Awaiting prospect reply",
+      step: "In thread",
+      desc: "Follow-ups are scheduled until they reply",
+      icon: "mail",
+      active: false,
+    });
+  }
+
+  const isReplyDraft = outreach?.templateVariant === "reply";
+  if (status === "replied" && isReplyDraft && !replyDraftSent) {
+    tasks.push({
+      title: "Send reply in thread",
+      step: "Reply draft ready",
+      desc: "Review and send your reply in the existing email thread",
+      icon: "mail",
+      active: true,
+      primaryAction: "Send Reply",
+    });
+  } else if (status === "replied" && !isReplyDraft) {
+    tasks.push({
+      title: "Regenerate reply draft",
+      step: "They replied",
+      desc: "Generate an AI draft that continues the conversation",
+      icon: "mail",
+      active: true,
+      primaryAction: "Regenerate reply",
+    });
+  }
+
+  const pending = schedule.filter((s) => s.status === "scheduled" && s.sequenceDay > 0);
   for (const s of pending.slice(0, 3)) {
     const due = new Date(s.scheduledFor).toLocaleDateString("en-IN", { month: "short", day: "numeric" });
     tasks.push({
@@ -183,6 +290,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const { id } = await params;
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = await req.json();
     const { status: nextStatus, closedDealAmount } = body as {
       status?: string;

@@ -1,21 +1,67 @@
 import { readFileSync } from "fs";
 import { join } from "path";
+import type { BrandSlug, CampaignMode } from "@/lib/email/config";
 
-let cachedRules: string | null = null;
+const cache = new Map<string, string>();
 
-export function loadGiftingRules(): string {
-  if (cachedRules) return cachedRules;
+function loadFile(relativePath: string, fallback: string): string {
+  const cached = cache.get(relativePath);
+  if (cached) return cached;
   try {
-    const filePath = join(process.cwd(), "src/knowledge/gifting_rules.md");
-    cachedRules = readFileSync(filePath, "utf-8");
-    return cachedRules;
+    const content = readFileSync(join(process.cwd(), relativePath), "utf-8");
+    cache.set(relativePath, content);
+    return content;
   } catch {
-    return getDefaultRules();
+    return fallback;
   }
 }
 
-export function retrieveRelevantRules(context: { industry?: string; city?: string; season?: string }): string {
-  const all = loadGiftingRules();
+export function loadGiftingRules(): string {
+  return loadFile("src/knowledge/gifting_rules.md", getDefaultRules());
+}
+
+function loadBrandRules(brandSlug: BrandSlug): string {
+  if (brandSlug === "custom") return "";
+  return loadFile(`src/knowledge/brands/${brandSlug}.md`, "");
+}
+
+function loadCampaignRules(campaignMode: CampaignMode): string {
+  if (campaignMode === "custom" || campaignMode === "festival_bundle") return "";
+  return loadFile(`src/knowledge/campaigns/${campaignMode}.md`, "");
+}
+
+export function retrieveRelevantRules(context: {
+  industry?: string;
+  city?: string;
+  season?: string;
+  brandSlug?: BrandSlug;
+  campaignMode?: CampaignMode;
+  productSummary?: string;
+  campaignNotes?: string;
+}): string {
+  const sections: string[] = [];
+
+  const brand = loadBrandRules(context.brandSlug ?? "ish");
+  if (brand) sections.push(brand);
+
+  const campaign = loadCampaignRules(context.campaignMode ?? "diwali_gifting");
+  if (campaign) sections.push(campaign);
+
+  if (context.productSummary?.trim()) {
+    sections.push(`## Company product catalog\n${context.productSummary.trim()}`);
+  }
+
+  if (context.campaignNotes?.trim()) {
+    sections.push(`## Campaign notes\n${context.campaignNotes.trim()}`);
+  }
+
+  const legacy = filterLegacyRules(loadGiftingRules(), context);
+  if (legacy) sections.push(legacy);
+
+  return sections.join("\n\n").slice(0, 6000) || getDefaultRules();
+}
+
+function filterLegacyRules(all: string, context: { industry?: string; city?: string; season?: string }): string {
   const lines = all.split("\n");
   const relevant: string[] = [];
   let inRelevantSection = false;
@@ -24,7 +70,7 @@ export function retrieveRelevantRules(context: { industry?: string; city?: strin
     context.industry?.toLowerCase(),
     context.city?.toLowerCase(),
     context.season?.toLowerCase() ?? "diwali",
-    "corporate", "gifting", "mithai", "sweet",
+    "tone", "compliance", "cta",
   ].filter(Boolean) as string[];
 
   for (const line of lines) {
@@ -37,32 +83,20 @@ export function retrieveRelevantRules(context: { industry?: string; city?: strin
     }
   }
 
-  return relevant.slice(0, 80).join("\n") || all.slice(0, 2000);
+  return relevant.slice(0, 40).join("\n");
 }
 
 function getDefaultRules(): string {
-  return `# ISH Gifting Rules
+  return `# Outreach Rules
 
-## Core offering
-India Sweet House offers premium pure-ghee mithai, dry fruit hampers, and curated gift boxes for corporate gifting.
-Pricing: ₹500–₹2,000 per person for bulk orders of 100+ employees.
-
-## Diwali campaign guidelines
-- Lead time: 3–4 weeks before Diwali
-- Minimum order: 50 boxes
-- Customisation: Company name/logo on box lid
-- Delivery: Pan-India for orders > 500 units
-- Shelf life: 15 days for mithai; 3 months for dry fruit
+## Tone (Primary inbox)
+- Open with "Hi {firstName}," — never "Dear"
+- Sign with the sender's real first name — not a team name
+- Max 120 words, one question CTA
+- Subject: short, conversational, no brand suffix
 
 ## Compliance
-- No spam. Personalise every email.
-- Include unsubscribe line at footer.
-- Do not mention competitor brands.
-
-## Tone guidelines
-- Professional, warm, and concise
-- Subject line: 6–8 words, personalised with company/contact name
-- Body: 3 short paragraphs maximum
-- Always end with a clear CTA: "Can we schedule a 15-min call?"
+- Personalise every email
+- Do not mention competitor brands
 `;
 }

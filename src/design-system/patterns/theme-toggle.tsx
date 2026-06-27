@@ -1,7 +1,7 @@
 "use client";
 
 import { Palette, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/providers/theme-provider";
 import { toast } from "sonner";
 import { CircleButton } from "@/design-system/primitives";
 

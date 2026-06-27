@@ -9,13 +9,16 @@ import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
 import type { DataMode } from "@/lib/enrichment/types";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
     const mode = (body.mode === "paid" ? "paid" : "free") as "free" | "paid";
+    const refetch = body.refetch === true;
     const dataMode = (body.dataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
 
     const [lead] = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
@@ -31,7 +34,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await assertCredits(ctx.tenantId, "enrich.paid", 1);
     }
 
-    const result = await enrichLeadById({ leadId: id, mode, dataMode });
+    const result = await enrichLeadById({ leadId: id, mode, dataMode, refetch });
 
     if (mode === "paid" && result.success) {
       await deductCredits({ tenantId: ctx.tenantId, action: "enrich.paid", referenceId: id });
@@ -50,6 +53,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         enrichmentProvider: result.enrichmentProvider,
         title: result.title ?? null,
         message: result.message,
+        alternateEmails: result.alternateEmails ?? [],
       },
     });
   } catch (e) {

@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import type { EmailConfig } from "@/lib/email/config";
 import { formatFromAddress, resolveSmtpCredentials } from "@/lib/email/config";
+import { htmlToPlainText } from "@/lib/email/plain-text";
 import type { MailTransport, ProviderStatus, SendParams, SendResult } from "@/lib/email/types";
 
 let _transporter: Transporter | null = null;
@@ -91,18 +92,31 @@ export const smtpTransport: MailTransport = {
     const replyTo = params.replyTo ?? config.replyToAddress;
     const timestamp = new Date().toISOString();
 
+    const text = params.text ?? htmlToPlainText(params.html);
+    const headers: Record<string, string> = {};
+    if (params.messageId) headers["Message-ID"] = params.messageId;
+    if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
+    if (params.references) headers["References"] = params.references;
+    if (config.emailStyle === "marketing" && replyTo) {
+      headers["List-Unsubscribe"] = `<mailto:${replyTo}?subject=unsubscribe>`;
+      headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+    }
+
     const info = await getTransporter(config).sendMail({
       from,
       to,
+      messageId: params.messageId,
       subject: params.subject,
       html: params.html,
+      text,
       replyTo,
+      headers,
     });
 
     return {
       mode: config.sendMode,
       provider: "smtp",
-      messageId: info.messageId,
+      messageId: params.messageId ?? info.messageId,
       to,
       subject: params.subject,
       timestamp,

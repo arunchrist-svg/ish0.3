@@ -4,10 +4,12 @@ import { eq, and } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const { leadOutreachId, leadId, channel, status, subjectUsed, rejectReason, rejectNote } =
       await req.json();
 
@@ -43,7 +45,8 @@ export async function POST(req: Request) {
       })
       .returning();
 
-    if (status === "approved") {
+    const isReplyDraft = outreach.templateVariant === "reply" || lead.status === "replied";
+    if (status === "approved" && !isReplyDraft) {
       await db.update(leads).set({ status: "approved" }).where(eq(leads.id, leadId));
       await db.insert(yieldFunnel).values({ leadId, stage: "approved", metadata: { approvalId: approval.id } });
     }

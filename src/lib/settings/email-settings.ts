@@ -6,6 +6,7 @@ import {
   validateEmailConfig,
 } from "@/lib/email/config";
 import { invalidateEmailConfigCache } from "@/lib/email/email-sender";
+import { isPublicAppUrl } from "@/lib/email/plain-text";
 import { smtpTransport } from "@/lib/email/smtp-transport";
 import { resendTransport } from "@/lib/email/resend-transport";
 import { requireTenantContext } from "@/lib/tenant";
@@ -101,6 +102,11 @@ async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfi
     smtpVerified: smtpConfigured,
     resendConfigured: resendStatus.configured,
   });
+  if (!isPublicAppUrl(config.appUrl)) {
+    validationWarnings.push(
+      "App URL is localhost — open tracking is disabled. Set NEXT_PUBLIC_APP_URL to your deployed HTTPS URL for better deliverability.",
+    );
+  }
 
   return toPublicResponse(config, {
     smtpConfigured,

@@ -3,6 +3,10 @@
     {
       "path": "/api/sequencer/run",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/replies/poll",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

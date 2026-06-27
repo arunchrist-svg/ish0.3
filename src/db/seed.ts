@@ -20,7 +20,7 @@ async function seed() {
 
   await db
     .insert(schema.tenants)
-    .values({ id: TENANT_ID, name: "India Sweet House", plan: "starter" })
+    .values({ id: TENANT_ID, name: "India Sweet House", slug: "india-sweet-house", plan: "starter" })
     .onConflictDoNothing();
 
   await db
@@ -277,9 +277,84 @@ async function seed() {
     },
   ]).onConflictDoNothing();
 
+
+  // Also seed test lead on real app tenants (seed tenant is not what logged-in users see).
+  const PROD_TENANT_ID = "91deac0f-9013-4b11-baa3-28421e9a287c";
+  const PROD_WORKSPACE_ID = "cb86c446-0839-4ab8-9f47-ae295bfa5e36";
+  const PROD_TEST_ACCOUNT_ID = "00000000-0000-0000-0000-000000000115";
+  const PROD_TEST_CONTACT_ID = "00000000-0000-0000-0000-000000000116";
+  const PROD_TEST_LEAD_ID = "00000000-0000-0000-0000-000000000117";
+
+  await db.insert(schema.accounts).values({
+    id: PROD_TEST_ACCOUNT_ID,
+    tenantId: PROD_TENANT_ID,
+    workspaceId: PROD_WORKSPACE_ID,
+    name: "Test Co",
+    domain: "test.local",
+    website: "https://test.local",
+    industry: "IT",
+    city: "Bangalore",
+    employees: "50",
+    giftScore: 75,
+    giftBudget: "₹1–2L",
+    intelNotes: "Test account for email outreach testing.",
+    dataSource: "sample",
+  }).onConflictDoNothing();
+
+  await db.insert(schema.contacts).values({
+    id: PROD_TEST_CONTACT_ID,
+    tenantId: PROD_TENANT_ID,
+    workspaceId: PROD_WORKSPACE_ID,
+    accountId: PROD_TEST_ACCOUNT_ID,
+    name: "Arun Murugesan",
+    firstName: "Arun",
+    lastName: "Murugesan",
+    title: "HR Manager",
+    department: "Human Resources",
+    seniority: "Manager",
+    email: "arun.jpeg@gmail.com",
+    emailStatus: "verified",
+    bio: "Test contact for SMTP and outreach email testing (Arun Murugesan).",
+    isKeyDM: true,
+    matchScore: 80,
+    engagementSignals: ["Test lead for email verification"],
+    dataSource: "sample",
+  }).onConflictDoNothing();
+
+  await db.insert(schema.leads).values({
+    id: PROD_TEST_LEAD_ID,
+    tenantId: PROD_TENANT_ID,
+    workspaceId: PROD_WORKSPACE_ID,
+    contactId: PROD_TEST_CONTACT_ID,
+    accountId: PROD_TEST_ACCOUNT_ID,
+    status: "scouted",
+    score: 80,
+    scoreGrade: "B",
+    scoreTrend: "Steady",
+    estimatedValue: "₹1,50,000",
+    leadSource: "manual",
+    rating: "Warm",
+    owner: "ISH Cluster Mgr",
+    tags: ["Lead", "Test"],
+    researcherEligible: true,
+    isPinned: true,
+  }).onConflictDoNothing();
+
+  const existingProdTestFunnel = await db.query.yieldFunnel.findFirst({
+    where: eq(schema.yieldFunnel.leadId, PROD_TEST_LEAD_ID),
+  });
+  if (!existingProdTestFunnel) {
+    await db.insert(schema.yieldFunnel).values({
+      leadId: PROD_TEST_LEAD_ID,
+      stage: "scouted",
+      metadata: { source: "test_seed", note: "Arun Murugesan test lead" },
+    });
+  }
+
   console.log("Seed complete.");
   console.log("Sample lead:", SAMPLE_LEAD_ID, "— Rajan Nair @ Bosch India");
   console.log("Test lead:", TEST_LEAD_LEAD_ID, "— Arun M (arun.jpeg@gmail.com) @ Test Co");
+  console.log("Prod test lead:", PROD_TEST_LEAD_ID, "— Arun M on tenant", PROD_TENANT_ID);
 }
 
 seed().catch(console.error);
