@@ -7,35 +7,20 @@ import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outrea
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import {
   scoreSpamMeter,
-  getDeliverabilityIssues,
   deliverabilityVerdict,
   DELIVERABILITY_PASS_THRESHOLD,
+  RUBRIC_PASS_THRESHOLD,
+  scoreRubric,
+  scoreRubricTotal,
+  getCombinedRevisionIssues,
 } from "@/lib/agents/writer-scoring";
 import { fetchRecentSubjectsForWorkspace } from "@/lib/email/recent-subjects";
 import { getAntiSpamWritingRules, getRevisionInstruction } from "@/lib/email/content-rules-prompt";
+import { getWriterTonePersona, getWriterFewShotExample } from "@/lib/agents/writer-tone";
 
-const PROMPT_VERSION = "v2.1-anti-spam";
+const PROMPT_VERSION = "v2.3-tone-persona";
 const MAX_REVISIONS = 2;
 
-function buildFewShot(brandName: string, senderFirstName: string) {
-  return `
----
-GOOD EXAMPLE (follow this pattern):
-Subject A: Diwali hampers for TechCorp in Bangalore
-Subject B: Quick note for Priya at TechCorp
-Body:
-Hi Priya,
-
-I noticed TechCorp has been growing its Bangalore tech campus. With Diwali a few weeks out, we have been curating mithai and dry-fruit hampers for IT teams in the city.
-
-Would a 15-minute call this week work to share a few options? No worries if the timing is off.
-
-${senderFirstName}
-Partnerships, ${brandName}
-
----
-`;
-}
 
 export type WriterOptions = {
   outreachTemplate?: OutreachTemplateId;
@@ -83,7 +68,14 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const employees = account.employees ?? "100+";
   const isFollowUp = !!options?.followUpMode;
   const template = getOutreachTemplate(options?.followUpMode ?? options?.outreachTemplate);
-  const fewShot = buildFewShot(brandConfig.brandName, senderFirstName);
+  const tonePersona = getWriterTonePersona(brandConfig);
+  const fewShot = getWriterFewShotExample(
+    brandConfig.brandSlug,
+    brandConfig.brandName,
+    senderFirstName,
+    contactFirstName,
+    account.name,
+  );
 
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);
   const hasVerifiedEmployeeCount = Boolean(account.employees?.trim() && account.employees !== "100+");
@@ -96,6 +88,8 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   });
 
   const toneRules = `
+${tonePersona}
+
 - Open with "Hi ${contactFirstName}," (never "Dear")
 - Write as ${brandConfig.brandName}: ${brandConfig.productSummary}
 - Subject A: short, includes company name; never use em dashes (—) or " - Company" suffix
@@ -104,7 +98,8 @@ ${antiSpamRules}
 `;
 
   const systemPrompt = isFollowUp
-    ? `You are ${brandConfig.brandName}'s outreach writer. Write short, warm, personalised follow-up emails.
+    ? `You are ${brandConfig.brandName}'s outreach writer. Write short, friendly but professional follow-up emails. Not salesy.
+${options?.followUpMode === "follow_up" ? "Email 2: add NEW value not in Email 1. Never just following up." : "Email 3 (breakup): short, no-pressure, leave the door open."}
 Rules:
 ${rules}
 ${toneRules}
@@ -117,7 +112,8 @@ Output ONLY valid JSON:
   "outreachGoal": "one sentence",
   "templateVariant": "${options?.followUpMode}"
 }`
-    : `You are ${brandConfig.brandName}'s outreach writer.
+    : `You are ${brandConfig.brandName}'s outreach writer. Friendly but professional. Not salesy.
+Email 1: hook + single soft CTA. No pitch dump.
 Rules:
 ${rules}
 ${toneRules}
@@ -197,7 +193,15 @@ Sign off with "${senderFirstName}"`;
       prompt:
         attempt === 0
           ? userPrompt
-          : `${userPrompt}\n\n${getRevisionInstruction(await getDeliverabilityIssues(emailBody, subjectA, delivOpts))}`,
+          : `${userPrompt}\n\n${getRevisionInstruction(await getCombinedRevisionIssues(emailBody, subjectA, {
+              subjectA,
+              emailBody,
+              contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
+              account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
+              deliverabilityOptions: delivOpts,
+              giftingHook,
+              intelNotes: account.intelNotes,
+            }))}`,
       maxTokens: isFollowUp ? 512 : 1024,
     });
 
@@ -213,7 +217,7 @@ Sign off with "${senderFirstName}"`;
     } catch {
       parsed = {
         subjectA: `Diwali gifting for ${account.name}`,
-        subjectB: `Quick question for ${contactFirstName}`,
+        subjectB: `Diwali note for ${contactFirstName}`,
         emailBody: raw.slice(0, 600),
         outreachGoal: template.label,
       };
@@ -229,8 +233,20 @@ Sign off with "${senderFirstName}"`;
     const spamResult = scoreSpamMeter(emailBody, subjectA, delivOpts);
     const delivScore = spamResult.inboxScore;
 
-    if (delivScore >= DELIVERABILITY_PASS_THRESHOLD || attempt === maxRevisions) {
-      if (attempt === maxRevisions && delivScore < DELIVERABILITY_PASS_THRESHOLD) {
+    const rubric = await scoreRubric({
+      subjectA,
+      emailBody,
+      contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
+      account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
+      deliverabilityOptions: delivOpts,
+      giftingHook,
+      intelNotes: account.intelNotes,
+    });
+    const rubricTotal = scoreRubricTotal(rubric);
+    const passesQuality = delivScore >= DELIVERABILITY_PASS_THRESHOLD && rubricTotal >= RUBRIC_PASS_THRESHOLD;
+
+    if (passesQuality || attempt === maxRevisions) {
+      if (attempt === maxRevisions && !passesQuality) {
         revisionTimeout = true;
       }
 

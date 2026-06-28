@@ -295,7 +295,7 @@ export const leadOutreach = pgTable("lead_outreach", {
 // ─── Outreach Edit Messages (chat history) ───────────────────────────────────
 export const outreachEditMessages = pgTable("outreach_edit_messages", {
   id:             uuid("id").defaultRandom().primaryKey(),
-  leadOutreachId: uuid("lead_outreach_id").notNull().references(() => leadOutreach.id),
+  leadOutreachId: uuid("lead_outreach_id").notNull().references(() => leadOutreach.id, { onDelete: "cascade" }),
   role:           text("role").notNull(),
   content:        text("content").notNull(),
   createdAt:      timestamp("created_at").defaultNow().notNull(),
@@ -304,7 +304,7 @@ export const outreachEditMessages = pgTable("outreach_edit_messages", {
 // ─── Outreach Approvals ───────────────────────────────────────────────────────
 export const outreachApprovals = pgTable("outreach_approvals", {
   id:            uuid("id").defaultRandom().primaryKey(),
-  leadOutreachId: uuid("lead_outreach_id").notNull().references(() => leadOutreach.id),
+  leadOutreachId: uuid("lead_outreach_id").notNull().references(() => leadOutreach.id, { onDelete: "cascade" }),
   leadId:        uuid("lead_id").notNull().references(() => leads.id),
   channel:       text("channel").notNull(),
   status:        approvalStatus("status").notNull().default("pending"),
@@ -321,7 +321,7 @@ export const outreachApprovals = pgTable("outreach_approvals", {
 export const outreachSchedule = pgTable("outreach_schedule", {
   id:            uuid("id").defaultRandom().primaryKey(),
   leadId:        uuid("lead_id").notNull().references(() => leads.id),
-  approvalId:    uuid("approval_id").references(() => outreachApprovals.id),
+  approvalId:    uuid("approval_id").references(() => outreachApprovals.id, { onDelete: "set null" }),
   channel:       text("channel").notNull(),
   sequenceDay:   integer("sequence_day").notNull(),
   scheduledFor:  timestamp("scheduled_for").notNull(),
@@ -336,7 +336,7 @@ export const outreachSchedule = pgTable("outreach_schedule", {
   emailKind:     text("email_kind"),
   subjectSent:   text("subject_sent"),
   bodySnippet:   text("body_snippet"),
-  draftLeadOutreachId: uuid("draft_lead_outreach_id").references(() => leadOutreach.id),
+  draftLeadOutreachId: uuid("draft_lead_outreach_id").references(() => leadOutreach.id, { onDelete: "set null" }),
   trackingToken: text("tracking_token"),
   createdAt:     timestamp("created_at").defaultNow().notNull(),
 });

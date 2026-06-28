@@ -12,8 +12,8 @@ type Props = {
 
 const DEFAULT_HINTS = [
   "Locking in your subject line",
-  "Scheduling Day 3 & Day 7 follow-ups",
-  "Handing off to Email Outreach",
+  "Scheduling follow-ups on your cadence",
+  "Starting your outreach sequence",
 ];
 
 export function SendingLoader({ contactName, contactEmail, className }: Props) {
@@ -21,8 +21,8 @@ export function SendingLoader({ contactName, contactEmail, className }: Props) {
 
   const hints = contactEmail
     ? DEFAULT_HINTS.map((h) =>
-        h === "Handing off to Email Outreach"
-          ? `Routing to ${contactEmail}`
+        h === "Starting your outreach sequence"
+          ? `Delivering to ${contactEmail}`
           : h,
       )
     : DEFAULT_HINTS;
@@ -86,7 +86,7 @@ export function SendingLoader({ contactName, contactEmail, className }: Props) {
 
       <p className="mt-4 flex items-center gap-1.5 text-[11px] font-medium text-ish-ink-soft">
         <Mail className="size-3 text-ish-ink-faint" />
-        Queuing for Email Outreach
+        Sequence started
       </p>
     </div>
   );

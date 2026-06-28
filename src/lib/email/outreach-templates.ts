@@ -27,9 +27,9 @@ export const OUTREACH_TEMPLATES = [
     id: "follow_up",
     label: "Follow-up Reminder",
     shortLabel: "Follow-up",
-    description: "Brief, warm check-in referencing the first email",
+    description: "Second email with new value, not a generic check-in",
     ctaInstruction:
-      "This is a brief follow-up. Reference that you reached out before. Ask if they had a chance to see the earlier note. Offer a sample or quick 10-minute call. Keep it under 80 words.",
+      "Email 2 of 3. Do NOT say 'just following up' or 'checking in'. Add ONE new value angle not in Email 1: a proof point, case study, seasonal deadline, or new detail from company intel. One soft CTA. Max 3 sentences in the pitch body.",
   },
   {
     id: "final_reminder",

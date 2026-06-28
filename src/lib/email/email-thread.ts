@@ -312,16 +312,18 @@ function buildBarNodes(params: {
       const body = row ? bodyForScheduleRow(row, outreachBodiesByApprovalId) : undefined;
       const days = row && isScheduled ? daysUntil(row.scheduledFor) : undefined;
 
+      const linkedDraft = sortedDrafts.find((d) => d.sequencePosition === emailNum);
       nodes.push({
         id: `e${emailNum}`,
         label: isSent ? `E${emailNum}` : `E${emailNum} (${days ?? day}D)`,
         state: isSent ? "done" : isScheduled ? "scheduled" : "upcoming",
         kind: isSent ? "sent" : "scheduled",
         scheduleId: row?.id,
+        outreachId: row?.draftLeadOutreachId ?? linkedDraft?.id,
         daysUntil: days,
-        subject: row?.subjectSent ?? undefined,
-        body: clip(body),
-        snippet: preview(body),
+        subject: row?.subjectSent ?? linkedDraft?.subjectA ?? undefined,
+        body: clip(body ?? linkedDraft?.emailBody),
+        snippet: preview(body ?? linkedDraft?.emailBody),
         at: row?.sentAt?.toISOString() ?? (isScheduled ? row?.scheduledFor?.toISOString() : undefined),
       });
     }

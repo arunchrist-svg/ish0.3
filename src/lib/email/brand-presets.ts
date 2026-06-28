@@ -21,7 +21,7 @@ export const BRAND_PRESETS: Record<Exclude<BrandSlug, "custom">, BrandConfig> = 
     productSummary:
       "Premium pure-ghee mithai, dry fruit hampers, and curated Diwali gift boxes. Bulk pricing from ₹500/person for 200+ employees. Custom-branded boxes and pan-India delivery.",
     buyerPersonas: ["HR Director", "HR Manager", "Admin Head", "Procurement Manager"],
-    toneNotes: "Warm, festive, Bangalore-rooted. Emphasise sampling and Diwali timing.",
+    toneNotes: "Festive but plain. Focus on mithai, hampers, and tasting samples. Mention Diwali timing without hype. Not salesy.",
   },
   prestige: {
     brandSlug: "prestige",
@@ -30,7 +30,7 @@ export const BRAND_PRESETS: Record<Exclude<BrandSlug, "custom">, BrandConfig> = 
     productSummary:
       "Mixer grinders, induction cooktops, pressure cookers, and kitchen appliance bundles for corporate rewards. Volume pricing for 100+ units. Pan-India warranty and service network.",
     buyerPersonas: ["HR Director", "Procurement Manager", "Admin Head", "CEO at SMBs"],
-    toneNotes: "Professional, value-focused. Emphasise durability, warranty, and bulk pricing.",
+    toneNotes: "Practical and direct. Focus on appliances, employee rewards, warranty, and bulk value. Not flashy or promotional.",
   },
 };
 

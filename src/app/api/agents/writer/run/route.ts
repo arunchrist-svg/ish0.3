@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runWriter } from "@/lib/agents/writer";
-import { runWriterSequence } from "@/lib/agents/writer-sequence";
+import { runWriterSequence, regenerateSequenceStep } from "@/lib/agents/writer-sequence";
 import { db, leadOutreach, leads } from "@/db";
 import { eq } from "drizzle-orm";
 import { friendlyLLMError } from "@/lib/llm";
@@ -16,12 +16,26 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadId, outreachTemplate, mode } = await req.json();
+    const { leadId, outreachTemplate, mode, sequencePosition } = await req.json();
     if (!leadId) return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
     const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
     if (!lead || lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+
+    if (mode === "single" && sequencePosition && [2, 3].includes(sequencePosition)) {
+      await assertCredits(ctx.tenantId, "writer.draft", 1);
+      const template = getOutreachTemplate(outreachTemplate as OutreachTemplateId | undefined);
+      const outreachId = await regenerateSequenceStep(leadId, sequencePosition as 2 | 3, {
+        outreachTemplate: template.id,
+      });
+      await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
+      void checkLowBalanceAlerts(ctx.tenantId);
+      const draft = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
+      if (!draft) return NextResponse.json({ error: "Draft not found after write" }, { status: 500 });
+      return NextResponse.json({ draft: toWriterDraft(draft, { sequencePosition: draft.sequencePosition ?? undefined }) });
     }
 
     const template = getOutreachTemplate(outreachTemplate as OutreachTemplateId | undefined);

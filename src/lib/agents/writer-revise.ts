@@ -1,21 +1,27 @@
 import { callLLM } from "@/lib/llm";
-import { db, leadOutreach, outreachEditMessages, leads, contacts, accounts } from "@/db";
+import { db, leadOutreach, outreachEditMessages, leads, contacts, accounts, leadResearch } from "@/db";
 import { eq, asc } from "drizzle-orm";
 import {
-  scoreDeliverability,
+  scoreSpamMeter,
   deliverabilityVerdict,
+  DELIVERABILITY_PASS_THRESHOLD,
+  RUBRIC_PASS_THRESHOLD,
+  scoreRubric,
+  scoreRubricTotal,
+  getCombinedRevisionIssues,
 } from "@/lib/agents/writer-scoring";
 import { toWriterDraft, toEditMessage } from "@/lib/agents/writer-draft";
 import { getOutreachTemplate } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
-import { getAntiSpamWritingRules } from "@/lib/email/content-rules-prompt";
+import { getAntiSpamWritingRules, getRevisionInstruction } from "@/lib/email/content-rules-prompt";
+import { getWriterTonePersona } from "@/lib/agents/writer-tone";
 import {
   buildContentScoreImproveMessage,
   isContentScoreImproveRequest,
 } from "@/lib/email/content-score-fixes";
 
 const MAX_HISTORY_IN_PROMPT = 20;
+const MAX_REVISIONS = 1;
 
 function formatHistory(messages: { role: string; content: string }[]): string {
   if (messages.length === 0) return "(no prior edits)";
@@ -39,11 +45,17 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
 
   if (!lead) throw new Error(`Lead ${outreach.leadId} not found`);
 
+  const research = await db.query.leadResearch.findFirst({
+    where: eq(leadResearch.leadId, outreach.leadId),
+  });
+
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
   const senderFirstName = emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
+  const sequencePosition = outreach.sequencePosition ?? 1;
+  const brandConfig = emailConfig.brandConfig ?? { brandSlug: "ish" as const, brandName: emailConfig.fromName, vertical: "general", productSummary: "", buyerPersonas: [] };
   const template = getOutreachTemplate(outreach.templateVariant ?? undefined);
 
   const priorMessages = await db.query.outreachEditMessages.findMany({
@@ -51,14 +63,44 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     orderBy: [asc(outreachEditMessages.createdAt)],
   });
 
-  const systemPrompt = `You are ISH's outreach editor. Revise corporate gifting emails based on user feedback.
-Keep warm Indian B2B tone. Max 120 words. Open with "Hi {firstName},".
+  const delivOpts = {
+    emailStyle: emailConfig.emailStyle,
+    fromName: emailConfig.fromName,
+    contactFirstName,
+    sequencePosition,
+    account: {
+      name: account.name,
+      employees: account.employees,
+      industry: account.industry,
+      city: account.city,
+      enrichmentSource: contact.enrichmentSource,
+    },
+    contact: { firstName: contactFirstName, title: contact.title },
+    giftingHook: research?.giftingHook,
+  };
+
+  const rubricParams = {
+    contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
+    account: {
+      name: account.name,
+      industry: account.industry,
+      city: account.city,
+      employees: account.employees,
+    },
+    deliverabilityOptions: delivOpts,
+    giftingHook: research?.giftingHook,
+    intelNotes: account.intelNotes,
+  };
+
+  const systemPrompt = `You are ${brandConfig.brandName}'s outreach editor. Revise emails based on user feedback.
+${getWriterTonePersona(brandConfig)}
+Max 120 words. Open with "Hi {firstName},".
 ${getAntiSpamWritingRules({
-  sequencePosition: 1,
+  sequencePosition,
   senderFirstName,
   brandName: emailConfig.brandConfig?.brandName ?? emailConfig.fromName,
   emailStyle: emailConfig.emailStyle,
-  hasVerifiedEmployeeCount: Boolean(account.employees?.trim()),
+  hasVerifiedEmployeeCount: Boolean(account.employees?.trim() && account.employees !== "100+"),
 })}
 
 IMPORTANT:
@@ -75,32 +117,22 @@ Output ONLY valid JSON:
   "changeSummary": "one short sentence describing what you changed"
 }`;
 
-  const delivOpts = {
-    emailStyle: emailConfig.emailStyle,
-    fromName: emailConfig.fromName,
-    contactFirstName,
-    sequencePosition: 1,
-    account: {
-      name: account.name,
-      employees: account.employees,
-      industry: account.industry,
-      city: account.city,
-      enrichmentSource: contact.enrichmentSource,
-    },
-    contact: { firstName: contactFirstName, title: contact.title },
-  };
-
   let effectiveMessage = userMessage;
   if (isContentScoreImproveRequest(userMessage)) {
-    const currentSpam = scoreSpamMeter(
-      outreach.emailBody ?? "",
-      outreach.subjectA ?? "",
-      delivOpts,
-    );
-    effectiveMessage = buildContentScoreImproveMessage(currentSpam.factors, currentSpam.inboxScore);
+    const currentSpam = scoreSpamMeter(outreach.emailBody ?? "", outreach.subjectA ?? "", delivOpts);
+    const rubric = await scoreRubric({
+      subjectA: outreach.subjectA ?? "",
+      emailBody: outreach.emailBody ?? "",
+      ...rubricParams,
+    });
+    const rubricIssues = scoreRubricTotal(rubric) < RUBRIC_PASS_THRESHOLD
+      ? ` Also improve rubric score (currently ${scoreRubricTotal(rubric)}/100).`
+      : "";
+    effectiveMessage =
+      buildContentScoreImproveMessage(currentSpam.factors, currentSpam.inboxScore) + rubricIssues;
   }
 
-  const userPrompt = `Current draft:
+  const baseUserPrompt = `Current draft:
 Subject A: ${outreach.subjectA ?? ""}
 Subject B: ${outreach.subjectB ?? ""}
 Body:
@@ -115,33 +147,57 @@ ${formatHistory(priorMessages)}
 
 User instruction: ${effectiveMessage}
 
-Apply the instruction to the full draft above. Keep personalisation for ${contact.firstName ?? contact.name} and ${account.name}.
+Apply the instruction to the full draft above. Keep personalization for ${contact.firstName ?? contact.name} and ${account.name}.
 Return complete revised subjectA, subjectB, and emailBody reflecting every change requested.`;
 
-  const raw = await callLLM({
-    tier: "fast",
-    system: systemPrompt,
-    prompt: userPrompt,
-    maxTokens: 1024,
-  });
+  let subjectA = outreach.subjectA ?? "";
+  let subjectB = outreach.subjectB ?? "";
+  let emailBody = outreach.emailBody ?? "";
+  let changeSummary = "Updated draft per your feedback";
 
-  let parsed: {
-    subjectA?: string;
-    subjectB?: string;
-    emailBody?: string;
-    changeSummary?: string;
-  } = {};
+  for (let attempt = 0; attempt <= MAX_REVISIONS; attempt++) {
+    const raw = await callLLM({
+      tier: "fast",
+      system: systemPrompt,
+      prompt:
+        attempt === 0
+          ? baseUserPrompt
+          : `${baseUserPrompt}\n\n${getRevisionInstruction(
+              await getCombinedRevisionIssues(emailBody, subjectA, {
+                subjectA,
+                emailBody,
+                ...rubricParams,
+              }),
+            )}`,
+      maxTokens: 1024,
+    });
 
-  try {
-    parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-  } catch {
-    throw new Error("Could not parse revised draft from AI");
+    let parsed: {
+      subjectA?: string;
+      subjectB?: string;
+      emailBody?: string;
+      changeSummary?: string;
+    } = {};
+
+    try {
+      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    } catch {
+      throw new Error("Could not parse revised draft from AI");
+    }
+
+    subjectA = parsed.subjectA ?? subjectA;
+    subjectB = parsed.subjectB ?? subjectB;
+    emailBody = parsed.emailBody ?? emailBody;
+    changeSummary = parsed.changeSummary ?? changeSummary;
+
+    const spamResult = scoreSpamMeter(emailBody, subjectA, delivOpts);
+    const rubric = await scoreRubric({ subjectA, emailBody, ...rubricParams });
+    const passesQuality =
+      spamResult.inboxScore >= DELIVERABILITY_PASS_THRESHOLD &&
+      scoreRubricTotal(rubric) >= RUBRIC_PASS_THRESHOLD;
+
+    if (passesQuality || attempt === MAX_REVISIONS) break;
   }
-
-  const subjectA = parsed.subjectA ?? outreach.subjectA ?? "";
-  const subjectB = parsed.subjectB ?? outreach.subjectB ?? "";
-  const emailBody = parsed.emailBody ?? outreach.emailBody ?? "";
-  let changeSummary = parsed.changeSummary ?? "Updated draft per your feedback";
 
   const unchanged =
     subjectA === (outreach.subjectA ?? "") &&
@@ -152,8 +208,8 @@ Return complete revised subjectA, subjectB, and emailBody reflecting every chang
     changeSummary = "No visible changes applied. Try being more specific (e.g. change greeting to Hi Vikram).";
   }
 
-  const spamResult = scoreSpamMeter(emailBody, subjectA, delivOpts);
-  const delivScore = spamResult.inboxScore;
+  const finalSpam = scoreSpamMeter(emailBody, subjectA, delivOpts);
+  const delivScore = finalSpam.inboxScore;
   const revisionCount = (outreach.revisionCount ?? 0) + 1;
 
   const [updated] = await db

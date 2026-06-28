@@ -18,7 +18,9 @@
 - 4–6 week lead time before Diwali
 
 ## Outreach tone
+- Friendly but professional. Festive but plain. Not salesy.
 - Hi {firstName}, not Dear
-- Sign with sender's first name only
-- One question CTA (15-min call or sample address)
-- Max 120 words, 2–3 short paragraphs
+- Focus on mithai, hampers, Diwali timing, tasting samples
+- One soft question CTA (sample offer or quick note on options)
+- Sign with first name, role, company
+- Max 120 words, max 3 pitch sentences

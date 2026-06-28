@@ -32,9 +32,9 @@ async function main() {
     tenantId: TENANT_ID,
     workspaceId: WORKSPACE_ID,
     accountId: ACCOUNT_ID,
-    name: "Arun M",
+    name: "Arun",
     firstName: "Arun",
-    lastName: "M",
+    lastName: "",
     title: "HR Manager",
     department: "Human Resources",
     seniority: "Manager",
@@ -45,7 +45,16 @@ async function main() {
     matchScore: 82,
     engagementSignals: ["Test lead for email verification"],
     dataSource: "sample",
-  }).onConflictDoNothing();
+  }).onConflictDoUpdate({
+    target: contacts.id,
+    set: {
+      name: "Arun",
+      firstName: "Arun",
+      email: "arunchrist@gmail.com",
+      emailStatus: "verified",
+      updatedAt: new Date(),
+    },
+  });
 
   await db.insert(leads).values({
     id: LEAD_ID,
@@ -81,13 +90,13 @@ async function main() {
     await db.insert(yieldFunnel).values({
       leadId: LEAD_ID,
       stage: "researched",
-      metadata: { source: "test_seed", note: "Arun M arunchrist@gmail.com" },
+      metadata: { source: "test_seed", note: "Arun arunchrist@gmail.com demo lead" },
     });
   }
 
   console.log("Lead created:");
   console.log("  ID:", LEAD_ID);
-  console.log("  Name: Arun M");
+  console.log("  Name: Arun");
   console.log("  Email: arunchrist@gmail.com");
   console.log("  Company: Christ Test Co");
   console.log("  Status: researched (Contact Ready)");

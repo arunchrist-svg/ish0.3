@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
 import { RecordHeader } from "@/components/sales-accelerator/record-header";
@@ -93,10 +94,14 @@ function toQueueItem(lead: LeadDetailRecord) {
 const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"] as const;
 
 export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
   const [lead, setLead] = useState<LeadDetailRecord | null>(initialLead ?? null);
   const [loading, setLoading] = useState(!initialLead);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>("Summary");
+  const [activeTab, setActiveTab] = useState<string>(
+    tabFromUrl === "email" ? "Email" : "Summary",
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load(opts?: { silent?: boolean }) {
@@ -161,6 +166,10 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
     );
   }
 
+
+  useEffect(() => {
+    if (tabFromUrl === "email") setActiveTab("Email");
+  }, [tabFromUrl, leadId]);
   useEffect(() => {
     if (initialLead?.id === leadId) {
       setLead(initialLead);

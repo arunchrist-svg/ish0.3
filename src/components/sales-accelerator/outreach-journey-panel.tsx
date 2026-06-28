@@ -8,7 +8,7 @@ import type { BarNode, EmailThread } from "@/lib/api-client";
 type Props = {
   thread?: EmailThread;
   statusSubtitle: string;
-  toolbar?: ReactNode;
+  processActions?: ReactNode;
   selectedNodeId?: string;
   onNodeSelect?: (nodeId: string) => void;
   onDraftReply?: () => void;
@@ -70,12 +70,7 @@ function BarStepper({
               )}
             </button>
             {i < nodes.length - 1 && (
-              <div
-                className={cn(
-                  "h-px w-3 rounded-full",
-                  isDone ? "bg-ish-stratus-blue/35" : "bg-ish-border",
-                )}
-              />
+              <div className={cn("h-px w-3 rounded-full", isDone ? "bg-ish-stratus-blue/35" : "bg-ish-border")} />
             )}
           </div>
         );
@@ -89,9 +84,7 @@ function NodeDetailPanel({ node }: { node: BarNode }) {
 
   return (
     <div className="mt-3 rounded-[16px] border border-ish-border/60 bg-ish-canvas/30 px-4 py-3">
-      {node.subject && (
-        <p className="text-[12px] font-semibold text-ish-ink">{node.subject}</p>
-      )}
+      {node.subject && <p className="text-[12px] font-semibold text-ish-ink">{node.subject}</p>}
       {(node.body || node.snippet) && (
         <p className="mt-1.5 whitespace-pre-wrap text-[12px] leading-relaxed text-ish-ink-soft">
           {node.body ?? node.snippet}
@@ -99,12 +92,7 @@ function NodeDetailPanel({ node }: { node: BarNode }) {
       )}
       {node.at && (
         <p className="mt-2 text-[10px] text-ish-ink-faint">
-          {new Date(node.at).toLocaleString("en-IN", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {new Date(node.at).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         </p>
       )}
     </div>
@@ -114,7 +102,7 @@ function NodeDetailPanel({ node }: { node: BarNode }) {
 export function OutreachJourneyPanel({
   thread,
   statusSubtitle,
-  toolbar,
+  processActions,
   selectedNodeId,
   onNodeSelect,
   onDraftReply,
@@ -139,38 +127,36 @@ export function OutreachJourneyPanel({
   return (
     <div className="mb-4">
       <div className="ish-record-card overflow-hidden rounded-[20px] border border-ish-border/60 bg-white shadow-[var(--shadow-ish-sm)]">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
-          <div className="flex min-w-0 shrink-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-3 overflow-x-auto px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex shrink-0 items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-full bg-ish-green-soft">
               <Mail className="size-3.5 text-ish-stratus-blue" />
             </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-bold leading-tight text-ish-ink">Email Outreach</div>
-              <div className="truncate text-[10px] text-ish-ink-faint">{statusSubtitle}</div>
+            <div className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
+              <span className="text-[13px] font-bold leading-none text-ish-ink">Outreach Queue</span>
+              <span className="text-[10px] text-ish-ink-faint">· {statusSubtitle}</span>
             </div>
           </div>
 
           {showBar ? (
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              {thread.threadRootSubject && (
-                <span className="hidden rounded-full border border-ish-stratus-blue/20 bg-ish-green-soft/60 px-2 py-0.5 text-[10px] font-semibold text-ish-stratus-blue sm:inline">
-                  {thread.threadRootSubject}
-                </span>
-              )}
-              <BarStepper
-                nodes={thread.barNodes}
-                selectedNodeId={activeId}
-                onNodeSelect={onNodeSelect}
-                onDraftReply={onDraftReply}
-                draftReplyLoading={draftReplyLoading}
-              />
-            </div>
+            <>
+              <div className="hidden h-5 w-px shrink-0 bg-ish-border/70 sm:block" aria-hidden />
+              <div className="shrink-0">
+                <BarStepper
+                  nodes={thread.barNodes}
+                  selectedNodeId={activeId}
+                  onNodeSelect={onNodeSelect}
+                  onDraftReply={onDraftReply}
+                  draftReplyLoading={draftReplyLoading}
+                />
+              </div>
+            </>
           ) : null}
 
-          {toolbar ? (
-            <div className={cn("flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1", !showBar && "ml-auto flex-1")}>
-              {toolbar}
-            </div>
+          {processActions ? (
+            <>
+              <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">{processActions}</div>
+            </>
           ) : null}
         </div>
 

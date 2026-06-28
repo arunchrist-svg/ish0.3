@@ -19,6 +19,7 @@ type NavItemEntry = {
   label: string;
   href?: string;
   key: string;
+  badge?: number;
 };
 
 const mainNav: NavItemEntry[] = [
@@ -29,7 +30,7 @@ const mainNav: NavItemEntry[] = [
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
   { icon: Rocket, label: "Lead Accelerator", href: "/leads", key: "lead-accelerator" },
-  { icon: Mail, label: "Email", href: "/email", key: "email" },
+  { icon: Mail, label: "Outreach", href: "/email", key: "email" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
 ];
 
@@ -106,13 +107,21 @@ function NavItemRow({
       {!collapsed && (
         <span
           className={cn(
-            "transition-[font-weight,opacity,width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+            "flex min-w-0 flex-1 items-center justify-between gap-2 transition-[font-weight,opacity,width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
             highlighted ? "font-semibold" : "font-medium",
           )}
         >
-          {label}
+          <span className="truncate">{label}</span>
+          {item.badge != null && item.badge > 0 ? (
+            <span className="shrink-0 rounded-full bg-ish-stratus-salmon px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-white">
+              {item.badge > 99 ? "99+" : item.badge}
+            </span>
+          ) : null}
         </span>
       )}
+      {collapsed && item.badge != null && item.badge > 0 ? (
+        <span className="absolute right-1 top-1 size-2 rounded-full bg-ish-stratus-salmon ring-2 ring-white" aria-hidden />
+      ) : null}
     </>
   );
 
@@ -123,7 +132,7 @@ function NavItemRow({
         href={href}
         title={collapsed ? label : undefined}
         onClick={() => onNavigate(key)}
-        className={className}
+        className={cn(className, item.badge ? "relative" : undefined)}
       >
         {content}
       </Link>
@@ -140,6 +149,17 @@ function NavItemRow({
 export function SideNav() {
   const pathname = usePathname();
   const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const [outreachBadge, setOutreachBadge] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/email/overview")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.stats) return;
+        setOutreachBadge((data.stats.needsReview ?? 0) + (data.stats.replies ?? 0));
+      })
+      .catch(() => {});
+  }, [pathname]);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -220,7 +240,7 @@ export function SideNav() {
               {section.items.map((item) => (
                 <NavItemRow
                   key={item.key}
-                  item={item}
+                  item={item.key === "email" ? { ...item, badge: outreachBadge } : item}
                   pathname={pathname}
                   pendingKey={pendingKey}
                   collapsed={collapsed}

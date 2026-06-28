@@ -277,6 +277,16 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
           placeholder="What you sell and key pricing"
           showDivider
         />
+        <SettingsTextRow
+          label="Writing style"
+          desc="How Writer should sound for your brand (tone, vocabulary, angles)"
+          value={config.brandConfig?.toneNotes ?? ""}
+          onChange={(v) =>
+            onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), toneNotes: v })
+          }
+          placeholder="e.g. Festive but plain. Focus on hampers and sampling."
+          showDivider
+        />
       </SettingsGroup>
 
       <SettingsGroup title="Inbox style" footer="Primary inbox sends personal 1:1 emails. Marketing adds unsubscribe footer and may land in Promotions/Forums.">

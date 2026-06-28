@@ -233,7 +233,7 @@ function deriveUpNext(
     tasks.push({
       title: "Review & Approve Email",
       step: "Step 1 · Awaiting your approval",
-      desc: "Check the draft and approve or reject",
+      desc: "Review the draft and send to start your sequence",
       icon: "mail",
       active: true,
       primaryAction: "Approve",

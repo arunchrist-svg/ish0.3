@@ -293,7 +293,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
         <ActionCard
           title="Review email draft"
           step="Step 1 · Awaiting your approval"
-          desc="Check the draft and approve or reject"
+          desc="Review the draft and send to start your sequence"
           icon={Mail}
           primaryLabel="Review Email"
           onPrimary={onOpenEmailTab}

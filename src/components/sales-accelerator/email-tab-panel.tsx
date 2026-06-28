@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, FileText } from "lucide-react";
+import { ChevronDown, FileText, Sparkles } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { runWriterSequence, runReplyWriter, updateLeadStatus } from "@/lib/api-client";
+import { runWriterSequence, runReplyWriter, updateLeadStatus, regenerateSequenceStep } from "@/lib/api-client";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
@@ -15,7 +15,6 @@ import { WritingLoader } from "./writing-loader";
 import { OutreachApprovalCard } from "./outreach-approval-card";
 import { OutreachJourneyPanel } from "./outreach-journey-panel";
 import { SpamMeter } from "./spam-meter";
-import { SenderHealthMeter } from "./sender-health-meter";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -97,18 +96,36 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const canWrite = isContactReadyStage(lead.status) || lead.status === "draft_ready" || isReplyLead;
   const hasDraft = !!(resolvedDraft ?? draft ?? sequence.length);
   const activeTemplate = getOutreachTemplate(selectedTemplate);
-  const showComposeZone =
-    thread?.showComposeZone ??
-    (hasDraft && phase !== "reply_sent" && phase !== "complete");
+  const isEmptyCompose = canWrite && !hasDraft && !isReplyLead && (phase === "compose" || thread?.barMode === "hidden");
   const isEditableNode =
+    isEmptyCompose ||
     selectedNode?.kind === "draft" ||
     selectedNode?.kind === "reply_draft" ||
+    selectedNode?.kind === "scheduled" ||
     thread?.barMode === "drafts" ||
     (thread?.barMode === "reply" && isReplyDraft);
+  const showComposeZone =
+    isEditableNode ||
+    thread?.showComposeZone ||
+    (hasDraft && phase !== "reply_sent" && phase !== "complete");
+  const followUpPosition =
+    selectedNode?.kind === "scheduled" && selectedNode.id === "e2"
+      ? 2
+      : selectedNode?.kind === "scheduled" && selectedNode.id === "e3"
+        ? 3
+        : selectedNode?.kind === "draft" && selectedNode.id === "draft-2"
+          ? 2
+          : selectedNode?.kind === "draft" && selectedNode.id === "draft-3"
+            ? 3
+            : null;
+
   const showRegenerate =
     canWrite &&
     !isReplyLead &&
-    (phase === "compose" || thread?.barMode === "drafts" || thread?.barMode === "hidden");
+    (phase === "compose" ||
+      thread?.barMode === "drafts" ||
+      thread?.barMode === "hidden" ||
+      thread?.barMode === "sequence");
 
   const statusSubtitle =
     generating
@@ -139,6 +156,19 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         return;
       }
 
+      if (followUpPosition === 2 || followUpPosition === 3) {
+        setGeneratingLabel(`Regenerating Email ${followUpPosition}`);
+        const regen = await regenerateSequenceStep(lead.id, followUpPosition, {
+          outreachTemplate: selectedTemplate,
+        });
+        setActiveDraft(regen);
+        onDraftUpdated(regen);
+        setSelectedNodeId(followUpPosition === 2 ? "e2" : "e3");
+        onSilentRefresh();
+        toast.success(`Email ${followUpPosition} regenerated`);
+        return;
+      }
+
       const drafts = await runWriterSequence(lead.id, { outreachTemplate: selectedTemplate });
       setGeneratingLabel("Draft 3 of 3");
       const first = drafts[0];
@@ -146,7 +176,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       onDraftUpdated(first);
       setSelectedNodeId("draft-1");
       onSilentRefresh();
-      toast.success("3 drafts ready");
+      toast.success("3 drafts ready", {
+        action: {
+          label: "View queue",
+          onClick: () => window.location.assign("/email?tab=needs_review"),
+        },
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : isReplyLead ? "Reply draft failed" : "Email draft failed");
       console.error(e);
@@ -202,100 +237,107 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     }
   }
 
-  const toolbar = (
-    <>
-      {resolvedDraft && showComposeZone && isEditableNode && !generating ? (
-        <>
+  const regenerateLabel = generating
+    ? "Writing…"
+    : hasDraft
+      ? isReplyLead
+        ? "Regenerate reply"
+        : followUpPosition
+          ? `Regenerate E${followUpPosition}`
+          : "Regenerate all"
+      : "Write";
+
+  const showWriterControl = showRegenerate || (isReplyLead && phase !== "reply_sent");
+
+  const showProcessBar = (showComposeZone && isEditableNode && !generating) || (isEmptyCompose && !generating);
+
+  const processActions =
+    showProcessBar ? (
+      <>
+        {!isEmptyCompose && resolvedDraft ? (
           <SpamMeter
             inboxScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
             factors={contentQuality?.factors ?? []}
           />
-          <SenderHealthMeter />
-          <div className="hidden h-4 w-px shrink-0 bg-ish-border/80 sm:block" aria-hidden />
-          <div className="min-w-0 truncate text-[11px] text-ish-ink-soft">
-            To: <span className="font-semibold text-ish-ink">{lead.name ?? "Contact"}</span>
-            {lead.company ? ` · ${lead.company}` : ""}
-          </div>
-        </>
-      ) : null}
-      <div className="ml-auto flex flex-wrap items-center gap-x-2 gap-y-1">
-        {draftSaving ? <span className="shrink-0 text-[10px] text-ish-ink-faint">Saving…</span> : null}
-        {!isReplyLead && showRegenerate ? (
-          <DropdownMenu modal={false} open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
-            <DropdownMenuTrigger
-              disabled={!canWrite || generating}
-              className={cn(
-                "flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-ish-border bg-white px-2.5 text-[11px] font-semibold text-ish-ink outline-none",
-                "hover:bg-ish-canvas focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed disabled:opacity-40",
-              )}
-            >
-              <span className="text-[9px] font-bold uppercase tracking-widest text-ish-ink-faint">Template</span>
-              <span>{activeTemplate.shortLabel}</span>
-              <ChevronDown className="size-3 text-ish-ink-faint" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-[220px]">
-              <DropdownMenuRadioGroup
-                value={selectedTemplate}
-                onValueChange={(v) => {
-                  setSelectedTemplate(v as OutreachTemplateId);
-                  setTemplateMenuOpen(false);
-                }}
-              >
-                {OUTREACH_TEMPLATES.map((template) => (
-                  <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
-                    <div>
-                      <div className="font-semibold">{template.label}</div>
-                      <div className="text-[11px] text-ish-ink-faint">{template.description}</div>
-                    </div>
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
         ) : null}
-        {showRegenerate || (isReplyLead && phase !== "reply_sent") ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={!canWrite || generating}
-            className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
-            onClick={() => void handleGenerate()}
+        {showWriterControl ? (
+          <div
+            className={cn(
+              "inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-ish-border bg-white shadow-[var(--shadow-ish-sm)]",
+              (!canWrite || generating) && "opacity-40",
+            )}
           >
-            <FileText className="size-3" />
-            {generating ? "Writing…" : hasDraft ? (isReplyLead ? "Regenerate reply" : "Regenerate") : "Write"}
-          </Button>
-        ) : null}
-        {phase === "reply_sent" ? (
-          <>
-            <Button
+            {!isReplyLead && showRegenerate ? (
+              <DropdownMenu modal={false} open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
+                <DropdownMenuTrigger
+                  disabled={!canWrite || generating}
+                  className={cn(
+                    "flex h-full items-center gap-1 border-r border-ish-border/80 px-2.5 text-[11px] font-semibold text-ish-ink outline-none",
+                    "hover:bg-ish-canvas focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed",
+                  )}
+                >
+                  <span>{activeTemplate.shortLabel}</span>
+                  <ChevronDown className="size-3 text-ish-ink-faint" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-[220px]">
+                  <DropdownMenuRadioGroup
+                    value={selectedTemplate}
+                    onValueChange={(v) => {
+                      setSelectedTemplate(v as OutreachTemplateId);
+                      setTemplateMenuOpen(false);
+                    }}
+                  >
+                    {OUTREACH_TEMPLATES.map((template) => (
+                      <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
+                        <div>
+                          <div className="font-semibold">{template.label}</div>
+                          <div className="text-[11px] text-ish-ink-faint">{template.description}</div>
+                        </div>
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
-              disabled={advancing}
-              className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
-              onClick={() => void handleMarkTastingSent()}
+              disabled={!canWrite || generating}
+              onClick={() => void handleGenerate()}
+              className="flex h-full items-center gap-1.5 bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:cursor-not-allowed"
             >
-              {advancing ? "Updating…" : "Mark tasting sent"}
-            </Button>
-            <Link
-              href="/email"
-              className="inline-flex h-7 shrink-0 items-center rounded-full border border-ish-border bg-white px-3 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas"
-            >
-              View in Email Outreach
-            </Link>
-          </>
+              <FileText className="size-3" />
+              {regenerateLabel}
+            </button>
+          </div>
         ) : null}
-      </div>
-    </>
-  );
+      </>
+    ) : phase === "reply_sent" ? (
+      <>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={advancing}
+          className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
+          onClick={() => void handleMarkTastingSent()}
+        >
+          {advancing ? "Updating…" : "Mark tasting sent"}
+        </Button>
+        <Link
+          href="/email?tab=active"
+          className="inline-flex h-7 shrink-0 items-center rounded-full border border-ish-border bg-white px-3 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas"
+        >
+          View in Outreach Queue
+        </Link>
+      </>
+    ) : null;
 
   return (
     <div className="animate-ish-tab-in px-[22px] py-[18px]">
       <OutreachJourneyPanel
         thread={thread}
         statusSubtitle={statusSubtitle}
-        toolbar={toolbar}
+        processActions={processActions}
         selectedNodeId={selectedNodeId}
         onNodeSelect={handleNodeSelect}
         onDraftReply={() => void handleDraftReply()}
@@ -310,6 +352,26 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             sequenceLabel={generatingLabel}
           />
         </div>
+      ) : canWrite && !hasDraft && !generating ? (
+        <div className="rounded-[20px] border border-dashed border-ish-stratus-blue/30 bg-gradient-to-br from-ish-canvas/80 to-white px-6 py-10 text-center shadow-[var(--shadow-ish-sm)]">
+          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-ish-yellow-soft">
+            <Sparkles className="size-5 text-ish-ink" />
+          </div>
+          <p className="text-[15px] font-bold text-ish-ink">Start your outreach sequence</p>
+          <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
+            AI will write 3 emails for {lead.name ?? "this contact"} using the{" "}
+            <span className="font-semibold text-ish-ink">{activeTemplate.shortLabel}</span> template.
+          </p>
+          <button
+            type="button"
+            disabled={!canWrite || generating}
+            onClick={() => void handleGenerate()}
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            <Sparkles className="size-4" />
+            Write 3 emails
+          </button>
+        </div>
       ) : showComposeZone && isEditableNode && resolvedDraft ? (
         <div ref={composeRef}>
           <OutreachApprovalCard
@@ -317,6 +379,8 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             draft={resolvedDraft}
             leadId={lead.id}
             leadStatus={lead.status}
+            contactName={lead.name}
+            companyName={lead.company}
             contactEmail={lead.email}
             emailThread={thread}
             onDraftUpdated={(d) => {
@@ -327,6 +391,23 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             contentScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
             onSent={onSent ?? onSilentRefresh}
           />
+        </div>
+      ) : isEmptyCompose ? (
+        <div className="rounded-[20px] border border-dashed border-ish-stratus-blue/25 bg-ish-canvas/30 px-6 py-14 text-center shadow-[var(--shadow-ish-sm)]">
+          <p className="text-[15px] font-bold text-ish-ink">Ready to write outreach</p>
+          <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
+            AI will draft a 3-email sequence for {lead.name || "this contact"}. Pick a template above, then click Write.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canWrite || generating}
+            className="mt-5 h-auto rounded-full bg-ish-black px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
+            onClick={() => void handleGenerate()}
+          >
+            <FileText className="size-3.5" />
+            Write 3 emails
+          </Button>
         </div>
       ) : (phase === "reply_sent" || phase === "complete") && isReplyLead ? (
         <div className="flex justify-end pt-1">

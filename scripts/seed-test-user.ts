@@ -15,6 +15,9 @@ const TEST_CONTACT_ID = "00000000-0000-0000-0000-000000000111";
 const TEST_LEAD_DRAFT_ID = "00000000-0000-0000-0000-000000000112";
 const TEST_LEAD_REPLIED_ID = "00000000-0000-0000-0000-000000000113";
 const TEST_CONTACT_REPLIED_ID = "00000000-0000-0000-0000-000000000114";
+const TEST_ARUN_ACCOUNT_ID = "00000000-0000-0000-0000-000000000124";
+const TEST_ARUN_CONTACT_ID = "00000000-0000-0000-0000-000000000125";
+const TEST_ARUN_LEAD_ID = "00000000-0000-0000-0000-000000000126";
 
 const TEST_EMAIL = "test@ish.local";
 const TEST_PASSWORD = process.env.TEST_USER_PASSWORD ?? "Test-ISH-2026!";
@@ -250,9 +253,105 @@ async function main() {
     }
   }
 
+
+  await db
+    .insert(schema.accounts)
+    .values({
+      id: TEST_ARUN_ACCOUNT_ID,
+      tenantId: TEST_TENANT_ID,
+      workspaceId: TEST_WORKSPACE_ID,
+      name: "Christ Test Co",
+      domain: "christtest.local",
+      website: "https://christtest.local",
+      industry: "IT",
+      city: "Bangalore",
+      employees: "120",
+      giftScore: 78,
+      giftBudget: "₹1–2L",
+      intelNotes: "Demo account for outreach email testing (Arun).",
+      dataSource: "test",
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(schema.contacts)
+    .values({
+      id: TEST_ARUN_CONTACT_ID,
+      tenantId: TEST_TENANT_ID,
+      workspaceId: TEST_WORKSPACE_ID,
+      accountId: TEST_ARUN_ACCOUNT_ID,
+      name: "Arun",
+      firstName: "Arun",
+      lastName: "",
+      title: "HR Manager",
+      department: "Human Resources",
+      seniority: "Manager",
+      email: "arunchrist@gmail.com",
+      emailStatus: "verified",
+      bio: "Demo contact for email outreach (arunchrist@gmail.com).",
+      isKeyDM: true,
+      matchScore: 82,
+      engagementSignals: ["Demo lead for email verification"],
+      dataSource: "test",
+    })
+    .onConflictDoUpdate({
+      target: schema.contacts.id,
+      set: {
+        name: "Arun",
+        firstName: "Arun",
+        email: "arunchrist@gmail.com",
+        emailStatus: "verified",
+        updatedAt: new Date(),
+      },
+    });
+
+  await db
+    .insert(schema.leads)
+    .values({
+      id: TEST_ARUN_LEAD_ID,
+      tenantId: TEST_TENANT_ID,
+      workspaceId: TEST_WORKSPACE_ID,
+      contactId: TEST_ARUN_CONTACT_ID,
+      accountId: TEST_ARUN_ACCOUNT_ID,
+      campaignId: TEST_CAMPAIGN_ID,
+      status: "researched",
+      score: 82,
+      scoreGrade: "B",
+      scoreTrend: "Steady",
+      estimatedValue: "₹1,80,000",
+      leadSource: "manual",
+      rating: "Warm",
+      owner: "Test User",
+      tags: ["Lead", "Test", "Demo"],
+      researcherEligible: true,
+      isPinned: true,
+    })
+    .onConflictDoUpdate({
+      target: schema.leads.id,
+      set: {
+        status: "researched",
+        contactId: TEST_ARUN_CONTACT_ID,
+        accountId: TEST_ARUN_ACCOUNT_ID,
+        isPinned: true,
+        updatedAt: new Date(),
+      },
+    });
+
+  const existingArunFunnel = await db.query.yieldFunnel.findFirst({
+    where: eq(schema.yieldFunnel.leadId, TEST_ARUN_LEAD_ID),
+  });
+  if (!existingArunFunnel) {
+    await db.insert(schema.yieldFunnel).values({
+      leadId: TEST_ARUN_LEAD_ID,
+      stage: "researched",
+      metadata: { source: "test_seed", note: "Arun arunchrist@gmail.com demo lead" },
+    });
+  }
+
   console.log("Test user seeded:", TEST_EMAIL);
   console.log("Draft-ready lead:", TEST_LEAD_DRAFT_ID);
   console.log("Replied lead:", TEST_LEAD_REPLIED_ID);
+  console.log("Arun demo lead:", TEST_ARUN_LEAD_ID, "— arunchrist@gmail.com @ Christ Test Co");
   process.exit(0);
 }
 

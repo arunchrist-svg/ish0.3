@@ -219,6 +219,46 @@ export async function runWriterSequence(
   return data.drafts ?? [data.draft];
 }
 
+export async function regenerateSequenceStep(
+  leadId: string,
+  sequencePosition: 2 | 3,
+  options?: { outreachTemplate?: string },
+): Promise<WriterDraft> {
+  const data = await post<{ draft: WriterDraft }>("/api/agents/writer/run", {
+    leadId,
+    outreachTemplate: options?.outreachTemplate,
+    mode: "single",
+    sequencePosition,
+  });
+  return data.draft;
+}
+
+export type EmailOverviewData = {
+  cadenceDays: [number, number];
+  stats: {
+    totalSent: number;
+    opened: number;
+    replied: number;
+    dueToday: number;
+    total: number;
+    needsReview: number;
+    replies: number;
+  };
+  needsReview: import("@/app/api/email/overview/route").LeadEmailRow[];
+  replies: import("@/app/api/email/overview/route").LeadEmailRow[];
+  hot: import("@/app/api/email/overview/route").LeadEmailRow[];
+  active: import("@/app/api/email/overview/route").LeadEmailRow[];
+  done: import("@/app/api/email/overview/route").LeadEmailRow[];
+  draftReady: import("@/app/api/email/overview/route").LeadEmailRow[];
+  stopped: import("@/app/api/email/overview/route").LeadEmailRow[];
+};
+
+export async function fetchEmailOverview(): Promise<EmailOverviewData> {
+  const res = await fetch("/api/email/overview");
+  if (!res.ok) throw new Error("Failed to load outreach queue");
+  return res.json();
+}
+
 export async function runReplyWriter(leadId: string): Promise<WriterDraft> {
   const data = await post<{ draft: WriterDraft }>("/api/agents/writer/reply", { leadId });
   return data.draft;

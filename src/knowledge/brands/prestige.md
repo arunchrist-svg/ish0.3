@@ -17,7 +17,9 @@
 - GST invoice and vendor empanelment support
 
 ## Outreach tone
+- Friendly but professional. Practical, not flashy. Not salesy.
 - Hi {firstName}, not Dear
-- Sign with sender's first name only
-- CTA: quick call or share team size for quote
-- Max 120 words, practical not flashy
+- Focus on appliances, employee rewards, warranty, bulk pricing
+- One soft question CTA (quick note on bundle formats or team size for quote)
+- Sign with first name, role, company
+- Max 120 words, max 3 pitch sentences

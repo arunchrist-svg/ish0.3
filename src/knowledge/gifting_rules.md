@@ -37,14 +37,15 @@ Season window: Mid-October to November 15 (peak order period: Sep 15 – Oct 15)
 6. Retail chains (staff gifting)
 
 ## Outreach tone guidelines
-- Subject line: 6–8 words, include company name OR contact first name
-- Body: max 3 short paragraphs (100–150 words total)
-- Para 1: Hook — reference their industry/company size + Diwali timing
-- Para 2: Product/value proposition — specific SKU + per-person price range
-- Para 3: CTA — "Can we schedule a 15-min call this week?"
-- Sign-off: First name only (e.g. "Warm regards, Priya")
-- Avoid: buzzwords, jargon, generic opener ("Hope this email finds you well")
-- Avoid: multiple CTAs, lengthy copy, competitor mentions
+- Friendly but professional. Not salesy, no fluff, no people-pleasing.
+- Subject line: specific, under 50 characters, include company name OR contact first name
+- Body: max 3 sentences in pitch (excluding greeting and sign-off), under 120 words total
+- Para 1: Hook with one sourced detail (industry, company intel, or role)
+- Para 2: Plain product/value line tied to brand vertical (sweets or appliances per brand config)
+- Para 3: One low-friction question CTA (e.g. "Open to a quick note on options?")
+- Sign-off: First name, role, company (e.g. "Priya\nPartnerships, India Sweet House")
+- Avoid: buzzwords, hype, flattery, filler openers ("Hope this finds you well")
+- Avoid: multiple CTAs, hard meeting asks in email 1, competitor mentions
 
 ## Compliance
 - Include unsubscribe / opt-out line at footer of every email

@@ -3,9 +3,11 @@ import {
   scoreDeliverability,
   getDeliverabilityIssues,
   scoreRubric,
+  scoreRubricTotal,
   deliverabilityVerdict,
   DELIVERABILITY_PASS_THRESHOLD,
   RUBRIC_DIMENSIONS,
+  RUBRIC_PASS_THRESHOLD,
 } from "@/lib/agents/writer-scoring";
 
 const GOOD_BODY = `Hi Priya,
@@ -13,6 +15,8 @@ const GOOD_BODY = `Hi Priya,
 I noticed Test Corp India has been investing in employee engagement across Bangalore.
 
 We help IT companies with premium Diwali gifting for teams of 500+. Would a 15-minute call next week work to explore options for your team?
+
+No worries if the timing is off.
 
 Best regards`;
 
@@ -28,6 +32,17 @@ describe("AGENT-UNIT-001 deliverability scoring", () => {
     const score = await scoreDeliverability(spammy, "FREE OFFER");
     expect(score).toBeLessThan(DELIVERABILITY_PASS_THRESHOLD);
     expect(deliverabilityVerdict(score)).toBe("FAIL");
+  });
+
+  it("penalizes generic subject lines", async () => {
+    const score = await scoreDeliverability(GOOD_BODY, "Quick question");
+    expect(score).toBeLessThan(await scoreDeliverability(GOOD_BODY, "Diwali gifting for Test Corp"));
+  });
+
+  it("penalizes filler closings", async () => {
+    const withFiller = `${GOOD_BODY}\n\nLooking forward to hearing from you.`;
+    const score = await scoreDeliverability(withFiller, "Diwali gifting for Test Corp");
+    expect(score).toBeLessThan(await scoreDeliverability(GOOD_BODY, "Diwali gifting for Test Corp"));
   });
 
   it("penalizes very long emails", async () => {
@@ -55,12 +70,13 @@ describe("AGENT-UNIT-002 rubric scoring", () => {
       expect(rubric[dim]).toBeGreaterThan(0);
       expect(rubric[dim]).toBeLessThanOrEqual(25);
     }
+    expect(scoreRubricTotal(rubric)).toBeGreaterThan(70);
   });
 
-  it("scores generic email lower on personalisation", async () => {
+  it("scores generic email lower on personalization_depth", async () => {
     const generic = await scoreRubric({
       subjectA: "Hello",
-      emailBody: "We offer gifting services. Please reply.",
+      emailBody: "We offer gifting services. Please reply?",
       contact: { name: "Priya Sharma", firstName: "Priya" },
       account: { name: "Test Corp India" },
     });
@@ -70,6 +86,15 @@ describe("AGENT-UNIT-002 rubric scoring", () => {
       contact: { name: "Priya Sharma", firstName: "Priya", title: "HR Director" },
       account: { name: "Test Corp India", industry: "IT", employees: "500" },
     });
-    expect(tailored.personalisation).toBeGreaterThan(generic.personalisation);
+    expect(tailored.personalization_depth).toBeGreaterThan(generic.personalization_depth);
+  });
+
+  it("penalizes follow-up-only email 2 copy", async () => {
+    const followUpOnly = await scoreDeliverability(
+      "Hi Priya,\n\nJust following up on my last note. Did you get a chance to read it?\n\nThanks",
+      "Following up",
+      { sequencePosition: 2, contactFirstName: "Priya", account: { name: "Test Corp" } },
+    );
+    expect(followUpOnly).toBeLessThan(DELIVERABILITY_PASS_THRESHOLD);
   });
 });

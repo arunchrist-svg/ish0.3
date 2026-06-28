@@ -128,7 +128,7 @@ async function seed() {
     title: "HR Manager",
     department: "Human Resources",
     seniority: "Manager",
-    email: "arun.jpeg@gmail.com",
+    email: "arunchrist@gmail.com",
     emailStatus: "verified",
     bio: "Test contact for SMTP and outreach email testing (Arun Murugesan).",
     isKeyDM: true,
@@ -163,7 +163,7 @@ async function seed() {
     await db.insert(schema.yieldFunnel).values({
       leadId: TEST_LEAD_LEAD_ID,
       stage: "scouted",
-      metadata: { source: "test_seed", note: "Arun Murugesan test lead" },
+      metadata: { source: "test_seed", note: "Arun demo lead (arunchrist@gmail.com)" },
     });
   }
 
@@ -312,7 +312,7 @@ async function seed() {
     title: "HR Manager",
     department: "Human Resources",
     seniority: "Manager",
-    email: "arun.jpeg@gmail.com",
+    email: "arunchrist@gmail.com",
     emailStatus: "verified",
     bio: "Test contact for SMTP and outreach email testing (Arun Murugesan).",
     isKeyDM: true,
@@ -347,14 +347,14 @@ async function seed() {
     await db.insert(schema.yieldFunnel).values({
       leadId: PROD_TEST_LEAD_ID,
       stage: "scouted",
-      metadata: { source: "test_seed", note: "Arun Murugesan test lead" },
+      metadata: { source: "test_seed", note: "Arun demo lead (arunchrist@gmail.com)" },
     });
   }
 
   console.log("Seed complete.");
   console.log("Sample lead:", SAMPLE_LEAD_ID, "— Rajan Nair @ Bosch India");
-  console.log("Test lead:", TEST_LEAD_LEAD_ID, "— Arun M (arun.jpeg@gmail.com) @ Test Co");
-  console.log("Prod test lead:", PROD_TEST_LEAD_ID, "— Arun M on tenant", PROD_TENANT_ID);
+  console.log("Test lead:", TEST_LEAD_LEAD_ID, "— Arun (arunchrist@gmail.com) @ Test Co");
+  console.log("Prod test lead:", PROD_TEST_LEAD_ID, "— Arun on tenant", PROD_TENANT_ID);
 }
 
 seed().catch(console.error);

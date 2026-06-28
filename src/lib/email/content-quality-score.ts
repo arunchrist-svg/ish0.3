@@ -21,14 +21,37 @@ export type ContentQualityOptions = ContentRuleContext & {
 };
 
 const SPAM_WORDS = [
-  "free", "urgent", "guarantee", "100%", "act now", "limited time", "winner",
-  "click here", "buy now", "free offer", "special offer",
+  "free",
+  "urgent",
+  "guarantee",
+  "guaranteed",
+  "100%",
+  "act now",
+  "limited time",
+  "winner",
+  "click here",
+  "buy now",
+  "free offer",
+  "special offer",
+  "no pressure",
+  "complimentary",
 ];
+
+const GENERIC_SUBJECTS = ["following up", "quick question", "checking in", "just checking in"];
+
+const FILLER_CLOSINGS = ["looking forward to hearing from you", "looking forward to your reply"];
 
 function verdictFromScore(score: number): ContentQualityVerdict {
   if (score >= 80) return "SAFE";
   if (score >= 60) return "CAUTION";
   return "RISK";
+}
+
+function openingLine(body: string): string {
+  const firstBlock = body.trim().split(/\n\n+/)[0] ?? body.trim();
+  const lines = firstBlock.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (lines.length <= 1) return lines[0] ?? "";
+  return lines[1] ?? lines[0] ?? "";
 }
 
 export function scoreContentQuality(
@@ -39,6 +62,7 @@ export function scoreContentQuality(
   const factors: ContentFactor[] = [];
   let score = 100;
   const lower = (body + " " + subject).toLowerCase();
+  const subjectLower = subject.trim().toLowerCase();
   const emailStyle = options?.emailStyle ?? "primary";
   const wordCount = body.trim().split(/\s+/).filter(Boolean).length;
 
@@ -82,6 +106,39 @@ export function scoreContentQuality(
     }
   }
 
+  for (const phrase of GENERIC_SUBJECTS) {
+    if (subjectLower === phrase || subjectLower.startsWith(`${phrase} `) || subjectLower.includes(phrase)) {
+      score -= 12;
+      factors.push({ label: `generic subject: "${phrase}"`, delta: -12 });
+      break;
+    }
+  }
+
+  for (const phrase of FILLER_CLOSINGS) {
+    if (lower.includes(phrase)) {
+      score -= 8;
+      factors.push({ label: `filler closing: "${phrase}"`, delta: -8 });
+    }
+  }
+
+  const questionCount = (body.match(/\?/g) ?? []).length;
+  if (questionCount > 1) {
+    score -= 10;
+    factors.push({ label: "multiple questions in one email", delta: -10 });
+  }
+
+  const opener = openingLine(body);
+  const companyName = options?.account?.name?.trim();
+  if (/^i\s/i.test(opener) || (companyName && new RegExp(`^${companyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i").test(opener))) {
+    score -= 8;
+    factors.push({ label: 'opening line starts with "I" or company name', delta: -8 });
+  }
+
+  if (subject.length > 50) {
+    score -= 5;
+    factors.push({ label: "subject line over 50 characters", delta: -5 });
+  }
+
   if (wordCount > 150) {
     score -= 10;
     factors.push({ label: "too long (>150 words)", delta: -10 });
@@ -93,11 +150,6 @@ export function scoreContentQuality(
   if (!body.includes("?")) {
     score -= 5;
     factors.push({ label: "no question CTA", delta: -5 });
-  }
-
-  if (subject.length > 60) {
-    score -= 8;
-    factors.push({ label: "long subject line", delta: -8 });
   }
 
   if (body.includes("—") || subject.includes("—")) {

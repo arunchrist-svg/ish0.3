@@ -2,6 +2,7 @@ import { db, leadOutreach, leads, yieldFunnel } from "@/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { runWriter } from "@/lib/agents/writer";
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 
 export type WriterSequenceOptions = {
   outreachTemplate?: OutreachTemplateId;
@@ -14,14 +15,12 @@ export async function runWriterSequence(
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
   if (!lead) throw new Error(`Lead ${leadId} not found`);
 
-  await db
-    .delete(leadOutreach)
-    .where(
-      and(
-        eq(leadOutreach.leadId, leadId),
-        inArray(leadOutreach.sequencePosition, [1, 2, 3]),
-      ),
-    );
+  await deleteLeadOutreachWhere(
+    and(
+      eq(leadOutreach.leadId, leadId),
+      inArray(leadOutreach.sequencePosition, [1, 2, 3]),
+    ),
+  );
 
   const template = options?.outreachTemplate;
 
@@ -59,4 +58,31 @@ export async function loadSequenceDrafts(leadId: string) {
     where: and(eq(leadOutreach.leadId, leadId), isNotNull(leadOutreach.sequencePosition)),
     orderBy: (t, { asc }) => [asc(t.sequencePosition)],
   });
+}
+
+export async function regenerateSequenceStep(
+  leadId: string,
+  sequencePosition: 2 | 3,
+  options?: WriterSequenceOptions,
+): Promise<string> {
+  const drafts = await loadSequenceDrafts(leadId);
+  const draft1 = drafts.find((d) => d.sequencePosition === 1);
+  if (!draft1?.emailBody) {
+    throw new Error("Write the full sequence first (Email 1 is required)");
+  }
+
+  await deleteLeadOutreachWhere(
+    and(eq(leadOutreach.leadId, leadId), eq(leadOutreach.sequencePosition, sequencePosition)),
+  );
+
+  const followUpMode = sequencePosition === 2 ? "follow_up" : "final_reminder";
+  const id = await runWriter(leadId, {
+    followUpMode,
+    originalEmailBody: draft1.emailBody,
+    sequencePosition,
+    skipStatusUpdate: true,
+    outreachTemplate: options?.outreachTemplate,
+  });
+
+  return id;
 }

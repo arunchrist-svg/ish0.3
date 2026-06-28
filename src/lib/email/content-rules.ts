@@ -212,5 +212,54 @@ export function applyContentRules(
     });
   }
 
+
+  const followUpOnly = [
+    "just following up",
+    "wanted to follow up",
+    "checking in",
+    "following up on my",
+    "circling back",
+  ];
+  if (sequencePosition === 2) {
+    const matchedFollowUp = followUpOnly.find((p) => lowerBody.includes(p));
+    const hasNewValue =
+      Boolean(ctx.giftingHook && lowerBody.includes(ctx.giftingHook.toLowerCase().slice(0, 12))) ||
+      Boolean(account?.industry && lowerBody.includes(account.industry.toLowerCase())) ||
+      /case study|proof|deadline|teams in|recently|last week|season/i.test(lowerBody);
+    if (matchedFollowUp && !hasNewValue) {
+      hits.push({
+        id: "I",
+        label: "Email 2 reads as follow-up only; add new value (proof point, angle, or urgency)",
+        delta: -15,
+        severity: "critical",
+      });
+    }
+  }
+
+  if (sequencePosition === 3 && wordCount > 90) {
+    hits.push({
+      id: "J",
+      label: "Breakup email should stay short and human (under 70 words)",
+      delta: -10,
+      severity: "warn",
+    });
+  }
+
+  if (sequencePosition <= 2) {
+    const pitchParts = body.trim().split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+    const pitch = pitchParts.length > 2 ? pitchParts.slice(1, -1).join(" ") : pitchParts.slice(1).join(" ");
+    const sentenceCount = pitch
+      ? pitch.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0).length
+      : 0;
+    if (sentenceCount > 3) {
+      hits.push({
+        id: "K",
+        label: "Pitch body exceeds 3 sentences for emails 1-2",
+        delta: -10,
+        severity: "warn",
+      });
+    }
+  }
+
   return hits;
 }
