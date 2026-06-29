@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Calendar, RefreshCw, Search, Mail, X } from "lucide-react";
+import { Calendar, RefreshCw, Search, Mail, X, Plus } from "lucide-react";
 import { CircleButton, IshAvatar, ScoreBadge, Separator } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
@@ -11,6 +11,8 @@ type Props = {
   activeId: string;
   onSelect: (id: string) => void;
   onRefresh?: () => void;
+  onAddLead?: () => void;
+  canWrite?: boolean;
 };
 
 function matchesQuery(item: LeadQueueItem, query: string): boolean {
@@ -20,7 +22,7 @@ function matchesQuery(item: LeadQueueItem, query: string): boolean {
     .some((field) => field?.toLowerCase().includes(q));
 }
 
-export function QueuePanel({ leads, activeId, onSelect, onRefresh }: Props) {
+export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, canWrite }: Props) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -62,6 +64,11 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh }: Props) {
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-xl font-bold text-ish-ink">My Leads</span>
         <div className="flex gap-1.5">
+          {canWrite && onAddLead ? (
+            <CircleButton size={30} onClick={onAddLead} aria-label="Add lead">
+              <Plus className="size-3.5" />
+            </CircleButton>
+          ) : null}
           <CircleButton size={30} onClick={() => void handleRefresh()}>
             <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           </CircleButton>
@@ -101,7 +108,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh }: Props) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none">
+      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none px-3 py-1">
         {filteredLeads.length === 0 ? (
           <div className="mt-8 px-2 text-center text-[12px] text-ish-ink-faint">
             {searchQuery ? `No leads match "${searchQuery}"` : "No leads"}
@@ -170,11 +177,11 @@ function QueueCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "mb-2.5 w-full cursor-pointer overflow-hidden rounded-[18px] p-4 text-left",
+        "ish-queue-card mb-2 w-full cursor-pointer rounded-[18px] p-4 text-left",
         "transition-[transform,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
         "hover:translate-y-[-1px] active:scale-[0.99]",
         active
-          ? "bg-ish-yellow-gradient shadow-[var(--shadow-ish-yellow)]"
+          ? "ish-queue-card-active bg-ish-yellow-gradient"
           : "bg-white shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)]",
       )}
     >

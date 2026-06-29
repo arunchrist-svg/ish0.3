@@ -6,6 +6,8 @@ import { eq, desc, inArray, and } from "drizzle-orm";
 import { runResearcherLite } from "@/lib/agents/researcher-lite";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
+import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { createManualLead } from "@/lib/leads/crud";
 
 export async function GET(req: Request) {
   try {
@@ -13,6 +15,8 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
     const statuses = statusFilter ? statusFilter.split(",").filter(Boolean) : null;
+    const limitParam = searchParams.get("limit");
+    const rowLimit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 100, 1), 100) : 100;
 
     const rows = await db
       .select({
@@ -35,7 +39,7 @@ export async function GET(req: Request) {
           : eq(leads.tenantId, ctx.tenantId),
       )
       .orderBy(desc(leads.createdAt))
-      .limit(100);
+      .limit(rowLimit);
 
     const queue: LeadQueueItem[] = rows.map((r) => ({
       id: r.id,
@@ -51,7 +55,7 @@ export async function GET(req: Request) {
     }));
 
     const scoutedLeads = rows.filter((r) => r.status === "scouted" && r.researcherEligible);
-    for (const row of scoutedLeads.slice(0, 3)) {
+    if (rowLimit >= 100) for (const row of scoutedLeads.slice(0, 3)) {
       runResearcherLite(row.id).catch((e) =>
         console.error("[researcher-lite] failed for", row.id, e),
       );
@@ -60,5 +64,50 @@ export async function GET(req: Request) {
     return NextResponse.json({ leads: queue });
   } catch (e) {
     return handleApiError(e, "[api/leads]");
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
+    const body = (await req.json()) as {
+      name?: string;
+      title?: string;
+      email?: string;
+      phone?: string;
+      linkedIn?: string;
+      company?: string;
+      city?: string;
+      industry?: string;
+      employees?: string;
+      score?: number;
+      tags?: string[];
+    };
+
+    if (!body.name?.trim() || !body.company?.trim()) {
+      return NextResponse.json({ error: "Name and company are required" }, { status: 400 });
+    }
+
+    const result = await createManualLead({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      actorId: ctx.userId,
+      name: body.name,
+      title: body.title,
+      email: body.email,
+      phone: body.phone,
+      linkedIn: body.linkedIn,
+      company: body.company,
+      city: body.city,
+      industry: body.industry,
+      employees: body.employees,
+      score: body.score,
+      tags: body.tags,
+    });
+
+    return NextResponse.json({ ok: true, id: result.id }, { status: 201 });
+  } catch (e) {
+    return handleApiError(e, "[api/leads POST]");
   }
 }

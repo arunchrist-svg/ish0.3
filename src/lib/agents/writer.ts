@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
 import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { auditContentScored } from "@/lib/email/feedback-hooks";
 import {
   scoreSpamMeter,
   deliverabilityVerdict,
@@ -65,7 +66,6 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
 
   const confidenceTier = research?.confidenceTier ?? "low";
   const giftingHook = research?.giftingHook ?? "";
-  const employees = account.employees ?? "100+";
   const isFollowUp = !!options?.followUpMode;
   const template = getOutreachTemplate(options?.followUpMode ?? options?.outreachTemplate);
   const tonePersona = getWriterTonePersona(brandConfig);
@@ -78,13 +78,11 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   );
 
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);
-  const hasVerifiedEmployeeCount = Boolean(account.employees?.trim() && account.employees !== "100+");
   const antiSpamRules = getAntiSpamWritingRules({
     sequencePosition,
     senderFirstName,
     brandName: brandConfig.brandName,
     emailStyle,
-    hasVerifiedEmployeeCount,
   });
 
   const toneRules = `
@@ -131,8 +129,8 @@ Output ONLY valid JSON:
 }`;
 
   const baseUserPrompt = `Company: ${account.name}, ${account.city ?? "India"}, ${account.industry ?? "Corporate"}
-Employees (use only if listed, never invent): ${hasVerifiedEmployeeCount ? employees : "not verified; do not cite numbers"}
 Contact: ${contactFirstName}, ${contact.title ?? "HR/Admin"}
+Note: never mention employee count, headcount, revenue, or other numeric company stats in the email
 Brand: ${brandConfig.brandName} (${brandConfig.vertical})
 Campaign: ${campaignMode}
 Confidence tier: ${confidenceTier}
@@ -269,6 +267,16 @@ Sign off with "${senderFirstName}"`;
           sequencePosition: isFollowUp || options?.sequencePosition ? sequencePosition : 1,
         })
         .returning();
+
+      void auditContentScored({
+        tenantId: lead.tenantId,
+        workspaceId: lead.workspaceId,
+        leadId,
+        leadOutreachId: outreach.id,
+        contentScore: delivScore,
+        ruleHits: spamResult.ruleHits ?? [],
+        sequencePosition,
+      });
 
       if (!isFollowUp && !options?.skipStatusUpdate) {
         await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));

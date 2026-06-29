@@ -6,12 +6,13 @@ import { CreditBalanceBanner } from "@/components/sales-accelerator/credit-balan
 import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { DemoBanner } from "@/components/sales-accelerator/demo-banner";
 import { ReadOnlyBanner } from "@/components/sales-accelerator/read-only-banner";
+import { SessionProvider } from "@/components/providers/session-provider";
 
 export function HubShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   return (
-    <>
+    <SessionProvider>
       <CreditBalanceBanner />
       <AppShell>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -25,6 +26,6 @@ export function HubShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </AppShell>
-    </>
+    </SessionProvider>
   );
 }

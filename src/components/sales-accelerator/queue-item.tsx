@@ -20,9 +20,9 @@ export function QueueItemCard({ item, index, active, onClick }: Props) {
       type="button"
       onClick={onClick}
       className={cn(
-        "mb-2.5 w-full cursor-pointer rounded-[18px] p-4 text-left transition-all duration-150",
+        "ish-queue-card mb-2 w-full cursor-pointer rounded-[18px] p-4 text-left transition-all duration-150",
         active
-          ? "bg-ish-yellow-gradient shadow-[var(--shadow-ish-yellow)]"
+          ? "ish-queue-card-active bg-ish-yellow-gradient"
           : "bg-white shadow-[var(--shadow-ish-sm)] hover:brightness-[0.98]",
       )}
     >

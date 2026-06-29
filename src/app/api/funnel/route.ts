@@ -8,39 +8,51 @@ import { handleApiError } from "@/lib/api-errors";
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
-    const stageCounts = await db
-      .select({ stage: yieldFunnel.stage, count: count() })
-      .from(yieldFunnel)
-      .innerJoin(leads, eq(leads.id, yieldFunnel.leadId))
-      .where(eq(leads.tenantId, ctx.tenantId))
-      .groupBy(yieldFunnel.stage);
 
-    const totalRuns = await db
-      .select({ total: count() })
-      .from(enrichmentRuns)
-      .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
-      .where(eq(contacts.tenantId, ctx.tenantId));
-    const withEmail = await db
-      .select({ total: count() })
-      .from(enrichmentRuns)
-      .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
-      .where(and(eq(contacts.tenantId, ctx.tenantId), eq(enrichmentRuns.emailFound, true)));
-    const verified = await db
-      .select({ total: count() })
-      .from(enrichmentRuns)
-      .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
-      .where(and(eq(contacts.tenantId, ctx.tenantId), eq(enrichmentRuns.emailVerified, true)));
-
-    const leadStatuses = await db
-      .select({ status: leads.status, count: count() })
-      .from(leads)
-      .where(eq(leads.tenantId, ctx.tenantId))
-      .groupBy(leads.status);
-
-    const closedRows = await db
-      .select({ closedDealAmount: leads.closedDealAmount })
-      .from(leads)
-      .where(and(eq(leads.tenantId, ctx.tenantId), or(eq(leads.status, "closed"), eq(leads.status, "po_closed"))));
+    const [
+      stageCounts,
+      totalRuns,
+      withEmail,
+      verified,
+      leadStatuses,
+      closedRows,
+      contactCount,
+    ] = await Promise.all([
+      db
+        .select({ stage: yieldFunnel.stage, count: count() })
+        .from(yieldFunnel)
+        .innerJoin(leads, eq(leads.id, yieldFunnel.leadId))
+        .where(eq(leads.tenantId, ctx.tenantId))
+        .groupBy(yieldFunnel.stage),
+      db
+        .select({ total: count() })
+        .from(enrichmentRuns)
+        .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
+        .where(eq(contacts.tenantId, ctx.tenantId)),
+      db
+        .select({ total: count() })
+        .from(enrichmentRuns)
+        .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
+        .where(and(eq(contacts.tenantId, ctx.tenantId), eq(enrichmentRuns.emailFound, true))),
+      db
+        .select({ total: count() })
+        .from(enrichmentRuns)
+        .innerJoin(contacts, eq(contacts.id, enrichmentRuns.contactId))
+        .where(and(eq(contacts.tenantId, ctx.tenantId), eq(enrichmentRuns.emailVerified, true))),
+      db
+        .select({ status: leads.status, count: count() })
+        .from(leads)
+        .where(eq(leads.tenantId, ctx.tenantId))
+        .groupBy(leads.status),
+      db
+        .select({ closedDealAmount: leads.closedDealAmount })
+        .from(leads)
+        .where(and(eq(leads.tenantId, ctx.tenantId), or(eq(leads.status, "closed"), eq(leads.status, "po_closed")))),
+      db
+        .select({ total: count() })
+        .from(contacts)
+        .where(eq(contacts.tenantId, ctx.tenantId)),
+    ]);
 
     const closedCount = closedRows.length;
     const totalAmount = closedRows.reduce((sum, row) => {
@@ -63,6 +75,7 @@ export async function GET() {
       },
       leadStatuses,
       closedDeals: { count: closedCount, totalAmount },
+      contactCount: contactCount[0]?.total ?? 0,
     });
   } catch (e) {
     return handleApiError(e, "[api/funnel]");

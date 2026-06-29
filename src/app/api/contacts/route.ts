@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { db } from "@/db";
 import { contacts, accounts, leads } from "@/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -21,22 +21,29 @@ export async function GET() {
         companyId: accounts.id,
         city: accounts.city,
         industry: accounts.industry,
-        leadId: sql<string | null>`(SELECT id FROM leads WHERE contact_id = ${contacts.id} LIMIT 1)`,
-        score: sql<number | null>`(SELECT score FROM leads WHERE contact_id = ${contacts.id} LIMIT 1)`,
-        status: sql<string | null>`(SELECT status FROM leads WHERE contact_id = ${contacts.id} LIMIT 1)`,
+        leadId: leads.id,
+        score: leads.score,
+        status: leads.status,
       })
       .from(contacts)
       .innerJoin(accounts, eq(contacts.accountId, accounts.id))
+      .leftJoin(leads, eq(leads.contactId, contacts.id))
       .where(eq(contacts.tenantId, ctx.tenantId))
       .orderBy(desc(contacts.createdAt));
 
-    const result = rows.map((r) => ({
-      ...r,
-      title: r.title ?? "—",
-      email: r.email ?? "—",
-      emailStatus: r.emailStatus ?? "missing",
-      hasLead: !!r.leadId,
-    }));
+    const seen = new Set<string>();
+    const result = [];
+    for (const r of rows) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      result.push({
+        ...r,
+        title: r.title ?? "—",
+        email: r.email ?? "—",
+        emailStatus: r.emailStatus ?? "missing",
+        hasLead: !!r.leadId,
+      });
+    }
 
     return NextResponse.json(result);
   } catch (err) {

@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import type { EmailConfig } from "@/lib/email/config";
 import { resolveEmailConfig, resolveSmtpCredentials } from "@/lib/email/config";
 import { processLeadReply } from "@/lib/email/process-reply";
+import { extractLatestReplyText } from "@/lib/email/reply-body";
 
 const GMAIL_IMAP_HOST = "imap.gmail.com";
 const GMAIL_IMAP_PORT = 993;
@@ -34,10 +35,10 @@ function normalizeEmail(email: string): string {
 
 function extractReplyBody(parsed: Awaited<ReturnType<typeof simpleParser>>): string {
   const text = parsed.text?.trim();
-  if (text) return text.slice(0, 8000);
+  if (text) return extractLatestReplyText(text);
   const htmlRaw = typeof parsed.html === "string" ? parsed.html : "";
   const html = htmlRaw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  return html?.slice(0, 8000) ?? "";
+  return extractLatestReplyText(html);
 }
 
 async function loadOutreachedLeads(workspaceId: string): Promise<OutreachedLead[]> {

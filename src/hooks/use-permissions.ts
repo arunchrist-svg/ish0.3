@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSession } from "@/components/providers/session-provider";
 
 export type PermissionFlags = {
   canManageBilling: boolean;
@@ -10,25 +10,9 @@ export type PermissionFlags = {
   isReadOnly: boolean;
 };
 
-type MeResponse = {
-  permissions?: PermissionFlags;
-  mustChangePassword?: boolean;
-  role?: string;
-};
-
 export function usePermissions() {
-  const [permissions, setPermissions] = useState<PermissionFlags | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: MeResponse | null) => {
-        if (data?.permissions) setPermissions(data.permissions);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  const { session, loading } = useSession();
+  const permissions = session?.permissions ?? null;
 
   return {
     permissions,

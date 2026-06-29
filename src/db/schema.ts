@@ -317,7 +317,7 @@ export const outreachApprovals = pgTable("outreach_approvals", {
 });
 
 // ─── Outreach Schedule (Sequencer) ───────────────────────────────────────────
-// status values: "scheduled" | "sent" | "cancelled"
+// status values: "scheduled" | "sent" | "cancelled" | "paused"
 export const outreachSchedule = pgTable("outreach_schedule", {
   id:            uuid("id").defaultRandom().primaryKey(),
   leadId:        uuid("lead_id").notNull().references(() => leads.id),

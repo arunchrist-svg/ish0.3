@@ -234,6 +234,8 @@ export async function regenerateSequenceStep(
 }
 
 export type EmailOverviewData = {
+  outreachPaused?: boolean;
+  sendMode?: string;
   cadenceDays: [number, number];
   stats: {
     totalSent: number;
@@ -252,6 +254,30 @@ export type EmailOverviewData = {
   draftReady: import("@/app/api/email/overview/route").LeadEmailRow[];
   stopped: import("@/app/api/email/overview/route").LeadEmailRow[];
 };
+
+export async function fetchOutreachSendingStatus(): Promise<{ outreachPaused: boolean }> {
+  const res = await fetch("/api/settings/email/sending");
+  if (!res.ok) throw new Error("Failed to load sending status");
+  return res.json();
+}
+
+export type SequenceControlState = "not_started" | "active" | "paused" | "cancelled" | "complete";
+
+export async function controlLeadSequence(
+  leadId: string,
+  action: "start" | "pause" | "cancel",
+): Promise<{ state: SequenceControlState; updated: number }> {
+  const data = await post<{ ok: boolean; state: SequenceControlState; updated: number }>(
+    "/api/outreach/sequence",
+    { leadId, action },
+  );
+  return { state: data.state, updated: data.updated };
+}
+
+export async function setOutreachSendingPaused(paused: boolean): Promise<{ outreachPaused: boolean }> {
+  const data = await post<{ ok: boolean; outreachPaused: boolean }>("/api/settings/email/sending", { paused });
+  return { outreachPaused: data.outreachPaused };
+}
 
 export async function fetchEmailOverview(): Promise<EmailOverviewData> {
   const res = await fetch("/api/email/overview");
@@ -321,6 +347,21 @@ export class SenderPreflightApiError extends Error {
   }
 }
 
+export class EmailSendRejectedError extends Error {
+  code = "email_send_rejected" as const;
+  rejectedEmail: string;
+  nextEmail?: string;
+  canRetry: boolean;
+
+  constructor(message: string, rejectedEmail: string, nextEmail?: string, canRetry = false) {
+    super(message);
+    this.name = "EmailSendRejectedError";
+    this.rejectedEmail = rejectedEmail;
+    this.nextEmail = nextEmail;
+    this.canRetry = canRetry;
+  }
+}
+
 export async function sendOutreach(
   approvalId: string,
   options?: { overridePreflight?: boolean },
@@ -339,17 +380,86 @@ export async function sendOutreach(
         data.canOverride ?? true,
       );
     }
+    if (data.code === "email_send_rejected") {
+      throw new EmailSendRejectedError(
+        data.error ?? "Email address rejected",
+        data.rejectedEmail ?? "",
+        data.nextEmail,
+        Boolean(data.canRetry),
+      );
+    }
     throw new Error(data.error ?? res.statusText);
   }
   return data;
 }
 
 
+
+export type LeadFormInput = {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  linkedIn?: string;
+  company: string;
+  city?: string;
+  industry?: string;
+  employees?: string;
+  score?: number;
+  rating?: string;
+  owner?: string;
+  tags?: string[];
+  estimatedValue?: string;
+};
+
+export async function createLead(input: LeadFormInput): Promise<{ id: string }> {
+  const data = await post<{ ok: boolean; id: string }>("/api/leads", input);
+  return { id: data.id };
+}
+
+export async function updateLead(leadId: string, input: Partial<LeadFormInput>): Promise<void> {
+  await patch(`/api/leads/${leadId}`, input);
+}
+
+export async function deleteLead(leadId: string): Promise<void> {
+  const res = await fetch(`/api/leads/${leadId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+}
+
 export async function updateLeadStatus(
   leadId: string,
   params: { status: "tasting_sent" | "negotiate" | "closed"; closedDealAmount?: string },
 ): Promise<void> {
   await patch(`/api/leads/${leadId}`, params);
+}
+
+export type InboxReplySyncResult = {
+  processed: number;
+  matched: number;
+  checked: number;
+  skipped: number;
+  errors: string[];
+};
+
+export async function syncInboxReplies(): Promise<InboxReplySyncResult> {
+  const data = await post<{
+    ok: boolean;
+    processed?: number;
+    matched?: number;
+    checked?: number;
+    skipped?: number;
+    errors?: string[];
+  }>("/api/replies/poll", {});
+  return {
+    processed: data.processed ?? 0,
+    matched: data.matched ?? 0,
+    checked: data.checked ?? 0,
+    skipped: data.skipped ?? 0,
+    errors: data.errors ?? [],
+  };
 }
 
 export async function markReplied(leadId: string): Promise<void> {
@@ -362,6 +472,8 @@ export type LeadQueueItem = {
   name: string;
   title: string;
   company: string;
+  domain?: string;
+  website?: string;
   city: string;
   score: number;
   status: string;
@@ -370,12 +482,16 @@ export type LeadQueueItem = {
   nextActionDate?: string;
 };
 
+export type EmailTestStatus = "saved" | "sent" | "rejected";
+
 export type ContactEmailEntry = {
   email: string;
   emailStatus: string;
   emailConfidence?: number;
   enrichmentSource?: string;
   enrichmentProvider?: string;
+  testStatus?: EmailTestStatus;
+  pattern?: string;
 };
 
 export type LeadDetailRecord = {
@@ -385,6 +501,8 @@ export type LeadDetailRecord = {
   lastName: string;
   title: string;
   company: string;
+  domain?: string;
+  website?: string;
   city: string;
   employees: string;
   email: string;
@@ -476,7 +594,7 @@ export type ThreadPhase =
 
 export type BarMode = "hidden" | "drafts" | "sequence" | "reply";
 
-export type BarNodeState = "done" | "current" | "upcoming" | "scheduled";
+export type BarNodeState = "done" | "current" | "upcoming" | "scheduled" | "paused";
 
 export type BarNodeKind = "draft" | "sent" | "scheduled" | "inbound" | "reply_draft";
 
@@ -509,6 +627,7 @@ export type ThreadEvent = {
 
 export type EmailThread = {
   threadRootSubject?: string;
+  sequenceState?: SequenceControlState;
   phase: ThreadPhase;
   nextAction: "send_reply" | "await_reply" | "followup_due" | "compose" | "complete";
   nextStep: { title: string; description: string; primaryAction?: string };
@@ -548,6 +667,36 @@ export async function enrichLead(
 }> {
   return post("/api/leads/" + leadId + "/enrich", { mode: options.mode, refetch: options.refetch });
 }
+
+export type EmailPermutation = {
+  email: string;
+  pattern: string;
+  localPart: string;
+};
+
+export type EmailSuggestResponse = {
+  domain: string;
+  firstName: string;
+  lastName: string;
+  suggestions: EmailPermutation[];
+};
+
+export async function suggestLeadEmails(leadId: string): Promise<EmailSuggestResponse> {
+  return get<EmailSuggestResponse>(`/api/leads/${leadId}/emails/suggest`);
+}
+
+export async function saveLeadEmails(
+  leadId: string,
+  payload: { emails: string[]; primaryEmail?: string },
+): Promise<{
+  success: boolean;
+  email: string;
+  emailStatus: string;
+  alternateEmails: ContactEmailEntry[];
+}> {
+  return post(`/api/leads/${leadId}/emails/save`, payload);
+}
+
 
 
 // ─── Scout Directory ──────────────────────────────────────────────────────────
@@ -602,6 +751,8 @@ export type PinnedLead = {
   name: string;
   title: string;
   company: string;
+  domain?: string;
+  website?: string;
   city: string;
   score: number;
   status: string;

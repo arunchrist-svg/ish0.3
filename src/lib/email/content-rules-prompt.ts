@@ -5,8 +5,10 @@ export type AntiSpamPromptContext = {
   senderFirstName: string;
   brandName: string;
   emailStyle?: EmailStyle;
-  hasVerifiedEmployeeCount?: boolean;
 };
+
+const NO_COMPANY_STATS_RULE =
+  "Never cite numeric company stats in the email: no employee count, headcount, team size, revenue, funding, or similar figures (e.g. '100 employees', '500-person team'). Say 'your team' instead.";
 
 /** LLM instructions aligned with content-rules.ts scorer and cold-email-review skill. */
 export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
@@ -19,6 +21,7 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
     "- Never use em dashes in subject or body. Use commas, periods, or line breaks instead.",
     "- One question CTA; keep under 120 words",
     '- "Happy to coordinate" or "happy to help" is NOT a soft exit',
+    `- ${NO_COMPANY_STATS_RULE}`,
     "REWRITE RULES:",
     "- Max 3 sentences in the pitch body for emails 1 and 2 (excluding greeting and sign-off)",
     "- Subject: specific + curiosity-inducing, under 50 characters, never generic (no Following up, Quick question, Checking in)",
@@ -31,9 +34,6 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
       "- EMAIL #1: Hook + single soft CTA. No pitch dump.",
       "- EMAIL #1: Do NOT ask for address, phone, headcount, budget, team size, quantities, or delivery/shipping details",
       "- EMAIL #1: Do NOT ask to coordinate delivery, confirm quantities, or ship a sample before they reply",
-      ctx.hasVerifiedEmployeeCount
-        ? "- You may reference the employee count from Company context only; do not invent other stats"
-        : "- Do NOT state specific employee/headcount numbers (e.g. '120-person team'); say 'your team' instead",
       "- EMAIL #1: No per-person pricing or bulk quotes; save for later after they reply",
       "- Vary subject structure; do not use only '[Holiday] gifts for [Company]' pattern",
     );

@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSession } from "@/components/providers/session-provider";
 import { SettingsNav, type SettingsNavItem } from "@/components/settings/settings-nav";
 import { SettingsHero } from "@/components/settings/settings-hero";
 import { EnrichmentTab } from "@/components/settings/enrichment-tab";
@@ -39,11 +40,14 @@ const TAB_SUBTITLES: Record<string, string> = {
 
 function SettingsAppInner() {
   const router = useRouter();
-  const [session, setSession] = useState<{ isSuperadmin?: boolean; role?: string; canManageTeam?: boolean } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me").then((r) => r.json()).then(setSession);
-  }, []);
+  const { session: me } = useSession();
+  const session = me
+    ? {
+        isSuperadmin: me.isSuperadmin,
+        role: me.role,
+        canManageTeam: me.permissions.canManageTeam,
+      }
+    : null;
 
   const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => {
     if (item.value === "ai-usage") return session?.isSuperadmin === true;

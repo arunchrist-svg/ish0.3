@@ -6,11 +6,12 @@ import { eq, and } from "drizzle-orm";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { normalizeCadenceDays, type CadenceDays } from "@/lib/email/cadence";
 import { suggestReplyNextAction, type ReplyNextAction } from "@/lib/email/reply-next-action";
+import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
 
 export type ScheduledFollowUp = {
   sequenceDay: number;
   scheduledFor: string | null;
-  status: "scheduled" | "sent" | "cancelled";
+  status: "scheduled" | "sent" | "cancelled" | "paused";
   outreachId: string | null;
   scheduleId: string | null;
 };
@@ -45,6 +46,7 @@ export type LeadEmailRow = {
   draftPreview?: string | null;
   inboundSnippet?: string | null;
   scheduledFollowUps: ScheduledFollowUp[];
+  sequenceState: SequenceControlState;
   nextAction?: ReplyNextAction;
 };
 
@@ -77,13 +79,14 @@ function buildLeadRow(
 ): LeadEmailRow {
   const sentRows = leadRows.filter((r) => r.scheduleStatus === "sent");
   const scheduledRows = leadRows.filter((r) => r.scheduleStatus === "scheduled");
+  const pausedRows = leadRows.filter((r) => r.scheduleStatus === "paused");
   const allOpens = leadRows.filter((r) => r.openedAt != null);
   const lastOpenedAt =
     allOpens.length > 0
       ? allOpens.sort((a, b) => new Date(b.openedAt!).getTime() - new Date(a.openedAt!).getTime())[0].openedAt
       : null;
 
-  const nextScheduled = scheduledRows.sort(
+  const nextScheduled = [...scheduledRows, ...pausedRows].sort(
     (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime(),
   )[0];
 
@@ -128,9 +131,9 @@ function buildLeadRow(
     queueStatus = "needs_review";
   } else if (hasInboundReply && !hasOutboundReply) {
     queueStatus = "replies";
-  } else if (allOpens.length > 0 && first.leadStatus !== "replied" && scheduledRows.length > 0) {
+  } else if (allOpens.length > 0 && first.leadStatus !== "replied" && (scheduledRows.length > 0 || pausedRows.length > 0)) {
     queueStatus = "hot";
-  } else if (scheduledRows.length === 0 && sentRows.length > 0 && first.leadStatus !== "replied") {
+  } else if (scheduledRows.length === 0 && pausedRows.length === 0 && sentRows.length > 0 && first.leadStatus !== "replied") {
     queueStatus = "done";
   } else if (sentRows.length > 0) {
     queueStatus = "active";
@@ -143,7 +146,7 @@ function buildLeadRow(
     legacyStatus = hasReplyDraft ? "draft_ready" : "replied";
   } else if (allOpens.length > 0) {
     legacyStatus = "hot";
-  } else if (scheduledRows.length === 0 && sentRows.length > 0) {
+  } else if (scheduledRows.length === 0 && pausedRows.length === 0 && sentRows.length > 0) {
     legacyStatus = "stopped";
   }
 
@@ -180,6 +183,7 @@ function buildLeadRow(
     draftPreview: opts.needsReviewMeta?.preview,
     inboundSnippet: opts.inboundSnippet,
     scheduledFollowUps,
+    sequenceState: deriveSequenceState(first.leadStatus, leadRows.map((r) => ({ sequenceDay: r.sequenceDay, status: r.scheduleStatus }))),
     nextAction,
   };
 }
@@ -335,6 +339,8 @@ export async function GET() {
     const stopped = done;
 
     return NextResponse.json({
+      outreachPaused: emailConfig.outreachPaused ?? false,
+      sendMode: emailConfig.sendMode,
       cadenceDays,
       stats: {
         totalSent,

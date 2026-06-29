@@ -2,10 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail, Send } from "lucide-react";
+import { Loader2, Mail, Save, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { EmailThread, WriterDraft } from "@/lib/api-client";
-import { approveOutreach, sendOutreach, updateOutreachDraft, SenderPreflightApiError } from "@/lib/api-client";
+import {
+  approveOutreach,
+  sendOutreach,
+  updateOutreachDraft,
+  SenderPreflightApiError,
+  EmailSendRejectedError,
+  fetchSenderHealth,
+  type SenderHealthResponse,
+} from "@/lib/api-client";
 import { SegmentedTabs } from "@/design-system";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
@@ -21,23 +29,12 @@ type Props = {
   onDraftUpdated: (draft: WriterDraft) => void;
   onSavingChange?: (saving: boolean) => void;
   onSent?: () => void;
+  onSendFailed?: () => void;
+  onGenerateReply?: () => void;
+  generatingReply?: boolean;
   contentScore?: number;
   emailThread?: EmailThread;
 };
-
-function useDebouncedSave(
-  saveFn: (payload: { emailBody?: string; subjectA?: string; subjectB?: string }) => void,
-  delay = 600,
-) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  return useCallback(
-    (payload: { emailBody?: string; subjectA?: string; subjectB?: string }) => {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => saveFn(payload), delay);
-    },
-    [saveFn, delay],
-  );
-}
 
 function useAutoGrowTextarea(value: string) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -72,25 +69,35 @@ export function OutreachApprovalCard({
   onDraftUpdated,
   onSavingChange,
   onSent,
+  onSendFailed,
+  onGenerateReply,
+  generatingReply,
   contentScore,
   emailThread,
 }: Props) {
   const [subjectUsed, setSubjectUsed] = useState<"A" | "B">("A");
   const [displayDraft, setDisplayDraft] = useState(draft);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
   const [sending, setSending] = useState(false);
+  const [senderHealth, setSenderHealth] = useState<SenderHealthResponse | null>(null);
+  const [preflightOverrideAck, setPreflightOverrideAck] = useState(false);
+  const [outreachPaused, setOutreachPaused] = useState(false);
   const [fromLabel, setFromLabel] = useState<string | null>(null);
   const bodyText = displayDraft.emailBody ?? "";
   const { ref: bodyRef, resize: resizeBody } = useAutoGrowTextarea(bodyText);
 
   const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
   const canSend = isReplyDraft || !draft.sequencePosition || draft.sequencePosition === 1;
+  const senderBlocked = Boolean(senderHealth?.hasCritical && !preflightOverrideAck);
+
   const isDraftLocked =
     ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus) ||
     (isReplyDraft && draft.replySent);
 
   useEffect(() => {
     setDisplayDraft(draft);
+    setDirty(false);
   }, [draft]);
 
   useEffect(() => {
@@ -99,6 +106,13 @@ export function OutreachApprovalCard({
 
   useEffect(() => {
     let cancelled = false;
+    void fetch("/api/settings/email/sending")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (cancelled || !cfg) return;
+        setOutreachPaused(Boolean(cfg.outreachPaused));
+      })
+      .catch(() => {});
     void fetch("/api/settings/email")
       .then((r) => (r.ok ? r.json() : null))
       .then((cfg) => {
@@ -110,6 +124,13 @@ export function OutreachApprovalCard({
         else if (name) setFromLabel(name);
       })
       .catch(() => {});
+    void fetchSenderHealth()
+      .then((h) => {
+        if (!cancelled) setSenderHealth(h);
+      })
+      .catch(() => {
+        if (!cancelled) setSenderHealth(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -121,7 +142,9 @@ export function OutreachApprovalCard({
       try {
         const updated = await updateOutreachDraft({
           leadOutreachId: draft.id,
-          ...payload,
+          subjectA: payload.subjectA ?? displayDraft.subjectA,
+          subjectB: payload.subjectB ?? displayDraft.subjectB,
+          emailBody: payload.emailBody ?? displayDraft.emailBody,
         });
         const next = {
           ...displayDraft,
@@ -131,8 +154,11 @@ export function OutreachApprovalCard({
         };
         setDisplayDraft(next);
         onDraftUpdated(next);
-      } catch {
-        // silent
+        setDirty(false);
+        return true;
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not save draft");
+        return false;
       } finally {
         setSaving(false);
       }
@@ -140,11 +166,19 @@ export function OutreachApprovalCard({
     [draft.id, displayDraft, onDraftUpdated],
   );
 
-  const debouncedSave = useDebouncedSave(persistDraft);
+  async function handleSave() {
+    const ok = await persistDraft({
+      subjectA: displayDraft.subjectA,
+      subjectB: displayDraft.subjectB,
+      emailBody: displayDraft.emailBody,
+    });
+    if (ok) toast.success("Draft saved");
+  }
 
   function handleDraftUpdated(updated: WriterDraft) {
     setDisplayDraft(updated);
     onDraftUpdated(updated);
+    setDirty(false);
   }
 
   const activeSubject = subjectUsed === "A" ? displayDraft.subjectA : displayDraft.subjectB;
@@ -157,17 +191,21 @@ export function OutreachApprovalCard({
     const key = subjectUsed === "A" ? "subjectA" : "subjectB";
     const next = { ...displayDraft, [key]: value };
     setDisplayDraft(next);
-    debouncedSave({ [key]: value });
+    setDirty(true);
   }
 
   function handleBodyChange(value: string) {
     const next = { ...displayDraft, emailBody: value };
     setDisplayDraft(next);
-    debouncedSave({ emailBody: value });
+    setDirty(true);
     requestAnimationFrame(resizeBody);
   }
 
   async function handleSendToOutreach() {
+    if (outreachPaused) {
+      toast.error("Outreach sending is paused. Resume in Email queue or Settings.");
+      return;
+    }
     if (!contactEmail?.trim()) {
       toast.error("Add a contact email before sending");
       return;
@@ -180,7 +218,16 @@ export function OutreachApprovalCard({
 
     setSending(true);
     try {
-      if (saving) await new Promise((r) => setTimeout(r, 700));
+      if (dirty) {
+        const saved = await persistDraft({
+          subjectA: displayDraft.subjectA,
+          subjectB: displayDraft.subjectB,
+          emailBody: displayDraft.emailBody,
+        });
+        if (!saved) return;
+      } else if (saving) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
 
       const { approvalId } = await approveOutreach({
         leadOutreachId: displayDraft.id,
@@ -190,20 +237,9 @@ export function OutreachApprovalCard({
         subjectUsed: subjectToSend,
       });
 
-      let result;
-      try {
-        result = await sendOutreach(approvalId);
-      } catch (e) {
-        if (e instanceof SenderPreflightApiError && e.canOverride) {
-          const proceed = window.confirm(
-            `${e.issues.map((i) => i.label).join("\n")}\n\nSend anyway?`,
-          );
-          if (!proceed) return;
-          result = await sendOutreach(approvalId, { overridePreflight: true });
-        } else {
-          throw e;
-        }
-      }
+      const result = await sendOutreach(approvalId, {
+        overridePreflight: preflightOverrideAck,
+      });
       const recipient = result.to ?? contactEmail;
       const modeLabel =
         result.mode === "dry_run" ? "logged (dry run, not sent)" : `sent to ${recipient}`;
@@ -215,7 +251,19 @@ export function OutreachApprovalCard({
       });
       onSent?.();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not send email");
+      if (e instanceof EmailSendRejectedError) {
+        onSendFailed?.();
+        if (e.canRetry && e.nextEmail) {
+          toast.error(`Send failed for ${e.rejectedEmail}`, {
+            description: `Next candidate ready: ${e.nextEmail}. Retry send when ready.`,
+            duration: 8000,
+          });
+        } else {
+          toast.error(e.message || "Could not send email");
+        }
+      } else {
+        toast.error(e instanceof Error ? e.message : "Could not send email");
+      }
     } finally {
       setSending(false);
     }
@@ -282,6 +330,20 @@ export function OutreachApprovalCard({
           </EnvelopeRow>
         </div>
 
+        {isReplyDraft && !isDraftLocked && onGenerateReply ? (
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              disabled={generatingReply || saving || sending}
+              onClick={() => onGenerateReply()}
+              className="inline-flex items-center gap-2 rounded-full border border-ish-border bg-white px-4 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-opacity hover:bg-ish-canvas disabled:opacity-50"
+            >
+              {generatingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              {generatingReply ? "Writing…" : "Regenerate reply"}
+            </button>
+          </div>
+        ) : null}
+
         <div className="relative mt-3 rounded-[16px] border border-ish-border/50 bg-white shadow-[var(--shadow-ish-sm)]">
           <textarea
             ref={bodyRef}
@@ -313,7 +375,6 @@ export function OutreachApprovalCard({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-          {saving ? <span className="text-[10px] text-ish-ink-faint">Saving…</span> : null}
           {isDraftLocked ? (
             <Link
               href="/email?tab=active"
@@ -322,18 +383,53 @@ export function OutreachApprovalCard({
               <Mail className="size-3.5" />
               View in Outreach Queue
             </Link>
-          ) : !canSend ? (
-            <p className="text-[11px] text-ish-ink-faint">Edits save automatically · sends on schedule</p>
           ) : (
-            <button
-              type="button"
-              onClick={() => void handleSendToOutreach()}
-              disabled={sending || saving}
-              className="inline-flex items-center gap-2 rounded-full bg-ish-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-              {sending ? "Sending…" : isReplyDraft ? "Send Reply" : "Send & start sequence"}
-            </button>
+            <>
+              {dirty ? (
+                <span className="text-[10px] font-medium text-amber-700">Unsaved changes</span>
+              ) : saving ? (
+                <span className="text-[10px] text-ish-ink-faint">Saving…</span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saving || sending || !dirty}
+                className="inline-flex items-center gap-2 rounded-full border border-ish-border bg-white px-4 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-opacity hover:bg-ish-canvas disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                {saving ? "Saving…" : "Save draft"}
+              </button>
+              {!canSend ? (
+                <p className="text-[11px] text-ish-ink-faint">Follow-ups send on schedule</p>
+              ) : (
+                <div className="flex flex-col items-end gap-1.5">
+                  {senderBlocked && senderHealth ? (
+                    <div className="max-w-sm text-right text-[10px] text-red-600">
+                      {senderHealth.issues
+                        .filter((i) => i.severity === "critical")
+                        .map((i) => i.label)
+                        .join(" · ")}
+                      <button
+                        type="button"
+                        className="ml-2 font-semibold underline"
+                        onClick={() => setPreflightOverrideAck(true)}
+                      >
+                        Send anyway
+                      </button>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleSendToOutreach()}
+                    disabled={sending || saving || outreachPaused || senderBlocked}
+                    className="inline-flex items-center gap-2 rounded-full bg-ish-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                    {sending ? "Sending…" : isReplyDraft ? "Send Reply" : "Send & start sequence"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -52,6 +52,32 @@ export function statusToPipelineIndex(status: string): number {
   return STATUS_TO_PIPELINE_INDEX[status] ?? 0;
 }
 
+export function groupLeadsByPipelineStage<T extends { status: string }>(
+  leads: T[],
+): Record<PipelineStageLabel, T[]> {
+  const groups = Object.fromEntries(
+    PIPELINE_STAGES.map((stage) => [stage, [] as T[]]),
+  ) as Record<PipelineStageLabel, T[]>;
+
+  for (const lead of leads) {
+    const stage = PIPELINE_STAGES[statusToPipelineIndex(lead.status)];
+    groups[stage].push(lead);
+  }
+
+  return groups;
+}
+
+export const PIPELINE_STAGE_ACCENTS = {
+  "Contact Ready": "blue",
+  Email: "yellow",
+  Open: "salmon",
+  "Tasting Sent": "yellow",
+  Negotiate: "salmon",
+  Closed: "muted",
+} as const;
+
+export type PipelineStageAccent = (typeof PIPELINE_STAGE_ACCENTS)[PipelineStageLabel];
+
 export function statusToDisplayLabel(status: string): string {
   return STATUS_TO_DISPLAY_LABEL[status] ?? status.replace(/_/g, " ");
 }

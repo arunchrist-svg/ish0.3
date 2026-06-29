@@ -18,6 +18,7 @@ import {
   Cpu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSession } from "@/components/providers/session-provider";
 import { PanelCard, text } from "@/design-system";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -243,7 +244,8 @@ export function HomeApp() {
   const [contacts, setContacts] = useState<number>(0);
   const [tavilyUsage, setTavilyUsage] = useState<TavilyUsage | null>(null);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
-  const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const { session } = useSession();
+  const isSuperadmin = session?.isSuperadmin ?? false;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -252,26 +254,23 @@ export function HomeApp() {
     else setRefreshing(true);
 
     try {
-      const meRes = await fetch('/api/auth/me').then((r) => r.json()).catch(() => ({}));
-      const superadmin = meRes.isSuperadmin === true;
-      setIsSuperadmin(superadmin);
+      const superadmin = session?.isSuperadmin === true;
 
-      const [funnelRes, leadsRes, contactsRes, tavilyRes, llmRes] = await Promise.allSettled([
+      const [funnelRes, leadsRes, tavilyRes, llmRes] = await Promise.allSettled([
         fetch("/api/funnel").then((r) => r.json()),
-        fetch("/api/leads").then((r) => r.json()),
-        fetch("/api/contacts").then((r) => r.json()),
+        fetch("/api/leads?limit=10").then((r) => r.json()),
         superadmin ? fetch("/api/usage/tavily").then((r) => r.json()) : Promise.resolve(null),
         superadmin ? fetch("/api/usage/llm").then((r) => r.json()) : Promise.resolve(null),
       ]);
 
-      if (funnelRes.status === "fulfilled") setFunnel(funnelRes.value as FunnelData);
+      if (funnelRes.status === "fulfilled") {
+        const data = funnelRes.value as FunnelData & { contactCount?: number };
+        setFunnel(data);
+        if (typeof data.contactCount === "number") setContacts(data.contactCount);
+      }
       if (leadsRes.status === "fulfilled") {
         const all: LeadItem[] = (leadsRes.value as { leads: LeadItem[] }).leads ?? [];
-        setLeads(all.slice(0, 10));
-      }
-      if (contactsRes.status === "fulfilled") {
-        const arr = Array.isArray(contactsRes.value) ? contactsRes.value : [];
-        setContacts(arr.length);
+        setLeads(all);
       }
       if (tavilyRes.status === "fulfilled" && tavilyRes.value) setTavilyUsage(tavilyRes.value as TavilyUsage);
       if (llmRes.status === "fulfilled" && llmRes.value) setLlmConfig(llmRes.value as LlmConfig);
@@ -282,8 +281,9 @@ export function HomeApp() {
   }
 
   useEffect(() => {
+    if (!session) return;
     loadAll();
-  }, []);
+  }, [session?.isSuperadmin]);
 
   const totalLeads   = funnel?.leadStatuses.reduce((s, r) => s + Number(r.count), 0) ?? 0;
   const closedCount  = funnel?.closedDeals.count ?? 0;

@@ -17,11 +17,14 @@ import {
   Inbox,
   FileText,
   ListChecks,
+  Pause,
+  Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PanelCard, text } from "@/design-system";
 import { SettingsHero } from "@/components/settings/settings-hero";
-import { fetchEmailOverview, type EmailOverviewData } from "@/lib/api-client";
+import { fetchEmailOverview, setOutreachSendingPaused, type EmailOverviewData } from "@/lib/api-client";
+import { SyncRepliesButton } from "@/components/sales-accelerator/sync-replies-button";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
 import {
   type CadenceDays,
@@ -345,6 +348,13 @@ function StatusPill({ row }: { row: LeadEmailRow }) {
       </span>
     );
   }
+  if (row.sequenceState === "paused") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-ish-pink-soft/50 px-2.5 py-1 text-[10px] font-bold text-ish-stratus-salmon ring-1 ring-ish-stratus-salmon/25">
+        <Pause className="size-3" /> Paused
+      </span>
+    );
+  }
   if (row.threadStage === "awaiting_reply") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-ish-canvas px-2.5 py-1 text-[10px] font-bold text-ish-ink-soft ring-1 ring-ish-border">
@@ -485,7 +495,7 @@ export function EmailApp() {
   const [data, setData] = useState<EmailOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [syncingReplies, setSyncingReplies] = useState(false);
+  const [togglingSend, setTogglingSend] = useState(false);
 
   const activeTab = useMemo(
     () => parseQueueTab(searchParams.get("tab")),
@@ -537,16 +547,6 @@ export function EmailApp() {
     },
     [router],
   );
-
-  const handleSyncReplies = async () => {
-    setSyncingReplies(true);
-    try {
-      await fetch("/api/replies/poll", { method: "POST" });
-      await load();
-    } finally {
-      setSyncingReplies(false);
-    }
-  };
 
   const cadence = useMemo(
     () => normalizeCadenceDays(data?.cadenceDays),
@@ -627,6 +627,21 @@ export function EmailApp() {
     ];
   }, [data, openRate]);
 
+
+  async function handleToggleSending() {
+    if (!data) return;
+    setTogglingSend(true);
+    try {
+      const nextPaused = !data.outreachPaused;
+      await setOutreachSendingPaused(nextPaused);
+      await load();
+    } catch {
+      /* keep current state */
+    } finally {
+      setTogglingSend(false);
+    }
+  }
+
   return (
     <div className="settings-ambient min-h-0 min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10 animate-ish-page-in">
@@ -640,15 +655,32 @@ export function EmailApp() {
           }
           action={
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void handleSyncReplies()}
-                disabled={syncingReplies}
-                className="inline-flex items-center gap-2 rounded-[14px] border border-ish-border bg-white px-4 py-2.5 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:border-ish-ink/20 disabled:opacity-60"
-              >
-                <Inbox className="size-3.5" />
-                {syncingReplies ? "Syncing…" : "Sync replies"}
-              </button>
+              <SyncRepliesButton onSynced={load} />
+              {data && (
+                <button
+                  type="button"
+                  onClick={() => void handleToggleSending()}
+                  disabled={togglingSend}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-[14px] border px-4 py-2.5 text-[12px] font-semibold shadow-[var(--shadow-ish-sm)] transition-all disabled:opacity-60",
+                    data.outreachPaused
+                      ? "border-ish-green/40 bg-ish-green/10 text-ish-green hover:bg-ish-green/15"
+                      : "border-ish-stratus-salmon/40 bg-ish-pink-soft/50 text-ish-stratus-salmon hover:bg-ish-pink-soft",
+                  )}
+                >
+                  {data.outreachPaused ? (
+                    <>
+                      <Play className="size-3.5" />
+                      {togglingSend ? "Starting…" : "Start sending"}
+                    </>
+                  ) : (
+                    <>
+                      <Pause className="size-3.5" />
+                      {togglingSend ? "Pausing…" : "Pause sending"}
+                    </>
+                  )}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => void load()}
@@ -662,6 +694,15 @@ export function EmailApp() {
             </div>
           }
         />
+
+        {data?.outreachPaused && (
+          <div className="mb-6 rounded-[16px] border border-ish-stratus-salmon/35 bg-ish-pink-soft/45 px-4 py-3.5">
+            <p className="text-[13px] font-semibold text-ish-ink">Outreach sending is paused</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-ish-ink-soft">
+              No Email 1 sends or automated follow-ups will go out. Scheduled emails stay queued until you click Start sending.
+            </p>
+          </div>
+        )}
 
         {loading && !data ? (
           <LoadingSkeleton />

@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeAll, afterEach } from "vitest";
-import { GET as listLeads } from "../route";
-import { PATCH as patchLead } from "../[id]/route";
+import { GET as listLeads, POST as createLead } from "../route";
+import { PATCH as patchLead, DELETE as deleteLead } from "../[id]/route";
 import {
   authenticateTestUser,
   clearTestSession,
@@ -82,7 +82,7 @@ describe.skipIf(!hasTestDatabase())("LEADS-API-001 leads routes", () => {
     expect(body.status).toBe("tasting_sent");
   });
 
-  it("requires status in PATCH body", async () => {
+  it("rejects empty PATCH body", async () => {
     const res = await patchLead(
       new Request("http://localhost/api/leads/" + TEST_LEAD_REPLIED_ID, {
         method: "PATCH",
@@ -92,6 +92,45 @@ describe.skipIf(!hasTestDatabase())("LEADS-API-001 leads routes", () => {
       { params: Promise.resolve({ id: TEST_LEAD_REPLIED_ID }) },
     );
     expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/No updates provided/);
+  });
+
+  it("updates lead fields without status", async () => {
+    const res = await patchLead(
+      new Request("http://localhost/api/leads/" + TEST_LEAD_REPLIED_ID, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Updated Title" }),
+      }),
+      { params: Promise.resolve({ id: TEST_LEAD_REPLIED_ID }) },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+  });
+
+  it("creates a manual lead", async () => {
+    const res = await createLead(
+      new Request("http://localhost/api/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "CRUD Test Lead",
+          company: "CRUD Test Co",
+          city: "Mumbai",
+        }),
+      }),
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.id).toBeTruthy();
+
+    const del = await deleteLead(
+      new Request("http://localhost/api/leads/" + body.id, { method: "DELETE" }),
+      { params: Promise.resolve({ id: body.id }) },
+    );
+    expect(del.status).toBe(200);
   });
 
   it("returns 404 for unknown lead", async () => {

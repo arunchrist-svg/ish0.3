@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, FileText, Sparkles } from "lucide-react";
+import { ChevronDown, FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -15,6 +15,9 @@ import { WritingLoader } from "./writing-loader";
 import { OutreachApprovalCard } from "./outreach-approval-card";
 import { OutreachJourneyPanel } from "./outreach-journey-panel";
 import { SpamMeter } from "./spam-meter";
+import { SenderHealthMeter } from "./sender-health-meter";
+import { SequenceControlButtons } from "./sequence-control-buttons";
+import { SyncRepliesButton } from "./sync-replies-button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,9 +55,23 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const isReplyLead = lead.status === "replied";
   const isReplyDraft = activeDraft?.templateVariant === "reply";
 
+  const replyDraft = useMemo(() => {
+    if (activeDraft?.templateVariant === "reply") return activeDraft;
+    if (draft?.templateVariant === "reply") return draft;
+    return sequence.find((d) => d.templateVariant === "reply");
+  }, [activeDraft, draft, sequence]);
+
+  const needsReplyDraft = isReplyLead && phase !== "reply_sent" && !replyDraft;
+
   useEffect(() => {
     setSelectedNodeId(thread?.selectedNodeId);
   }, [thread?.selectedNodeId, lead.id]);
+
+  useEffect(() => {
+    if (isReplyLead && thread?.barMode === "reply" && phase !== "reply_sent") {
+      setSelectedNodeId("reply");
+    }
+  }, [isReplyLead, thread?.barMode, phase, lead.id]);
 
   useEffect(() => {
     if (draft) setActiveDraft(draft);
@@ -69,6 +86,13 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const selectedNode = thread?.barNodes.find((n) => n.id === selectedNodeId);
 
   const resolvedDraft = useMemo(() => {
+    if (isReplyLead) {
+      if (selectedNode?.outreachId && replyDraft?.id === selectedNode.outreachId) return replyDraft;
+      if (selectedNode?.id === "reply" || selectedNode?.kind === "reply_draft" || selectedNode?.kind === "inbound") {
+        return replyDraft;
+      }
+      return replyDraft;
+    }
     if (selectedNode?.outreachId) {
       const fromSequence = sequence.find((d) => d.id === selectedNode.outreachId);
       if (fromSequence) return fromSequence;
@@ -76,7 +100,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       if (draft?.id === selectedNode.outreachId) return draft;
     }
     return activeDraft ?? draft;
-  }, [selectedNode, sequence, activeDraft, draft]);
+  }, [selectedNode, sequence, activeDraft, draft, isReplyLead, replyDraft]);
 
   const contentQuality = useMemo(() => {
     if (!resolvedDraft?.emailBody) return null;
@@ -127,6 +151,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       thread?.barMode === "hidden" ||
       thread?.barMode === "sequence");
 
+  const sequenceState = thread?.sequenceState ?? "not_started";
+  const showSyncReplies = lead.status === "outreached" || phase === "awaiting_reply";
+
   const statusSubtitle =
     generating
       ? "Writing drafts…"
@@ -134,9 +161,11 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         ? "Reply sent in thread"
         : phase === "awaiting_reply"
           ? "Awaiting reply"
-          : isReplyDraft
+          : isReplyDraft || replyDraft
             ? "Reply draft"
-            : thread?.barMode === "drafts"
+            : needsReplyDraft
+              ? "Reply received"
+              : thread?.barMode === "drafts"
               ? "3 drafts ready"
               : hasDraft
                 ? "Draft ready"
@@ -251,86 +280,120 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   const showProcessBar = (showComposeZone && isEditableNode && !generating) || (isEmptyCompose && !generating);
 
-  const processActions =
-    showProcessBar ? (
-      <>
-        {!isEmptyCompose && resolvedDraft ? (
-          <SpamMeter
-            inboxScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
-            factors={contentQuality?.factors ?? []}
-          />
-        ) : null}
-        {showWriterControl ? (
-          <div
-            className={cn(
-              "inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-ish-border bg-white shadow-[var(--shadow-ish-sm)]",
-              (!canWrite || generating) && "opacity-40",
-            )}
-          >
-            {!isReplyLead && showRegenerate ? (
-              <DropdownMenu modal={false} open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
-                <DropdownMenuTrigger
-                  disabled={!canWrite || generating}
-                  className={cn(
-                    "flex h-full items-center gap-1 border-r border-ish-border/80 px-2.5 text-[11px] font-semibold text-ish-ink outline-none",
-                    "hover:bg-ish-canvas focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed",
-                  )}
-                >
-                  <span>{activeTemplate.shortLabel}</span>
-                  <ChevronDown className="size-3 text-ish-ink-faint" />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="min-w-[220px]">
-                  <DropdownMenuRadioGroup
-                    value={selectedTemplate}
-                    onValueChange={(v) => {
-                      setSelectedTemplate(v as OutreachTemplateId);
-                      setTemplateMenuOpen(false);
-                    }}
-                  >
-                    {OUTREACH_TEMPLATES.map((template) => (
-                      <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
-                        <div>
-                          <div className="font-semibold">{template.label}</div>
-                          <div className="text-[11px] text-ish-ink-faint">{template.description}</div>
-                        </div>
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            <button
-              type="button"
-              disabled={!canWrite || generating}
-              onClick={() => void handleGenerate()}
-              className="flex h-full items-center gap-1.5 bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:cursor-not-allowed"
-            >
-              <FileText className="size-3" />
-              {regenerateLabel}
-            </button>
-          </div>
-        ) : null}
-      </>
-    ) : phase === "reply_sent" ? (
-      <>
-        <Button
+  const processActions = (
+    <>
+      {isReplyLead && phase !== "reply_sent" ? (
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
-          disabled={advancing}
-          className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
-          onClick={() => void handleMarkTastingSent()}
+          disabled={!canWrite || generating || draftingReply}
+          onClick={() => void handleDraftReply()}
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
-          {advancing ? "Updating…" : "Mark tasting sent"}
-        </Button>
-        <Link
-          href="/email?tab=active"
-          className="inline-flex h-7 shrink-0 items-center rounded-full border border-ish-border bg-white px-3 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas"
-        >
-          View in Outreach Queue
-        </Link>
-      </>
-    ) : null;
+          <Sparkles className="size-3" />
+          {draftingReply ? "Writing…" : replyDraft ? "Regenerate reply" : "Generate reply"}
+        </button>
+      ) : null}
+      {showSyncReplies ? (
+        <SyncRepliesButton
+          leadId={lead.id}
+          leadName={lead.name}
+          compact
+          onSynced={onSilentRefresh}
+        />
+      ) : null}
+      {sequenceState !== "complete" ? (
+        <SequenceControlButtons
+          leadId={lead.id}
+          sequenceState={sequenceState}
+          disabled={!canWrite || generating}
+          onUpdated={onSilentRefresh}
+          onStartSequence={() => composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        />
+      ) : null}
+      {showProcessBar ? (
+        <>
+          {!isEmptyCompose && resolvedDraft ? (
+            <>
+              <SpamMeter
+                inboxScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
+                factors={contentQuality?.factors ?? []}
+              />
+              <SenderHealthMeter />
+            </>
+          ) : null}
+          {showWriterControl ? (
+            <div
+              className={cn(
+                "inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-ish-border bg-white shadow-[var(--shadow-ish-sm)]",
+                (!canWrite || generating) && "opacity-40",
+              )}
+            >
+              {!isReplyLead && showRegenerate ? (
+                <DropdownMenu modal={false} open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
+                  <DropdownMenuTrigger
+                    disabled={!canWrite || generating}
+                    className={cn(
+                      "flex h-full items-center gap-1 border-r border-ish-border/80 px-2.5 text-[11px] font-semibold text-ish-ink outline-none",
+                      "hover:bg-ish-canvas focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed",
+                    )}
+                  >
+                    <span>{activeTemplate.shortLabel}</span>
+                    <ChevronDown className="size-3 text-ish-ink-faint" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[220px]">
+                    <DropdownMenuRadioGroup
+                      value={selectedTemplate}
+                      onValueChange={(v) => {
+                        setSelectedTemplate(v as OutreachTemplateId);
+                        setTemplateMenuOpen(false);
+                      }}
+                    >
+                      {OUTREACH_TEMPLATES.map((template) => (
+                        <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
+                          <div>
+                            <div className="font-semibold">{template.label}</div>
+                            <div className="text-[11px] text-ish-ink-faint">{template.description}</div>
+                          </div>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              <button
+                type="button"
+                disabled={!canWrite || generating}
+                onClick={() => void handleGenerate()}
+                className="flex h-full items-center gap-1.5 bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:cursor-not-allowed"
+              >
+                <FileText className="size-3" />
+                {regenerateLabel}
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : phase === "reply_sent" ? (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={advancing}
+            className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
+            onClick={() => void handleMarkTastingSent()}
+          >
+            {advancing ? "Updating…" : "Mark tasting sent"}
+          </Button>
+          <Link
+            href="/email?tab=active"
+            className="inline-flex h-7 shrink-0 items-center rounded-full border border-ish-border bg-white px-3 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas"
+          >
+            View in Outreach Queue
+          </Link>
+        </>
+      ) : null}
+    </>
+  );
 
   return (
     <div className="animate-ish-tab-in px-[22px] py-[18px]">
@@ -372,6 +435,34 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             Write 3 emails
           </button>
         </div>
+      ) : needsReplyDraft ? (
+        <div className="rounded-[20px] border border-ish-stratus-blue/25 bg-gradient-to-br from-ish-green-soft/40 to-white px-6 py-10 text-center shadow-[var(--shadow-ish-sm)]">
+          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-ish-green-soft">
+            <Sparkles className="size-5 text-ish-stratus-blue" />
+          </div>
+          <p className="text-[15px] font-bold text-ish-ink">They replied</p>
+          {thread?.inboundSnippet ? (
+            <p className="mx-auto mt-3 max-w-lg rounded-[14px] bg-white/80 px-4 py-3 text-left text-[12px] italic leading-relaxed text-ish-ink-soft ring-1 ring-ish-border/50">
+              &ldquo;{thread.inboundSnippet}&rdquo;
+            </p>
+          ) : null}
+          <p className="mx-auto mt-3 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
+            Generate a smart reply using their message, your original outreach, and gifting context.
+          </p>
+          <button
+            type="button"
+            disabled={!canWrite || draftingReply}
+            onClick={() => void handleDraftReply()}
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
+          >
+            {draftingReply ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            {draftingReply ? "Writing reply…" : "Generate AI reply"}
+          </button>
+        </div>
+      ) : draftingReply ? (
+        <div className="rounded-[20px] border border-ish-border bg-white py-12 shadow-[var(--shadow-ish-sm)]">
+          <WritingLoader contactName={lead.name} companyName={lead.company} sequenceLabel="Drafting reply" />
+        </div>
       ) : showComposeZone && isEditableNode && resolvedDraft ? (
         <div ref={composeRef}>
           <OutreachApprovalCard
@@ -390,6 +481,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             onSavingChange={setDraftSaving}
             contentScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
             onSent={onSent ?? onSilentRefresh}
+            onGenerateReply={() => void handleDraftReply()}
+            generatingReply={draftingReply}
+            onSendFailed={onSilentRefresh}
           />
         </div>
       ) : isEmptyCompose ? (

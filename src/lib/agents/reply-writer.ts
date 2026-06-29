@@ -14,6 +14,7 @@ import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
 import { getRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
+import { extractLatestReplyText } from "@/lib/email/reply-body";
 
 const PROMPT_VERSION = "v1.2-reply-tone";
 const MAX_REVISIONS = 1;
@@ -41,7 +42,8 @@ export async function runReplyWriter(leadId: string): Promise<string> {
     orderBy: [desc(leadOutreach.createdAt)],
   });
 
-  const replyContent = (lead as typeof leads.$inferSelect & { lastReplyContent?: string | null }).lastReplyContent;
+  const replyRaw = (lead as typeof leads.$inferSelect & { lastReplyContent?: string | null }).lastReplyContent;
+  const replyContent = extractLatestReplyText(replyRaw);
 
   if (!replyContent) {
     throw new Error("No reply content available to draft a response");
@@ -70,7 +72,6 @@ Output ONLY valid JSON:
 
 Prospect: ${contactFirstName}, ${contact.title ?? "HR/Admin"} at ${account.name}
 Industry: ${account.industry ?? "Corporate"}, City: ${account.city ?? "India"}
-Team size: ${account.employees ?? "100+"} employees
 Gifting hook: ${research?.giftingHook ?? "Diwali season gifting"}
 
 Our original email:
@@ -88,6 +89,7 @@ Instructions:
 - Move toward the next step: booking a call, confirming a sample, or answering their question
 - Keep it friendly but professional, short, and human. Not salesy, no fluff
 - Never use em dashes. One question CTA only.
+- Never cite employee counts or numeric company stats.
 - Sign off with sender first name only
 - Max 120 words`;
 

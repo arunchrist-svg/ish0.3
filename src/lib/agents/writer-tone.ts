@@ -6,7 +6,8 @@ export const BASE_WRITER_TONE = `WRITER TONE (all brands):
 - Not salesy: avoid excited to, would love to, amazing, thrilled, touch base, reach out, pick your brain, game-changer, best-in-class.
 - Not fluffy: avoid Hope you are well, Hope this finds you, I wanted to reach out.
 - Not pleasing: no over-apologizing, no excessive thank-yous, no begging for time.
-- Confident and helpful without being pushy. Short sentences. One idea at a time.`;
+- Confident and helpful without being pushy. Short sentences. One idea at a time.
+- Never cite numeric company stats (employee count, headcount, revenue). Say your team instead.`;
 
 const VERTICAL_HINTS: Record<string, string> = {
   sweets_gifting: "Product angle: mithai, hampers, Diwali gifting, tasting samples. Festive but plain language.",

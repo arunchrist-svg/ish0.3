@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "@/components/providers/session-provider";
 import { useEffect, useState } from "react";
 import {
   ChevronLeft, Contact, Home,
-  Mail, Pin, Rocket, Settings, Shield, Telescope, User, GitFork,
+  Columns3, Mail, Pin, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CircleButton } from "@/design-system";
@@ -30,6 +31,7 @@ const mainNav: NavItemEntry[] = [
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
   { icon: Rocket, label: "Lead Accelerator", href: "/leads", key: "lead-accelerator" },
+  { icon: Columns3, label: "Lead Board", href: "/leads/board", key: "lead-board" },
   { icon: Mail, label: "Outreach", href: "/email", key: "email" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
 ];
@@ -59,7 +61,10 @@ function isActive(pathname: string, href?: string) {
 }
 
 function getActiveKey(pathname: string) {
-  const match = allLinkedItems.find((item) => item.href && isActive(pathname, item.href));
+  const matches = allLinkedItems
+    .filter((item) => item.href && isActive(pathname, item.href))
+    .sort((a, b) => (b.href?.length ?? 0) - (a.href?.length ?? 0));
+  const match = matches[0];
   if (!match) return "";
   if (pathname === "/directory" || pathname.startsWith("/directory/")) return "accounts";
   return match.key;
@@ -148,23 +153,18 @@ function NavItemRow({
 
 export function SideNav() {
   const pathname = usePathname();
-  const [isSuperadmin, setIsSuperadmin] = useState(false);
+  const { session } = useSession();
+  const isSuperadmin = session?.isSuperadmin ?? false;
   const [outreachBadge, setOutreachBadge] = useState(0);
 
   useEffect(() => {
-    fetch("/api/email/overview")
+    fetch("/api/email/stats")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (!data?.stats) return;
-        setOutreachBadge((data.stats.needsReview ?? 0) + (data.stats.replies ?? 0));
+        if (!data) return;
+        setOutreachBadge((data.needsReview ?? 0) + (data.replies ?? 0));
       })
       .catch(() => {});
-  }, [pathname]);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => setIsSuperadmin(Boolean(data?.isSuperadmin)));
   }, []);
   const activeKey = getActiveKey(pathname);
   const [pendingKey, setPendingKey] = useState<string | null>(null);

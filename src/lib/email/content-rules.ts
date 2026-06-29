@@ -114,17 +114,19 @@ export function applyContentRules(
 
   const statMatch =
     lowerBody.match(/\b(\d{1,6}[\s,-]*)(person|people|employee|employees|headcount|team)\b/) ||
-    lowerBody.match(/\b(\d{1,6})-person\b/);
-  if (statMatch) {
-    const hasSource = Boolean(account?.employees?.trim() || account?.enrichmentSource?.trim());
-    if (!hasSource) {
-      hits.push({
-        id: "B",
-        label: "Specific company stats without a cited source read as scraped list data",
-        delta: -15,
-        severity: "warn",
-      });
-    }
+    lowerBody.match(/\b(\d{1,6})-person\b/) ||
+    lowerBody.match(/\b(\d{1,6})\+?\s*(employees|employee)\b/);
+  const citedEmployeeStat =
+    account?.employees?.trim() &&
+    account.employees !== "100+" &&
+    lowerBody.includes(account.employees.replace(/,/g, "").slice(0, 4));
+  if (statMatch || citedEmployeeStat) {
+    hits.push({
+      id: "B",
+      label: "Do not cite employee counts or numeric company stats; say your team instead",
+      delta: -15,
+      severity: "warn",
+    });
   }
 
   const firstName = contact?.firstName?.trim();

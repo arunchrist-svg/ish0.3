@@ -1,24 +1,31 @@
 import { NextResponse } from "next/server";
-import { getSessionTokenFromCookies, getSessionUser } from "@/lib/auth/session";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 import { getCreditBalance } from "@/lib/billing/credits";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { getPermissionFlags } from "@/lib/auth/permissions";
-import { db, tenants } from "@/db";
+import { db, tenants, users } from "@/db";
 import { eq } from "drizzle-orm";
 
 export async function GET() {
   try {
-    const token = await getSessionTokenFromCookies();
-    const user = await getSessionUser(token);
+    const ctx = await requireTenantContext();
+
+    const [user, tenant, credits, emailConfig] = await Promise.all([
+      db
+        .select({ id: users.id, email: users.email, name: users.name })
+        .from(users)
+        .where(eq(users.id, ctx.userId))
+        .limit(1)
+        .then((rows) => rows[0]),
+      db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1).then((rows) => rows[0]),
+      getCreditBalance(ctx.tenantId),
+      getResolvedEmailConfig(ctx.workspaceId),
+    ]);
+
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const ctx = await requireTenantContext();
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
-    const credits = await getCreditBalance(ctx.tenantId);
-    const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
     const permissions = getPermissionFlags(ctx);
 
     return NextResponse.json({

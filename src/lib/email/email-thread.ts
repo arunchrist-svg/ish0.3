@@ -1,5 +1,6 @@
 import type { leads, leadOutreach, outreachSchedule } from "@/db/schema";
 import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
+import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
 
 export type ThreadEventKind = "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
 export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft";
@@ -15,7 +16,7 @@ export type ThreadPhase =
 
 export type BarMode = "hidden" | "drafts" | "sequence" | "reply";
 
-export type BarNodeState = "done" | "current" | "upcoming" | "scheduled";
+export type BarNodeState = "done" | "current" | "upcoming" | "scheduled" | "paused";
 
 export type BarNodeKind = "draft" | "sent" | "scheduled" | "inbound" | "reply_draft";
 
@@ -48,6 +49,7 @@ export type ThreadEvent = {
 
 export type EmailThread = {
   threadRootSubject?: string;
+  sequenceState: SequenceControlState;
   phase: ThreadPhase;
   nextAction: "send_reply" | "await_reply" | "followup_due" | "compose" | "complete";
   nextStep: { title: string; description: string; primaryAction?: string };
@@ -145,6 +147,7 @@ export function buildEmailThread(params: {
   const hasOutboundReply = scheduleRows.some((r) => r.emailKind === "outbound_reply" || r.sequenceDay === -1);
   const initialSent = scheduleRows.some((r) => r.status === "sent" && (r.sequenceDay === 0 || r.emailKind === "initial"));
   const pendingFollowup = scheduleRows.some((r) => r.status === "scheduled" && r.sequenceDay > 0);
+  const sequenceState = deriveSequenceState(lead.status, scheduleRows);
   const isReplyDraft = latestOutreach?.templateVariant === "reply";
 
   if (hasInbound && !hasInboundRow) {
@@ -211,6 +214,7 @@ export function buildEmailThread(params: {
 
   return {
     threadRootSubject: threadRootSubject ? normalizeReplySubject(threadRootSubject) : undefined,
+    sequenceState,
     phase,
     nextAction,
     nextStep,
@@ -309,14 +313,15 @@ function buildBarNodes(params: {
       const emailNum = i + 2;
       const isSent = row?.status === "sent";
       const isScheduled = row?.status === "scheduled";
+      const isPaused = row?.status === "paused";
       const body = row ? bodyForScheduleRow(row, outreachBodiesByApprovalId) : undefined;
       const days = row && isScheduled ? daysUntil(row.scheduledFor) : undefined;
 
       const linkedDraft = sortedDrafts.find((d) => d.sequencePosition === emailNum);
       nodes.push({
         id: `e${emailNum}`,
-        label: isSent ? `E${emailNum}` : `E${emailNum} (${days ?? day}D)`,
-        state: isSent ? "done" : isScheduled ? "scheduled" : "upcoming",
+        label: isSent ? `E${emailNum}` : isPaused ? `E${emailNum} (paused)` : `E${emailNum} (${days ?? day}D)`,
+        state: isSent ? "done" : isPaused ? "paused" : isScheduled ? "scheduled" : "upcoming",
         kind: isSent ? "sent" : "scheduled",
         scheduleId: row?.id,
         outreachId: row?.draftLeadOutreachId ?? linkedDraft?.id,
@@ -373,8 +378,8 @@ function buildNextStep(
             primaryAction: undefined,
           }
         : {
-            title: "Awaiting their reply",
-            description: "Your email is in their inbox.",
+            title: "Sequence paused or complete",
+            description: "Email 1 is sent. Resume or cancel follow-ups from the controls above.",
             primaryAction: undefined,
           };
     case "they_replied":

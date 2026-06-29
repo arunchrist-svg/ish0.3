@@ -43,6 +43,7 @@ function BarStepper({
                 isDone && "border border-ish-stratus-blue/25 bg-ish-green-soft text-ish-stratus-blue",
                 node.state === "current" && "bg-ish-yellow-soft text-ish-ink ring-2 ring-ish-stratus-yellow/55",
                 node.state === "scheduled" && "border border-dashed border-ish-stratus-blue/35 bg-white text-ish-stratus-blue",
+                node.state === "paused" && "border border-dashed border-ish-stratus-salmon/35 bg-ish-pink-soft/30 text-ish-stratus-salmon",
                 node.state === "upcoming" && "bg-ish-canvas/80 text-ish-ink-faint",
                 selected && "ring-2 ring-ish-black/15",
               )}
@@ -65,7 +66,7 @@ function BarStepper({
                   }}
                   className="ml-0.5 rounded-full bg-ish-black px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal text-white hover:bg-ish-black/90"
                 >
-                  {draftReplyLoading ? "…" : "Draft"}
+                  {draftReplyLoading ? "…" : "AI reply"}
                 </span>
               )}
             </button>
@@ -111,7 +112,7 @@ export function OutreachJourneyPanel({
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    if (!thread?.barNodes.some((n) => n.state === "scheduled")) return;
+    if (!thread?.barNodes.some((n) => n.state === "scheduled" || n.state === "paused")) return;
     const id = setInterval(() => setTick((t) => t + 1), 60_000);
     return () => clearInterval(id);
   }, [thread?.barNodes]);

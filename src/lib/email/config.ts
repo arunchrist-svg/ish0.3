@@ -39,6 +39,7 @@ export type EmailConfig = {
   campaignMode: CampaignMode;
   campaignNotes?: string;
   dailySendCapPerDomain?: number;
+  outreachPaused?: boolean;
   dkimSelector?: string;
   senderHealthCache?: {
     checkedAt: string;
@@ -202,6 +203,7 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     brandConfig,
     campaignMode,
     dailySendCapPerDomain: merged.dailySendCapPerDomain ?? 50,
+    outreachPaused: merged.outreachPaused ?? false,
   };
 }
 
@@ -308,3 +310,10 @@ export function validateEmailConfig(
 
   return errors;
 }
+
+export function isOutreachSendingPaused(config: Pick<EmailConfig, "outreachPaused">): boolean {
+  return config.outreachPaused === true;
+}
+
+export const OUTREACH_PAUSED_MESSAGE =
+  "Outreach sending is paused. Resume sending in Settings or the Email queue to send emails.";

@@ -27,7 +27,7 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
   return createPortal(
     <div
       className={cn(
-        "fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]",
+        "fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm",
         className,
       )}
       onClick={onClose}
@@ -35,7 +35,7 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
     >
       <div
         className={cn(
-          "w-full max-w-md rounded-[22px] bg-white p-6 shadow-xl",
+          "ish-modal-panel w-full max-w-md rounded-[22px] border border-ish-border p-6 shadow-[var(--shadow-ish-float)]",
           panelClassName,
         )}
         onClick={(e) => e.stopPropagation()}

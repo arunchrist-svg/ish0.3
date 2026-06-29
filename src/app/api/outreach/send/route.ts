@@ -5,6 +5,7 @@ import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { getResolvedEmailConfig} from "@/lib/settings/email-settings";
+import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE } from "@/lib/email/config";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
@@ -12,10 +13,15 @@ import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
 import { assertSenderPreflight } from "@/lib/email/sender-preflight";
 import { logAudit } from "@/lib/audit";
+import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
 import { loadSequenceDrafts } from "@/lib/agents/writer-sequence";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import {
+  applySendRejectionUpdates,
+  shouldHandleSendFailure,
+} from "@/lib/enrichment/email-candidate-queue";
 
 export async function POST(req: Request) {
   try {
@@ -51,6 +57,9 @@ export async function POST(req: Request) {
 
     const contact = leadRow.contact as typeof contacts.$inferSelect;
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+    if (isOutreachSendingPaused(emailConfig)) {
+      return NextResponse.json({ error: OUTREACH_PAUSED_MESSAGE }, { status: 423 });
+    }
     if (emailConfig.sendMode === "live") {
       await assertPlanEntitlement(ctx.tenantId, "live_send");
       await assertCredits(ctx.tenantId, "email.live", 1);
@@ -90,21 +99,75 @@ export async function POST(req: Request) {
     const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();
 
-    const result = await sendEmail({
-      workspaceId: ctx.workspaceId,
-      to: contact.email ?? "",
-      subject,
-      html: buildEmailHtml({
-        body: outreach.emailBody ?? "",
-        trackingToken: email1TrackingToken,
-        appUrl: emailConfig.appUrl,
-        emailStyle: emailConfig.emailStyle,
-      }),
-      replyTo: emailConfig.replyToAddress,
-      messageId: rfcMessageId,
-      inReplyTo: threadHeaders.inReplyTo,
-      references: threadHeaders.references,
-    });
+    let result;
+    try {
+      result = await sendEmail({
+        workspaceId: ctx.workspaceId,
+        to: contact.email ?? "",
+        subject,
+        html: buildEmailHtml({
+          body: outreach.emailBody ?? "",
+          trackingToken: email1TrackingToken,
+          appUrl: emailConfig.appUrl,
+          emailStyle: emailConfig.emailStyle,
+        }),
+        replyTo: emailConfig.replyToAddress,
+        messageId: rfcMessageId,
+        inReplyTo: threadHeaders.inReplyTo,
+        references: threadHeaders.references,
+      });
+    } catch (sendError) {
+      if (shouldHandleSendFailure(contact)) {
+        const rejection = applySendRejectionUpdates(contact);
+        const contactUpdates: Partial<typeof contacts.$inferInsert> = {
+          updatedAt: new Date(),
+        };
+        if (rejection.updates.email !== undefined) contactUpdates.email = rejection.updates.email;
+        if (rejection.updates.emailStatus !== undefined) {
+          contactUpdates.emailStatus = rejection.updates.emailStatus as typeof contacts.$inferInsert.emailStatus;
+        }
+        if (rejection.updates.emailConfidence !== undefined) {
+          contactUpdates.emailConfidence = rejection.updates.emailConfidence;
+        }
+        if (rejection.updates.enrichmentSource !== undefined) {
+          contactUpdates.enrichmentSource = rejection.updates.enrichmentSource;
+        }
+        if (rejection.updates.enrichmentProvider !== undefined) {
+          contactUpdates.enrichmentProvider = rejection.updates.enrichmentProvider;
+        }
+        if (rejection.updates.alternateEmails !== undefined) {
+          contactUpdates.alternateEmails = rejection.updates.alternateEmails;
+        }
+        await db.update(contacts).set(contactUpdates).where(eq(contacts.id, contact.id));
+
+        await logAudit({
+          tenantId: ctx.tenantId,
+          workspaceId: ctx.workspaceId,
+          action: "lead.email_send_rejected",
+          entityType: "lead",
+          entityId: approval.leadId,
+          metadata: {
+            rejectedEmail: rejection.rejectedEmail,
+            nextEmail: rejection.nextEmail ?? null,
+            canRetry: rejection.canRetry,
+          },
+        });
+
+        return NextResponse.json(
+          {
+            code: "email_send_rejected",
+            error: rejection.canRetry
+              ? `Send failed for ${rejection.rejectedEmail}. Next candidate ready: ${rejection.nextEmail}`
+              : `Send failed for ${rejection.rejectedEmail}. No saved candidates remain.`,
+            rejectedEmail: rejection.rejectedEmail,
+            nextEmail: rejection.nextEmail,
+            canRetry: rejection.canRetry,
+          },
+          { status: 409 },
+        );
+      }
+      throw sendError;
+    }
 
     const sendMode = emailConfig.sendMode;
     const scheduleBase = {
@@ -180,13 +243,27 @@ export async function POST(req: Request) {
       void checkLowBalanceAlerts(ctx.tenantId);
     }
 
+    const contentScoreResult = scoreSpamMeter(
+      outreach.emailBody ?? "",
+      subject,
+      { contactFirstName: contact.firstName ?? contact.name.split(" ")[0], sequencePosition: outreach.sequencePosition ?? 1 },
+    );
+
     await logAudit({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
       action: "outreach.sent",
       entityType: "lead",
       entityId: approval.leadId,
-      metadata: { mode: result.mode, messageId: rfcMessageId, subject: result.subject, threaded: Boolean(threadHeaders.inReplyTo) },
+      metadata: {
+        mode: result.mode,
+        messageId: rfcMessageId,
+        subject: result.subject,
+        threaded: Boolean(threadHeaders.inReplyTo),
+        contentScore: outreach.deliverabilityScore ?? contentScoreResult.contentScore,
+        contentRuleIds: contentScoreResult.ruleHits?.map((h) => h.id) ?? [],
+        approvalId,
+      },
     });
 
     return NextResponse.json({ mode: result.mode, messageId: rfcMessageId, to: result.to });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal, RefreshCw, MessageSquare, Package, Handshake, Trophy, Pin, Loader2 } from "lucide-react";
+import { MoreHorizontal, RefreshCw, MessageSquare, Package, Handshake, Trophy, Pin, Loader2, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { QueueItem } from "@/lib/data";
 import { Button, IshAvatar, text } from "@/design-system";
@@ -17,6 +17,8 @@ type Props = {
   onRefresh: (showOverlay?: boolean) => void | Promise<void>;
   refreshing?: boolean;
   onLeadUpdated: () => void;
+  onEditLead?: (lead: LeadDetailRecord) => void;
+  onDeleteLead?: (leadId: string) => void;
 };
 
 function formatSubtitle(title: string | undefined, company: string | undefined) {
@@ -26,11 +28,12 @@ function formatSubtitle(title: string | undefined, company: string | undefined) 
   return t ?? c ?? "—";
 }
 
-export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdated }: Props) {
+export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdated, onEditLead, onDeleteLead }: Props) {
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
   const [dealAmount, setDealAmount] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [pinning, setPinning] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   async function handleMarkReplied() {
     try {
@@ -182,13 +185,48 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
             {pinning ? "Saving…" : lead.isPinned ? "Pinned" : "Pin"}
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(actionBtn, "bg-white/55 text-ish-ink hover:bg-white/70")}
-          >
-            <MoreHorizontal className="size-3.5" />
-          </Button>
+          {(onEditLead || onDeleteLead) ? (
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(actionBtn, "bg-white/55 text-ish-ink hover:bg-white/70")}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <MoreHorizontal className="size-3.5" />
+              </Button>
+              {menuOpen ? (
+                <div className="absolute right-0 top-full z-20 mt-1 min-w-[150px] overflow-hidden rounded-xl border border-ish-border bg-white py-1 shadow-[var(--shadow-ish)]">
+                  {onEditLead ? (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-semibold text-ish-ink hover:bg-ish-app"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onEditLead(lead);
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                      Edit lead
+                    </button>
+                  ) : null}
+                  {onDeleteLead ? (
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] font-semibold text-red-600 hover:bg-red-50"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        void onDeleteLead(lead.id);
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                      Delete lead
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
 

@@ -175,7 +175,7 @@ export function EmailEditChat({
               onKeyDown={handleKeyDown}
               disabled={revising}
               rows={2}
-              placeholder="e.g. change greeting to Hi Vikram, mention bulk pricing…"
+              placeholder="Ask for a specific change (e.g. fix the second paragraph, or change one line…)"
               className={cn(
                 "min-h-[44px] max-h-[100px] min-w-0 flex-1 resize-none rounded-[14px] border border-ish-border/50 px-3.5 py-2.5",
                 text.bodySoft,

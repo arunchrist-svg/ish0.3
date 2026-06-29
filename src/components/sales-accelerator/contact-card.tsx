@@ -2,20 +2,23 @@
 
 import { useState } from "react";
 import type { LeadRecord, QueueItem } from "@/lib/data";
-import type { ContactEmailEntry } from "@/lib/api-client";
+import type { ContactEmailEntry, LeadDetailRecord } from "@/lib/api-client";
 import { FieldRow, PanelCard, SectionHeader } from "@/design-system";
 import { cn } from "@/lib/utils";
-import { Loader2, Mail, Search, Sparkles } from "lucide-react";
+import { Loader2, Mail, Search, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/design-system";
+import { EmailSuggestModal } from "@/components/sales-accelerator/email-suggest-modal";
 
 type Props = {
   record: LeadRecord;
   current: QueueItem;
+  lead?: LeadDetailRecord;
   emails?: ContactEmailEntry[];
   emailConfidence?: number;
   confidenceTier?: string;
   enrichmentSource?: string;
   onRefetchEmails?: (mode: "free" | "paid") => Promise<void>;
+  onEmailsSaved?: () => void;
 };
 
 function tierBadge(tier?: string, confidence?: number) {
@@ -50,6 +53,24 @@ function emailStatusTone(status: string) {
   return "text-ish-ink-faint";
 }
 
+
+function testStatusBadge(status?: string) {
+  const label =
+    status === "sent" ? "Sent" : status === "rejected" ? "Rejected" : status === "saved" ? "Saved" : null;
+  if (!label) return null;
+  const tone =
+    status === "sent"
+      ? "bg-ish-green-soft text-ish-green"
+      : status === "rejected"
+        ? "bg-red-50 text-red-700"
+        : "bg-ish-yellow-soft text-[#e8a000]";
+  return (
+    <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", tone)}>
+      {label}
+    </span>
+  );
+}
+
 function EmailRow({
   entry,
   isPrimary,
@@ -70,6 +91,12 @@ function EmailRow({
             {isPrimary ? (
               <span className="rounded-full bg-ish-black/8 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ish-ink-soft">
                 Primary
+              </span>
+            ) : null}
+            {testStatusBadge(entry.testStatus)}
+            {entry.pattern ? (
+              <span className="rounded-full bg-ish-black/6 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ish-ink-soft">
+                {entry.pattern}
               </span>
             ) : null}
           </div>
@@ -112,14 +139,17 @@ function EmailRow({
 export function ContactCard({
   record,
   current,
+  lead,
   emails = [],
   emailConfidence,
   confidenceTier,
   enrichmentSource,
   onRefetchEmails,
+  onEmailsSaved,
 }: Props) {
   const [refetching, setRefetching] = useState(false);
   const [paidDialogOpen, setPaidDialogOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
 
   async function handleRefetch(mode: "free" | "paid") {
     if (!onRefetchEmails) return;
@@ -169,7 +199,20 @@ export function ContactCard({
       <FieldRow label="Business Phone" value={record.contact.businessPhone} action="phone" />
       <FieldRow label="Mobile Phone" value={record.contact.mobilePhone} action="phone" />
       <div className="mb-4">
-        <div className={cn("mb-1 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint")}>Email</div>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className={cn("text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint")}>Email</div>
+          {lead ? (
+            <button
+              type="button"
+              title="Suggest emails from name and domain"
+              onClick={() => setSuggestOpen(true)}
+              className="flex items-center gap-1 rounded-full bg-white/70 px-2 py-1 text-[10px] font-semibold text-ish-ink-soft transition hover:bg-white hover:text-ish-ink"
+            >
+              <Wand2 className="size-3" />
+              Suggest
+            </button>
+          ) : null}
+        </div>
         {emailEntries.length ? (
           emailEntries.map((entry, index) => (
             <EmailRow
@@ -213,6 +256,16 @@ export function ContactCard({
       <FieldRow label="Company" value={current.company} />
       <FieldRow label="Employees" value={record.company.employees} />
       <FieldRow label="City" value={record.company.city} />
+      {lead ? (
+        <EmailSuggestModal
+          open={suggestOpen}
+          lead={lead}
+          onClose={() => setSuggestOpen(false)}
+          onSaved={() => {
+            onEmailsSaved?.();
+          }}
+        />
+      ) : null}
     </PanelCard>
   );
 }

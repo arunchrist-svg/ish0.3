@@ -11,6 +11,7 @@ import { buildContactEmails, hasUsableEmail } from "@/lib/enrichment/contact-ema
 import { buildEmailThread } from "@/lib/email/email-thread";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { updateLeadFields, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -138,6 +139,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       lastName: contact.lastName ?? contact.name.split(" ").slice(1).join(" "),
       title: contact.title ?? "—",
       company: account.name,
+      domain: account.domain ?? undefined,
+      website: account.website ?? undefined,
       city: account.city ?? "—",
       employees: account.employees ?? "—",
       email: contact.email ?? "—",
@@ -147,6 +150,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         emailConfidence: contact.emailConfidence,
         enrichmentSource: contact.enrichmentSource,
         enrichmentProvider: contact.enrichmentProvider,
+        testStatus:
+          contact.enrichmentProvider === "permutation"
+            ? isEmailOutreachStarted(lead.status, Boolean(outreach))
+              ? "sent"
+              : "saved"
+            : undefined,
         alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
       }),
       emailStatus: contact.emailStatus ?? "missing",
@@ -292,13 +301,84 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
     const body = await req.json();
-    const { status: nextStatus, closedDealAmount } = body as {
+    const {
+      status: nextStatus,
+      closedDealAmount,
+      name,
+      title,
+      email,
+      phone,
+      linkedIn,
+      company,
+      city,
+      industry,
+      employees,
+      score,
+      rating,
+      owner,
+      tags,
+      estimatedValue,
+    } = body as {
       status?: string;
       closedDealAmount?: string;
+      name?: string;
+      title?: string;
+      email?: string;
+      phone?: string;
+      linkedIn?: string;
+      company?: string;
+      city?: string;
+      industry?: string;
+      employees?: string;
+      score?: number;
+      rating?: string;
+      owner?: string;
+      tags?: string[];
+      estimatedValue?: string;
     };
 
+    const hasFieldUpdates =
+      name !== undefined ||
+      title !== undefined ||
+      email !== undefined ||
+      phone !== undefined ||
+      linkedIn !== undefined ||
+      company !== undefined ||
+      city !== undefined ||
+      industry !== undefined ||
+      employees !== undefined ||
+      score !== undefined ||
+      rating !== undefined ||
+      owner !== undefined ||
+      tags !== undefined ||
+      estimatedValue !== undefined;
+
+    if (hasFieldUpdates) {
+      await updateLeadFields({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        actorId: ctx.userId,
+        leadId: id,
+        name,
+        title,
+        email,
+        phone,
+        linkedIn,
+        company,
+        city,
+        industry,
+        employees,
+        score,
+        rating,
+        owner,
+        tags,
+        estimatedValue,
+      });
+    }
+
     if (!nextStatus) {
-      return NextResponse.json({ error: "status required" }, { status: 400 });
+      if (hasFieldUpdates) return NextResponse.json({ ok: true });
+      return NextResponse.json({ error: "No updates provided" }, { status: 400 });
     }
 
     const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
@@ -353,7 +433,29 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     return NextResponse.json({ ok: true, status: nextStatus });
   } catch (e) {
+    if (e instanceof LeadNotFoundError) {
+      return NextResponse.json({ error: e.message }, { status: 404 });
+    }
     return handleApiError(e, "[api/leads/[id] PATCH]");
   }
 }
 
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
+    await deleteLeadById({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      actorId: ctx.userId,
+      leadId: id,
+    });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    if (e instanceof LeadNotFoundError) {
+      return NextResponse.json({ error: e.message }, { status: 404 });
+    }
+    return handleApiError(e, "[api/leads/[id] DELETE]");
+  }
+}

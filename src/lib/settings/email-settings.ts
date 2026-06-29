@@ -178,6 +178,15 @@ export async function verifyEmailConnection(
   });
 }
 
+
+export async function setOutreachPaused(paused: boolean, workspaceId?: string): Promise<EmailConfigResponse> {
+  const overrides = await loadWorkspaceEmailOverrides(workspaceId);
+  const merged = resolveEmailConfig({ ...overrides, outreachPaused: paused });
+  await persistEmailConfig(merged, workspaceId);
+  invalidateEmailConfigCache();
+  return getEmailConfigForApi();
+}
+
 export async function getEmailConfigForApi(): Promise<EmailConfigResponse> {
   const config = await getResolvedEmailConfig();
   return buildEmailConfigResponse(config);

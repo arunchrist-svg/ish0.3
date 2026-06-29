@@ -1,5 +1,6 @@
 "use client";
 
+import { SenderHealthSettings } from "@/components/settings/sender-health-settings";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsSelectRow } from "@/components/settings/settings-select-row";
 import { SettingsNumberRow } from "@/components/settings/settings-number-row";
@@ -131,6 +132,25 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
           </div>
         </div>
       )}
+
+      <SettingsGroup
+        title="Outreach sending"
+        footer="Pause stops Email 1 sends and automated follow-ups. Scheduled emails stay queued until you resume."
+      >
+        <SettingsSelectRow
+          label="Sending active"
+          desc="Email 1 and sequence follow-ups can send on schedule."
+          selected={!config.outreachPaused}
+          onSelect={() => onUpdate("outreachPaused", false)}
+        />
+        <SettingsSelectRow
+          label="Paused"
+          desc="No outbound emails until you resume. Drafts and approvals are kept."
+          selected={Boolean(config.outreachPaused)}
+          onSelect={() => onUpdate("outreachPaused", true)}
+          showDivider
+        />
+      </SettingsGroup>
 
       <SettingsGroup title="Provider" footer="Choose how outbound email is delivered.">
         {EMAIL_PROVIDER_OPTIONS.map((option, i) => (
@@ -371,6 +391,12 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
             showDivider
           />
         )}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Sender health"
+        footer="SPF, DMARC, and DKIM checks on your sending domain. Cached for 1 hour.">
+        <SenderHealthSettings />
       </SettingsGroup>
 
       <SettingsGroup

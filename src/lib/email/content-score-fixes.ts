@@ -14,7 +14,7 @@ const FIX_TIPS: [RegExp | string, string][] = [
   [/marketing email style/i, "Use primary inbox tone. No bulk/marketing footer language"],
   [/marketing compliance footer/i, "Remove newsletter-style footer lines"],
   [/personal\/business info before any reply/i, "Do not ask for address, phone, budget, or headcount in email #1"],
-  [/company stats without/i, "Remove invented employee counts. Say \"your team\" instead"],
+  [/Do not cite employee counts/i, "Remove employee counts and numeric company stats. Say \"your team\" instead"],
   [/specific detail.*opener/i, "Add one sourced detail in the opening paragraph — not just Hi + name on its own line"],
   [/soft exit/i, 'Add a no-pressure line (e.g. "No worries if not relevant" or "Happy to pass if timing is off") — not "happy to coordinate"'],
   [/sign.?off/i, "Sign off with first name, role (e.g. Partnerships), then company"],

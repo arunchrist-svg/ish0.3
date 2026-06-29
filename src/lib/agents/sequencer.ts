@@ -10,6 +10,7 @@ import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/bi
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
+import { isOutreachSendingPaused } from "@/lib/email/config";
 
 export async function runSequencer(): Promise<{ processed: number; failed: number; skipped: number }> {
   const now = new Date();
@@ -51,6 +52,10 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
       const account = lead.account as typeof accounts.$inferSelect;
 
       const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+      if (isOutreachSendingPaused(emailConfig)) {
+        skipped++;
+        continue;
+      }
       if (emailConfig.sendMode === "live") {
         await assertPlanEntitlement(lead.tenantId, "live_send");
         await assertCredits(lead.tenantId, "email.live", 1);

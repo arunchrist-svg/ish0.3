@@ -19,9 +19,16 @@ import {
   buildContentScoreImproveMessage,
   isContentScoreImproveRequest,
 } from "@/lib/email/content-score-fixes";
+import {
+  bodyChangeRatio,
+  detectEditIntent,
+  mentionsSubject,
+  type EditIntent,
+} from "@/lib/email/edit-intent";
 
 const MAX_HISTORY_IN_PROMPT = 20;
 const MAX_REVISIONS = 1;
+const SURGICAL_CHANGE_THRESHOLD = 0.25;
 
 function formatHistory(messages: { role: string; content: string }[]): string {
   if (messages.length === 0) return "(no prior edits)";
@@ -29,6 +36,142 @@ function formatHistory(messages: { role: string; content: string }[]): string {
     .slice(-MAX_HISTORY_IN_PROMPT)
     .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
     .join("\n");
+}
+
+function buildSystemPrompt(params: {
+  brandName: string;
+  tonePersona: string;
+  antiSpamRules: string;
+  intent: EditIntent;
+}): string {
+  const { brandName, tonePersona, antiSpamRules, intent } = params;
+
+  const importantBlock =
+    intent === "surgical"
+      ? `IMPORTANT (SURGICAL EDIT):
+- Change ONLY what the user explicitly asked for.
+- Copy every unchanged sentence word for word from the current draft.
+- Do not rephrase, reorder, shorten, or improve unrelated parts.
+- If the instruction does not mention subject, title, greeting, or salutation, return subjectA and subjectB IDENTICAL to the current values.
+- Still return full subjectA, subjectB, and emailBody fields in JSON, but unchanged fields must match the input exactly.
+- changeSummary must only describe the specific change you made.`
+      : `IMPORTANT:
+- Always return the FULL updated subjectA, subjectB, and emailBody, not just a summary.
+- If the user asks to change "title", "subject", "greeting", or "salutation", update the subject line(s) AND the opening line of the email body to match.
+- "Hi [Name]" requests should change both subject (if relevant) and body opening from "Dear Dr. ..." to "Hi [FirstName],".
+- changeSummary must only describe changes you actually made in the returned fields.`;
+
+  return `You are ${brandName}'s outreach editor. Revise emails based on user feedback.
+${tonePersona}
+Max 120 words. Open with "Hi {firstName},".
+${antiSpamRules}
+
+${importantBlock}
+
+Output ONLY valid JSON:
+{
+  "subjectA": "string",
+  "subjectB": "string",
+  "emailBody": "string",
+  "changeSummary": "one short sentence describing what you changed"
+}`;
+}
+
+function buildUserPrompt(params: {
+  subjectA: string;
+  subjectB: string;
+  emailBody: string;
+  contactLine: string;
+  companyLine: string;
+  templateGoal: string;
+  history: string;
+  effectiveMessage: string;
+  contactFirstName: string;
+  companyName: string;
+  intent: EditIntent;
+}): string {
+  const {
+    subjectA,
+    subjectB,
+    emailBody,
+    contactLine,
+    companyLine,
+    templateGoal,
+    history,
+    effectiveMessage,
+    contactFirstName,
+    companyName,
+    intent,
+  } = params;
+
+  const closingInstruction =
+    intent === "surgical"
+      ? `Make the smallest edit that satisfies the instruction. Preserve all other text exactly. Keep personalization for ${contactFirstName} and ${companyName}.`
+      : `Apply the instruction to the full draft above. Keep personalization for ${contactFirstName} and ${companyName}.
+Return complete revised subjectA, subjectB, and emailBody reflecting every change requested.`;
+
+  return `Current draft:
+Subject A: ${subjectA}
+Subject B: ${subjectB}
+Body:
+${emailBody}
+
+Contact: ${contactLine}
+Company: ${companyLine}
+Template goal: ${templateGoal}
+
+Edit history:
+${history}
+
+User instruction: ${effectiveMessage}
+
+${closingInstruction}`;
+}
+
+const SURGICAL_RETRY_NOTE =
+  "Your last edit changed too much unrelated text. Change ONLY what the user asked. Copy all other sentences verbatim from Current draft.";
+
+type ParsedDraft = {
+  subjectA?: string;
+  subjectB?: string;
+  emailBody?: string;
+  changeSummary?: string;
+};
+
+async function callReviseLLM(params: {
+  systemPrompt: string;
+  userPrompt: string;
+  extraNote?: string;
+}): Promise<ParsedDraft> {
+  const raw = await callLLM({
+    tier: "fast",
+    system: params.systemPrompt,
+    prompt: params.extraNote ? `${params.userPrompt}\n\n${params.extraNote}` : params.userPrompt,
+    maxTokens: 1024,
+  });
+
+  try {
+    return JSON.parse(raw.replace(/```json|```/g, "").trim()) as ParsedDraft;
+  } catch {
+    throw new Error("Could not parse revised draft from AI");
+  }
+}
+
+function applySubjectLock(params: {
+  intent: EditIntent;
+  userMessage: string;
+  originalSubjectA: string;
+  originalSubjectB: string;
+  subjectA: string;
+  subjectB: string;
+}): { subjectA: string; subjectB: string } {
+  if (params.intent !== "surgical" || mentionsSubject(params.userMessage)) {
+    return { subjectA: params.subjectA, subjectB: params.subjectB };
+  }
+  return {
+    subjectA: params.originalSubjectA,
+    subjectB: params.originalSubjectB,
+  };
 }
 
 export async function reviseWriter(leadOutreachId: string, userMessage: string) {
@@ -55,7 +198,13 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const senderFirstName = emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
   const sequencePosition = outreach.sequencePosition ?? 1;
-  const brandConfig = emailConfig.brandConfig ?? { brandSlug: "ish" as const, brandName: emailConfig.fromName, vertical: "general", productSummary: "", buyerPersonas: [] };
+  const brandConfig = emailConfig.brandConfig ?? {
+    brandSlug: "ish" as const,
+    brandName: emailConfig.fromName,
+    vertical: "general",
+    productSummary: "",
+    buyerPersonas: [],
+  };
   const template = getOutreachTemplate(outreach.templateVariant ?? undefined);
 
   const priorMessages = await db.query.outreachEditMessages.findMany({
@@ -92,31 +241,6 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     intelNotes: account.intelNotes,
   };
 
-  const systemPrompt = `You are ${brandConfig.brandName}'s outreach editor. Revise emails based on user feedback.
-${getWriterTonePersona(brandConfig)}
-Max 120 words. Open with "Hi {firstName},".
-${getAntiSpamWritingRules({
-  sequencePosition,
-  senderFirstName,
-  brandName: emailConfig.brandConfig?.brandName ?? emailConfig.fromName,
-  emailStyle: emailConfig.emailStyle,
-  hasVerifiedEmployeeCount: Boolean(account.employees?.trim() && account.employees !== "100+"),
-})}
-
-IMPORTANT:
-- Always return the FULL updated subjectA, subjectB, and emailBody, not just a summary.
-- If the user asks to change "title", "subject", "greeting", or "salutation", update the subject line(s) AND the opening line of the email body to match.
-- "Hi [Name]" requests should change both subject (if relevant) and body opening from "Dear Dr. ..." to "Hi [FirstName],".
-- changeSummary must only describe changes you actually made in the returned fields.
-
-Output ONLY valid JSON:
-{
-  "subjectA": "string",
-  "subjectB": "string",
-  "emailBody": "string",
-  "changeSummary": "one short sentence describing what you changed"
-}`;
-
   let effectiveMessage = userMessage;
   if (isContentScoreImproveRequest(userMessage)) {
     const currentSpam = scoreSpamMeter(outreach.emailBody ?? "", outreach.subjectA ?? "", delivOpts);
@@ -125,70 +249,85 @@ Output ONLY valid JSON:
       emailBody: outreach.emailBody ?? "",
       ...rubricParams,
     });
-    const rubricIssues = scoreRubricTotal(rubric) < RUBRIC_PASS_THRESHOLD
-      ? ` Also improve rubric score (currently ${scoreRubricTotal(rubric)}/100).`
-      : "";
+    const rubricIssues =
+      scoreRubricTotal(rubric) < RUBRIC_PASS_THRESHOLD
+        ? ` Also improve rubric score (currently ${scoreRubricTotal(rubric)}/100).`
+        : "";
     effectiveMessage =
       buildContentScoreImproveMessage(currentSpam.factors, currentSpam.inboxScore) + rubricIssues;
   }
 
-  const baseUserPrompt = `Current draft:
-Subject A: ${outreach.subjectA ?? ""}
-Subject B: ${outreach.subjectB ?? ""}
-Body:
-${outreach.emailBody ?? ""}
+  const intent = detectEditIntent(effectiveMessage);
 
-Contact: ${contact.firstName ?? contact.name}, ${contact.title ?? "HR/Admin"}
-Company: ${account.name}, ${account.city ?? "India"}
-Template goal: ${template.label}: ${template.ctaInstruction}
+  const antiSpamRules = getAntiSpamWritingRules({
+    sequencePosition,
+    senderFirstName,
+    brandName: emailConfig.brandConfig?.brandName ?? emailConfig.fromName,
+    emailStyle: emailConfig.emailStyle,
+    });
 
-Edit history:
-${formatHistory(priorMessages)}
+  const systemPrompt = buildSystemPrompt({
+    brandName: brandConfig.brandName,
+    tonePersona: getWriterTonePersona(brandConfig),
+    antiSpamRules,
+    intent,
+  });
 
-User instruction: ${effectiveMessage}
+  const originalSubjectA = outreach.subjectA ?? "";
+  const originalSubjectB = outreach.subjectB ?? "";
+  const originalBody = outreach.emailBody ?? "";
 
-Apply the instruction to the full draft above. Keep personalization for ${contact.firstName ?? contact.name} and ${account.name}.
-Return complete revised subjectA, subjectB, and emailBody reflecting every change requested.`;
+  const baseUserPrompt = buildUserPrompt({
+    subjectA: originalSubjectA,
+    subjectB: originalSubjectB,
+    emailBody: originalBody,
+    contactLine: `${contact.firstName ?? contact.name}, ${contact.title ?? "HR/Admin"}`,
+    companyLine: `${account.name}, ${account.city ?? "India"}`,
+    templateGoal: `${template.label}: ${template.ctaInstruction}`,
+    history: formatHistory(priorMessages),
+    effectiveMessage,
+    contactFirstName: contactFirstName ?? contact.name,
+    companyName: account.name,
+    intent,
+  });
 
-  let subjectA = outreach.subjectA ?? "";
-  let subjectB = outreach.subjectB ?? "";
-  let emailBody = outreach.emailBody ?? "";
+  let subjectA = originalSubjectA;
+  let subjectB = originalSubjectB;
+  let emailBody = originalBody;
   let changeSummary = "Updated draft per your feedback";
+  let surgicalRetried = false;
 
   for (let attempt = 0; attempt <= MAX_REVISIONS; attempt++) {
-    const raw = await callLLM({
-      tier: "fast",
-      system: systemPrompt,
-      prompt:
-        attempt === 0
-          ? baseUserPrompt
-          : `${baseUserPrompt}\n\n${getRevisionInstruction(
+    const extraNote =
+      attempt === 0
+        ? undefined
+        : intent === "surgical"
+          ? SURGICAL_RETRY_NOTE
+          : getRevisionInstruction(
               await getCombinedRevisionIssues(emailBody, subjectA, {
                 subjectA,
                 emailBody,
                 ...rubricParams,
               }),
-            )}`,
-      maxTokens: 1024,
-    });
+            );
 
-    let parsed: {
-      subjectA?: string;
-      subjectB?: string;
-      emailBody?: string;
-      changeSummary?: string;
-    } = {};
-
-    try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    } catch {
-      throw new Error("Could not parse revised draft from AI");
-    }
+    const parsed = await callReviseLLM({ systemPrompt, userPrompt: baseUserPrompt, extraNote });
 
     subjectA = parsed.subjectA ?? subjectA;
     subjectB = parsed.subjectB ?? subjectB;
     emailBody = parsed.emailBody ?? emailBody;
     changeSummary = parsed.changeSummary ?? changeSummary;
+
+    const locked = applySubjectLock({
+      intent,
+      userMessage: effectiveMessage,
+      originalSubjectA,
+      originalSubjectB,
+      subjectA,
+      subjectB,
+    });
+    subjectA = locked.subjectA;
+    subjectB = locked.subjectB;
 
     const spamResult = scoreSpamMeter(emailBody, subjectA, delivOpts);
     const rubric = await scoreRubric({ subjectA, emailBody, ...rubricParams });
@@ -196,13 +335,45 @@ Return complete revised subjectA, subjectB, and emailBody reflecting every chang
       spamResult.inboxScore >= DELIVERABILITY_PASS_THRESHOLD &&
       scoreRubricTotal(rubric) >= RUBRIC_PASS_THRESHOLD;
 
+    if (intent === "surgical") {
+      const ratio = bodyChangeRatio(originalBody, emailBody);
+      if (ratio > SURGICAL_CHANGE_THRESHOLD && !surgicalRetried) {
+        surgicalRetried = true;
+        const retryParsed = await callReviseLLM({
+          systemPrompt,
+          userPrompt: baseUserPrompt,
+          extraNote: SURGICAL_RETRY_NOTE,
+        });
+        subjectA = retryParsed.subjectA ?? subjectA;
+        subjectB = retryParsed.subjectB ?? subjectB;
+        emailBody = retryParsed.emailBody ?? emailBody;
+        changeSummary = retryParsed.changeSummary ?? changeSummary;
+
+        const retryLocked = applySubjectLock({
+          intent,
+          userMessage: effectiveMessage,
+          originalSubjectA,
+          originalSubjectB,
+          subjectA,
+          subjectB,
+        });
+        subjectA = retryLocked.subjectA;
+        subjectB = retryLocked.subjectB;
+
+        const retryRatio = bodyChangeRatio(originalBody, emailBody);
+        if (retryRatio > SURGICAL_CHANGE_THRESHOLD) {
+          changeSummary =
+            "Applied your change; some surrounding wording may have shifted. Try quoting the exact line to change.";
+        }
+      }
+      break;
+    }
+
     if (passesQuality || attempt === MAX_REVISIONS) break;
   }
 
   const unchanged =
-    subjectA === (outreach.subjectA ?? "") &&
-    subjectB === (outreach.subjectB ?? "") &&
-    emailBody === (outreach.emailBody ?? "");
+    subjectA === originalSubjectA && subjectB === originalSubjectB && emailBody === originalBody;
 
   if (unchanged) {
     changeSummary = "No visible changes applied. Try being more specific (e.g. change greeting to Hi Vikram).";

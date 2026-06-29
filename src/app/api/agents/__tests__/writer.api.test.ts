@@ -94,7 +94,7 @@ describe("AGENT-API-002 writer route", () => {
       new Request("http://localhost/api/agents/writer/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: "lead-1" }),
+        body: JSON.stringify({ leadId: "lead-1", mode: "single" }),
       }),
     );
     expect(res.status).toBe(200);

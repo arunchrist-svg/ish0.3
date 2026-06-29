@@ -68,3 +68,29 @@ describe("content quality — screenshot-style Diwali draft", () => {
   });
 });
 
+describe("company stats in email body", () => {
+  it("penalizes employee counts even when account has verified employees", () => {
+    const result = scoreContentQuality(
+      `Hi Priya,
+
+With Diwali coming up, we help teams like yours with premium gifting. For your 500 employees, we can offer curated hampers.
+
+Would a sample box help?
+
+Arun
+ISH`,
+      "Diwali gifting for Test Corp",
+      {
+        emailStyle: "primary",
+        fromName: "Arun",
+        contactFirstName: "Priya",
+        sequencePosition: 1,
+        account: { name: "Test Corp", employees: "500", enrichmentSource: "apollo" },
+        contact: { firstName: "Priya" },
+      },
+    );
+    expect(result.ruleHits.some((h) => h.id === "B")).toBe(true);
+    expect(result.contentScore).toBeLessThan(85);
+  });
+});
+

@@ -3,6 +3,8 @@ import {
   getDefaultEmailConfig,
   resolveEmailConfig,
   validateEmailConfig,
+  isOutreachSendingPaused,
+  OUTREACH_PAUSED_MESSAGE,
   fromAddressMatchesSmtpUser,
   resolveSmtpCredentials,
 } from "@/lib/email/config";
@@ -108,6 +110,18 @@ describe("EMAIL-UNIT-001 additional config cases", () => {
     process.env.EMAIL_PROVIDER = "resend";
     const resolved = resolveEmailConfig({});
     expect(resolved.provider).toBe("resend");
+  });
+
+  it("defaults outreach sending to active (not paused)", () => {
+    const resolved = resolveEmailConfig({});
+    expect(resolved.outreachPaused).toBe(false);
+    expect(isOutreachSendingPaused(resolved)).toBe(false);
+  });
+
+  it("respects outreachPaused override", () => {
+    const paused = resolveEmailConfig({ outreachPaused: true });
+    expect(isOutreachSendingPaused(paused)).toBe(true);
+    expect(OUTREACH_PAUSED_MESSAGE).toMatch(/paused/i);
   });
 
   it("clamps single cadence day to minimum of 1", () => {

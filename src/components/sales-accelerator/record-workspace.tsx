@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
 import { RecordHeader } from "@/components/sales-accelerator/record-header";
@@ -25,6 +25,8 @@ type Props = {
   leadId: string;
   initialLead?: LeadDetailRecord | null;
   onLeadUpdated: () => void;
+  onEditLead?: (lead: LeadDetailRecord) => void;
+  onDeleteLead?: (leadId: string) => void;
 };
 
 function confidenceTierFromLead(lead: LeadDetailRecord): string {
@@ -93,9 +95,26 @@ function toQueueItem(lead: LeadDetailRecord) {
 
 const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"] as const;
 
-export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
+export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead, onDeleteLead }: Props) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
+
+  function syncTabToUrl(tab: string) {
+    const params =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams(searchParams.toString());
+    params.set("lead", leadId);
+    if (tab === "Email") {
+      params.set("tab", "email");
+    } else {
+      params.delete("tab");
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
   const [lead, setLead] = useState<LeadDetailRecord | null>(initialLead ?? null);
   const [loading, setLoading] = useState(!initialLead);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,14 +191,21 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
   }, [tabFromUrl, leadId]);
   useEffect(() => {
     if (initialLead?.id === leadId) {
-      setLead(initialLead);
+      setLead((prev) => {
+        if (prev?.id !== leadId) return initialLead;
+        return {
+          ...initialLead,
+          outreach: prev.outreach ?? initialLead.outreach,
+          network: prev.network.length > initialLead.network.length ? prev.network : initialLead.network,
+        };
+      });
       setLoading(false);
       setLoadError(null);
       return;
     }
     setLead(null);
     setLoadError(null);
-    setActiveTab("Summary");
+    setActiveTab(tabFromUrl === "email" ? "Email" : "Summary");
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, initialLead]);
@@ -240,10 +266,10 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
       )}
       <div className="ish-record-card overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-ish-sm)]">
         <div className="bg-ish-yellow-gradient">
-          <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} />
+          <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} onEditLead={onEditLead} onDeleteLead={onDeleteLead} />
           <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
         </div>
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="bg-white">
+        <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); syncTabToUrl(tab); }} className="bg-white">
         <div className="px-[22px] pt-4">
           <TabsList className="h-auto gap-1.5 bg-transparent p-0">
             {TABS.map((tab) => (
@@ -268,17 +294,22 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
             <ContactCard
               record={record}
               current={current}
+              lead={lead}
               emails={lead.emails}
               emailConfidence={lead.emailConfidence}
               confidenceTier={confidenceTierFromLead(lead)}
               enrichmentSource={lead.enrichmentSource}
               onRefetchEmails={handleRefetchEmails}
+              onEmailsSaved={() => {
+                void refreshInline(false);
+                onLeadUpdated();
+              }}
             />
             <UpNextPanel
               tasks={record.upNext}
               lead={lead}
               hasEmailDraft={hasDraft}
-              onOpenEmailTab={() => setActiveTab("Email")}
+              onOpenEmailTab={() => { setActiveTab("Email"); syncTabToUrl("Email"); }}
               onLeadUpdated={onLeadUpdated}
               onRefresh={refreshInline}
             />
@@ -318,7 +349,6 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated }: Props) {
             draft={lead.outreach}
             onDraftUpdated={(draft) => {
               applyDraft(draft);
-              onLeadUpdated();
             }}
             onSilentRefresh={() => load({ silent: true })}
             onSent={() => {
