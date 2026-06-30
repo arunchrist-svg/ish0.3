@@ -1,5 +1,5 @@
 self.addEventListener("push", (event) => {
-  let data = { title: "Sales Hub", body: "You have an update", url: "/" };
+  let data = { title: "Nebula", body: "You have an update", url: "/" };
   try {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch {

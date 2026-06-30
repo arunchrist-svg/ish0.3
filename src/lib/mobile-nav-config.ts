@@ -110,5 +110,5 @@ export function getMobilePageTitle(pathname: string): string {
   if (pathname === "/settings") return "Settings";
   if (pathname === "/admin") return "Platform Admin";
   if (pathname === "/agents") return "Agents";
-  return "Sales Hub";
+  return "Nebula";
 }

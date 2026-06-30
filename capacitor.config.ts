@@ -15,22 +15,29 @@ for (const file of [".env.local", ".env"]) {
 /** Stratus canvas background — matches web manifest + tokens.css */
 const STRATUS_CANVAS = "#f6f7fa";
 
-function resolveServerUrl(): string | undefined {
+const PRODUCTION_APP_URL = "https://ish0-3.vercel.app";
+
+function resolveServerUrl(): string {
   const explicit = process.env.CAPACITOR_SERVER_URL?.trim();
   if (explicit) return explicit;
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (!appUrl) return undefined;
+  if (appUrl?.startsWith("https://")) return appUrl;
 
-  // Android emulator cannot reach host "localhost"; 10.0.2.2 is the host loopback.
-  const androidDev =
-    process.env.CAPACITOR_ANDROID === "1" ||
-    process.env.CAPACITOR_TARGET === "android";
-  if (androidDev && /localhost|127\.0\.0\.1/.test(appUrl)) {
-    return appUrl.replace(/localhost|127\.0\.0\.1/g, "10.0.2.2");
+  // Optional local dev: CAPACITOR_USE_LOCAL=1 with http://localhost:3002 in .env.local
+  const useLocal = process.env.CAPACITOR_USE_LOCAL === "1";
+  if (useLocal && appUrl) {
+    const androidDev =
+      process.env.CAPACITOR_ANDROID === "1" ||
+      process.env.CAPACITOR_TARGET === "android";
+    if (androidDev && /localhost|127\.0\.0\.1/.test(appUrl)) {
+      return appUrl.replace(/localhost|127\.0\.0\.1/g, "10.0.2.2");
+    }
+    return appUrl;
   }
 
-  return appUrl;
+  // Default: Vercel production (phone works without this laptop running)
+  return PRODUCTION_APP_URL;
 }
 
 const serverUrl = resolveServerUrl();
@@ -38,23 +45,16 @@ const isHttp = serverUrl?.startsWith("http://") ?? false;
 
 const config: CapacitorConfig = {
   appId: "com.ish.saleshub",
-  appName: "ISH Sales Hub",
+  appName: "Nebula",
   webDir: "public",
-  ...(serverUrl
-    ? {
-        server: {
-          url: serverUrl,
-          cleartext: isHttp,
-          androidScheme: isHttp ? "http" : "https",
-        },
-      }
-    : {}),
+  server: {
+    url: serverUrl,
+    cleartext: isHttp,
+    androidScheme: isHttp ? "http" : "https",
+  },
   plugins: {
-    PushNotifications: {
-      presentationOptions: ["badge", "sound", "alert"],
-    },
     SplashScreen: {
-      launchAutoHide: false,
+      launchAutoHide: true,
       backgroundColor: STRATUS_CANVAS,
       androidSplashResourceName: "splash",
       showSpinner: false,

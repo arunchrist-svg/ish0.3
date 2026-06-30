@@ -19,8 +19,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MobileHeader } from "@/design-system";
-import { PanelCard, text } from "@/design-system";
+import { MobileHeader, MobilePageLayout, PanelCard, SearchBar, text } from "@/design-system";
 import { toast } from "sonner";
 import {
   confirmGiftIntelMerge,
@@ -216,8 +215,15 @@ export function BrandIntelligenceDashboard() {
   }
 
   return (
-    <div className="ish-board-page flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="ish-board-hero relative shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5">
+    <MobilePageLayout
+      title="Gift Tracker"
+      subtitle="Corporate gifting intelligence"
+      largeTitle
+      className="ish-board-page"
+      contentClassName="flex flex-col !overflow-hidden"
+    >
+      <SearchBar value={filter} onChange={setFilter} placeholder="Search" sticky className="lg:hidden" />
+      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3.5">
@@ -566,7 +572,7 @@ export function BrandIntelligenceDashboard() {
           </PanelCard>
         </div>
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }
 

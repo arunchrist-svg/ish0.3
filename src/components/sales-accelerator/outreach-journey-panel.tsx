@@ -29,12 +29,12 @@ function BarStepper({
   draftReplyLoading?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-2">
       {nodes.map((node, i) => {
         const selected = selectedNodeId === node.id;
         const isDone = node.state === "done";
         return (
-          <div key={node.id} className="flex items-center gap-1.5">
+          <div key={node.id} className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onNodeSelect?.(node.id)}
@@ -84,15 +84,15 @@ function NodeDetailPanel({ node }: { node: BarNode }) {
   if (node.kind === "draft" || node.kind === "reply_draft") return null;
 
   return (
-    <div className="mt-3 rounded-[16px] border border-ish-border/60 bg-ish-canvas/30 px-4 py-3">
-      {node.subject && <p className="text-[12px] font-semibold text-ish-ink">{node.subject}</p>}
+    <div className="bg-ish-canvas/40 px-3 py-3 lg:mt-3 lg:rounded-[16px] lg:border lg:border-ish-border/60 lg:bg-ish-canvas/30 lg:px-4 lg:py-3">
+      {node.subject && <p className="text-[13px] font-semibold text-ish-ink">{node.subject}</p>}
       {(node.body || node.snippet) && (
-        <p className="mt-1.5 whitespace-pre-wrap text-[12px] leading-relaxed text-ish-ink-soft">
+        <p className="mt-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ish-ink-soft">
           {node.body ?? node.snippet}
         </p>
       )}
       {node.at && (
-        <p className="mt-2 text-[10px] text-ish-ink-faint">
+        <p className="mt-3 text-[10px] text-ish-ink-faint">
           {new Date(node.at).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         </p>
       )}
@@ -126,9 +126,9 @@ export function OutreachJourneyPanel({
   const selectedNode = thread.barNodes.find((n) => n.id === activeId);
 
   return (
-    <div className="mb-4">
-      <div className="ish-record-card overflow-hidden rounded-[20px] border border-ish-border/60 bg-white shadow-[var(--shadow-ish-sm)]">
-        <div className="flex min-w-0 items-center gap-3 overflow-x-auto px-4 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="mb-3 lg:mb-4">
+      <div className="border-b border-ish-border/60 bg-white lg:ish-record-card lg:overflow-hidden lg:rounded-[20px] lg:border lg:shadow-[var(--shadow-ish-sm)]">
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] lg:gap-3 lg:px-4 lg:py-2.5 [&::-webkit-scrollbar]:hidden">
           <div className="flex shrink-0 items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-full bg-ish-green-soft">
               <Mail className="size-3.5 text-ish-stratus-blue" />
@@ -162,7 +162,7 @@ export function OutreachJourneyPanel({
         </div>
 
         {selectedNode && (selectedNode.kind === "sent" || selectedNode.kind === "inbound" || selectedNode.kind === "scheduled") ? (
-          <div className="border-t border-ish-border/50 px-4 py-3">
+          <div className="border-t border-ish-border/50 px-3 py-3 lg:px-4 lg:py-3">
             <NodeDetailPanel node={selectedNode} />
           </div>
         ) : null}

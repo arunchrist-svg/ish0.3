@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { toast } from "sonner";
+import { isNativePlatform } from "@/lib/capacitor/platform";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -17,6 +18,7 @@ export function PushPermissionBanner() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (isNativePlatform()) return;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
     if (Notification.permission !== "default") return;
     if (localStorage.getItem("ish-push-dismissed") === "1") return;

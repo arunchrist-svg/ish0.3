@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { LeadRecord, QueueItem } from "@/lib/data";
 import type { ContactEmailEntry, LeadDetailRecord } from "@/lib/api-client";
-import { FieldRow, PanelCard, SectionHeader } from "@/design-system";
+import { FieldRow, PanelCard, SectionHeader, text } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { Loader2, Mail, Search, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/design-system";
@@ -39,7 +39,7 @@ function tierBadge(tier?: string, confidence?: number) {
           ? "bg-orange-50 text-orange-700"
           : "bg-ish-border/60 text-ish-ink-faint";
   return (
-    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", tone)}>
+    <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold lg:px-2 lg:text-[10px]", tone)}>
       {label}
       {confidence != null && confidence > 0 ? ` · ${confidence}` : ""}
     </span>
@@ -83,29 +83,38 @@ function EmailRow({
   refetching: boolean;
 }) {
   return (
-    <div className="mb-3 last:mb-0">
-      <div className="flex items-start justify-between gap-2">
+    <div className="mb-2 last:mb-0 lg:mb-3">
+      <div className="flex items-center justify-between gap-1.5 lg:items-start lg:gap-2">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="truncate text-[13px] text-ish-ink">{entry.email}</span>
+          <div className="flex flex-wrap items-center gap-1 lg:gap-1.5">
+            <span className="truncate text-[12px] font-medium text-ish-ink lg:text-[13px]">{entry.email}</span>
             {isPrimary ? (
-              <span className="rounded-full bg-ish-black/8 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ish-ink-soft">
+              <span className="rounded-full bg-ish-black/8 px-1 py-px text-[8px] font-semibold uppercase tracking-wide text-ish-ink-soft lg:px-1.5 lg:py-0.5 lg:text-[9px]">
                 Primary
               </span>
             ) : null}
             {testStatusBadge(entry.testStatus)}
             {entry.pattern ? (
-              <span className="rounded-full bg-ish-black/6 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ish-ink-soft">
+              <span className="hidden rounded-full bg-ish-black/6 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ish-ink-soft sm:inline">
                 {entry.pattern}
               </span>
             ) : null}
+            <span
+              className={cn(
+                "text-[10px] capitalize lg:hidden",
+                emailStatusTone(entry.emailStatus),
+              )}
+            >
+              {entry.emailStatus}
+              {entry.emailConfidence ? ` · ${entry.emailConfidence}` : ""}
+            </span>
           </div>
-          <div className={cn("mt-0.5 text-[10.5px] capitalize", emailStatusTone(entry.emailStatus))}>
+          <div className={cn("mt-0.5 hidden text-[10.5px] capitalize lg:block", emailStatusTone(entry.emailStatus))}>
             {entry.emailStatus}
             {entry.emailConfidence ? ` · ${entry.emailConfidence}` : ""}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5 lg:gap-1">
           {onRefetch ? (
             <>
               <button
@@ -113,22 +122,22 @@ function EmailRow({
                 title="Refetch email (free)"
                 disabled={refetching}
                 onClick={() => void onRefetch("free")}
-                className="flex size-7 items-center justify-center rounded-full bg-white/70 text-ish-ink-soft transition hover:bg-white hover:text-ish-ink disabled:opacity-50"
+                className="flex size-6 items-center justify-center rounded-full bg-white/70 text-ish-ink-soft transition hover:bg-white hover:text-ish-ink disabled:opacity-50 lg:size-7"
               >
-                {refetching ? <Loader2 className="size-3 animate-spin" /> : <Search className="size-3" />}
+                {refetching ? <Loader2 className="size-2.5 animate-spin lg:size-3" /> : <Search className="size-2.5 lg:size-3" />}
               </button>
               <button
                 type="button"
                 title="Refetch email (paid)"
                 disabled={refetching}
                 onClick={() => void onRefetch("paid")}
-                className="flex size-7 items-center justify-center rounded-full bg-white/70 text-ish-ink-soft transition hover:bg-white hover:text-ish-ink disabled:opacity-50"
+                className="flex size-6 items-center justify-center rounded-full bg-white/70 text-ish-ink-soft transition hover:bg-white hover:text-ish-ink disabled:opacity-50 lg:size-7"
               >
-                <Sparkles className="size-3" />
+                <Sparkles className="size-2.5 lg:size-3" />
               </button>
             </>
           ) : (
-            <Mail className="size-3.5 text-ish-ink-faint" />
+            <Mail className="size-3 text-ish-ink-faint lg:size-3.5" />
           )}
         </div>
       </div>
@@ -183,32 +192,45 @@ export function ContactCard({
       : [];
 
   return (
-    <PanelCard tone="pink">
-      <div className="mb-4 flex items-center justify-between gap-2">
-        <SectionHeader title="Contact" className="mb-0" />
+    <PanelCard tone="pink" className="p-3 lg:p-5">
+      <div className="mb-2 flex items-center justify-between gap-2 lg:mb-4">
+        <SectionHeader title="Contact" size="card" className="mb-0" />
         {tierBadge(confidenceTier, emailConfidence)}
       </div>
       {enrichmentSource ? (
-        <p className="mb-3 text-[10.5px] text-ish-ink-faint">Source: {enrichmentSource.replace(/_/g, " ")}</p>
+        <p className="mb-2 text-[10px] text-ish-ink-faint lg:mb-3 lg:text-[10.5px]">Source: {enrichmentSource.replace(/_/g, " ")}</p>
       ) : null}
+      <div className="grid grid-cols-2 gap-x-3 lg:grid-cols-1 lg:gap-x-0">
+        <FieldRow
+          label="Name"
+          value={[record.contact.firstName, record.contact.lastName].filter(Boolean).join(" ") || "—"}
+          compactStackedOnMobile
+        />
+        <FieldRow label="Job Title" value={current.title} compactStackedOnMobile />
+      </div>
       <FieldRow
-        label="Name"
-        value={[record.contact.firstName, record.contact.lastName].filter(Boolean).join(" ") || "—"}
+        label="Business Phone"
+        value={record.contact.businessPhone}
+        action="phone"
+        hideWhenEmptyOnMobile
       />
-      <FieldRow label="Job Title" value={current.title} />
-      <FieldRow label="Business Phone" value={record.contact.businessPhone} action="phone" />
-      <FieldRow label="Mobile Phone" value={record.contact.mobilePhone} action="phone" />
-      <div className="mb-4">
+      <FieldRow
+        label="Mobile Phone"
+        value={record.contact.mobilePhone}
+        action="phone"
+        hideWhenEmptyOnMobile
+      />
+      <div className="mb-2 lg:mb-4">
         <div className="mb-1 flex items-center justify-between gap-2">
-          <div className={cn("text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint")}>Email</div>
+          <div className={cn(text.label)}>Email</div>
           {lead ? (
             <button
               type="button"
               title="Suggest emails from name and domain"
               onClick={() => setSuggestOpen(true)}
-              className="flex items-center gap-1 rounded-full bg-white/70 px-2 py-1 text-[10px] font-semibold text-ish-ink-soft transition hover:bg-white hover:text-ish-ink"
+              className="flex items-center gap-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-ish-ink-soft transition hover:bg-white hover:text-ish-ink lg:gap-1 lg:px-2 lg:py-1 lg:text-[10px]"
             >
-              <Wand2 className="size-3" />
+              <Wand2 className="size-2.5 lg:size-3" />
               Suggest
             </button>
           ) : null}
@@ -252,10 +274,12 @@ export function ContactCard({
           </div>
         </div>
       ) : null}
-      <SectionHeader title="Company" className="mb-3 mt-5" />
+      <SectionHeader title="Company" size="card" className="mb-2 mt-3 lg:mb-3 lg:mt-5" />
       <FieldRow label="Company" value={current.company} />
-      <FieldRow label="Employees" value={record.company.employees} />
-      <FieldRow label="City" value={record.company.city} />
+      <div className="grid grid-cols-2 gap-x-3 lg:grid-cols-1 lg:gap-x-0">
+        <FieldRow label="Employees" value={record.company.employees} compactStackedOnMobile />
+        <FieldRow label="City" value={record.company.city} compactStackedOnMobile />
+      </div>
       {lead ? (
         <EmailSuggestModal
           open={suggestOpen}

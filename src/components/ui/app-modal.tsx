@@ -27,7 +27,7 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
   return createPortal(
     <div
       className={cn(
-        "fixed inset-0 z-[9999] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm",
+        "fixed inset-0 z-[9999] flex items-end justify-center bg-black/45 p-0 backdrop-blur-[2px] lg:items-center lg:bg-black/65 lg:p-4 lg:backdrop-blur-sm",
         className,
       )}
       onClick={onClose}
@@ -35,13 +35,15 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
     >
       <div
         className={cn(
-          "ish-modal-panel w-full max-w-md rounded-[22px] border border-ish-border p-6 shadow-[var(--shadow-ish-float)]",
+          "ish-modal-panel ish-bottom-sheet w-full max-h-[min(92dvh,720px)] overflow-y-auto rounded-t-3xl border border-ish-border bg-white p-6 shadow-2xl",
+          "lg:max-h-none lg:max-w-md lg:rounded-[22px] lg:p-6 lg:shadow-[var(--shadow-ish-float)]",
           panelClassName,
         )}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-ish-border lg:hidden" aria-hidden />
         {children}
       </div>
     </div>,

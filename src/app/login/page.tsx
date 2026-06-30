@@ -24,6 +24,25 @@ function LoginForm() {
   const inviteRequired = errorCode === "invite_required";
 
   useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        if (data.mustChangePassword) {
+          router.replace("/change-password");
+          return;
+        }
+        if (data.tenant?.onboardingStatus && data.tenant.onboardingStatus !== "complete" && data.role === "owner") {
+          router.replace("/onboarding");
+          return;
+        }
+        router.replace("/");
+      })
+      .catch(() => undefined);
+  }, [router]);
+
+
+  useEffect(() => {
     if (!email.includes("@")) return;
     const t = setTimeout(() => {
       fetch(`/api/auth/account-type?email=${encodeURIComponent(email.trim())}`)
@@ -48,27 +67,50 @@ function LoginForm() {
     setLoading(true);
     setError("");
 
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, slug: slugRequired ? slug : undefined }),
-    });
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
+    const trimmedSlug = slug.trim();
 
-    const data = (await res.json().catch(() => null)) as {
-      error?: string;
-      code?: string;
-      slugs?: OrgOption[];
-      redirect?: string;
-    } | null;
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          email: trimmedEmail,
+          password: trimmedPassword,
+          slug: slugRequired ? trimmedSlug : undefined,
+        }),
+      });
 
-    if (res.ok) {
-      router.push(data?.redirect ?? "/");
-    } else if (data?.code === "WORKSPACE_AMBIGUOUS" && data.slugs) {
-      setSlugRequired(true);
-      setOrgOptions(data.slugs);
-      setError("Select your organization to continue.");
-    } else {
-      setError(data?.error ?? "Invalid email or password.");
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+        slugs?: OrgOption[];
+        redirect?: string;
+      } | null;
+
+      if (res.ok) {
+        const redirect = data?.redirect;
+        const destination =
+          redirect === "/change-password" || redirect === "/onboarding"
+            ? redirect
+            : redirect === "/admin"
+              ? redirect
+              : "/";
+        router.push(destination);
+        router.refresh();
+      } else if (data?.code === "WORKSPACE_AMBIGUOUS" && data.slugs) {
+        setSlugRequired(true);
+        setOrgOptions(data.slugs);
+        setError("Select your organization to continue.");
+      } else if (!data?.error && !res.ok) {
+        setError("Could not reach the server. Check your connection and try again.");
+      } else {
+        setError(data?.error ?? "Invalid email or password.");
+      }
+    } catch {
+      setError("Network error. Check your connection and try again.");
     }
 
     setLoading(false);
@@ -77,12 +119,13 @@ function LoginForm() {
   return (
     <AuthShell>
       <div className="mb-8">
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ish-stratus-blue">Sign in</p>
         <h1 className={cn("mb-2 leading-tight", text.display)}>Welcome back</h1>
-        <p className="text-[14px] text-ish-ink-soft">Sign in with your email and password.</p>
+        <p className="text-[14px] leading-relaxed text-ish-ink-soft">Use the same email and password as the web app.</p>
       </div>
 
       {inviteRequired ? (
-        <p className="mb-4 rounded-xl bg-amber-50 px-4 py-2.5 text-center text-[13px] text-amber-800">
+        <p className="mb-4 rounded-2xl border border-ish-stratus-yellow/40 bg-ish-yellow-soft/80 px-4 py-2.5 text-center text-[13px] text-ish-ink">
           You need an invite to join. Ask your admin for an invite link to create your account.
         </p>
       ) : null}
@@ -138,15 +181,16 @@ function LoginForm() {
         />
 
         {error ? (
-          <p className="rounded-xl bg-red-50 px-4 py-2.5 text-center text-[13px] font-medium text-red-600">{error}</p>
+          <p className="rounded-2xl border border-ish-stratus-salmon/35 bg-ish-pink-soft/80 px-4 py-2.5 text-center text-[13px] font-medium text-ish-stratus-salmon">{error}</p>
         ) : null}
 
         <Button
           type="submit"
-          disabled={loading || !email || password.length < 8 || (slugRequired && !slug)}
+          disabled={loading || !email.trim() || password.trim().length < 8 || (slugRequired && !slug.trim())}
           className={cn(
-            "h-12 w-full rounded-2xl bg-ish-black text-[14px] font-bold text-white",
-            "hover:bg-ish-black/90 disabled:opacity-50",
+            "h-12 w-full rounded-2xl text-[14px] font-bold text-white shadow-[var(--shadow-ish)]",
+            "bg-ish-black hover:bg-ish-black/90 disabled:opacity-50",
+            "ring-1 ring-ish-stratus-blue/20",
           )}
         >
           {loading ? (
@@ -170,8 +214,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-ish-ink-soft" />
+      <div className="ish-ambient-canvas flex min-h-dvh items-center justify-center bg-ish-canvas">
+        <Loader2 className="size-8 animate-spin text-ish-stratus-blue" />
       </div>
     }>
       <LoginForm />

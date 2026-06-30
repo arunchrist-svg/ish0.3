@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
+import { ScrollableTabs, Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
 import { RecordHeader } from "@/components/sales-accelerator/record-header";
 import { PipelineStepper } from "@/components/sales-accelerator/pipeline-stepper";
 import { ContactCard } from "@/components/sales-accelerator/contact-card";
@@ -96,6 +96,18 @@ function toQueueItem(lead: LeadDetailRecord) {
 }
 
 const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"] as const;
+
+const TAB_SHORT: Record<(typeof TABS)[number], string> = {
+  Summary: "Summary",
+  Email: "Email",
+  "Relationship Analytics": "Network",
+  Details: "Details",
+  Related: "Related",
+};
+
+const TAB_FROM_SHORT = Object.fromEntries(
+  (Object.entries(TAB_SHORT) as [typeof TABS[number], string][]).map(([k, v]) => [v, k]),
+) as Record<string, (typeof TABS)[number]>;
 
 export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead, onDeleteLead }: Props) {
   const router = useRouter();
@@ -260,7 +272,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   const hasDraft = !!lead.outreach;
 
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto p-4 lg:p-[22px_26px]">
+    <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto p-2 lg:p-[22px_26px]">
       {refreshing && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center bg-white/50 pt-28 backdrop-blur-[2px]">
           <ActionLoader variant="refresh" contactName={lead.name} />
@@ -272,7 +284,24 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
         </div>
         <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); syncTabToUrl(tab); }} className="bg-white">
-        <div className="ish-scroll-tabs overflow-x-auto px-4 pt-4 lg:px-[22px]">
+        <div className="border-b border-ish-border/40 px-2 py-1 lg:hidden">
+            <ScrollableTabs
+              compact
+              tabs={TABS.map((tab) => TAB_SHORT[tab])}
+              value={TAB_SHORT[activeTab as (typeof TABS)[number]] ?? "Summary"}
+              onChange={(label) => {
+                const tab = TAB_FROM_SHORT[label] ?? "Summary";
+                setActiveTab(tab);
+                syncTabToUrl(tab);
+              }}
+              badges={
+                hasDraft && lead.outreach?.approvalStatus === "pending"
+                  ? { Email: true }
+                  : undefined
+              }
+            />
+        </div>
+        <div className="ish-scroll-tabs hidden overflow-x-auto px-4 pt-4 lg:block lg:px-[22px]">
           <TabsList className="h-auto min-w-max gap-1.5 bg-transparent p-0">
             {TABS.map((tab) => (
               <TabsTrigger

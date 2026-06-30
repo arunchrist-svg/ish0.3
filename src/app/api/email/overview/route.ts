@@ -51,6 +51,10 @@ export type LeadEmailRow = {
   pendingFollowUpScheduleId?: string | null;
   followUpSequenceDay?: number | null;
   draftOutreachId?: string | null;
+  isFollowUpReview?: boolean;
+  revisionTimeout?: boolean | null;
+  deliverabilityScore?: number | null;
+  rubricTotal?: number | null;
 };
 
 function buildLeadRow(
@@ -76,6 +80,7 @@ function buildLeadRow(
   opts: {
     replyDraftLeadIds: Set<string>;
     needsReviewMeta?: { subject?: string | null; preview?: string | null; followUp?: boolean };
+    qualityMeta?: { revisionTimeout?: boolean | null; deliverabilityScore?: number | null; rubricTotal?: number | null };
     pendingFollowUpScheduleId?: string | null;
     followUpSequenceDay?: number | null;
     inboundSnippet?: string | null;
@@ -194,6 +199,10 @@ function buildLeadRow(
     pendingFollowUpScheduleId: opts.pendingFollowUpScheduleId ?? null,
     followUpSequenceDay: opts.followUpSequenceDay ?? null,
     draftOutreachId: opts.draftOutreachId ?? null,
+    isFollowUpReview: Boolean(opts.needsReviewMeta?.followUp),
+    revisionTimeout: opts.qualityMeta?.revisionTimeout ?? null,
+    deliverabilityScore: opts.qualityMeta?.deliverabilityScore ?? null,
+    rubricTotal: opts.qualityMeta?.rubricTotal ?? null,
   };
 }
 
@@ -251,6 +260,9 @@ export async function GET() {
         subjectA: leadOutreach.subjectA,
         emailBody: leadOutreach.emailBody,
         draftOutreachId: leadOutreach.id,
+        revisionTimeout: leadOutreach.revisionTimeout,
+        deliverabilityScore: leadOutreach.deliverabilityScore,
+        rubricTotal: leadOutreach.rubricTotal,
       })
       .from(outreachSchedule)
       .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
@@ -277,6 +289,9 @@ export async function GET() {
         subjectA: leadOutreach.subjectA,
         emailBody: leadOutreach.emailBody,
         draftOutreachId: leadOutreach.id,
+        revisionTimeout: leadOutreach.revisionTimeout,
+        deliverabilityScore: leadOutreach.deliverabilityScore,
+        rubricTotal: leadOutreach.rubricTotal,
       })
       .from(leads)
       .innerJoin(contacts, eq(leads.contactId, contacts.id))
@@ -351,6 +366,11 @@ export async function GET() {
               subject: nr.subjectA,
               preview: nr.emailBody?.slice(0, 160) ?? null,
             },
+            qualityMeta: {
+              revisionTimeout: nr.revisionTimeout,
+              deliverabilityScore: nr.deliverabilityScore,
+              rubricTotal: nr.rubricTotal,
+            },
             draftOutreachId: nr.draftOutreachId,
             cadenceDays,
           },
@@ -369,6 +389,10 @@ export async function GET() {
           existing.draftSubject = pf.subjectA;
           existing.draftPreview = pf.emailBody?.slice(0, 160) ?? null;
           existing.draftOutreachId = pf.draftOutreachId ?? null;
+          existing.isFollowUpReview = true;
+          existing.revisionTimeout = pf.revisionTimeout ?? null;
+          existing.deliverabilityScore = pf.deliverabilityScore ?? null;
+          existing.rubricTotal = pf.rubricTotal ?? null;
         }
         continue;
       }
@@ -391,6 +415,11 @@ export async function GET() {
               subject: pf.subjectA,
               preview: pf.emailBody?.slice(0, 160) ?? null,
               followUp: true,
+            },
+            qualityMeta: {
+              revisionTimeout: pf.revisionTimeout,
+              deliverabilityScore: pf.deliverabilityScore,
+              rubricTotal: pf.rubricTotal,
             },
             pendingFollowUpScheduleId: pf.scheduleId,
             followUpSequenceDay: pf.sequenceDay,

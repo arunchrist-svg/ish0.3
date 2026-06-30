@@ -13,6 +13,8 @@ import { LinkedInIntegration } from "@/components/settings/linkedin-integration"
 import { TeamTab } from "@/components/settings/team-tab";
 import { BillingTab } from "@/components/settings/billing-tab";
 import { cn } from "@/lib/utils";
+import { ListGroup, ListRow, MobileHeader, MobileStackLayout } from "@/design-system";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
@@ -39,6 +41,8 @@ const TAB_SUBTITLES: Record<string, string> = {
 };
 
 function SettingsAppInner() {
+  const isMobileLayout = useIsMobileLayout();
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const router = useRouter();
   const { session: me } = useSession();
   const session = me
@@ -93,8 +97,9 @@ function SettingsAppInner() {
     (tab: string) => {
       setActiveTab(tab);
       router.replace(`/settings?tab=${tab}`, { scroll: false });
+      if (isMobileLayout) setMobileShowDetail(true);
     },
-    [router],
+    [router, isMobileLayout],
   );
 
   function update<K extends keyof EnrichmentConfig>(key: K, value: EnrichmentConfig[K]) {
@@ -267,44 +272,78 @@ function SettingsAppInner() {
     }
   }
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-      <SettingsNav value={activeTab} onChange={handleTabChange} items={NAV_ITEMS} />
+  const saveAction =
+    activeTab === "enrichment" || activeTab === "email" ? (
+      <button
+        type="button"
+        onClick={activeTab === "email" ? saveEmail : save}
+        disabled={
+          activeTab === "email"
+            ? (!emailDirty && !smtpPassDraft.trim() && !resendApiKeyDraft.trim()) || saving || !emailConfig
+            : !dirty || saving || !config
+        }
+        className={cn(
+          "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold shadow-[var(--shadow-ish-sm)] transition-all lg:px-4 lg:py-2",
+          (activeTab === "email" ? (emailDirty || smtpPassDraft.trim() || resendApiKeyDraft.trim()) && emailConfig : dirty && config) && !saving
+            ? "bg-ish-black text-white hover:opacity-90"
+            : "cursor-not-allowed bg-white/60 text-ish-ink-faint opacity-60",
+        )}
+      >
+        {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+        <span className="hidden sm:inline">{saving ? "Saving…" : "Save"}</span>
+      </button>
+    ) : null;
 
+  const settingsList = (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-ish-canvas lg:hidden">
+      <MobileHeader title="Settings" subtitle="Workspace preferences" largeTitle />
+      <div className="ish-page-padding flex-1 overflow-y-auto py-4">
+        <ListGroup>
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <ListRow
+                key={item.value}
+                title={item.label}
+                subtitle={TAB_SUBTITLES[item.value]}
+                icon={<Icon className="size-[18px]" />}
+                showChevron
+                onClick={() => handleTabChange(item.value)}
+              />
+            );
+          })}
+        </ListGroup>
+      </div>
+    </div>
+  );
+
+  const settingsDetail = (
       <div className="settings-content settings-ambient flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10">
+        {isMobileLayout ? (
+          <MobileHeader
+            title={NAV_ITEMS.find((i) => i.value === activeTab)?.label ?? "Settings"}
+            subtitle={TAB_SUBTITLES[activeTab]}
+            showBack
+            onBack={() => setMobileShowDetail(false)}
+            rightSlot={saveAction}
+          />
+        ) : null}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-10 lg:px-6 lg:py-8">
           <div className="mx-auto w-full max-w-2xl">
-            {(() => {
-              const item = NAV_ITEMS.find((i) => i.value === activeTab);
-              const Icon = item?.icon ?? Wrench;
-              return (
-                <SettingsHero
-                  icon={Icon}
-                  title={item?.label ?? "Settings"}
-                  subtitle={TAB_SUBTITLES[activeTab] ?? ""}
-                  action={(activeTab === "enrichment" || activeTab === "email") ? (
-                  <button
-                    type="button"
-                    onClick={activeTab === "email" ? saveEmail : save}
-                    disabled={
-                      activeTab === "email"
-                        ? (!emailDirty && !smtpPassDraft.trim() && !resendApiKeyDraft.trim()) || saving || !emailConfig
-                        : !dirty || saving || !config
-                    }
-                    className={cn(
-                      "flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold shadow-[var(--shadow-ish-sm)] transition-all",
-                      (activeTab === "email" ? (emailDirty || smtpPassDraft.trim() || resendApiKeyDraft.trim()) && emailConfig : dirty && config) && !saving
-                        ? "bg-ish-black text-white hover:opacity-90"
-                        : "cursor-not-allowed bg-white/60 text-ish-ink-faint opacity-60",
-                    )}
-                  >
-                    {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                    {saving ? "Saving…" : "Save"}
-                  </button>
-                ) : undefined}
-                />
-              );
-            })()}
+            <div className="hidden lg:block">
+              {(() => {
+                const item = NAV_ITEMS.find((i) => i.value === activeTab);
+                const Icon = item?.icon ?? Wrench;
+                return (
+                  <SettingsHero
+                    icon={Icon}
+                    title={item?.label ?? "Settings"}
+                    subtitle={TAB_SUBTITLES[activeTab] ?? ""}
+                    action={saveAction}
+                  />
+                );
+              })()}
+            </div>
           <div key={activeTab} className="animate-ish-tab-in">
           {activeTab === "enrichment" && (
             <EnrichmentTab
@@ -337,6 +376,18 @@ function SettingsAppInner() {
           </div>
         </div>
       </div>
+  );
+
+  return isMobileLayout ? (
+    <MobileStackLayout
+      showDetail={mobileShowDetail}
+      list={settingsList}
+      detail={settingsDetail}
+    />
+  ) : (
+    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <SettingsNav value={activeTab} onChange={handleTabChange} items={NAV_ITEMS} />
+      {settingsDetail}
     </div>
   );
 }

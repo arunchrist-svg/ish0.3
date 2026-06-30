@@ -15,7 +15,7 @@ export function CreditBalanceBanner() {
   if (credits > 50) return null;
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+    <div className="hidden lg:flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
       <span className="flex items-center gap-2">
         <Zap className="size-4" />
         {credits <= 0

@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronRight, Send, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IshAvatar } from "@/design-system";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
+import { draftFailsQualityGate } from "@/lib/outreach/outreach-quality";
 
 type SwipeInboxCardProps = {
   row: LeadEmailRow;
@@ -13,116 +14,135 @@ type SwipeInboxCardProps = {
   onReject?: (row: LeadEmailRow) => Promise<void>;
   onSend?: (row: LeadEmailRow) => Promise<void>;
   busy?: boolean;
+  index?: number;
 };
 
 function previewText(row: LeadEmailRow, tab: "needs_review" | "replies"): string {
   if (tab === "replies") return row.inboundSnippet ?? row.draftPreview ?? "New reply received";
-  return row.draftPreview ?? row.draftSubject ?? "Draft ready for review";
+  return row.draftPreview ?? "Draft ready for your review";
 }
 
-export function SwipeInboxCard({ row, tab, onApprove, onReject, onSend, busy }: SwipeInboxCardProps) {
-  const [offsetX, setOffsetX] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const startX = useRef(0);
+function isActionableReview(row: LeadEmailRow): boolean {
+  return Boolean(row.draftOutreachId || row.pendingFollowUpScheduleId);
+}
+
+export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }: SwipeInboxCardProps) {
   const href = `/leads?lead=${row.leadId}&tab=Email`;
+  const followUp = Boolean(row.pendingFollowUpScheduleId || row.isFollowUpReview);
+  const qualityBlocked = tab === "needs_review" && draftFailsQualityGate(row);
+  const showActions = tab === "needs_review" && isActionableReview(row);
+  const isReply = tab === "replies";
 
-  const canSwipeActions = tab === "needs_review" && Boolean(row.draftOutreachId) && onApprove;
-
-  function onTouchStart(e: React.TouchEvent) {
-    if (!canSwipeActions) return;
-    startX.current = e.touches[0].clientX;
-    setDragging(true);
-  }
-
-  function onTouchMove(e: React.TouchEvent) {
-    if (!dragging) return;
-    const dx = e.touches[0].clientX - startX.current;
-    setOffsetX(Math.max(-120, Math.min(120, dx)));
-  }
-
-  function onTouchEnd() {
-    if (!dragging) return;
-    setDragging(false);
-    if (offsetX > 72 && onApprove) void onApprove(row).finally(() => setOffsetX(0));
-    else if (offsetX < -72 && onReject) void onReject(row).finally(() => setOffsetX(0));
-    else setOffsetX(0);
-  }
+  const accentClass = isReply
+    ? "ish-inbox-accent-reply"
+    : followUp
+      ? "ish-inbox-accent-followup"
+      : "ish-inbox-accent-review";
 
   return (
-    <div className="relative overflow-hidden rounded-[20px]">
-      {canSwipeActions ? (
-        <div className="pointer-events-none absolute inset-0 flex items-stretch justify-between px-2">
-          <div className="flex w-24 items-center justify-center rounded-l-[20px] bg-ish-green text-white">
-            <Check className="size-6" />
-          </div>
-          <div className="flex w-24 items-center justify-center rounded-r-[20px] bg-ish-stratus-salmon text-white">
-            <X className="size-6" />
-          </div>
-        </div>
-      ) : null}
+    <article className={cn("ish-inbox-card", busy && "pointer-events-none opacity-55")}>
+      <div className={cn("ish-inbox-card-accent", accentClass)} aria-hidden />
 
-      <div
-        className={cn(
-          "relative rounded-[20px] bg-white p-4 shadow-[var(--shadow-ish-sm)] ring-1 ring-black/[0.04] transition-transform",
-          dragging ? "duration-0" : "duration-200",
-          busy && "opacity-60",
-        )}
-        style={canSwipeActions ? { transform: `translateX(${offsetX}px)` } : undefined}
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
+      <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-ish-yellow-soft text-sm font-bold text-ish-ink">
-            {row.contactName
-              .split(" ")
-              .map((w) => w[0])
-              .join("")
-              .slice(0, 2)
-              .toUpperCase()}
-          </div>
+          <IshAvatar name={row.contactName} index={index} size={48} className="shadow-ish-sm ring-2 ring-white" />
+
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <div className="truncate text-[15px] font-bold text-ish-ink">{row.contactName}</div>
-                <div className="truncate text-xs text-ish-ink-soft">{row.companyName}</div>
+                <h3 className="truncate text-[16px] font-bold tracking-tight text-ish-ink">{row.contactName}</h3>
+                <p className="truncate text-[13px] font-medium text-ish-ink-soft">{row.companyName}</p>
               </div>
-              <Link href={href} className="shrink-0 rounded-full p-1 active:scale-95" aria-label="Open lead">
-                <ChevronRight className="size-4 text-ish-ink-faint" />
+              <Link
+                href={href}
+                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-ish-ink-soft shadow-ish-sm ring-1 ring-ish-border/50 active:scale-95"
+                aria-label="Open lead"
+              >
+                <ChevronRight className="size-4" />
               </Link>
             </div>
-            <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-ish-ink-soft">{previewText(row, tab)}</p>
-            {row.draftSubject ? (
-              <div className="mt-2 truncate text-xs font-semibold text-ish-ink">{row.draftSubject}</div>
-            ) : null}
+
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {isReply ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-ish-pink-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ish-stratus-salmon ring-1 ring-ish-stratus-salmon/20">
+                  <Sparkles className="size-3" />
+                  Hot reply
+                </span>
+              ) : null}
+              {followUp ? (
+                <span className="inline-flex rounded-full bg-ish-green-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ish-stratus-blue ring-1 ring-ish-stratus-blue/20">
+                  Follow-up{row.followUpSequenceDay != null ? ` · Day ${row.followUpSequenceDay}` : ""}
+                </span>
+              ) : null}
+              {!isReply && !followUp ? (
+                <span className="inline-flex rounded-full bg-ish-yellow-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ish-ink/70 ring-1 ring-ish-stratus-yellow/30">
+                  Needs review
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
 
-        {tab === "needs_review" && row.draftOutreachId ? (
-          <div className="mt-3 flex gap-2">
+        <div className="ish-inbox-preview mt-3 px-3.5 py-3">
+          {row.draftSubject ? (
+            <p className="line-clamp-2 text-[14px] font-bold leading-snug text-ish-ink">{row.draftSubject}</p>
+          ) : null}
+          <p
+            className={cn(
+              "line-clamp-3 text-[13px] leading-relaxed text-ish-ink-soft",
+              row.draftSubject && "mt-1.5",
+            )}
+          >
+            {previewText(row, tab)}
+          </p>
+        </div>
+
+        {qualityBlocked ? (
+          <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-ish-stratus-yellow/40 bg-gradient-to-br from-ish-yellow-soft/90 to-white px-3.5 py-3 shadow-ish-yellow-sm">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+            <p className="text-[13px] font-medium leading-snug text-ish-ink">
+              {row.revisionTimeout
+                ? "Writer timed out before quality passed."
+                : `Quality scores are low (inbox ${row.deliverabilityScore ?? "?"}, rubric ${row.rubricTotal ?? "?"}).`}
+              {" "}Tap Send to confirm anyway.
+            </p>
+          </div>
+        ) : null}
+
+        {showActions ? (
+          <div className="mt-4 grid grid-cols-2 gap-2.5">
             <button
               type="button"
               disabled={busy}
               onClick={() => onApprove?.(row)}
-              className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-ish-black text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
+              className="ish-inbox-btn-approve ish-touch-target flex h-12 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold active:scale-[0.98] disabled:opacity-50"
             >
-              <Check className="size-3.5" /> Approve
+              <Check className="size-4 text-ish-stratus-blue" strokeWidth={2.5} />
+              Approve
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => onSend?.(row)}
-              className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-ish-stratus-blue text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
+              className={cn(
+                "ish-touch-target flex h-12 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold active:scale-[0.98] disabled:opacity-50",
+                qualityBlocked ? "bg-amber-600 text-white shadow-md" : "ish-inbox-btn-send",
+              )}
             >
-              <Send className="size-3.5" /> Send
+              <Send className="size-4" />
+              {followUp ? "Send follow-up" : "Send"}
             </button>
           </div>
-        ) : null}
-
-        {canSwipeActions ? (
-          <p className="mt-2 text-center text-[10px] font-medium text-ish-ink-faint">Swipe right to approve · left to reject</p>
+        ) : isReply ? (
+          <Link
+            href={href}
+            className="ish-inbox-btn-reply ish-touch-target mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-bold active:scale-[0.98]"
+          >
+            View reply
+            <ChevronRight className="size-4" />
+          </Link>
         ) : null}
       </div>
-    </div>
+    </article>
   );
 }

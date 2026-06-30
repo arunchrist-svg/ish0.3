@@ -935,3 +935,281 @@
     box-shadow: none;
   }
 }
+
+/* ── Mobile-first utilities ─────────────────────────────────────────────── */
+
+.ish-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+  transition: transform 0.15s ease;
+}
+
+.ish-touch-target:active {
+  transform: scale(0.97);
+}
+
+.ish-page-padding {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+@media (min-width: 1024px) {
+  .ish-page-padding {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+.ish-list-group {
+  overflow: hidden;
+  border-radius: 16px;
+  background: white;
+  box-shadow: var(--shadow-ish-sm);
+}
+
+.ish-list-row {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  transition: background-color 0.15s ease;
+}
+
+.ish-list-row:active {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.ish-list-row + .ish-list-row {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+@media (min-width: 1024px) {
+  .ish-list-row {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+}
+
+.ish-mobile-tab-bar {
+  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06), 0 -4px 24px rgba(20, 20, 30, 0.06);
+}
+
+.ish-mobile-header {
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.ish-mobile-header-scrolled {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+}
+
+@keyframes ish-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.ish-bottom-sheet {
+  animation: ish-sheet-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ish-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.ish-skeleton {
+  animation: ish-skeleton-pulse 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, #f0f0f2 0%, #e8e8ec 50%, #f0f0f2 100%);
+  background-size: 200% 100%;
+}
+
+/* ── Inbox cards (Stratus glass) ─────────────────────────────────────────── */
+
+.ish-inbox-page {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(var(--ish-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 50%),
+    var(--color-ish-canvas);
+}
+
+/* ── Scout page (Stratus glass) ──────────────────────────────────────────── */
+
+.ish-scout-page {
+  background:
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(var(--ish-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 50%),
+    var(--color-ish-canvas);
+}
+
+
+.ish-inbox-card {
+  overflow: hidden;
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse 110% 90% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.12) 0%, transparent 52%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 251, 254, 0.94) 100%);
+  backdrop-filter: blur(20px) saturate(170%);
+  -webkit-backdrop-filter: blur(20px) saturate(170%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.92),
+    inset 0 0 0 1.5px rgba(var(--ish-stratus-blue-rgb), 0.12),
+    0 4px 22px rgba(var(--ish-stratus-blue-rgb), 0.09);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ish-inbox-card:active {
+  transform: scale(0.995);
+}
+
+.ish-inbox-card-accent {
+  height: 3px;
+  width: 100%;
+}
+
+.ish-inbox-accent-review {
+  background: linear-gradient(90deg, var(--ish-stratus-blue) 0%, var(--ish-stratus-yellow) 55%, var(--ish-stratus-salmon) 100%);
+}
+
+.ish-inbox-accent-reply {
+  background: linear-gradient(90deg, var(--ish-stratus-salmon) 0%, rgba(var(--ish-stratus-salmon-rgb), 0.45) 100%);
+}
+
+.ish-inbox-accent-followup {
+  background: linear-gradient(90deg, var(--ish-stratus-blue) 0%, rgba(var(--ish-stratus-blue-rgb), 0.4) 100%);
+}
+
+.ish-inbox-preview {
+  border-radius: 14px;
+  border: 1px solid rgba(var(--ish-stratus-blue-rgb), 0.16);
+  background:
+    radial-gradient(ellipse 90% 70% at 0% 0%, rgba(var(--ish-stratus-blue-rgb), 0.07) 0%, transparent 65%),
+    rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.ish-inbox-btn-approve {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1.5px solid rgba(var(--ish-stratus-blue-rgb), 0.35);
+  color: var(--color-ish-ink);
+  box-shadow: 0 2px 10px rgba(var(--ish-stratus-blue-rgb), 0.08);
+}
+
+.ish-inbox-btn-send {
+  background: var(--ish-yellow-gradient);
+  color: var(--color-ish-black);
+  box-shadow: var(--shadow-ish-yellow-sm);
+  border: 1px solid rgba(var(--ish-stratus-yellow-rgb), 0.45);
+}
+
+.ish-inbox-btn-reply {
+  background: linear-gradient(135deg, var(--ish-stratus-blue) 0%, #6b8fd4 100%);
+  color: white;
+  box-shadow: 0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.28);
+}
+
+.stratus .ish-inbox-card {
+  background:
+    radial-gradient(ellipse 110% 120% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.22) 0%, transparent 58%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.94) 100%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.92),
+    inset 0 0 0 1.5px rgba(var(--ish-stratus-yellow-rgb), 0.18),
+    0 6px 24px rgba(var(--ish-stratus-blue-rgb), 0.10) !important;
+}
+
+/* ── Leads compact list (mobile) ─────────────────────────────────────────── */
+
+.ish-leads-page {
+  background:
+    radial-gradient(ellipse 100% 60% at 50% -10%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 55%),
+    var(--color-ish-canvas);
+}
+
+.ish-leads-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 16px;
+  text-align: left;
+  transition: background-color 0.15s ease;
+}
+
+.ish-leads-row:active {
+  background: rgba(var(--ish-stratus-blue-rgb), 0.06);
+}
+
+.ish-leads-row-active {
+  background:
+    linear-gradient(90deg, rgba(var(--ish-stratus-yellow-rgb), 0.18) 0%, rgba(255, 255, 255, 0.95) 28%);
+  box-shadow: inset 3px 0 0 var(--ish-stratus-blue);
+}
+
+.ish-leads-row + .ish-leads-row {
+  border-top: 1px solid rgba(var(--ish-stratus-blue-rgb), 0.08);
+}
+
+
+.ish-leads-card {
+  min-height: 124px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.95),
+    0 2px 10px rgba(var(--ish-stratus-blue-rgb), 0.06);
+}
+
+.ish-leads-card-active {
+  background:
+    linear-gradient(145deg, rgba(var(--ish-stratus-yellow-rgb), 0.22) 0%, rgba(255, 255, 255, 0.98) 42%);
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.35),
+    inset 3px 0 0 var(--ish-stratus-blue),
+    0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.10);
+}
+
+.stratus .ish-leads-card-active {
+  box-shadow:
+    inset 0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.4),
+    inset 3px 0 0 var(--ish-stratus-blue),
+    0 6px 20px rgba(var(--ish-stratus-blue-rgb), 0.12);
+}
+
+.ish-leads-group {
+  overflow: hidden;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.9),
+    0 4px 18px rgba(var(--ish-stratus-blue-rgb), 0.07);
+}
+
+/* ── Lead switcher rail (mobile detail) ─────────────────────────────────── */
+
+.ish-lead-switcher-rail {
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px) saturate(165%);
+  -webkit-backdrop-filter: blur(16px) saturate(165%);
+}
+
+.ish-lead-switcher-chip {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.14);
+}
+
+.ish-lead-switcher-chip-active {
+  background:
+    radial-gradient(ellipse 120% 100% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.35) 0%, transparent 55%),
+    rgba(255, 255, 255, 0.98);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(var(--ish-stratus-blue-rgb), 0.45),
+    0 2px 10px rgba(var(--ish-stratus-blue-rgb), 0.12);
+}
+
+.stratus .ish-lead-switcher-chip-active {
+  box-shadow:
+    inset 0 0 0 1.5px rgba(var(--ish-stratus-yellow-rgb), 0.5),
+    0 3px 14px rgba(var(--ish-stratus-blue-rgb), 0.14);
+}

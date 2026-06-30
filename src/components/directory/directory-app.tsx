@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MobileHeader, SegmentedTabs } from "@/design-system";
+import { MobileHeader, MobilePageLayout, SearchBar, SegmentedTabs } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { CompaniesGrid } from "@/components/scouting/companies-grid";
@@ -189,7 +189,7 @@ export function DirectoryApp() {
                   {selectedCompany ? (
                     <>
                       {isMobileLayout ? (
-                        <MobileHeader title={selectedCompany.name} showBack onBack={() => setSelectedCompanyId(null)} className="lg:hidden" />
+                        <MobileHeader title={selectedCompany.name} showBack onBack={() => setSelectedCompanyId(null)} largeTitle={false} className="lg:hidden" />
                       ) : null}
                       <CompanyOverviewPanel
                         name={selectedCompany.name}

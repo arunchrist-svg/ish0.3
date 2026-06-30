@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { db, tenants, users } from "@/db";
+import { db, users } from "@/db";
 import { eq } from "drizzle-orm";
 import { verifyPassword } from "@/lib/auth/password";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
-import { isSuperadmin } from "@/lib/auth/platform";
 import { listActiveMemberships } from "@/lib/tenant";
 import { normalizeTenantSlug } from "@/lib/auth/slug";
+import { resolvePostAuthDestination } from "@/lib/auth/post-auth-redirect";
 
 export async function POST(req: Request) {
   try {
@@ -32,25 +32,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 });
     }
 
-    if (isSuperadmin(user.platformRole)) {
-      const token = await createSession(user.id, null);
-      const redirect = user.mustChangePassword ? "/change-password" : "/admin";
-      const res = NextResponse.json({ ok: true, redirect });
-      res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
-      return res;
-    }
-
     const memberships = await listActiveMemberships(user.id);
-    if (memberships.length === 0) {
+    if (memberships.length === 0 && user.platformRole !== "superadmin") {
       return NextResponse.json({ error: "No organization membership found" }, { status: 401 });
     }
 
-    let tenantId: string;
-    let role = memberships[0]!.role;
+    let tenantId: string | null = null;
+    let role: string | undefined;
+
     if (memberships.length === 1) {
       tenantId = memberships[0]!.tenantId;
       role = memberships[0]!.role;
-    } else {
+    } else if (memberships.length > 1) {
       if (!slug?.trim()) {
         return NextResponse.json(
           {
@@ -70,20 +63,15 @@ export async function POST(req: Request) {
       role = match.role;
     }
 
-    const [tenant] = await db
-      .select({ onboardingStatus: tenants.onboardingStatus })
-      .from(tenants)
-      .where(eq(tenants.id, tenantId))
-      .limit(1);
+    const { redirect, tenantId: sessionTenantId } = await resolvePostAuthDestination({
+      userId: user.id,
+      platformRole: user.platformRole,
+      mustChangePassword: user.mustChangePassword,
+      tenantId,
+      role,
+    });
 
-    let redirect = "/";
-    if (user.mustChangePassword) {
-      redirect = "/change-password";
-    } else if (tenant?.onboardingStatus !== "complete" && role === "owner") {
-      redirect = "/onboarding";
-    }
-
-    const token = await createSession(user.id, tenantId);
+    const token = await createSession(user.id, sessionTenantId);
     const res = NextResponse.json({ ok: true, redirect });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
     return res;

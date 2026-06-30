@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { QueuePanel } from "@/components/sales-accelerator/queue-panel";
+import { filterLeadsByQuery, QueuePanel } from "@/components/sales-accelerator/queue-panel";
+import { LeadSwitcherRail } from "@/components/sales-accelerator/lead-switcher-rail";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
 import { createLead, deleteLead, fetchLeads, fetchLead, updateLead } from "@/lib/api-client";
 import type { LeadDetailRecord, LeadQueueItem } from "@/lib/api-client";
@@ -10,7 +11,8 @@ import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { LeadFormModal } from "@/components/sales-accelerator/lead-form-modal";
-import { Button, MobileHeader, MobileStackLayout } from "@/design-system";
+import { Button, MobileStackLayout } from "@/design-system";
+import { Plus } from "lucide-react";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 
 function leadUrl(pathname: string, params: URLSearchParams): string {
@@ -39,6 +41,9 @@ export function SalesAcceleratorApp() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingLead, setEditingLead] = useState<LeadDetailRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const listScrollRef = useRef<HTMLDivElement>(null);
+  const listScrollTop = useRef(0);
 
   useEffect(() => {
     activeLeadIdRef.current = activeLeadId;
@@ -228,6 +233,24 @@ export function SalesAcceleratorApp() {
       .catch(() => setPrefetchedLead(null));
   }, [leadFromUrl]);
 
+  const filteredLeads = useMemo(
+    () => filterLeadsByQuery(leads, searchQuery),
+    [leads, searchQuery],
+  );
+
+  const handleBackToList = useCallback(() => {
+    if (listScrollRef.current) {
+      listScrollTop.current = listScrollRef.current.scrollTop;
+    }
+    clearLeadFromUrl();
+  }, [clearLeadFromUrl]);
+
+  useEffect(() => {
+    if (!activeLeadId && listScrollRef.current && listScrollTop.current > 0) {
+      listScrollRef.current.scrollTop = listScrollTop.current;
+    }
+  }, [activeLeadId]);
+
   if (!listLoading && leads.length === 0) {
     return (
       <>
@@ -275,19 +298,22 @@ export function SalesAcceleratorApp() {
       onRefresh={() => refreshLeadList({ silent: true })}
       onAddLead={openCreateLead}
       canWrite={canWritePipeline}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      listScrollRef={listScrollRef}
     />
   );
 
   const detailPane = activeLeadId ? (
     <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-ish-page-in">
-      {isMobileLayout ? (
-        <MobileHeader
-          title={prefetchedLead?.name ?? "Lead"}
-          subtitle={prefetchedLead?.company}
-          showBack
-          onBack={clearLeadFromUrl}
-        />
-      ) : null}
+      <div className="shrink-0 lg:hidden">
+          <LeadSwitcherRail
+            leads={filteredLeads}
+            activeId={activeLeadId}
+            onSelect={(id) => void selectLead(id)}
+            onBack={handleBackToList}
+          />
+        </div>
       <RecordWorkspace
         leadId={activeLeadId}
         initialLead={prefetchedLead?.id === activeLeadId ? prefetchedLead : null}
@@ -300,22 +326,31 @@ export function SalesAcceleratorApp() {
     <div className="flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
       <span className="mr-2 animate-spin">⟳</span> Loading leads…
     </div>
-  ) : isMobileLayout ? (
-    <div className="hidden lg:flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
+  ) : (
+    <div className="hidden flex-1 items-center justify-center text-[13px] text-ish-ink-faint lg:flex">
       Select a lead
     </div>
-  ) : null;
+  );
 
   return (
     <>
-      {isMobileLayout ? (
-        <MobileStackLayout showDetail={!!activeLeadId} list={listPane} detail={detailPane ?? <div />} />
-      ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {listPane}
-          {detailPane}
-        </div>
-      )}
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden lg:hidden">
+        <MobileStackLayout showDetail={!!activeLeadId} list={listPane} detail={detailPane ?? <div />} onBack={handleBackToList} />
+      </div>
+      <div className="hidden min-h-0 min-w-0 flex-1 overflow-hidden lg:flex">
+        {listPane}
+        {detailPane}
+      </div>
+      {canWritePipeline && !activeLeadId ? (
+        <button
+          type="button"
+          onClick={openCreateLead}
+          className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-4 z-30 flex size-14 items-center justify-center rounded-2xl bg-ish-stratus-blue text-white shadow-ish lg:hidden active:scale-95"
+          aria-label="Add lead"
+        >
+          <Plus className="size-6" />
+        </button>
+      ) : null}
       <LeadFormModal
         open={formOpen}
         mode={formMode}

@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchPins, togglePin, type PinnedLead, type PinnedCompany } from "@/lib/api-client";
-import { IshAvatar, ScoreBadge, text } from "@/design-system";
+import { IshAvatar, MobilePageLayout, ScoreBadge, SearchBar, text } from "@/design-system";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { deriveQueueAction, statusToDisplayLabel } from "@/lib/pipeline-status";
 import { toast } from "sonner";
@@ -75,8 +75,15 @@ export function PinnedApp() {
   const noResults = !loading && !isEmpty && filteredLeads.length === 0 && filteredCompanies.length === 0;
 
   return (
-    <div className="ish-pinned-page flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="ish-pinned-hero relative shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5">
+    <MobilePageLayout
+      title="Pinned"
+      subtitle="Priority leads and companies"
+      largeTitle
+      className="ish-pinned-page"
+      contentClassName="flex flex-col !overflow-hidden"
+    >
+      <SearchBar value={search} onChange={setSearch} placeholder="Search" sticky className="lg:hidden" />
+      <header className="ish-pinned-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
         <div className="ish-pinned-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-center gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3.5">
@@ -157,7 +164,7 @@ export function PinnedApp() {
           </div>
         )}
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }
 

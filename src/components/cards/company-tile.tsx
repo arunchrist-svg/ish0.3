@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
-import { MapPin, Users, Check } from "lucide-react";
+import { MapPin, Users, Check, ChevronRight } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { scoutCardSurface } from "./scout-card-surface";
@@ -14,6 +14,7 @@ type Props = {
   onToggleSelect: () => void;
   onView: () => void;
   selectable?: boolean;
+  compact?: boolean;
 };
 
 export function CompanyTile({
@@ -23,11 +24,16 @@ export function CompanyTile({
   onToggleSelect,
   onView,
   selectable = true,
+  compact = false,
 }: Props) {
   const scoreColor = getScoreColor(company.giftScore);
 
   function handleCardClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest("[data-card-action]")) return;
+    if (compact) {
+      if (selectable) onToggleSelect();
+      return;
+    }
     onView();
     if (selectable) onToggleSelect();
   }
@@ -36,7 +42,92 @@ export function CompanyTile({
     e.stopPropagation();
     if (!selectable) return;
     onToggleSelect();
+    if (!compact) onView();
+  }
+
+  function handleDetailsClick(e: React.MouseEvent) {
+    e.stopPropagation();
     onView();
+  }
+
+  if (compact) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleCardClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleCardClick(e as unknown as React.MouseEvent);
+        }}
+        className={scoutCardSurface({
+          isSelected,
+          isPrimary: false,
+          layout: "column",
+          className: "min-h-[148px] p-3 text-left",
+        })}
+      >
+        <div className="mb-2.5 flex items-start justify-between gap-2">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-ish-canvas">
+            <CompanyLogo
+              name={company.name}
+              domain={company.domain}
+              logo={company.logo}
+              size="sm"
+              className="bg-ish-canvas ring-0"
+              rounded="rounded-lg"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <div
+              className="flex items-baseline gap-0.5 rounded-full px-2 py-0.5"
+              style={{ backgroundColor: `${scoreColor}18` }}
+            >
+              <span className="text-[12px] font-extrabold leading-none" style={{ color: scoreColor }}>
+                {company.giftScore}
+              </span>
+            </div>
+            <button
+              type="button"
+              data-card-action
+              onClick={handleDetailsClick}
+              className="flex size-7 items-center justify-center rounded-full bg-white/90 text-ish-ink-soft shadow-sm ring-1 ring-ish-border/50 active:scale-95"
+              aria-label={`View ${company.name}`}
+            >
+              <ChevronRight className="size-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-ish-ink">{company.name}</div>
+          <div className="mt-1 flex items-center gap-1 text-[10px] text-ish-ink-soft">
+            <MapPin className="size-3 shrink-0" />
+            <span className="truncate">{company.city}</span>
+          </div>
+          <span className="mt-1.5 inline-block max-w-full truncate rounded-full bg-ish-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ish-ink-soft">
+            {company.type}
+          </span>
+        </div>
+        {selectable ? (
+          <div
+            className={cn(
+              "mt-2.5 flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[11px] font-semibold transition-colors",
+              isSelected
+                ? "border-ish-stratus-blue/35 bg-ish-stratus-blue/10 text-ish-stratus-blue"
+                : "border-ish-border/60 bg-white/70 text-ish-ink-soft",
+            )}
+          >
+            {isSelected ? (
+              <>
+                <Check className="size-3.5" strokeWidth={2.5} />
+                Selected
+              </>
+            ) : (
+              "Tap to select"
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (

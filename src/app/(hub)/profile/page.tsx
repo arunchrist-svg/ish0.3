@@ -6,6 +6,7 @@ import { LogOut, User, Shield, Loader2, Coins } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsHero } from "@/components/settings/settings-hero";
 import { cn } from "@/lib/utils";
+import { ListGroup, ListRow, MobilePageLayout } from "@/design-system";
 import { ISH_LOGO_URL } from "@/lib/brand";
 
 export default function ProfilePage() {
@@ -42,13 +43,20 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="settings-ambient min-w-0 flex-1 overflow-y-auto px-6 py-8 sm:px-10">
-      <div className="mx-auto w-full max-w-2xl animate-ish-page-in">
-        <SettingsHero
-          icon={User}
-          title="Profile"
-          subtitle="Account, session, and access information"
-        />
+    <MobilePageLayout
+      title="Profile"
+      subtitle={orgName || "Your account"}
+      largeTitle
+      className="lg:bg-transparent"
+    >
+      <div className="settings-ambient mx-auto w-full max-w-2xl ish-page-padding py-6 lg:px-6 lg:py-8 animate-ish-page-in">
+        <div className="hidden lg:block">
+          <SettingsHero
+            icon={User}
+            title="Profile"
+            subtitle="Account, session, and access information"
+          />
+        </div>
 
         <SettingsGroup title="Identity">
           <SettingsRow className="gap-4 !py-5">
@@ -132,6 +140,6 @@ export default function ProfilePage() {
           </div>
         </SettingsGroup>
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }

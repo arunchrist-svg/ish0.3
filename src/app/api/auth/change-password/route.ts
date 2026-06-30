@@ -5,6 +5,7 @@ import { getSessionTokenFromCookies, getSessionUser } from "@/lib/auth/session";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { UnauthorizedError } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
+import { resolvePostAuthDestination, POST_AUTH_HOME } from "@/lib/auth/post-auth-redirect";
 
 export async function POST(req: Request) {
   try {
@@ -38,7 +39,13 @@ export async function POST(req: Request) {
       .set({ passwordHash, mustChangePassword: false })
       .where(eq(users.id, user.id));
 
-    return NextResponse.json({ ok: true, redirect: "/" });
+    const destination = await resolvePostAuthDestination({
+      userId: user.id,
+      platformRole: user.platformRole,
+      mustChangePassword: false,
+    }).catch(() => ({ redirect: POST_AUTH_HOME, tenantId: null }));
+
+    return NextResponse.json({ ok: true, redirect: destination.redirect });
   } catch (e) {
     return handleApiError(e, "[auth/change-password]");
   }

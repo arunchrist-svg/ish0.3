@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "ISH Sales Hub",
-    short_name: "Sales Hub",
+    name: "Nebula",
+    short_name: "Nebula",
     description: "Scout, enrich, and approve AI outreach from anywhere.",
     start_url: "/",
     display: "standalone",

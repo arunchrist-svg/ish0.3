@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>ISH Sales Hub</string>
+        <string>Nebula</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -47,5 +47,16 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Nebula uses the camera to scan business cards during scouting.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Nebula uses your location to find nearby prospects while scouting.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Nebula uses the microphone for voice input when editing outreach.</string>
 </dict>
 </plist>

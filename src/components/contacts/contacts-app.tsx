@@ -7,7 +7,7 @@ import {
   UserPlus, CheckCircle, Star, Download, 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MobileHeader } from "@/design-system";
+import { MobilePageLayout, SearchBar } from "@/design-system";
 import { BusinessCardCapture } from "@/components/mobile/business-card-capture";
 import type { BusinessCardFields } from "@/lib/enrichment/business-card-ocr";
 import { fetchContacts, createLeadFromContact, type ContactListItem } from "@/lib/api-client";
@@ -74,9 +74,15 @@ export function ContactsApp() {
   const leadsCount = contacts.filter((c) => c.hasLead).length;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-ish-canvas">
-      <MobileHeader title="Contacts" subtitle="Your scout and lead directory" className="lg:hidden" />
-      <div className="flex shrink-0 items-center gap-4 border-b border-ish-border bg-white px-6 py-3">
+    <MobilePageLayout
+      title="Contacts"
+      subtitle={`${contacts.length} contacts · ${leadsCount} with leads`}
+      largeTitle
+      contentClassName="!pb-0"
+      className="lg:bg-ish-canvas"
+    >
+      <SearchBar value={search} onChange={setSearch} placeholder="Search contacts" sticky className="lg:hidden" />
+      <div className="hidden shrink-0 items-center gap-4 border-b border-ish-border bg-white px-6 py-3 lg:flex">
         <div className="flex items-center gap-2.5">
           <div className="flex size-8 items-center justify-center rounded-xl bg-ish-pink shadow-[var(--shadow-ish-sm)]">
             <Contact className="size-4 text-ish-ink" />
@@ -229,7 +235,7 @@ export function ContactsApp() {
           </>
         )}
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }
 

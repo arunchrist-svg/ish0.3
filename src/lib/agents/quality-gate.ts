@@ -2,16 +2,17 @@ import {
   scoreSpamMeter,
   scoreRubric,
   scoreRubricTotal,
-  DELIVERABILITY_PASS_THRESHOLD,
-  RUBRIC_PASS_THRESHOLD,
   type DeliverabilityOptions,
 } from "@/lib/agents/writer-scoring";
+import { passesOutreachQuality } from "@/lib/outreach/outreach-quality";
 
-export { DELIVERABILITY_PASS_THRESHOLD, RUBRIC_PASS_THRESHOLD };
+export {
+  DELIVERABILITY_PASS_THRESHOLD,
+  RUBRIC_PASS_THRESHOLD,
+  passesOutreachQuality,
+  draftFailsQualityGate,
+} from "@/lib/outreach/outreach-quality";
 
-export function passesOutreachQuality(delivScore: number, rubricTotal: number): boolean {
-  return delivScore >= DELIVERABILITY_PASS_THRESHOLD && rubricTotal >= RUBRIC_PASS_THRESHOLD;
-}
 
 export async function evaluateOutreachDraft(params: {
   subject: string;
@@ -68,12 +69,3 @@ export async function evaluateOutreachDraft(params: {
   };
 }
 
-export function draftFailsQualityGate(outreach: {
-  revisionTimeout?: boolean | null;
-  deliverabilityScore?: number | null;
-  rubricTotal?: number | null;
-}): boolean {
-  if (outreach.revisionTimeout) return true;
-  if (outreach.deliverabilityScore == null || outreach.rubricTotal == null) return false;
-  return !passesOutreachQuality(outreach.deliverabilityScore, outreach.rubricTotal);
-}

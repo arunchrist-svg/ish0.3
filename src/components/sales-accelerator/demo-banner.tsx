@@ -12,7 +12,7 @@ export function DemoBanner() {
   if (!show) return null;
 
   return (
-    <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-[13px] font-medium text-amber-900">
+    <div className="hidden lg:flex shrink-0 items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-[13px] font-medium text-amber-900">
       <FlaskConical className="size-4 shrink-0" />
       <span>
         Demo mode. Emails are logged only ({session.sendMode}). Scout, enrich, and draft work without sending live outreach.

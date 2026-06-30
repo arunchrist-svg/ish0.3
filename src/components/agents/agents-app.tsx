@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { runScoutAgent } from "@/lib/api-client";
 import type { DataMode } from "@/lib/enrichment/types";
-import { SCOUT_INDUSTRIES } from "@/lib/scouting-data";
 import { CitySelector } from "@/components/scouting/city-selector";
+import { IndustrySelector } from "@/components/scouting/industry-selector";
 import { cn } from "@/lib/utils";
 import { Bot, Play, CheckCircle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -17,12 +17,6 @@ export function AgentsApp() {
   );
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof runScoutAgent>> | null>(null);
-
-  function toggleIndustry(ind: string) {
-    setIndustries((prev) =>
-      prev.includes(ind) ? prev.filter((i) => i !== ind) : [...prev, ind],
-    );
-  }
 
   async function handleRunScout() {
     if (!cities.length) {
@@ -73,25 +67,9 @@ export function AgentsApp() {
 
               <div className="mb-4">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                  Industries (optional — leave empty for all)
+                  Industries (optional, leave empty for all)
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {SCOUT_INDUSTRIES.map((ind) => (
-                    <button
-                      key={ind}
-                      type="button"
-                      onClick={() => toggleIndustry(ind)}
-                      className={cn(
-                        "rounded-full px-3 py-1 text-[11.5px] font-semibold transition-all",
-                        industries.includes(ind)
-                          ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-                          : "bg-ish-app text-ish-ink-soft hover:bg-ish-border",
-                      )}
-                    >
-                      {ind}
-                    </button>
-                  ))}
-                </div>
+                <IndustrySelector industries={industries} onIndustriesChange={setIndustries} />
               </div>
 
               <div className="mb-6">

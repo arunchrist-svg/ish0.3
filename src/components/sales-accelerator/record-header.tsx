@@ -4,7 +4,7 @@ import { useState } from "react";
 import { MoreHorizontal, RefreshCw, MessageSquare, Package, Handshake, Trophy, Pin, Loader2, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { QueueItem } from "@/lib/data";
-import { Button, IshAvatar, text } from "@/design-system";
+import { Button, IshAvatar, ScoreBadge, text } from "@/design-system";
 import { toast } from "sonner";
 import { markReplied, updateLeadStatus, togglePin } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
@@ -92,10 +92,10 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4 px-[22px] py-4">
-        <div className="flex min-w-0 items-center gap-[18px]">
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 lg:gap-4 lg:px-[22px] lg:py-4">
+        <div className="hidden min-w-0 flex-1 items-center gap-[18px] lg:flex">
           <IshAvatar name={current.name} index={0} size={64} />
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className={cn("mb-1 truncate", text.display)}>{current.name}</div>
             <div className="truncate text-[13px] font-semibold text-ish-ink-soft">
               {formatSubtitle(current.title, current.company)}
@@ -103,7 +103,12 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
           </div>
         </div>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="min-w-0 flex-1 truncate text-[12px] font-medium text-ish-ink-soft lg:hidden">
+          {formatSubtitle(current.title, current.company)}
+        </div>
+
+        <div className="shrink-0 lg:hidden"><ScoreBadge score={lead.score} /></div>
+        <div className="hidden shrink-0 flex-wrap items-center justify-end gap-2 lg:flex">
           {showMarkReplied && (
             <Button
               variant="ghost"
@@ -227,6 +232,66 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
               ) : null}
             </div>
           ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 lg:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={refreshing}
+              className="size-9 rounded-full bg-white/70 p-0 shadow-ish-sm"
+              onClick={() => void onRefresh(true)}
+              aria-label="Refresh"
+            >
+              <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+            </Button>
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-9 rounded-full bg-white/70 p-0 shadow-ish-sm"
+                onClick={() => setMenuOpen((v) => !v)}
+                aria-label="Lead actions"
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+              {menuOpen ? (
+                <div className="absolute right-0 top-full z-20 mt-1 min-w-[180px] overflow-hidden rounded-xl border border-ish-border bg-white py-1 shadow-[var(--shadow-ish)]">
+                  {showMarkReplied ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-ish-ink hover:bg-ish-canvas" onClick={() => { setMenuOpen(false); void handleMarkReplied(); }}>
+                      <MessageSquare className="size-4" /> Mark replied
+                    </button>
+                  ) : null}
+                  {nextManual === "tasting_sent" ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-ish-ink hover:bg-ish-canvas" onClick={() => { setMenuOpen(false); void handleManualAdvance("tasting_sent"); }}>
+                      <Package className="size-4" /> Mark tasting sent
+                    </button>
+                  ) : null}
+                  {nextManual === "negotiate" ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-ish-ink hover:bg-ish-canvas" onClick={() => { setMenuOpen(false); void handleManualAdvance("negotiate"); }}>
+                      <Handshake className="size-4" /> Move to negotiate
+                    </button>
+                  ) : null}
+                  {nextManual === "closed" ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-ish-ink hover:bg-ish-canvas" onClick={() => { setMenuOpen(false); setCloseDialogOpen(true); }}>
+                      <Trophy className="size-4" /> Close deal
+                    </button>
+                  ) : null}
+                  <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-ish-ink hover:bg-ish-canvas" onClick={() => { setMenuOpen(false); void handleTogglePin(); }}>
+                    <Pin className={cn("size-4", lead.isPinned && "fill-current")} /> {lead.isPinned ? "Unpin" : "Pin"}
+                  </button>
+                  {onEditLead ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-ish-ink hover:bg-ish-canvas" onClick={() => { setMenuOpen(false); onEditLead(lead); }}>
+                      <Pencil className="size-4" /> Edit lead
+                    </button>
+                  ) : null}
+                  {onDeleteLead ? (
+                    <button type="button" className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] font-semibold text-red-600 hover:bg-red-50" onClick={() => { setMenuOpen(false); void onDeleteLead(lead.id); }}>
+                      <Trash2 className="size-4" /> Delete lead
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
         </div>
       </div>
 

@@ -405,7 +405,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           </Button>
           <Link
             href="/email?tab=active"
-            className="inline-flex h-7 shrink-0 items-center rounded-full border border-ish-border bg-white px-3 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas"
+            className="shrink-0 text-[11px] font-semibold text-ish-stratus-blue underline-offset-2 hover:underline lg:inline-flex lg:h-7 lg:items-center lg:rounded-full lg:border lg:border-ish-border lg:bg-white lg:px-3 lg:text-ish-ink lg:no-underline lg:hover:bg-ish-canvas"
           >
             View in Outreach Queue
           </Link>
@@ -415,7 +415,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   );
 
   return (
-    <div className="animate-ish-tab-in px-[22px] py-[18px]">
+    <div className="animate-ish-tab-in space-y-3 px-0 py-1 lg:space-y-4 lg:px-[22px] lg:py-[18px]">
       <OutreachJourneyPanel
         thread={thread}
         statusSubtitle={statusSubtitle}
@@ -427,9 +427,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       />
 
       {generating ? (
-        <div className="rounded-[20px] border border-ish-border bg-white py-12 shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-ish-border bg-white py-10 lg:mx-0 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-ish-sm)]">
           {streamMessage ? (
-        <div className="rounded-xl bg-ish-yellow-soft px-4 py-3 text-[13px] font-medium text-ish-ink">{streamMessage}</div>
+        <div className="mx-3 rounded-xl bg-ish-yellow-soft px-3 py-2.5 text-[13px] font-medium text-ish-ink lg:mx-4 lg:px-4 lg:py-3">{streamMessage}</div>
       ) : null}
       <WritingLoader
             contactName={lead.name}
@@ -438,7 +438,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           />
         </div>
       ) : canWrite && !hasDraft && !generating ? (
-        <div className="rounded-[20px] border border-dashed border-ish-stratus-blue/30 bg-gradient-to-br from-ish-canvas/80 to-white px-6 py-10 text-center shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-dashed border-ish-stratus-blue/30 bg-gradient-to-br from-ish-canvas/80 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-ish-sm)]">
           <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-ish-yellow-soft">
             <Sparkles className="size-5 text-ish-ink" />
           </div>
@@ -458,7 +458,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           </button>
         </div>
       ) : needsReplyDraft ? (
-        <div className="rounded-[20px] border border-ish-stratus-blue/25 bg-gradient-to-br from-ish-green-soft/40 to-white px-6 py-10 text-center shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-ish-stratus-blue/25 bg-gradient-to-br from-ish-green-soft/40 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-ish-sm)]">
           <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-ish-green-soft">
             <Sparkles className="size-5 text-ish-stratus-blue" />
           </div>
@@ -482,11 +482,11 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           </button>
         </div>
       ) : draftingReply ? (
-        <div className="rounded-[20px] border border-ish-border bg-white py-12 shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-ish-border bg-white py-10 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-ish-sm)]">
           <WritingLoader contactName={lead.name} companyName={lead.company} sequenceLabel="Drafting reply" />
         </div>
       ) : showComposeZone && isEditableNode && resolvedDraft ? (
-        <div ref={composeRef}>
+        <div ref={composeRef} className="pt-1">
           <OutreachApprovalCard
             key={resolvedDraft.id}
             draft={resolvedDraft}
@@ -509,7 +509,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           />
         </div>
       ) : isEmptyCompose ? (
-        <div className="rounded-[20px] border border-dashed border-ish-stratus-blue/25 bg-ish-canvas/30 px-6 py-14 text-center shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-dashed border-ish-stratus-blue/25 bg-ish-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-ish-sm)]">
           <p className="text-[15px] font-bold text-ish-ink">Ready to write outreach</p>
           <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
             AI will draft a 3-email sequence for {lead.name || "this contact"}. Pick a template above, then click Write.

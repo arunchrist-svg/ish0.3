@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">ISH Sales Hub</string>
-    <string name="title_activity_main">ISH Sales Hub</string>
+    <string name="app_name">Nebula</string>
+    <string name="title_activity_main">Nebula</string>
     <string name="package_name">com.ish.saleshub</string>
     <string name="custom_url_scheme">com.ish.saleshub</string>
 </resources>

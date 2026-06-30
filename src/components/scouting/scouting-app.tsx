@@ -14,8 +14,15 @@ import { mapWithConcurrency } from "@/lib/async";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, cn } from "@/lib/utils";
-import { MobileHeader } from "@/design-system";
+import {
+  ActionBar,
+  BottomSheet,
+  EmptyState,
+  MobileHeader,
+  MobilePageLayout,
+} from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { Compass, MapPin, MoreVertical, Search, Users } from "lucide-react";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS } from "@/lib/scouting-data";
 
 type View = "companies" | "people";
@@ -329,6 +336,73 @@ function RolePickerModal({
   );
 }
 
+
+function ScoutCompaniesEmpty({
+  hasFetched,
+  scoutMode,
+  fetchMessage,
+}: {
+  hasFetched: boolean;
+  scoutMode: ScoutMode;
+  fetchMessage: string | null;
+}) {
+  if (!hasFetched) {
+    return (
+      <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-12 text-center shadow-ish backdrop-blur-xl lg:mx-5 lg:mt-8">
+        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-yellow-gradient shadow-ish-yellow-sm">
+          <Compass className="size-7 text-ish-black" />
+        </div>
+        <EmptyState
+          title={scoutMode === "search" ? "Search by company name" : "Ready to scout"}
+          description={
+            scoutMode === "search"
+              ? "Pick a city, type a company name, then tap Search."
+              : "Pick a city, then tap Scout now. Leave industry open for broader results."
+          }
+          className="py-0"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-12 text-center shadow-ish backdrop-blur-xl lg:mx-5 lg:mt-8">
+      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-canvas text-ish-ink-soft">
+        <MapPin className="size-7" />
+      </div>
+      <EmptyState
+        title={fetchMessage ?? (scoutMode === "search" ? "No matches found" : "No companies found")}
+        description={
+          fetchMessage?.includes("API") || fetchMessage?.includes("missing")
+            ? "Try again in a few minutes or adjust settings."
+            : scoutMode === "search"
+              ? "Try a different spelling or company name."
+              : "Try different cities or leave industry unselected."
+        }
+        className="py-0"
+      />
+    </div>
+  );
+}
+
+function ScoutPeopleEmpty({
+  headline,
+  detail,
+}: {
+  headline: string;
+  detail: string;
+}) {
+  return (
+    <div className="mx-4 mt-4 rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-12 text-center shadow-ish backdrop-blur-xl">
+      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-canvas text-ish-ink-soft">
+        <Users className="size-7" />
+      </div>
+      <EmptyState title={headline} description={detail} className="py-0" />
+    </div>
+  );
+}
+
+
 export function ScoutingApp() {
   const isMobileLayout = useIsMobileLayout();
   const [view, setView] = useState<View>("companies");
@@ -367,6 +441,8 @@ export function ScoutingApp() {
   const [companySearchQuery, setCompanySearchQuery] = useState("");
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [pendingFetchIds, setPendingFetchIds] = useState<Set<string> | null>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [overflowOpen, setOverflowOpen] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -484,7 +560,19 @@ export function ScoutingApp() {
         const shaped = dedupeCompanyShapes(response.companies.map((c, i) => toCompanyShape(c, i)));
         setCompanies((prev) => (append ? mergeCompanies(prev, shaped) : shaped));
         setHasMore(response.hasMore);
-        if (!append && shaped[0]) setPrimaryCompanyId(shaped[0].id);
+        if (!append) {
+          setSelectedCompanyIds(new Set(shaped.map((c) => c.id)));
+          setPrimaryCompanyId(null);
+        } else if (shaped.length) {
+          setSelectedCompanyIds((prev) => {
+            const next = new Set(prev);
+            shaped.forEach((c) => next.add(c.id));
+            return next;
+          });
+        }
+        if (!append && shaped[0] && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+          setPrimaryCompanyId(shaped[0].id);
+        }
 
         if (append && !shaped.length && !response.errors?.length) {
           toast.info("No additional companies found for these filters. Try other cities or industries.");
@@ -964,250 +1052,388 @@ export function ScoutingApp() {
     setPrimaryPersonId(null);
   }
 
+
+  const filtersCollapsed =
+    isMobileLayout &&
+    hasFetched &&
+    !loadingCompanies &&
+    !filtersExpanded &&
+    ((view === "companies" && companies.length > 0) || (view === "people" && people.length > 0));
+
+  const mobileSubtitle = useMemo(() => {
+    if (!cities.length) return "Pick a city to start scouting";
+    const cityPart =
+      cities.length === 1 ? cities[0] : `${cities.length} cities`;
+    if (view === "people") {
+      return `${cityPart} · ${people.length} decision-maker${people.length === 1 ? "" : "s"}`;
+    }
+    if (companies.length > 0) {
+      return `${cityPart} · ${companies.length} compan${companies.length === 1 ? "y" : "ies"}`;
+    }
+    return cityPart;
+  }, [cities, view, people.length, companies.length]);
+
+  const canScoutMobile = settingsLoaded && cities.length > 0 && !loadingCompanies;
+  const canSearchMobile =
+    settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !loadingCompanies;
+
+  useEffect(() => {
+    if (hasFetched && companies.length > 0) {
+      setFiltersExpanded(false);
+    }
+  }, [hasFetched, companies.length]);
+
   const showMobileDetail =
     isMobileLayout &&
     ((view === "companies" && primaryCompany) || (view === "people" && primaryPerson));
 
+  const toolbarProps = {
+    view,
+    cities,
+    industries,
+    seniority,
+    departments,
+    selectedCount: view === "companies" ? selectedCompanyIds.size : selectedPersonIds.size,
+    settingsLoaded,
+    scoutCompaniesLimit,
+    scoutLeadsLimit,
+    loadingCompanies,
+    loadingMore,
+    saving,
+    scoutMode,
+    companySearchQuery,
+    onCitiesChange: handleCitiesChange,
+    onIndustryToggle: toggleIndustry,
+    onSeniorityToggle: toggleSeniority,
+    onDepartmentToggle: toggleDepartment,
+    onFetchNewCompanies: handleFetchNewCompanies,
+    onFetchLeads: handleFetchLeads,
+    onAddLeads: handleAddLeads,
+    onScoutMore: handleScoutMore,
+    onLoadMore: handleLoadMore,
+    onRefresh: handleRefresh,
+    onScoutModeChange: handleScoutModeChange,
+    onCompanySearchQueryChange: setCompanySearchQuery,
+    onSearchByName: handleSearchByName,
+  } as const;
+
+  const companiesResults = view === "companies" ? (
+    loadingCompanies ? (
+      <DiscoveringLoader
+        hints={[
+          cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
+          industries.length ? `Filtering ${industries.join(", ")}` : "Matching all industries",
+          "Ranking by gift potential",
+        ]}
+      />
+    ) : companies.length === 0 ? (
+      <ScoutCompaniesEmpty hasFetched={hasFetched} scoutMode={scoutMode} fetchMessage={fetchMessage} />
+    ) : (
+      <>
+        {discoveryNotice ? (
+          <div className="mx-4 mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950 lg:mx-5">
+            {discoveryNotice}
+          </div>
+        ) : null}
+        {isMobileLayout && scoutCompaniesLimit <= 1 && companies.length > 0 ? (
+          <div className="mx-3 mt-2 rounded-xl border border-ish-stratus-blue/20 bg-ish-canvas/80 px-3 py-2 text-[12px] leading-snug text-ish-ink-soft">
+            1 company per scout batch. Tap <span className="font-semibold text-ish-ink">Load more</span> in the menu, or raise the limit in Settings.
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between gap-3 px-4 py-2 lg:px-5">
+          <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+            {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
+            {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
+            {" · "}{cities.join(", ")}
+            {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
+            {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
+          </div>
+          <button
+            type="button"
+            onClick={allCompaniesSelected ? deselectAllCompanies : selectAllCompanies}
+            className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
+          >
+            {allCompaniesSelected ? "Deselect all" : "Select all"}
+          </button>
+        </div>
+        <CompaniesGrid
+          companies={companies}
+          selectedIds={selectedCompanyIds}
+          primaryId={primaryCompanyId}
+          onToggleSelect={toggleCompany}
+          onSetPrimary={setCompanyAsPrimary}
+          compact={isMobileLayout}
+        />
+        {hasMore && !isMobileLayout ? (
+          <div className="flex justify-center py-4">
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="rounded-xl border border-ish-border bg-white px-5 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] hover:bg-ish-app disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Load More Companies"}
+            </button>
+          </div>
+        ) : null}
+      </>
+    )
+  ) : (
+    <div className="p-2">
+      <button
+        type="button"
+        onClick={handleBackToCompanies}
+        className="mb-2 ml-3 flex items-center gap-1.5 text-[12px] font-semibold text-ish-ink-soft hover:text-ish-ink"
+      >
+        ← Back to Companies
+      </button>
+      <div className="mb-2 flex items-center justify-between gap-3 px-3">
+        <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+          {people.length} Decision-Makers · {selectedCompanyIds.size}{" "}
+          {selectedCompanyIds.size === 1 ? "Company" : "Companies"}
+          {selectedPersonIds.size > 0 ? ` · ${selectedPersonIds.size} selected` : ""}
+        </div>
+        {people.length > 0 && !loadingPeople ? (
+          <button
+            type="button"
+            onClick={allPeopleSelected ? deselectAllPeople : selectAllPeople}
+            className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
+          >
+            {allPeopleSelected ? "Deselect all" : "Select all"}
+          </button>
+        ) : null}
+      </div>
+      {loadingPeople ? (
+        <DiscoveringLoader
+          message={
+            fetchProgress.total > 1
+              ? `Finding decision-makers (${fetchProgress.done} of ${fetchProgress.total} companies)`
+              : "Finding decision-makers"
+          }
+          hints={["Searching LinkedIn profiles", "Matching seniority & titles", "Ranking key decision-makers"]}
+          compact
+        />
+      ) : people.length === 0 ? (
+        <ScoutPeopleEmpty
+          headline={peopleNotice?.headline ?? "No decision-makers found"}
+          detail={peopleNotice?.detail ?? "Try companies with websites or well-known brands."}
+        />
+      ) : saving ? (
+        <SavingLeadsLoader count={selectedPersonIds.size} progress={saveProgress} />
+      ) : (
+        <LeadsGrid
+          people={people}
+          selectedIds={selectedPersonIds}
+          primaryId={primaryPersonId}
+          existingNames={existingContactNames}
+          onToggleSelect={togglePerson}
+          onSetPrimary={setPersonAsPrimary}
+          onContact={(p) => toast.info(`Opening contact for ${p.name}`)}
+          onBookmark={(p) => toast.info(`Bookmarked ${p.name}`)}
+        />
+      )}
+    </div>
+  );
+
+  const rolePicker = showRolePicker ? (
+    <RolePickerModal
+      onConfirm={handleRolePickerConfirm}
+      onSkip={() => {
+        setShowRolePicker(false);
+        const ids = pendingFetchIds ?? selectedCompanyIds;
+        const selected = companies.filter((c) => ids.has(c.id));
+        setPendingFetchIds(null);
+        void runFetchLeads(selected, [], []);
+      }}
+    />
+  ) : null;
+
+  const mobilePrimaryLabel = (() => {
+    if (view === "people") {
+      if (saving) return "Saving…";
+      if (selectedPersonIds.size > 0) return `Add ${selectedPersonIds.size} as Leads`;
+      return "Select people to save";
+    }
+    if (selectedCompanyIds.size > 0) {
+      return `Fetch Leads · ${selectedCompanyIds.size}`;
+    }
+    if (scoutMode === "search") {
+      return loadingCompanies ? "Searching…" : "Search";
+    }
+    return loadingCompanies ? "Scouting…" : "Scout now";
+  })();
+
+  const mobilePrimaryDisabled = (() => {
+    if (view === "people") return selectedPersonIds.size === 0 || saving;
+    if (selectedCompanyIds.size > 0) return false;
+    return scoutMode === "search" ? !canSearchMobile : !canScoutMobile;
+  })();
+
+  const mobilePrimaryAction = () => {
+    setFiltersExpanded(false);
+    if (view === "people") {
+      handleAddLeads();
+      return;
+    }
+    if (selectedCompanyIds.size > 0) {
+      handleFetchLeads();
+      return;
+    }
+    if (scoutMode === "search") {
+      handleSearchByName();
+      return;
+    }
+    handleFetchNewCompanies();
+  };
+
+  const mobilePrimaryColor =
+    view === "people" || selectedCompanyIds.size > 0 ? "green" : "yellow";
+
+  if (isMobileLayout && showMobileDetail) {
+    return (
+      <>
+        <div className="fixed inset-0 z-40 flex flex-col bg-white">
+          <MobileHeader
+            title={view === "companies" ? primaryCompany?.name ?? "Company" : primaryPerson?.name ?? "Contact"}
+            showBack
+            onBack={() => (view === "companies" ? setPrimaryCompanyId(null) : setPrimaryPersonId(null))}
+          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {view === "companies" && primaryCompany ? (
+              <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
+            ) : view === "people" && primaryPerson ? (
+              <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
+            ) : null}
+          </div>
+        </div>
+        {rolePicker}
+      </>
+    );
+  }
+
+  if (isMobileLayout) {
+    return (
+      <>
+        <MobilePageLayout
+          title="Scouting"
+          subtitle={mobileSubtitle}
+          largeTitle
+          className="ish-scout-page lg:hidden"
+          contentClassName="!pb-0"
+          rightSlot={
+            <button
+              type="button"
+              onClick={() => setOverflowOpen(true)}
+              className="flex size-10 items-center justify-center rounded-full bg-white/90 text-ish-ink shadow-ish ring-1 ring-ish-border/40 active:scale-95"
+              aria-label="More actions"
+            >
+              <MoreVertical className="size-4 text-ish-stratus-blue" />
+            </button>
+          }
+          footer={
+            <ActionBar>
+              <button
+                type="button"
+                onClick={mobilePrimaryAction}
+                disabled={mobilePrimaryDisabled}
+                className={cn(
+                  "flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
+                  mobilePrimaryColor === "yellow" && !mobilePrimaryDisabled &&
+                    "bg-ish-yellow-gradient text-ish-black shadow-ish-yellow-sm",
+                  mobilePrimaryColor === "green" && !mobilePrimaryDisabled &&
+                    "bg-ish-green text-white shadow-[var(--shadow-ish)]",
+                  mobilePrimaryDisabled && "bg-ish-canvas text-ish-ink-faint",
+                )}
+              >
+                {mobilePrimaryColor === "yellow" && !mobilePrimaryDisabled ? <Compass className="size-4" /> : null}
+                {mobilePrimaryLabel}
+              </button>
+            </ActionBar>
+          }
+        >
+          <ScoutingToolbar
+            {...toolbarProps}
+            isMobileLayout
+            hideActions
+            filtersCollapsed={filtersCollapsed}
+            onExpandFilters={() => setFiltersExpanded(true)}
+          />
+          <div className="min-h-0 flex-1 pb-4">{companiesResults}</div>
+        </MobilePageLayout>
+
+        <BottomSheet open={overflowOpen} onClose={() => setOverflowOpen(false)} title="Scout options">
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                handleScoutModeChange(scoutMode === "autopilot" ? "search" : "autopilot");
+                setOverflowOpen(false);
+              }}
+              className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99]"
+            >
+              <Search className="size-4 text-ish-stratus-blue" />
+              Switch to {scoutMode === "autopilot" ? "Search mode" : "Autopilot"}
+            </button>
+            {scoutMode === "autopilot" && view === "companies" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { handleRefresh(); setOverflowOpen(false); }}
+                  disabled={loadingCompanies || cities.length === 0}
+                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99] disabled:opacity-50"
+                >
+                  Refresh results
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { handleLoadMore(); setOverflowOpen(false); }}
+                  disabled={loadingMore || !hasMore}
+                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99] disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading more…" : "Load more companies"}
+                </button>
+              </>
+            ) : null}
+            {view === "people" ? (
+              <button
+                type="button"
+                onClick={() => { handleScoutMore(); setOverflowOpen(false); }}
+                disabled={loadingMore}
+                className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99] disabled:opacity-50"
+              >
+                <Compass className="size-4 text-ish-stratus-blue" />
+                {loadingMore ? "Scouting more…" : "Scout more companies"}
+              </button>
+            ) : null}
+          </div>
+        </BottomSheet>
+        {rolePicker}
+      </>
+    );
+  }
+
   return (
     <>
-        <MobileHeader title="Scouting" subtitle="Discover companies and decision makers" className="lg:hidden" />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {/* ScoutingProgressBar — stepper hidden for now
-          <ScoutingProgressBar
-            currentStep={currentStep}
-            companiesCount={selectedCompanyIds.size}
-            leadsCount={people.length}
-          />
-          */}
-
-          <ScoutingToolbar
-            view={view}
-            cities={cities}
-            industries={industries}
-            seniority={seniority}
-            departments={departments}
-            selectedCount={view === "companies" ? selectedCompanyIds.size : selectedPersonIds.size}
-            settingsLoaded={settingsLoaded}
-            scoutCompaniesLimit={scoutCompaniesLimit}
-            scoutLeadsLimit={scoutLeadsLimit}
-            loadingCompanies={loadingCompanies}
-            loadingMore={loadingMore}
-            saving={saving}
-            scoutMode={scoutMode}
-            companySearchQuery={companySearchQuery}
-            onCitiesChange={handleCitiesChange}
-            onIndustryToggle={toggleIndustry}
-            onSeniorityToggle={toggleSeniority}
-            onDepartmentToggle={toggleDepartment}
-            onFetchNewCompanies={handleFetchNewCompanies}
-            onFetchLeads={handleFetchLeads}
-            onAddLeads={handleAddLeads}
-            onScoutMore={handleScoutMore}
-            onLoadMore={handleLoadMore}
-            onRefresh={handleRefresh}
-            onScoutModeChange={handleScoutModeChange}
-            onCompanySearchQueryChange={setCompanySearchQuery}
-            onSearchByName={handleSearchByName}
-          />
-
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className={cn("min-w-0 flex-1 overflow-y-auto bg-white/40", showMobileDetail && "hidden lg:block")}>
-              {view === "companies" ? (
-                loadingCompanies ? (
-                  <DiscoveringLoader
-                    hints={[
-                      cities.length
-                        ? `Scanning ${cities.join(", ")}`
-                        : "Scanning company directories",
-                      industries.length
-                        ? `Filtering ${industries.join(", ")}`
-                        : "Matching all industries",
-                      "Ranking by gift potential",
-                    ]}
-                  />
-                ) : companies.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-[13px] text-ish-ink-faint">
-                    {!hasFetched ? (
-                      <>
-                        {scoutMode === "search" ? (
-                          <>
-                            <p>Choose a city and industry, type a company name, then click <strong className="text-ish-ink">Search</strong>.</p>
-                            <p className="text-[12px]">Only matching companies will be shown — no broad scouting.</p>
-                          </>
-                        ) : (
-                          <>
-                            <p>Select cities and industries, then click <strong className="text-ish-ink">Scout</strong>.</p>
-                            <p className="text-[12px]">Tip: leave industries unselected for broader results across your chosen cities.</p>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <p>{fetchMessage ?? (scoutMode === "search" ? "No companies matched that name." : "No companies found for the current filters.")}</p>
-                        <p className="text-[12px]">
-                          {fetchMessage?.includes("API") || fetchMessage?.includes("missing")
-                            ? "Try again in a few minutes or adjust settings, then retry."
-                            : scoutMode === "search"
-                              ? "Try a different spelling or check the company name."
-                              : "Try different cities or industries, then fetch again."}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    {discoveryNotice ? (
-                      <div className="mx-5 mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
-                        {discoveryNotice}
-                      </div>
-                    ) : null}
-                    <div className="flex items-center justify-between gap-3 px-5 py-2">
-                      <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                        {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
-                        {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
-                        {" · "}{cities.join(", ")}
-                        {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
-                        {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={allCompaniesSelected ? deselectAllCompanies : selectAllCompanies}
-                        className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
-                      >
-                        {allCompaniesSelected ? "Deselect all" : "Select all"}
-                      </button>
-                    </div>
-                    <CompaniesGrid
-                      companies={companies}
-                      selectedIds={selectedCompanyIds}
-                      primaryId={primaryCompanyId}
-                      onToggleSelect={toggleCompany}
-                      onSetPrimary={setCompanyAsPrimary}
-                    />
-                    {hasMore && (
-                      <div className="flex justify-center py-4">
-                        <button
-                          type="button"
-                          onClick={handleLoadMore}
-                          disabled={loadingMore}
-                          className="rounded-xl border border-ish-border bg-white px-5 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] hover:bg-ish-app disabled:opacity-50"
-                        >
-                          {loadingMore ? "Loading…" : "Load More Companies"}
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )
-              ) : (
-                <div className="p-2">
-                  <button
-                    type="button"
-                    onClick={handleBackToCompanies}
-                    className="mb-2 ml-3 flex items-center gap-1.5 text-[12px] font-semibold text-ish-ink-soft hover:text-ish-ink"
-                  >
-                    ← Back to Companies
-                  </button>
-                  <div className="mb-2 flex items-center justify-between gap-3 px-3">
-                    <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                      {people.length} Decision-Makers · {selectedCompanyIds.size}{" "}
-                      {selectedCompanyIds.size === 1 ? "Company" : "Companies"}
-                      {selectedPersonIds.size > 0 ? ` · ${selectedPersonIds.size} selected` : ""}
-                    </div>
-                    {people.length > 0 && !loadingPeople ? (
-                      <button
-                        type="button"
-                        onClick={allPeopleSelected ? deselectAllPeople : selectAllPeople}
-                        className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
-                      >
-                        {allPeopleSelected ? "Deselect all" : "Select all"}
-                      </button>
-                    ) : null}
-                  </div>
-                  {loadingPeople ? (
-                    <DiscoveringLoader
-                      message={
-                        fetchProgress.total > 1
-                          ? `Finding decision-makers (${fetchProgress.done} of ${fetchProgress.total} companies)`
-                          : "Finding decision-makers"
-                      }
-                      hints={[
-                        "Searching LinkedIn profiles",
-                        "Matching seniority & titles",
-                        "Ranking key decision-makers",
-                      ]}
-                      compact
-                    />
-                  ) : people.length === 0 ? (
-                    <div className="px-6 py-10 text-center text-[13px] text-ish-ink-faint">
-                      <p>{peopleNotice?.headline ?? "No decision-makers found for the selected companies."}</p>
-                      <p className="mt-2 text-[12px]">{peopleNotice?.detail ?? "We search LinkedIn via Tavily. Try companies with websites or well-known brands."}</p>
-                    </div>
-                  ) : saving ? (
-                    <SavingLeadsLoader
-                      count={selectedPersonIds.size}
-                      progress={saveProgress}
-                    />
-                  ) : (
-                    <LeadsGrid
-                      people={people}
-                      selectedIds={selectedPersonIds}
-                      primaryId={primaryPersonId}
-                      existingNames={existingContactNames}
-                      onToggleSelect={togglePerson}
-                      onSetPrimary={setPersonAsPrimary}
-                      onContact={(p) => toast.info(`Opening contact for ${p.name}`)}
-                      onBookmark={(p) => toast.info(`Bookmarked ${p.name}`)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {showMobileDetail ? (
-              <div className="fixed inset-0 z-40 flex flex-col bg-white lg:relative lg:inset-auto lg:z-auto lg:w-[360px] lg:shrink-0 lg:border-l lg:border-ish-border">
-                <MobileHeader
-                  title={view === "companies" ? primaryCompany?.name ?? "Company" : primaryPerson?.name ?? "Contact"}
-                  showBack
-                  onBack={() => (view === "companies" ? setPrimaryCompanyId(null) : setPrimaryPersonId(null))}
-                  className="lg:hidden"
-                />
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  {view === "companies" && primaryCompany ? (
-                    <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
-                  ) : view === "people" && primaryPerson ? (
-                    <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
-                  ) : null}
-                </div>
-              </div>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <ScoutingToolbar {...toolbarProps} />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">{companiesResults}</div>
+          <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white lg:block">
+            {view === "companies" && primaryCompany ? (
+              <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
+            ) : view === "people" && primaryPerson ? (
+              <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
             ) : (
-              <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white lg:block">
-                {view === "companies" && primaryCompany ? (
-                  <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
-                ) : view === "people" && primaryPerson ? (
-                  <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
-                ) : (
-                  <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-ish-ink-faint">
-                    {view === "companies"
-                      ? "Click a company tile to see details"
-                      : "Click a lead card to see their profile"}
-                  </div>
-                )}
+              <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-ish-ink-faint">
+                {view === "companies"
+                  ? "Click a company tile to see details"
+                  : "Click a lead card to see their profile"}
               </div>
             )}
           </div>
         </div>
-      {showRolePicker && (
-        <RolePickerModal
-          onConfirm={handleRolePickerConfirm}
-          onSkip={() => {
-            setShowRolePicker(false);
-            const ids = pendingFetchIds ?? selectedCompanyIds;
-            const selected = companies.filter((c) => ids.has(c.id));
-            setPendingFetchIds(null);
-            void runFetchLeads(selected, [], []);
-          }}
-        />
-      )}
+      </div>
+      {rolePicker}
     </>
   );
 }

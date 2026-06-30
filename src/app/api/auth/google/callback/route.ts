@@ -9,7 +9,8 @@ import {
 } from "@/lib/auth/google";
 import { acceptInvite, findPendingInviteForEmail } from "@/lib/auth/invites";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
-import { orgMembers, tenants } from "@/db";
+import { orgMembers } from "@/db";
+import { resolvePostAuthDestination } from "@/lib/auth/post-auth-redirect";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -71,8 +72,13 @@ export async function GET(req: Request) {
         const code = message.includes("does not match") ? "google_invite_email_mismatch" : "google_invite_failed";
         return NextResponse.redirect(new URL(`/login?error=${code}`, url.origin));
       }
-      const token = await createSession(user.id);
-      const res = NextResponse.redirect(new URL("/", url.origin));
+      const { redirect, tenantId } = await resolvePostAuthDestination({
+        userId: user.id,
+        platformRole: user.platformRole,
+        mustChangePassword: user.mustChangePassword,
+      });
+      const token = await createSession(user.id, tenantId);
+      const res = NextResponse.redirect(new URL(redirect, url.origin));
       res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
       return res;
     }
@@ -81,15 +87,13 @@ export async function GET(req: Request) {
       return NextResponse.redirect(new URL("/login?error=invite_required", url.origin));
     }
 
-    const [tenant] = await db
-      .select({ onboardingStatus: tenants.onboardingStatus })
-      .from(tenants)
-      .innerJoin(orgMembers, eq(orgMembers.tenantId, tenants.id))
-      .where(eq(orgMembers.userId, user.id))
-      .limit(1);
+    const { redirect, tenantId } = await resolvePostAuthDestination({
+      userId: user.id,
+      platformRole: user.platformRole,
+      mustChangePassword: user.mustChangePassword,
+    });
 
-    const redirect = tenant?.onboardingStatus === "complete" ? "/" : "/onboarding";
-    const token = await createSession(user.id);
+    const token = await createSession(user.id, tenantId);
     const res = NextResponse.redirect(new URL(redirect, url.origin));
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
     return res;

@@ -54,9 +54,9 @@ function useAutoGrowTextarea(value: string) {
 
 function EnvelopeRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid grid-cols-[52px_1fr] items-center gap-2 border-b border-ish-border/30 py-2 last:border-b-0">
-      <span className={cn(text.label, "text-[10px]")}>{label}</span>
-      <div className="min-w-0">{children}</div>
+    <div className="flex min-w-0 items-center gap-2 border-b border-ish-border/30 px-3 py-2.5 last:border-b-0 lg:grid lg:grid-cols-[52px_1fr] lg:gap-2 lg:px-0 lg:py-2">
+      <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-auto")}>{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
 }
@@ -318,12 +318,12 @@ export function OutreachApprovalCard({
   return (
     <div
       id="approval-card"
-      className="ish-record-card overflow-hidden rounded-[20px] border border-ish-border/60 bg-white shadow-[var(--shadow-ish-sm)]"
+      className="overflow-hidden bg-white lg:ish-record-card lg:rounded-[20px] lg:border lg:border-ish-border/60 lg:shadow-[var(--shadow-ish-sm)]"
     >
-      <div className="flex flex-col p-4 sm:p-5">
+      <div className="flex flex-col p-0 lg:p-5">
 
         {!isDraftLocked && qualityBlocked ? (
-          <div className="mb-3 rounded-[14px] border border-amber-300/60 bg-amber-50 px-3.5 py-2.5 text-[11px] text-amber-900">
+          <div className="mx-3 mb-2 mt-2 rounded-[10px] border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 lg:mx-0 lg:mb-3 lg:mt-0 lg:rounded-[14px] lg:px-3.5 lg:py-2.5">
             {displayDraft.revisionTimeout
               ? "This draft did not pass automated quality checks after revision."
               : "Inbox or rubric score is below the recommended threshold."}
@@ -339,22 +339,22 @@ export function OutreachApprovalCard({
         ) : null}
 
         {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet && (
-          <div className="mb-3 rounded-[14px] border border-ish-stratus-blue/22 bg-ish-green-soft px-3.5 py-2.5">
+          <div className="mx-3 mb-3 mt-1 rounded-[10px] border border-ish-stratus-blue/22 bg-ish-green-soft px-3 py-2.5 lg:mx-0 lg:mb-3 lg:mt-0 lg:rounded-[14px] lg:px-3.5 lg:py-2.5">
             <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-ish-stratus-blue">They said</div>
             <p className="text-[11px] leading-relaxed text-ish-ink-soft">{emailThread.inboundSnippet}</p>
           </div>
         )}
 
-        <div className="rounded-[14px] border border-ish-stratus-blue/15 bg-ish-canvas/25 px-3.5 py-1">
-          <div className="flex min-w-0 items-center gap-4 border-b border-ish-border/30 py-2">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span className={cn(text.label, "w-[52px] shrink-0 text-[10px]")}>To</span>
-              <p className="min-w-0 truncate text-[12px] font-medium text-ish-ink">{toDetail}</p>
+        <div className="border-b border-ish-border/40 lg:rounded-[14px] lg:border lg:border-ish-stratus-blue/15 lg:bg-ish-canvas/25 lg:px-3.5 lg:py-1">
+          <div className="flex flex-col border-b border-ish-border/30 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 lg:flex-1 lg:gap-2 lg:px-0 lg:py-2">
+              <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-[52px]")}>To</span>
+              <p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-ish-ink break-all lg:truncate lg:text-[12px]">{toDetail}</p>
             </div>
             {fromLabel ? (
-              <div className="flex min-w-0 flex-1 items-center gap-2 border-l border-ish-border/30 pl-4">
-                <span className={cn(text.label, "w-[52px] shrink-0 text-[10px]")}>From</span>
-                <p className="min-w-0 truncate text-[12px] text-ish-ink-soft">{fromLabel}</p>
+              <div className="flex min-w-0 items-center gap-2 border-t border-ish-border/30 px-3 py-2.5 lg:flex-1 lg:gap-2 lg:border-t-0 lg:border-l lg:px-0 lg:py-2 lg:pl-4">
+                <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-[52px]")}>From</span>
+                <p className="min-w-0 flex-1 text-[13px] leading-snug text-ish-ink-soft break-all lg:truncate lg:text-[12px]">{fromLabel}</p>
               </div>
             ) : null}
           </div>
@@ -373,7 +373,7 @@ export function OutreachApprovalCard({
                     { value: "A", label: "A" },
                     { value: "B", label: "B" },
                   ]}
-                  className="shrink-0"
+                  className="shrink-0 origin-left scale-[0.82] p-0.5 lg:scale-100 lg:p-1"
                 />
               )}
               <input
@@ -383,10 +383,10 @@ export function OutreachApprovalCard({
                 placeholder="Subject line"
                 disabled={isDraftLocked || (showReRow && Boolean(threadSubject))}
                 className={cn(
-                  "min-w-0 flex-1 rounded-[10px] border border-ish-border/40 bg-white px-3 py-1.5",
+                  "min-w-0 flex-1 border-0 bg-transparent px-0 py-0",
                   text.body,
-                  "text-[12px] placeholder:text-ish-ink-faint",
-                  "focus:border-ish-stratus-blue/40 focus:outline-none focus:ring-2 focus:ring-ish-stratus-blue/12 disabled:opacity-60",
+                  "text-[13px] placeholder:text-ish-ink-faint lg:rounded-[10px] lg:border lg:border-ish-border/40 lg:bg-white lg:px-3 lg:py-1.5 lg:text-[12px]",
+                  "focus:outline-none focus:ring-0 lg:focus:border-ish-stratus-blue/40 lg:focus:ring-2 lg:focus:ring-ish-stratus-blue/12 disabled:opacity-60",
                 )}
               />
             </div>
@@ -394,7 +394,7 @@ export function OutreachApprovalCard({
         </div>
 
         {isReplyDraft && !isDraftLocked && onGenerateReply ? (
-          <div className="mt-3 flex justify-end">
+          <div className="flex justify-end px-3 py-2 lg:mt-3 lg:px-0 lg:py-0">
             <button
               type="button"
               disabled={generatingReply || saving || sending}
@@ -407,7 +407,7 @@ export function OutreachApprovalCard({
           </div>
         ) : null}
 
-        <div className="relative mt-3 rounded-[16px] border border-ish-border/50 bg-white shadow-[var(--shadow-ish-sm)]">
+        <div className="relative mt-2 min-h-[12rem] border-t border-ish-border/40 pt-1 lg:mt-3 lg:min-h-0 lg:rounded-[16px] lg:border lg:border-ish-border/50 lg:bg-white lg:pt-0 lg:shadow-[var(--shadow-ish-sm)]">
           <textarea
             ref={bodyRef}
             value={bodyText}
@@ -416,9 +416,9 @@ export function OutreachApprovalCard({
             rows={1}
             disabled={isDraftLocked}
             className={cn(
-              "block w-full resize-none overflow-hidden rounded-[16px] border-0 bg-transparent px-4 py-4 sm:px-5",
+              "block w-full resize-none overflow-hidden border-0 bg-transparent px-3 py-4",
               text.body,
-              "min-h-[5.5rem] leading-[1.7] placeholder:text-ish-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60",
+              "min-h-[12rem] leading-[1.65] placeholder:text-ish-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60 lg:min-h-[5.5rem] lg:rounded-[16px] lg:px-5 lg:py-4 lg:leading-[1.7]",
             )}
           />
           {!isDraftLocked && (
@@ -438,13 +438,13 @@ export function OutreachApprovalCard({
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t border-ish-border/50 bg-white/95 px-3 py-2.5 backdrop-blur-sm lg:static lg:mt-3 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
           {isDraftLocked ? (
             <Link
               href="/email?tab=active"
-              className="inline-flex items-center gap-2 rounded-full bg-ish-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90"
+              className="text-[12px] font-semibold text-ish-stratus-blue underline-offset-2 hover:underline lg:inline-flex lg:items-center lg:gap-2 lg:rounded-full lg:bg-ish-black lg:px-4 lg:py-2 lg:text-white lg:no-underline lg:shadow-[var(--shadow-ish-sm)] lg:transition-opacity lg:hover:opacity-90"
             >
-              <Mail className="size-3.5" />
+              <Mail className="hidden size-3.5 lg:block" />
               View in Outreach Queue
             </Link>
           ) : (

@@ -21,7 +21,8 @@ import { cn } from "@/lib/utils";
 import { useSession } from "@/components/providers/session-provider";
 import { useNotifications } from "@/hooks/use-notifications";
 import Link from "next/link";
-import { MobileHeader, PanelCard, text } from "@/design-system";
+import { MobilePageLayout, PanelCard, text } from "@/design-system";
+import { NotificationBell } from "@/components/sales-accelerator/notification-bell";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { PushPermissionBanner } from "@/components/mobile/push-permission-banner";
 import { Inbox } from "lucide-react";
@@ -122,7 +123,7 @@ type KpiConfig = {
 
 function KpiTile({ label, value, sub, icon: Icon, cardClass, iconClass, valueClass }: KpiConfig) {
   return (
-    <div className={cn("flex flex-col gap-3 rounded-[20px] p-5", cardClass)}>
+    <div className={cn("flex flex-col gap-3 rounded-2xl p-4 lg:rounded-[20px] lg:p-5", cardClass)}>
       <div className="flex items-start justify-between gap-2">
         <span className="text-[11px] font-bold uppercase tracking-widest opacity-70">{label}</span>
         <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", iconClass)}>
@@ -155,7 +156,7 @@ function QuickActionCard({ label, description, icon: Icon, href, iconBg, iconCol
     <button
       onClick={() => router.push(href)}
       className={cn(
-        "group flex w-full items-center gap-3.5 rounded-[16px] border border-ish-border bg-white p-4",
+        "group flex w-full items-center gap-3.5 rounded-2xl border border-ish-border bg-white p-4",
         "text-left transition-all duration-200 hover:shadow-ish-sm active:scale-[0.99]",
         hoverBorder,
       )}
@@ -312,7 +313,7 @@ export function HomeApp() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 flex-col overflow-y-auto bg-ish-canvas p-8">
+      <div className="flex flex-1 flex-col overflow-y-auto bg-ish-canvas p-4 lg:p-8">
         <div className="mb-8 h-9 w-56 animate-pulse rounded-xl bg-ish-border" />
         <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
@@ -331,19 +332,25 @@ export function HomeApp() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto bg-ish-canvas">
+    <MobilePageLayout
+      title={greeting}
+      subtitle={today}
+      largeTitle
+      rightSlot={<NotificationBell />}
+      contentClassName="lg:overflow-y-visible"
+      className="lg:bg-ish-canvas"
+    >
       <PushPermissionBanner />
-      <MobileHeader title="Home" subtitle="Your sales command center" className="lg:hidden" />
-      <div className="mx-auto w-full max-w-5xl px-4 py-4 lg:px-8 lg:py-8">
+      <div className="mx-auto w-full max-w-5xl ish-page-padding py-4 lg:px-8 lg:py-8">
 
         {/* Header */}
-        <div className="mb-7 flex items-end justify-between">
+        <div className="mb-7 hidden items-end justify-between lg:flex">
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="size-2 rounded-full bg-ish-green animate-pulse" />
               <span className={cn(text.caption, "font-semibold text-ish-green")}>Live</span>
             </div>
-            <h1 className="text-[28px] font-extrabold text-ish-ink leading-tight">{greeting}</h1>
+            <h1 className={text.largeTitle}>{greeting}</h1>
             <p className={cn(text.bodySoft, "mt-0.5")}>{today}</p>
           </div>
           <button
@@ -561,6 +568,6 @@ export function HomeApp() {
           </div>
         </div>
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }

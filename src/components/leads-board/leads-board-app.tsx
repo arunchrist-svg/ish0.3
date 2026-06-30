@@ -11,6 +11,7 @@ import {
 } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
+import { MobilePageLayout, SearchBar } from "@/design-system";
 
 function matchesQuery(item: LeadQueueItem, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -57,8 +58,15 @@ export function LeadsBoardApp() {
   const noResults = !loading && leads.length > 0 && filteredLeads.length === 0;
 
   return (
-    <div className="ish-board-page flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <header className="ish-board-hero relative shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5">
+    <MobilePageLayout
+      title="Lead Board"
+      subtitle="Pipeline view by status"
+      largeTitle
+      className="ish-board-page"
+      contentClassName="flex flex-col !overflow-hidden"
+    >
+      <SearchBar value={search} onChange={setSearch} placeholder="Search leads" sticky className="lg:hidden" />
+      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-center gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3.5">
@@ -128,7 +136,7 @@ export function LeadsBoardApp() {
           </div>
         )}
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }
 

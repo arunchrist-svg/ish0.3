@@ -9,5 +9,6 @@ export { MobileNavDrawer } from "./mobile-nav-drawer";
 export { MobileHeader } from "./mobile-header";
 export { ScrollableTabs } from "./scrollable-tabs";
 export { MobileStackLayout } from "./mobile-stack-layout";
+export { MobilePageLayout } from "./mobile-page-layout";
 export { AgentStatusBar } from "./agent-status-bar";
 export type { AgentRunItem } from "./agent-status-bar";

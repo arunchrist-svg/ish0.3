@@ -2,8 +2,8 @@
 
 import { ArrowRight, Compass, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SCOUT_INDUSTRIES } from "@/lib/scouting-data";
 import { CitySelector } from "./city-selector";
+import { IndustrySelector } from "./industry-selector";
 
 type Props = {
   view: "companies" | "people";
@@ -55,26 +55,16 @@ export function ScoutingControlBar({
 
       <div className="hidden h-5 w-px shrink-0 bg-ish-border sm:block" aria-hidden />
 
-      <div className="flex min-w-[160px] flex-1 items-center gap-1.5 overflow-x-auto">
-        {SCOUT_INDUSTRIES.map((ind) => {
-          const active = industries.includes(ind);
-          return (
-            <button
-              key={ind}
-              type="button"
-              onClick={() => onIndustryToggle(ind)}
-              className={cn(
-                "shrink-0 rounded-full px-3 py-1 text-[11.5px] font-semibold transition-all duration-100",
-                active
-                  ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-                  : "bg-ish-app text-ish-ink-soft hover:bg-ish-border",
-              )}
-            >
-              {ind}
-            </button>
-          );
-        })}
-      </div>
+      <IndustrySelector
+        industries={industries}
+        onIndustriesChange={(next) => {
+          const added = next.filter((i) => !industries.includes(i));
+          const removed = industries.filter((i) => !next.includes(i));
+          added.forEach(onIndustryToggle);
+          removed.forEach(onIndustryToggle);
+        }}
+        className="min-w-[160px] flex-1"
+      />
 
       {view === "companies" ? (
         <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">

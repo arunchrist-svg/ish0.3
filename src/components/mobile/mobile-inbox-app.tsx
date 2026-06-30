@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, MessageSquare, RefreshCw } from "lucide-react";
+import { FileText, Inbox, MessageSquare, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MobileHeader } from "@/design-system";
+import { EmptyState, MobilePageLayout, ScrollableTabs } from "@/design-system";
+import { SkeletonList } from "@/design-system";
 import {
   approveOutreach,
   fetchEmailOverview,
+  sendFollowUp,
   sendOutreach,
   type EmailOverviewData,
 } from "@/lib/api-client";
@@ -17,6 +19,10 @@ import { toast } from "sonner";
 import { SwipeInboxCard } from "@/components/mobile/swipe-inbox-card";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { hapticLight } from "@/lib/capacitor/platform";
+import {
+  describeQualityBlock,
+  draftFailsQualityGate,
+} from "@/lib/outreach/outreach-quality";
 
 type InboxTab = "needs_review" | "replies";
 
@@ -24,6 +30,15 @@ const TABS: { id: InboxTab; label: string; icon: React.ElementType }[] = [
   { id: "needs_review", label: "Review", icon: FileText },
   { id: "replies", label: "Replies", icon: MessageSquare },
 ];
+
+function isFollowUpRow(row: LeadEmailRow): boolean {
+  return Boolean(row.pendingFollowUpScheduleId || row.isFollowUpReview);
+}
+
+async function confirmQualityOverride(row: LeadEmailRow): Promise<boolean> {
+  if (!draftFailsQualityGate(row)) return false;
+  return window.confirm(describeQualityBlock(row));
+}
 
 export function MobileInboxApp() {
   const [tab, setTab] = useState<InboxTab>("needs_review");
@@ -68,14 +83,18 @@ export function MobileInboxApp() {
     }
     setBusyId(row.leadId);
     try {
-      const { approvalId } = await approveOutreach({
+      await approveOutreach({
         leadOutreachId: row.draftOutreachId,
         leadId: row.leadId,
         channel: "email",
         status: "approved",
       });
       void hapticLight();
-      toast.success(`Approved · ${row.contactName}`);
+      toast.success(
+        isFollowUpRow(row)
+          ? `Follow-up approved · ${row.contactName}`
+          : `Approved · ${row.contactName}`,
+      );
       await load();
       refreshBadge();
     } catch (e) {
@@ -86,21 +105,36 @@ export function MobileInboxApp() {
   }
 
   async function handleSend(row: LeadEmailRow) {
-    if (!row.draftOutreachId) {
+    const followUp = isFollowUpRow(row);
+    if (followUp && !row.pendingFollowUpScheduleId) {
+      toast.message("Open lead to send this follow-up");
+      return;
+    }
+    if (!followUp && !row.draftOutreachId) {
       toast.message("Open lead to send this draft");
       return;
     }
+
+    const overrideQualityGate = await confirmQualityOverride(row);
+    if (draftFailsQualityGate(row) && !overrideQualityGate) return;
+
     setBusyId(row.leadId);
     try {
-      const { approvalId } = await approveOutreach({
-        leadOutreachId: row.draftOutreachId,
-        leadId: row.leadId,
-        channel: "email",
-        status: "approved",
-      });
-      await sendOutreach(approvalId);
-      void hapticLight();
-      toast.success(`Sent to ${row.contactName}`);
+      if (followUp && row.pendingFollowUpScheduleId) {
+        await sendFollowUp(row.pendingFollowUpScheduleId, { overrideQualityGate });
+        void hapticLight();
+        toast.success(`Follow-up sent to ${row.contactName}`);
+      } else if (row.draftOutreachId) {
+        const { approvalId } = await approveOutreach({
+          leadOutreachId: row.draftOutreachId,
+          leadId: row.leadId,
+          channel: "email",
+          status: "approved",
+        });
+        await sendOutreach(approvalId, { overrideQualityGate });
+        void hapticLight();
+        toast.success(`Sent to ${row.contactName}`);
+      }
       await load();
       refreshBadge();
     } catch (e) {
@@ -110,116 +144,85 @@ export function MobileInboxApp() {
     }
   }
 
-  async function handleReject(row: LeadEmailRow) {
-    if (!row.draftOutreachId) return;
-    setBusyId(row.leadId);
-    try {
-      await approveOutreach({
-        leadOutreachId: row.draftOutreachId,
-        leadId: row.leadId,
-        channel: "email",
-        status: "rejected",
-        rejectReason: "mobile_swipe",
-      });
-      toast.success("Draft rejected");
-      await load();
-      refreshBadge();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Reject failed");
-    } finally {
-      setBusyId(null);
-    }
-  }
+  const tabLabels = TABS.map((t) => t.label);
+  const tabValues = TABS.map((t) => t.id);
+  const activeLabel = TABS.find((t) => t.id === tab)?.label ?? "Review";
+  const tabCounts = Object.fromEntries(
+    TABS.map((t) => [t.label, counts[t.id]]),
+  );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-ish-canvas">
-      <MobileHeader
-        title="Inbox"
-        subtitle="Swipe right to approve, tap Send to deliver"
-        rightSlot={
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="flex size-10 items-center justify-center rounded-full bg-ish-canvas text-ish-ink active:scale-95"
-            aria-label="Refresh inbox"
-          >
-            <RefreshCw className={cn("size-4", loading && "animate-spin")} />
-          </button>
-        }
-      />
-
-      <div className="ish-scroll-tabs overflow-x-auto border-b border-ish-border/60 px-4 py-3">
-        <div className="flex min-w-max gap-2">
-          {TABS.map(({ id, label, icon: Icon }) => {
-            const active = tab === id;
-            const count = counts[id];
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={cn(
-                  "flex min-h-[40px] items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold transition-all active:scale-[0.97]",
-                  active ? "bg-ish-black text-white" : "bg-white text-ish-ink-soft shadow-sm",
-                )}
-              >
-                <Icon className="size-4" />
-                {label}
-                {count > 0 ? (
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-                      active ? "bg-white/20 text-white" : "bg-ish-stratus-salmon text-white",
-                    )}
-                  >
-                    {count}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
+    <MobilePageLayout
+      title="Inbox"
+      largeTitle={false}
+      className="ish-inbox-page"
+      rightSlot={
+        <button
+          type="button"
+          onClick={() => void load()}
+          className="flex size-10 items-center justify-center rounded-full bg-white/90 text-ish-ink shadow-ish ring-1 ring-ish-border/40 active:scale-95"
+          aria-label="Refresh inbox"
+        >
+          <RefreshCw className={cn("size-4 text-ish-stratus-blue", loading && "animate-spin")} />
+        </button>
+      }
+      contentClassName="!pb-0 ish-inbox-page"
+    >
+      <div className="border-b border-ish-border/40 bg-white/60 ish-page-padding py-2 backdrop-blur-xl">
+        <ScrollableTabs
+          tabs={tabLabels}
+          value={activeLabel}
+          counts={tabCounts}
+          compact
+          onChange={(label) => {
+            const idx = tabLabels.indexOf(label);
+            if (idx >= 0) setTab(tabValues[idx] as InboxTab);
+          }}
+        />
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="mx-auto w-full max-w-2xl space-y-3">
+      <div className="ish-page-padding py-4">
+        <div className="mx-auto w-full max-w-2xl space-y-4">
           {loading && !data ? (
-            [1, 2, 3].map((i) => (
-              <div key={i} className="h-[140px] animate-pulse rounded-[20px] bg-white/80" />
-            ))
+            <SkeletonList rows={4} />
           ) : rows.length === 0 ? (
-            <div className="rounded-[24px] bg-white px-6 py-12 text-center shadow-[var(--shadow-ish-sm)]">
-              <div className="text-4xl">{tab === "needs_review" ? "✅" : "💬"}</div>
-              <div className="mt-3 text-[15px] font-bold text-ish-ink">
-                {tab === "needs_review" ? "Queue is clear" : "Inbox quiet"}
+            <div className="rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-14 text-center shadow-ish backdrop-blur-xl">
+              <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-yellow-gradient shadow-ish-yellow-sm">
+                <Inbox className="size-7 text-ish-black" />
               </div>
-              <p className="mt-1 text-[13px] text-ish-ink-soft">
-                {tab === "needs_review"
-                  ? "No drafts waiting. Scout a lead and write from Leads."
-                  : "When someone replies, their thread will appear here."}
-              </p>
-              <Link
-                href="/scouting"
-                className="mt-5 inline-flex min-h-[44px] items-center rounded-2xl bg-ish-black px-5 text-[13px] font-semibold text-white active:scale-[0.98]"
-              >
-                Start scouting
-              </Link>
+              <EmptyState
+                title={tab === "needs_review" ? "Queue is clear" : "Inbox quiet"}
+                description={
+                  tab === "needs_review"
+                    ? "No drafts waiting. Scout a lead and write from Leads."
+                    : "When someone replies, their thread will appear here."
+                }
+                action={
+                  <Link
+                    href="/scouting"
+                    className="inline-flex h-12 items-center rounded-2xl bg-ish-yellow-gradient px-6 text-[15px] font-bold text-ish-black shadow-ish-yellow-sm active:scale-[0.98]"
+                  >
+                    Start scouting
+                  </Link>
+                }
+                className="py-0"
+              />
             </div>
           ) : (
-            rows.map((row) => (
+            rows.map((row, i) => (
               <SwipeInboxCard
-                key={`${row.leadId}-${row.queueStatus}`}
+                key={`${row.leadId}-${row.queueStatus}-${row.pendingFollowUpScheduleId ?? "e1"}`}
                 row={row}
                 tab={tab}
+                index={i}
                 busy={busyId === row.leadId}
                 onApprove={handleApprove}
-                onReject={handleReject}
                 onSend={handleSend}
               />
             ))
           )}
         </div>
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }
