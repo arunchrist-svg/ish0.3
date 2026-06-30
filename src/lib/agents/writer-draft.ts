@@ -1,6 +1,8 @@
 import type { leadOutreach, outreachEditMessages } from "@/db/schema";
 export type EditMessageRow = typeof outreachEditMessages.$inferSelect;
 
+import { normalizeEmailBody } from "@/lib/email/email-body-format";
+
 export function toEditMessage(row: EditMessageRow) {
   return {
     id: row.id,
@@ -23,13 +25,15 @@ export function toWriterDraft(
     id: outreach.id,
     subjectA: outreach.subjectA ?? undefined,
     subjectB: outreach.subjectB ?? undefined,
-    emailBody: outreach.emailBody ?? undefined,
+    emailBody: outreach.emailBody ? normalizeEmailBody(outreach.emailBody) : undefined,
     deliverabilityScore: outreach.deliverabilityScore ?? undefined,
     deliverabilityVerdict: outreach.deliverabilityVerdict ?? undefined,
     draftSource: outreach.draftSource,
     promptVersion: outreach.promptVersion ?? undefined,
     revisionCount: outreach.revisionCount ?? 0,
     revisionTimeout: outreach.revisionTimeout ?? false,
+    rubricScore: (outreach.rubricScore as Record<string, number> | null) ?? undefined,
+    rubricTotal: outreach.rubricTotal ?? undefined,
     templateVariant: outreach.templateVariant ?? undefined,
     outreachGoal: outreach.outreachGoal ?? undefined,
     confidenceTier: outreach.confidenceTier ?? undefined,

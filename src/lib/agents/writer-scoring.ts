@@ -24,6 +24,9 @@ export type DeliverabilityOptions = ContentRuleContext & {
   emailStyle?: EmailStyle;
   fromName?: string;
   contactFirstName?: string;
+  isReplyDraft?: boolean;
+  replyIntent?: "affirmative" | "negative" | "question" | "scheduling" | "other";
+  priorCta?: string | null;
 };
 
 function buildScoreOptions(body: string, options?: DeliverabilityOptions) {
@@ -152,6 +155,25 @@ export async function scoreRubric(params: {
   if (/15.?min|10.?min|quick call|open to/i.test(lower)) cta_quality += 6;
   if (/no worries|timing is off|not relevant|when the time is right/i.test(lower)) cta_quality += 4;
 
+  const isReplyDraft = params.deliverabilityOptions?.isReplyDraft || sequencePosition >= 4;
+  const replyIntent = params.deliverabilityOptions?.replyIntent;
+  const priorCta = params.deliverabilityOptions?.priorCta?.toLowerCase() ?? "";
+
+  if (isReplyDraft && replyIntent === "affirmative") {
+    if (/open to receiving|tasting sample|complimentary.*sample|receive a sample/i.test(lower)) {
+      cta_quality = Math.max(0, cta_quality - 15);
+    }
+    if (/address|delivery|courier|ship to|phone number|contact number/i.test(lower)) {
+      cta_quality = Math.min(25, cta_quality + 8);
+    }
+    if (priorCta && priorCta.length > 10) {
+      const priorPhrase = priorCta.slice(0, 40).toLowerCase();
+      if (lower.includes(priorPhrase.slice(0, 24))) {
+        cta_quality = Math.max(0, cta_quality - 12);
+      }
+    }
+  }
+
   if (sequencePosition <= 2 && pitchSentenceCount(emailBody) > 3) {
     value_clarity = Math.max(0, value_clarity - 8);
   }
@@ -183,7 +205,9 @@ export function getRubricIssues(rubric: RubricScores, sequencePosition = 1): str
     issues.push("clarify value in under 10 seconds (specific offer, credibility, concise pitch; max 3 sentences for emails 1-2)");
   }
   if (rubric.cta_quality < RUBRIC_ISSUE_THRESHOLD) {
-    if (sequencePosition === 1) {
+    if (sequencePosition >= 4) {
+      issues.push("advance the conversation: do not re-ask a question they answered; ask for address, phone, or scheduling as appropriate");
+    } else if (sequencePosition === 1) {
       issues.push("use one low-friction soft CTA (no hard meeting ask in email 1)");
     } else {
       issues.push("use one clear, stage-appropriate CTA only");

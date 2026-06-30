@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    const outreachId = await runReplyWriter(leadId);
+    const { outreachId } = await runReplyWriter(leadId);
     const draft = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
     if (!draft) return NextResponse.json({ error: "Draft not found after reply write" }, { status: 500 });
     return NextResponse.json({ draft: toWriterDraft(draft) });

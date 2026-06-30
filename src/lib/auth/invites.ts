@@ -3,6 +3,7 @@ import { db, orgInvites, orgMembers, tenants, users, workspaces } from "@/db";
 import { and, eq, gt, isNull, count } from "drizzle-orm";
 import type { TenantRole } from "@/lib/tenant";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
+import { getShareableAppUrl } from "@/lib/app-url";
 
 const INVITE_DAYS = 7;
 
@@ -11,7 +12,7 @@ export function generateInviteToken(): string {
 }
 
 export function buildInviteUrl(token: string): string {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3002";
+  const appUrl = getShareableAppUrl();
   return `${appUrl}/signup?invite=${token}`;
 }
 

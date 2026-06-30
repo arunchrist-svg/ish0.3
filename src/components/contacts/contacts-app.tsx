@@ -4,15 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Contact, Search, Building2, Mail, Phone, ExternalLink, ArrowRight,
-  UserPlus, CheckCircle, Star, 
+  UserPlus, CheckCircle, Star, Download, 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchContacts, type ContactListItem } from "@/lib/api-client";
+import { MobileHeader } from "@/design-system";
+import { BusinessCardCapture } from "@/components/mobile/business-card-capture";
+import type { BusinessCardFields } from "@/lib/enrichment/business-card-ocr";
+import { fetchContacts, createLeadFromContact, type ContactListItem } from "@/lib/api-client";
 import { toast } from "sonner";
 
 type SortKey = "name" | "company" | "status";
 
 export function ContactsApp() {
+  const [scannedCard, setScannedCard] = useState<BusinessCardFields | null>(null);
   const [contacts, setContacts] = useState<ContactListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -70,7 +74,8 @@ export function ContactsApp() {
   const leadsCount = contacts.filter((c) => c.hasLead).length;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-ish-canvas">
+      <MobileHeader title="Contacts" subtitle="Your scout and lead directory" className="lg:hidden" />
       <div className="flex shrink-0 items-center gap-4 border-b border-ish-border bg-white px-6 py-3">
         <div className="flex items-center gap-2.5">
           <div className="flex size-8 items-center justify-center rounded-xl bg-ish-pink shadow-[var(--shadow-ish-sm)]">
@@ -121,21 +126,45 @@ export function ContactsApp() {
           </button>
         </div>
 
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams();
+            if (search.trim()) params.set("search", search.trim());
+            if (filterHasLead === true) params.set("hasLead", "true");
+            if (filterHasLead === false) params.set("hasLead", "false");
+            window.location.href = `/api/contacts/export?${params.toString()}`;
+          }}
+          className="flex items-center gap-1.5 rounded-full border border-ish-border bg-white px-3 py-1.5 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas"
+        >
+          <Download className="size-3" />
+          Export CSV ({filtered.length})
+        </button>
+
         <select
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as SortKey)}
-          className="ml-auto rounded-lg border border-ish-border bg-white px-3 py-1.5 text-[11px] font-semibold text-ish-ink outline-none"
+          className="rounded-lg border border-ish-border bg-white px-3 py-1.5 text-[11px] font-semibold text-ish-ink outline-none"
         >
           <option value="name">Sort by Name</option>
           <option value="company">Sort by Company</option>
           <option value="status">Sort by Status</option>
         </select>
 
+        <BusinessCardCapture onExtracted={setScannedCard} />
         <div className="text-[11px] font-semibold text-ish-ink-faint">
           {contacts.length} contacts · {leadsCount} leads
         </div>
       </div>
 
+      {scannedCard ? (
+        <div className="mx-4 mt-3 rounded-[16px] border border-ish-stratus-blue/30 bg-white p-4 text-[13px] shadow-sm lg:mx-6">
+          <div className="font-bold text-ish-ink">Scanned contact</div>
+          <div className="mt-1 text-ish-ink">{scannedCard.name || "Unknown"} · {scannedCard.company || ""}</div>
+          <div className="text-xs text-ish-ink-soft">{scannedCard.email || scannedCard.phone || "No email found"}</div>
+          <button type="button" className="mt-2 text-xs font-semibold text-ish-stratus-blue" onClick={() => setScannedCard(null)}>Dismiss</button>
+        </div>
+      ) : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex h-40 items-center justify-center text-[13px] text-ish-ink-faint">
@@ -162,7 +191,26 @@ export function ContactsApp() {
             No contacts match your search.
           </div>
         ) : (
-          <table className="w-full text-[12px]">
+          <>
+            <div className="space-y-3 p-4 lg:hidden">
+              {filtered.map((contact) => (
+                <div key={contact.id} className="rounded-[20px] bg-white p-4 shadow-[var(--shadow-ish-sm)] ring-1 ring-black/[0.04]">
+                  <div className="flex items-start gap-3">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-ish-avatar-1 text-sm font-bold text-[#5a4838]">
+                      {contact.name.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-ish-ink">{contact.name}</div>
+                      <div className="text-xs text-ish-ink-soft">{contact.title}</div>
+                      <div className="mt-1 text-[13px] text-ish-ink">{contact.company}</div>
+                      <div className="mt-1 truncate text-xs text-ish-ink-soft">{contact.email || "No email"}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <table className="hidden w-full text-[12px] lg:table">
+
             <thead className="sticky top-0 z-10 bg-ish-canvas/95 backdrop-blur">
               <tr className="border-b border-ish-border">
                 <th className="px-6 py-3 text-left font-semibold text-ish-ink-soft">Contact</th>
@@ -178,6 +226,7 @@ export function ContactsApp() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>
@@ -267,6 +316,16 @@ function ContactRow({ contact }: { contact: ContactListItem }) {
             </Link>
           ) : (
             <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const { id } = await createLeadFromContact({ ...contact, phone: contact.phone ?? undefined });
+                  toast.success("Lead created");
+                  window.location.href = `/?lead=${id}`;
+                } catch {
+                  toast.error("Could not create lead");
+                }
+              }}
               className="flex items-center gap-1 rounded-lg bg-ish-yellow px-3 py-1.5 text-[10px] font-bold text-ish-ink shadow-[var(--shadow-ish-yellow-sm)] hover:opacity-90"
             >
               <UserPlus className="size-3" />

@@ -1,4 +1,5 @@
 import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "./types";
+import { sortPeopleByScore } from "./seniority-score";
 import type { EnrichmentConfig } from "./config";
 import { resolveEnrichmentConfig } from "./config";
 import { apolloSearchCompanies, apolloSearchPeople } from "./apollo";
@@ -534,7 +535,7 @@ export async function discoverPeople(params: {
   }
 
   return {
-    people: finalPeople.slice(0, limit),
+    people: sortPeopleByScore(finalPeople).slice(0, limit),
     warnings: [...new Set(warnings)],
     errors: [...new Set(errors)],
   };

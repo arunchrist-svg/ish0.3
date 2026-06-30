@@ -8,6 +8,8 @@ import {
   EMAIL_PROVIDER_OPTIONS,
   EMAIL_SEND_MODE_OPTIONS,
   EMAIL_STYLE_OPTIONS,
+  FOLLOW_UP_POLICY_OPTIONS,
+  type FollowUpPolicy,
   type BrandConfig,
   type BrandSlug,
   type CampaignMode,
@@ -410,6 +412,23 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
           placeholder="50"
           type="number"
         />
+      </SettingsGroup>
+
+
+      <SettingsGroup
+        title="Follow-up policy"
+        footer="Controls whether Email 2 and 3 need human review before the sequencer sends them."
+      >
+        {FOLLOW_UP_POLICY_OPTIONS.map((option, i) => (
+          <SettingsSelectRow
+            key={option.value}
+            label={option.label}
+            desc={option.desc}
+            selected={(config.followUpPolicy ?? "auto_send") === option.value}
+            onSelect={() => onUpdate("followUpPolicy", option.value as FollowUpPolicy)}
+            showDivider={i > 0}
+          />
+        ))}
       </SettingsGroup>
 
       <SettingsGroup

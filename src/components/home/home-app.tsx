@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/components/providers/session-provider";
-import { PanelCard, text } from "@/design-system";
+import { useNotifications } from "@/hooks/use-notifications";
+import Link from "next/link";
+import { MobileHeader, PanelCard, text } from "@/design-system";
+import { useInboxBadge } from "@/hooks/use-inbox-badge";
+import { PushPermissionBanner } from "@/components/mobile/push-permission-banner";
+import { Inbox } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -245,9 +250,11 @@ export function HomeApp() {
   const [tavilyUsage, setTavilyUsage] = useState<TavilyUsage | null>(null);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const { session } = useSession();
+  const { notifications: hotReplyNotifs, unreadCount: hotReplyCount } = useNotifications();
   const isSuperadmin = session?.isSuperadmin ?? false;
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { count: inboxCount } = useInboxBadge();
 
   async function loadAll(silent = false) {
     if (!silent) setLoading(true);
@@ -307,12 +314,12 @@ export function HomeApp() {
     return (
       <div className="flex flex-1 flex-col overflow-y-auto bg-ish-canvas p-8">
         <div className="mb-8 h-9 w-56 animate-pulse rounded-xl bg-ish-border" />
-        <div className="mb-5 grid grid-cols-4 gap-4">
+        <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="h-32 animate-pulse rounded-[20px] bg-ish-border" />
           ))}
         </div>
-        <div className="grid grid-cols-[1fr_320px] gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
           <div className="h-96 animate-pulse rounded-[20px] bg-ish-border" />
           <div className="flex flex-col gap-4">
             <div className="h-52 animate-pulse rounded-[20px] bg-ish-border" />
@@ -325,7 +332,9 @@ export function HomeApp() {
 
   return (
     <div className="flex flex-1 flex-col overflow-y-auto bg-ish-canvas">
-      <div className="mx-auto w-full max-w-5xl px-8 py-8">
+      <PushPermissionBanner />
+      <MobileHeader title="Home" subtitle="Your sales command center" className="lg:hidden" />
+      <div className="mx-auto w-full max-w-5xl px-4 py-4 lg:px-8 lg:py-8">
 
         {/* Header */}
         <div className="mb-7 flex items-end justify-between">
@@ -350,6 +359,48 @@ export function HomeApp() {
             Refresh
           </button>
         </div>
+
+
+        
+        {hotReplyCount > 0 ? (
+          <div className="mb-5 rounded-[20px] border border-ish-stratus-salmon/30 bg-white p-4 shadow-[var(--shadow-ish-sm)]">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-[14px] font-bold text-ish-ink">Hot replies</div>
+              <span className="rounded-full bg-teal-500 px-2 py-0.5 text-[10px] font-bold text-white">{hotReplyCount} waiting</span>
+            </div>
+            <div className="space-y-2">
+              {hotReplyNotifs.filter((n) => n.type === "reply_received").slice(0, 3).map((n) => (
+                <Link
+                  key={n.id}
+                  href={n.leadId ? `/leads/${n.leadId}?tab=Email` : "/inbox"}
+                  className="flex items-center justify-between rounded-xl bg-ish-canvas px-3 py-2.5 hover:bg-ish-pink-soft/50"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[12px] font-semibold text-ish-ink">{n.title}</div>
+                    <div className="truncate text-[11px] text-ish-ink-soft">{n.body}</div>
+                  </div>
+                  <ArrowRight className="size-4 shrink-0 text-ish-ink-faint" />
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+{inboxCount > 0 ? (
+          <Link
+            href="/inbox"
+            className="mb-5 flex min-h-[56px] items-center gap-3 rounded-[20px] bg-white px-4 py-3 shadow-[var(--shadow-ish-sm)] ring-1 ring-ish-stratus-salmon/25 active:scale-[0.99] lg:hidden"
+          >
+            <div className="flex size-10 items-center justify-center rounded-2xl bg-ish-pink-soft">
+              <Inbox className="size-5 text-ish-stratus-salmon" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[14px] font-bold text-ish-ink">{inboxCount} item{inboxCount === 1 ? "" : "s"} need attention</div>
+              <div className="text-xs text-ish-ink-soft">Review drafts and replies in Inbox</div>
+            </div>
+            <span className="rounded-full bg-ish-stratus-salmon px-2 py-0.5 text-[10px] font-bold text-white">{inboxCount}</span>
+          </Link>
+        ) : null}
 
         {/* KPI tiles */}
         <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">

@@ -15,6 +15,22 @@ export type BrandConfig = {
 };
 export type EmailProvider = "smtp" | "resend";
 
+
+export type FollowUpPolicy = "auto_send" | "review_all_followups";
+
+export const FOLLOW_UP_POLICY_OPTIONS: { value: FollowUpPolicy; label: string; desc: string }[] = [
+  {
+    value: "auto_send",
+    label: "Auto-send follow-ups",
+    desc: "Email 2 and 3 send on schedule if they pass the quality score gate.",
+  },
+  {
+    value: "review_all_followups",
+    label: "Review all follow-ups",
+    desc: "Route Email 2 and 3 to Needs Review before they send.",
+  },
+];
+
 export type EmailConfig = {
   provider: EmailProvider;
   sendMode: EmailSendMode;
@@ -40,6 +56,7 @@ export type EmailConfig = {
   campaignNotes?: string;
   dailySendCapPerDomain?: number;
   outreachPaused?: boolean;
+  followUpPolicy?: "auto_send" | "review_all_followups";
   dkimSelector?: string;
   senderHealthCache?: {
     checkedAt: string;
@@ -174,6 +191,7 @@ export function getDefaultEmailConfig(): EmailConfig {
     brandConfig: resolveBrandConfig({ brandSlug: "ish" }),
     campaignMode: "diwali_gifting",
     dailySendCapPerDomain: 50,
+    followUpPolicy: "auto_send",
   };
 }
 
@@ -204,6 +222,7 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     campaignMode,
     dailySendCapPerDomain: merged.dailySendCapPerDomain ?? 50,
     outreachPaused: merged.outreachPaused ?? false,
+    followUpPolicy: merged.followUpPolicy ?? "auto_send",
   };
 }
 

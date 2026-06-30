@@ -1,4 +1,5 @@
 // Enrichment configuration — loaded from env at runtime, overridable via Settings UI
+import { resolveGiftIntelConfig } from "@/lib/gift-intel/config";
 
 export type SearchProvider = "india_directories" | "google_places" | "tavily_ai" | "apollo";
 export type EnrichProvider = "website_email" | "apollo" | "hunter" | "none";
@@ -14,6 +15,8 @@ export type EnrichmentConfig = {
   scoutLeadsLimit: number;
   apolloApiKey?: string;
   hunterApiKey?: string;
+  giftIntelProductCategory?: string;
+  giftIntelCompetitorBrands?: string[];
 };
 
 export const SCOUT_VOLUME_PRESETS = {
@@ -155,10 +158,13 @@ export function resolveEnrichmentConfig(
   const configuredSearch = override?.searchProvider ?? base.searchProvider;
   const configuredEnrich = override?.enrichProvider ?? base.enrichProvider;
 
+  const giftIntel = resolveGiftIntelConfig(override ?? base);
   return {
     ...base,
     dataMode: mode,
     searchProvider: resolveSearchProvider(mode, configuredSearch),
     enrichProvider: resolveEnrichProvider(mode, configuredEnrich),
+    giftIntelProductCategory: giftIntel.productCategory,
+    giftIntelCompetitorBrands: giftIntel.competitorBrands,
   };
 }

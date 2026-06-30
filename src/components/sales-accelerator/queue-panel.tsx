@@ -60,7 +60,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
   }
 
   return (
-    <div className="flex h-full w-[330px] shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-[22px_18px]">
+    <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="text-xl font-bold text-ish-ink">My Leads</span>
         <div className="flex gap-1.5">

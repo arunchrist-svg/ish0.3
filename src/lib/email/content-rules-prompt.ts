@@ -5,6 +5,7 @@ export type AntiSpamPromptContext = {
   senderFirstName: string;
   brandName: string;
   emailStyle?: EmailStyle;
+  isReplyDraft?: boolean;
 };
 
 const NO_COMPANY_STATS_RULE =
@@ -51,6 +52,15 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
     );
   }
 
+  if (ctx.sequencePosition >= 4 || ctx.isReplyDraft) {
+    lines.push(
+      "- REPLY STAGE: They already replied to our outreach. Advance to the next step.",
+      "- REPLY STAGE: You MAY ask for address, phone, delivery details, or scheduling as needed.",
+      "- REPLY STAGE: Do NOT repeat a question they already answered affirmatively.",
+      "- REPLY STAGE: Thank them briefly before asking for logistics or next steps.",
+    );
+  }
+
   if (ctx.emailStyle === "marketing") {
     lines.push("- Marketing mode: include unsubscribe/compliance footer language if pitching commercially");
   }
@@ -60,4 +70,12 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
 
 export function getRevisionInstruction(issues: string): string {
   return `Previous draft failed content quality check. Fix ALL of these:\n${issues}\nRewrite to pass while keeping friendly, professional tone (not salesy) and personalization.`;
+}
+
+
+export function getStyleOnlyRevisionInstruction(deliverabilityIssues: string): string {
+  if (!deliverabilityIssues || deliverabilityIssues === "generic tone") {
+    return "Apply only the user's stylistic request. Do not add new facts, job titles, research hooks, or intel. Keep paragraph breaks (blank lines between sections).";
+  }
+  return `Fix only these deliverability issues without adding new personalization or facts:\n${deliverabilityIssues}\nKeep the user's requested tone change. Preserve paragraph breaks.`;
 }

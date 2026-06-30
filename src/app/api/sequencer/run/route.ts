@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runSequencer } from "@/lib/agents/sequencer";
+import { inngestJobsEnabled } from "@/lib/jobs/enqueue";
 
 export async function POST(req: Request) {
   const auth = req.headers.get("authorization");
@@ -9,6 +10,9 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (inngestJobsEnabled()) {
+      return NextResponse.json({ skipped: true, reason: "inngest_enabled" });
+    }
     const result = await runSequencer();
     return NextResponse.json(result);
   } catch (e) {

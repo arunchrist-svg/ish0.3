@@ -7,6 +7,7 @@ import { reviseDraft } from "@/lib/api-client";
 import type { EditMessage, WriterDraft } from "@/lib/api-client";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
+import { VoiceMicButton } from "@/components/mobile/voice-mic-button";
 
 const BASE_QUICK_PROMPTS = [
   "Make it shorter",
@@ -182,6 +183,10 @@ export function EmailEditChat({
                 "outline-none placeholder:text-ish-ink-faint focus:border-ish-stratus-blue/40 focus:ring-2 focus:ring-ish-stratus-blue/12 disabled:opacity-50",
                 embedded ? "bg-ish-canvas/40" : "bg-white",
               )}
+            />
+            <VoiceMicButton
+              disabled={revising}
+              onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))}
             />
             <button
               type="submit"

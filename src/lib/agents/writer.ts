@@ -1,10 +1,12 @@
 import { callLLM } from "@/lib/llm";
+import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { retrieveRelevantRules } from "@/lib/rag";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
 import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 import { auditContentScored } from "@/lib/email/feedback-hooks";
 import {
   scoreSpamMeter,
@@ -17,7 +19,14 @@ import {
 } from "@/lib/agents/writer-scoring";
 import { fetchRecentSubjectsForWorkspace } from "@/lib/email/recent-subjects";
 import { getAntiSpamWritingRules, getRevisionInstruction } from "@/lib/email/content-rules-prompt";
+import { normalizeEmailBody, EMAIL_BODY_FORMAT_RULE } from "@/lib/email/email-body-format";
 import { getWriterTonePersona, getWriterFewShotExample } from "@/lib/agents/writer-tone";
+import { parseWriterOutput } from "@/lib/agents/schemas/writer-output";
+import {
+  assertResearchReadyForWriter,
+  ensureWriterPlan,
+  formatWriterPlanForPrompt,
+} from "@/lib/agents/writer-plan";
 
 const PROMPT_VERSION = "v2.3-tone-persona";
 const MAX_REVISIONS = 2;
@@ -67,6 +76,12 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const confidenceTier = research?.confidenceTier ?? "low";
   const giftingHook = research?.giftingHook ?? "";
   const isFollowUp = !!options?.followUpMode;
+
+  if (!isFollowUp) {
+    assertResearchReadyForWriter(research);
+  }
+
+  const writerPlan = !isFollowUp ? await ensureWriterPlan(leadId) : null;
   const template = getOutreachTemplate(options?.followUpMode ?? options?.outreachTemplate);
   const tonePersona = getWriterTonePersona(brandConfig);
   const fewShot = getWriterFewShotExample(
@@ -92,6 +107,7 @@ ${tonePersona}
 - Write as ${brandConfig.brandName}: ${brandConfig.productSummary}
 - Subject A: short, includes company name; never use em dashes (—) or " - Company" suffix
 - Never use em dashes (—) in subject or body
+- ${EMAIL_BODY_FORMAT_RULE}
 ${antiSpamRules}
 `;
 
@@ -152,6 +168,8 @@ Sign off with "${senderFirstName}"`
     : `Write an email for:
 ${baseUserPrompt}
 
+${writerPlan ? formatWriterPlanForPrompt(writerPlan) + "\n\n" : ""}
+
 Template: ${template.label}
 ${template.ctaInstruction}
 
@@ -186,7 +204,7 @@ Sign off with "${senderFirstName}"`;
 
   for (let attempt = 0; attempt <= maxRevisions; attempt++) {
     const raw = await callLLM({
-      tier: "fast",
+      tier: tierForAgentStep("writer.write"),
       system: systemPrompt,
       prompt:
         attempt === 0
@@ -203,29 +221,23 @@ Sign off with "${senderFirstName}"`;
       maxTokens: isFollowUp ? 512 : 1024,
     });
 
-    let parsed: {
-      subjectA?: string;
-      subjectB?: string;
-      emailBody?: string;
-      outreachGoal?: string;
-      templateVariant?: string;
-    } = {};
-    try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    } catch {
-      parsed = {
-        subjectA: `Diwali gifting for ${account.name}`,
-        subjectB: `Diwali note for ${contactFirstName}`,
-        emailBody: raw.slice(0, 600),
-        outreachGoal: template.label,
-      };
+    const { data: parsed, valid: writerJsonValid } = parseWriterOutput(raw);
+    if (!writerJsonValid) {
+      console.warn("[writer] LLM output failed schema validation for lead", leadId);
     }
+    const parsedWithFallback = {
+      subjectA: parsed.subjectA ?? `Diwali gifting for ${account.name}`,
+      subjectB: parsed.subjectB ?? `Diwali note for ${contactFirstName}`,
+      emailBody: parsed.emailBody ?? raw.slice(0, 600),
+      outreachGoal: parsed.outreachGoal ?? template.label,
+      templateVariant: parsed.templateVariant,
+    };
 
-    emailBody = parsed.emailBody ?? "";
-    subjectA = parsed.subjectA ?? `Diwali gifting for ${account.name}`;
-    subjectB = parsed.subjectB ?? `Quick question for ${contactFirstName}`;
+    emailBody = normalizeEmailBody(parsedWithFallback.emailBody ?? "");
+    subjectA = parsedWithFallback.subjectA ?? `Diwali gifting for ${account.name}`;
+    subjectB = parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`;
     templateVariant = options?.followUpMode ?? template.id;
-    outreachGoal = parsed.outreachGoal ?? template.label;
+    outreachGoal = parsedWithFallback.outreachGoal ?? template.label;
     revisionCount = attempt;
 
     const spamResult = scoreSpamMeter(emailBody, subjectA, delivOpts);
@@ -261,6 +273,8 @@ Sign off with "${senderFirstName}"`;
           deliverabilityVerdict: deliverabilityVerdict(delivScore),
           revisionCount,
           revisionTimeout,
+          rubricScore: rubric,
+          rubricTotal,
           templateVariant,
           outreachGoal,
           confidenceTier,
@@ -283,6 +297,7 @@ Sign off with "${senderFirstName}"`;
         await db
           .insert(yieldFunnel)
           .values({ leadId, stage: "draft_ready", metadata: { delivScore } });
+        void notifyLeadEvent(leadId, "draft.ready");
       }
 
       return outreach.id;

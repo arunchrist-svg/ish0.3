@@ -18,6 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getCurrentPosition } from "@/lib/capacitor/geolocation";
+import { findNearestScoutCity } from "@/lib/scouting/near-me";
+import { toast } from "sonner";
 import {
   SCOUT_CITY_GROUPS,
   SCOUT_DEPARTMENTS,
@@ -217,6 +220,21 @@ function CityPopoverContent({
   onCitiesChange: (c: string[]) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [locating, setLocating] = useState(false);
+
+  async function useNearMe() {
+    setLocating(true);
+    try {
+      const pos = await getCurrentPosition();
+      const city = findNearestScoutCity(pos.latitude, pos.longitude);
+      onCitiesChange([city]);
+      toast.success(`Scouting near ${city}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not get location");
+    } finally {
+      setLocating(false);
+    }
+  }
   const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
 
@@ -239,8 +257,17 @@ function CityPopoverContent({
 
   return (
     <div className="flex flex-col">
-      {/* Search */}
       <div className="border-b border-ish-border p-3">
+        <button
+          type="button"
+          disabled={locating}
+          onClick={() => void useNearMe()}
+          className="mb-2 flex w-full min-h-[40px] items-center justify-center gap-2 rounded-xl bg-ish-black text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
+        >
+          {locating ? "Locating..." : "Near me"}
+        </button>
+      </div>
+      <div className="border-b border-ish-border p-3 pt-0">
         <div className="flex items-center gap-2 rounded-xl border border-ish-border bg-ish-app px-3 py-2">
           <Search className="size-3.5 shrink-0 text-ish-ink-faint" />
           <input

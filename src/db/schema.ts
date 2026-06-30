@@ -251,6 +251,14 @@ export const leads = pgTable("leads", {
   isPinned:     boolean("is_pinned").default(false),
 });
 
+export type WriterPlan = {
+  hook: string;
+  valueProp: string;
+  cta: string;
+  source?: "llm" | "user";
+  updatedAt?: string;
+};
+
 // ─── Lead Research ────────────────────────────────────────────────────────────
 export const leadResearch = pgTable("lead_research", {
   id:              uuid("id").defaultRandom().primaryKey(),
@@ -263,6 +271,7 @@ export const leadResearch = pgTable("lead_research", {
   outreachHooks:   jsonb("outreach_hooks").$type<string[]>().default([]),
   scoreFactors:    jsonb("score_factors").$type<{label: string; bold: string}[]>().default([]),
   rawBrief:        text("raw_brief"),
+  writerPlan:      jsonb("writer_plan").$type<WriterPlan | null>(),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -289,6 +298,7 @@ export const leadOutreach = pgTable("lead_outreach", {
   outreachGoal:      text("outreach_goal"),
   confidenceTier:    text("confidence_tier"),
   sequencePosition:  integer("sequence_position"),
+  draftFeedback:     jsonb("draft_feedback").$type<{ rating?: "up" | "down"; comment?: string; at?: string }>(),
   createdAt:         timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -317,7 +327,7 @@ export const outreachApprovals = pgTable("outreach_approvals", {
 });
 
 // ─── Outreach Schedule (Sequencer) ───────────────────────────────────────────
-// status values: "scheduled" | "sent" | "cancelled" | "paused"
+// status values: "scheduled" | "sent" | "cancelled" | "paused" | "pending_review" | "pending_review"
 export const outreachSchedule = pgTable("outreach_schedule", {
   id:            uuid("id").defaultRandom().primaryKey(),
   leadId:        uuid("lead_id").notNull().references(() => leads.id),
@@ -433,6 +443,57 @@ export const connectionMatches = pgTable("connection_matches", {
   createdAt:    timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   connectionContactIdx: uniqueIndex("connection_matches_conn_contact_idx").on(table.connectionId, table.contactId),
+}));
+
+
+
+// ─── In-app Notifications ─────────────────────────────────────────────────────
+export const notifications = pgTable("notifications", {
+  id:          uuid("id").defaultRandom().primaryKey(),
+  tenantId:    uuid("tenant_id").notNull().references(() => tenants.id),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id),
+  userId:      uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+  type:        text("type").notNull(),
+  leadId:      uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
+  title:       text("title").notNull(),
+  body:        text("body").notNull(),
+  urgency:     text("urgency").notNull().default("normal"),
+  metadata:    jsonb("metadata").$type<Record<string, unknown>>().default({}),
+  readAt:      timestamp("read_at"),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+});
+
+// ─── Agent Runs (LLM observability) ───────────────────────────────────────────
+export const agentRuns = pgTable("agent_runs", {
+  id:            uuid("id").defaultRandom().primaryKey(),
+  tenantId:      uuid("tenant_id").notNull().references(() => tenants.id),
+  workspaceId:   uuid("workspace_id").references(() => workspaces.id),
+  agent:         text("agent").notNull(),
+  leadId:        uuid("lead_id").references(() => leads.id),
+  status:        text("status").notNull().default("running"),
+  tier:          text("tier"),
+  model:         text("model"),
+  promptVersion: text("prompt_version"),
+  inputTokens:   integer("input_tokens"),
+  outputTokens:  integer("output_tokens"),
+  latencyMs:     integer("latency_ms"),
+  error:         text("error"),
+  startedAt:     timestamp("started_at").defaultNow().notNull(),
+  completedAt:   timestamp("completed_at"),
+});
+
+
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id:        uuid("id").defaultRandom().primaryKey(),
+  userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId:  uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  endpoint:  text("endpoint").notNull(),
+  p256dh:    text("p256dh").notNull(),
+  auth:      text("auth").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  userEndpointIdx: uniqueIndex("push_subscriptions_user_endpoint_idx").on(table.userId, table.endpoint),
 }));
 
 // ─── Relations (for Drizzle query API) ────────────────────────────────────────

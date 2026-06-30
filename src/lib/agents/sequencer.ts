@@ -1,18 +1,22 @@
-import { db, outreachSchedule, leads, contacts, accounts, leadOutreach } from "@/db";
+import { db, outreachSchedule, leads, contacts, accounts, leadOutreach, leadResearch } from "@/db";
 import { eq, lte, and } from "drizzle-orm";
-import { sendEmail } from "@/lib/email/email-sender";
-import { buildEmailHtml } from "@/lib/email/templates";
+import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 import { logAudit } from "@/lib/audit";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { assertSenderPreflight, SenderPreflightError } from "@/lib/email/sender-preflight";
 import { runWriter } from "@/lib/agents/writer";
 import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
-import { generateRfcMessageId } from "@/lib/email/threading";
-import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
 import { isOutreachSendingPaused } from "@/lib/email/config";
+import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
+import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
 
-export async function runSequencer(): Promise<{ processed: number; failed: number; skipped: number }> {
+export async function runSequencer(): Promise<{
+  processed: number;
+  failed: number;
+  skipped: number;
+  pendingReview: number;
+}> {
   const now = new Date();
   const due = await db
     .select()
@@ -23,6 +27,7 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
   let processed = 0;
   let failed = 0;
   let skipped = 0;
+  let pendingReview = 0;
 
   for (const sched of due) {
     try {
@@ -33,7 +38,7 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
 
       const lead = await db.query.leads.findFirst({
         where: eq(leads.id, sched.leadId),
-        with: { contact: true, account: true },
+        with: { contact: true, account: true, research: true },
       });
 
       if (!lead) {
@@ -50,6 +55,7 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
 
       const contact = lead.contact as typeof contacts.$inferSelect;
       const account = lead.account as typeof accounts.$inferSelect;
+      const research = lead.research as typeof leadResearch.$inferSelect | null;
 
       const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
       if (isOutreachSendingPaused(emailConfig)) {
@@ -84,63 +90,69 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
 
       if (!generatedOutreach) throw new Error("No outreach draft for follow-up");
 
-      const thread = await loadThreadContext(sched.leadId, lead);
-      const threadedSubject = thread.rootSubject
-        ? resolveOutboundSubject({ isReplySend: true, rootSubject: thread.rootSubject, fallbackSubject: thread.rootSubject })
-        : (generatedOutreach.subjectA ?? `Re: Diwali gifting for ${account.name}`);
+      const subject = generatedOutreach.subjectA ?? `Re: Diwali gifting for ${account.name}`;
       const body = generatedOutreach.emailBody ?? "";
 
-      const threadHeaders = resolveThreadHeaders({
-        isReplySend: false,
-        isFollowUp: true,
-        rootMessageId: thread.rootMessageId,
-        inboundMessageId: null,
-        referencesChain: thread.referencesChain,
+      const quality = await evaluateOutreachDraft({
+        subject,
+        emailBody: body,
+        contact: { name: contact.name, firstName: contact.firstName, title: contact.title },
+        account,
+        giftingHook: research?.giftingHook,
+        sequencePosition: generatedOutreach.sequencePosition ?? 2,
       });
+
+      const requiresReview = emailConfig.followUpPolicy === "review_all_followups";
+      const failsQuality = !quality.passes || Boolean(generatedOutreach.revisionTimeout);
+
+      if (requiresReview || failsQuality) {
+        await db
+          .update(outreachSchedule)
+          .set({
+            status: "pending_review",
+            draftLeadOutreachId: generatedOutreach.id,
+          })
+          .where(eq(outreachSchedule.id, sched.id));
+
+        await logAudit({
+          tenantId: lead.tenantId,
+          workspaceId: lead.workspaceId,
+          action: "sequencer.pending_review",
+          entityType: "lead",
+          entityId: sched.leadId,
+          metadata: {
+            scheduleId: sched.id,
+            day: sched.sequenceDay,
+            outreachId: generatedOutreach.id,
+            delivScore: quality.delivScore,
+            rubricTotal: quality.rubricTotal,
+            requiresReview,
+            revisionTimeout: generatedOutreach.revisionTimeout,
+          },
+        });
+
+        void notifyLeadEvent(sched.leadId, "followup.pending_review");
+        pendingReview++;
+        continue;
+      }
 
       try {
         await assertSenderPreflight(emailConfig, lead.workspaceId);
       } catch (e) {
         if (e instanceof SenderPreflightError) {
           console.warn("[sequencer] sender preflight failed, skipping send", e.issues);
+          skipped++;
           continue;
         }
         throw e;
       }
 
-      const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@ish.local";
-      const rfcMessageId = generateRfcMessageId(fromAddress);
-
-      const result = await sendEmail({
-        workspaceId: lead.workspaceId,
-        to: contact.email ?? "",
-        subject: threadedSubject,
-        html: buildEmailHtml({
-          body,
-          trackingToken: sched.trackingToken ?? undefined,
-          appUrl: emailConfig.appUrl,
-          emailStyle: emailConfig.emailStyle,
-        }),
-        replyTo: emailConfig.replyToAddress,
-        messageId: rfcMessageId,
-        inReplyTo: threadHeaders.inReplyTo,
-        references: threadHeaders.references,
-      });
-
-      await db
-        .update(outreachSchedule)
-        .set({
-          status: "sent",
-          sentAt: new Date(),
-          resendId: result.messageId,
-          rfcMessageId,
-          inReplyTo: threadHeaders.inReplyTo ?? null,
-          referencesChain: threadHeaders.references ?? null,
-          subjectSent: threadedSubject,
-          bodySnippet: body.slice(0, 500) || null,
-          emailKind: "followup",
-        })
-        .where(eq(outreachSchedule.id, sched.id));
+      if (!sched.draftLeadOutreachId) {
+        await db
+          .update(outreachSchedule)
+          .set({ draftLeadOutreachId: generatedOutreach.id })
+          .where(eq(outreachSchedule.id, sched.id));
+      }
 
       if (!sched.draftLeadOutreachId) {
         await deductCredits({
@@ -150,28 +162,11 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
           idempotencyKey: `sequencer-writer-${sched.id}`,
         });
       }
-      if (emailConfig.sendMode === "live") {
-        await deductCredits({
-          tenantId: lead.tenantId,
-          action: "email.live",
-          referenceId: sched.leadId,
-          idempotencyKey: `sequencer-send-${sched.id}`,
-        });
-      }
 
-      await logAudit({
+            await sendScheduledFollowUp({
+        scheduleId: sched.id,
         tenantId: lead.tenantId,
         workspaceId: lead.workspaceId,
-        action: "sequencer.sent",
-        entityType: "lead",
-        entityId: sched.leadId,
-        metadata: {
-          day: sched.sequenceDay,
-          mode: result.mode,
-          messageId: rfcMessageId,
-          outreachId,
-          followUpMode,
-        },
       });
 
       processed++;
@@ -180,10 +175,18 @@ export async function runSequencer(): Promise<{ processed: number; failed: numbe
         skipped++;
         continue;
       }
+      if (e instanceof FollowUpQualityError) {
+        await db
+          .update(outreachSchedule)
+          .set({ status: "pending_review" })
+          .where(eq(outreachSchedule.id, sched.id));
+        pendingReview++;
+        continue;
+      }
       console.error("[sequencer] failed for schedule", sched.id, e);
       failed++;
     }
   }
 
-  return { processed, failed, skipped };
+  return { processed, failed, skipped, pendingReview };
 }

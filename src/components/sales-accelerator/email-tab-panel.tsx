@@ -6,7 +6,8 @@ import { ChevronDown, FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { runWriterSequence, runReplyWriter, updateLeadStatus, regenerateSequenceStep } from "@/lib/api-client";
+import { runWriterSequence, runReplyWriter, runWriterStream, updateLeadStatus, regenerateSequenceStep } from "@/lib/api-client";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
@@ -35,6 +36,8 @@ type Props = {
 };
 
 export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, onSent }: Props) {
+  const isMobileLayout = useIsMobileLayout();
+  const [streamMessage, setStreamMessage] = useState<string | null>(null);
   const composeRef = useRef<HTMLDivElement>(null);
   const thread = lead.emailThread;
   const sequence = lead.outreachSequence ?? [];
@@ -195,6 +198,22 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         setSelectedNodeId(followUpPosition === 2 ? "e2" : "e3");
         onSilentRefresh();
         toast.success(`Email ${followUpPosition} regenerated`);
+        return;
+      }
+
+      if (isMobileLayout) {
+        setStreamMessage("Starting writer...");
+        const draft = await runWriterStream(lead.id, { outreachTemplate: selectedTemplate }, (ev) => {
+          if (ev.type === "progress" && ev.message) setStreamMessage(ev.message);
+        });
+        setStreamMessage(null);
+        setActiveDraft(draft);
+        onDraftUpdated(draft);
+        setSelectedNodeId("draft-1");
+        onSilentRefresh();
+        toast.success("Draft ready", {
+          action: { label: "Inbox", onClick: () => window.location.assign("/inbox") },
+        });
         return;
       }
 
@@ -409,7 +428,10 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
       {generating ? (
         <div className="rounded-[20px] border border-ish-border bg-white py-12 shadow-[var(--shadow-ish-sm)]">
-          <WritingLoader
+          {streamMessage ? (
+        <div className="rounded-xl bg-ish-yellow-soft px-4 py-3 text-[13px] font-medium text-ish-ink">{streamMessage}</div>
+      ) : null}
+      <WritingLoader
             contactName={lead.name}
             companyName={lead.company}
             sequenceLabel={generatingLabel}

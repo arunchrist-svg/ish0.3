@@ -11,6 +11,7 @@ import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { ResearchNotReadyError } from "@/lib/agents/writer-plan";
 
 export async function POST(req: Request) {
   try {
@@ -68,6 +69,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ draft: toWriterDraft(draft) });
   } catch (e) {
+    if (e instanceof ResearchNotReadyError) {
+      return NextResponse.json(
+        { code: e.code, error: e.message, missing: e.missing },
+        { status: 422 },
+      );
+    }
     const errRes = handleApiError(e, "[api/agents/writer/run]");
     if (errRes.status !== 500) return errRes;
     return NextResponse.json({ error: friendlyLLMError(e) }, { status: 500 });

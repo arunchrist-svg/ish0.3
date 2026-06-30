@@ -98,3 +98,48 @@ describe("AGENT-UNIT-002 rubric scoring", () => {
     expect(followUpOnly).toBeLessThan(DELIVERABILITY_PASS_THRESHOLD);
   });
 });
+
+describe("reply draft scoring", () => {
+  it("penalizes re-asking sample question after affirmative reply", async () => {
+    const priorCta = "Would you be open to receiving a complimentary Diwali tasting sample?";
+    const reAskBody = `Hi contact,
+
+Thanks for your response. Would you be open to receiving a complimentary Diwali tasting sample?
+
+Sri`;
+
+    const addressBody = `Hi contact,
+
+Great, thanks. To send the tasting box, could you share your office delivery address and a phone number for the courier?
+
+Sri`;
+
+    const reAskRubric = await scoreRubric({
+      subjectA: "Re: Diwali gifts",
+      emailBody: reAskBody,
+      contact: { name: "contact", firstName: "contact" },
+      account: { name: "Acme", city: "Hosur" },
+      deliverabilityOptions: {
+        sequencePosition: 4,
+        isReplyDraft: true,
+        replyIntent: "affirmative",
+        priorCta,
+      },
+    });
+
+    const addressRubric = await scoreRubric({
+      subjectA: "Re: Diwali gifts",
+      emailBody: addressBody,
+      contact: { name: "contact", firstName: "contact" },
+      account: { name: "Acme", city: "Hosur" },
+      deliverabilityOptions: {
+        sequencePosition: 4,
+        isReplyDraft: true,
+        replyIntent: "affirmative",
+        priorCta,
+      },
+    });
+
+    expect(addressRubric.cta_quality).toBeGreaterThan(reAskRubric.cta_quality);
+  });
+});

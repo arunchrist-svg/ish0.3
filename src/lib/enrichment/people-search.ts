@@ -6,6 +6,7 @@ import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutPersonResult } from "./types";
+import { computeSeniorityScore } from "./seniority-score";
 import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
 import { parsePeopleFromSearchResults } from "./people-parser";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, TAVILY_QUOTA_PEOPLE_MSG, tavilySearch } from "./tavily-client";
@@ -42,7 +43,7 @@ function mapLLMPerson(p: Record<string, unknown>, dataSource: string): ScoutPers
     email: undefined,
     emailStatus: "missing",
     isKeyDM: isKeyDM(title),
-    matchScore: isKeyDM(title) ? 58 : 50,
+    matchScore: computeSeniorityScore({ title, isKeyDM: isKeyDM(title), emailStatus: 'missing' }).total,
     dataSource,
   };
 }

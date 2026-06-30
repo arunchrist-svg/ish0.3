@@ -9,11 +9,13 @@ import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
 import { LeadsGrid } from "./leads-grid";
 import { PersonDetailPanel } from "./person-detail-panel";
-import { scoutCompanies, scoutPeople, scoutPeopleBatchStream, scoutSave } from "@/lib/api-client";
+import { scoutCompanies, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutExactSearch } from "@/lib/api-client";
 import { mapWithConcurrency } from "@/lib/async";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, cn } from "@/lib/utils";
+import { MobileHeader } from "@/design-system";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS } from "@/lib/scouting-data";
 
 type View = "companies" | "people";
@@ -328,6 +330,7 @@ function RolePickerModal({
 }
 
 export function ScoutingApp() {
+  const isMobileLayout = useIsMobileLayout();
   const [view, setView] = useState<View>("companies");
   const [cities, setCities] = useState<string[]>(["Bengaluru"]);
   const [industries, setIndustries] = useState<string[]>([]);
@@ -610,7 +613,7 @@ export function ScoutingApp() {
     }
   }
 
-  function handleSearchByName() {
+  async function handleSearchByName() {
     const query = companySearchQuery.trim();
     if (!query) {
       toast.error("Enter a company name to search");
@@ -623,6 +626,40 @@ export function ScoutingApp() {
     setSelectedCompanyIds(new Set());
     setFetchSeed(0);
     setDiscoveryNotice(null);
+
+    const isExactQuery = /linkedin\.com|\.[a-z]{2,}$/i.test(query);
+    if (isExactQuery) {
+      setLoadingCompanies(true);
+      try {
+        const exact = await scoutExactSearch({ query, city: cities[0] }) as {
+          primaryCompany?: { name: string; domain?: string; website?: string; industry?: string; city?: string; employees?: string; dataSource: string };
+          primaryPerson?: { name: string; title?: string; matchScore?: number; email?: string; emailStatus?: string; dataSource: string };
+          confidence?: number;
+          warnings?: string[];
+        };
+        if (exact.primaryCompany) {
+          const shaped = toCompanyShape(exact.primaryCompany);
+          setCompanies([shaped]);
+          if (exact.warnings?.length) toast.message(exact.warnings[0]);
+          if (exact.primaryPerson) {
+            const person = toPersonShape(
+              { ...exact.primaryPerson, emailStatus: (exact.primaryPerson.emailStatus ?? "missing") as ScoutPersonResult["emailStatus"], dataSource: exact.primaryPerson.dataSource ?? "exact" },
+              shaped.id,
+              0,
+            );
+            setPeople([person]);
+            setPrimaryPersonId(person.id);
+          }
+          setView("people");
+          return;
+        }
+      } catch {
+        toast.error("Exact search failed, falling back to name search");
+      } finally {
+        setLoadingCompanies(false);
+      }
+    }
+
     loadCompanies(cities, industries, {
       append: false,
       skipInternal: false,
@@ -927,8 +964,13 @@ export function ScoutingApp() {
     setPrimaryPersonId(null);
   }
 
+  const showMobileDetail =
+    isMobileLayout &&
+    ((view === "companies" && primaryCompany) || (view === "people" && primaryPerson));
+
   return (
     <>
+        <MobileHeader title="Scouting" subtitle="Discover companies and decision makers" className="lg:hidden" />
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* ScoutingProgressBar — stepper hidden for now
           <ScoutingProgressBar
@@ -969,7 +1011,7 @@ export function ScoutingApp() {
           />
 
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">
+            <div className={cn("min-w-0 flex-1 overflow-y-auto bg-white/40", showMobileDetail && "hidden lg:block")}>
               {view === "companies" ? (
                 loadingCompanies ? (
                   <DiscoveringLoader
@@ -1121,19 +1163,37 @@ export function ScoutingApp() {
               )}
             </div>
 
-            <div className="w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white">
-              {view === "companies" && primaryCompany ? (
-                <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
-              ) : view === "people" && primaryPerson ? (
-                <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
-              ) : (
-                <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-ish-ink-faint">
-                  {view === "companies"
-                    ? "Click a company tile to see details"
-                    : "Click a lead card to see their profile"}
+            {showMobileDetail ? (
+              <div className="fixed inset-0 z-40 flex flex-col bg-white lg:relative lg:inset-auto lg:z-auto lg:w-[360px] lg:shrink-0 lg:border-l lg:border-ish-border">
+                <MobileHeader
+                  title={view === "companies" ? primaryCompany?.name ?? "Company" : primaryPerson?.name ?? "Contact"}
+                  showBack
+                  onBack={() => (view === "companies" ? setPrimaryCompanyId(null) : setPrimaryPersonId(null))}
+                  className="lg:hidden"
+                />
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {view === "companies" && primaryCompany ? (
+                    <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
+                  ) : view === "people" && primaryPerson ? (
+                    <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
+                  ) : null}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white lg:block">
+                {view === "companies" && primaryCompany ? (
+                  <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
+                ) : view === "people" && primaryPerson ? (
+                  <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
+                ) : (
+                  <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-ish-ink-faint">
+                    {view === "companies"
+                      ? "Click a company tile to see details"
+                      : "Click a lead card to see their profile"}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       {showRolePicker && (

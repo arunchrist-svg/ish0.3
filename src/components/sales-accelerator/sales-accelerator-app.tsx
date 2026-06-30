@@ -10,7 +10,8 @@ import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { LeadFormModal } from "@/components/sales-accelerator/lead-form-modal";
-import { Button } from "@/design-system";
+import { Button, MobileHeader, MobileStackLayout } from "@/design-system";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 
 function leadUrl(pathname: string, params: URLSearchParams): string {
   const qs = params.toString();
@@ -28,6 +29,7 @@ export function SalesAcceleratorApp() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const leadFromUrl = searchParams.get("lead");
+  const isMobileLayout = useIsMobileLayout();
 
   const [leads, setLeads] = useState<LeadQueueItem[]>([]);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(leadFromUrl);
@@ -51,6 +53,14 @@ export function SalesAcceleratorApp() {
     },
     [pathname, router],
   );
+
+
+  const clearLeadFromUrl = useCallback(() => {
+    activeLeadIdRef.current = null;
+    setActiveLeadId(null);
+    setPrefetchedLead(null);
+    router.replace(pathname);
+  }, [pathname, router]);
 
   const selectLead = useCallback(
     async (id: string) => {
@@ -132,13 +142,14 @@ export function SalesAcceleratorApp() {
 
       const current = activeLeadIdRef.current;
       if (current && !data.some((l) => l.id === current)) {
-        const nextId = data[0]?.id ?? null;
+        const nextId = isMobileLayout ? null : data[0]?.id ?? null;
         activeLeadIdRef.current = nextId;
         setActiveLeadId(nextId);
         if (nextId) {
           syncLeadToUrl(nextId);
           setPrefetchedLead(await fetchLead(nextId).catch(() => null));
         } else {
+          if (isMobileLayout) router.replace(pathname);
           setPrefetchedLead(null);
         }
       }
@@ -147,7 +158,7 @@ export function SalesAcceleratorApp() {
     } finally {
       if (!opts?.silent) setListLoading(false);
     }
-  }, [syncLeadToUrl]);
+  }, [syncLeadToUrl, isMobileLayout, pathname, router]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,7 +181,9 @@ export function SalesAcceleratorApp() {
         const activeId =
           leadFromUrl && list.some((l) => l.id === leadFromUrl)
             ? leadFromUrl
-            : list[0]?.id ?? null;
+            : isMobileLayout
+              ? null
+              : list[0]?.id ?? null;
         activeLeadIdRef.current = activeId;
         setActiveLeadId(activeId);
 
@@ -245,42 +258,64 @@ export function SalesAcceleratorApp() {
     );
   }
 
-  return (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-      {listLoading && leads.length === 0 ? (
-        <div className="flex h-full w-[330px] shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-[22px_18px]">
-          <div className="mb-4 h-7 w-28 animate-pulse rounded-lg bg-ish-app" />
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-[72px] animate-pulse rounded-[18px] bg-ish-app" />
-            ))}
-          </div>
-        </div>
-      ) : (
-        <QueuePanel
-          leads={leads}
-          activeId={activeLeadId ?? ""}
-          onSelect={(id) => void selectLead(id)}
-          onRefresh={() => refreshLeadList({ silent: true })}
-          onAddLead={openCreateLead}
-          canWrite={canWritePipeline}
+  const listPane = listLoading && leads.length === 0 ? (
+    <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
+      <div className="mb-4 h-7 w-28 animate-pulse rounded-lg bg-ish-app" />
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-[72px] animate-pulse rounded-[18px] bg-ish-app" />
+        ))}
+      </div>
+    </div>
+  ) : (
+    <QueuePanel
+      leads={leads}
+      activeId={activeLeadId ?? ""}
+      onSelect={(id) => void selectLead(id)}
+      onRefresh={() => refreshLeadList({ silent: true })}
+      onAddLead={openCreateLead}
+      canWrite={canWritePipeline}
+    />
+  );
+
+  const detailPane = activeLeadId ? (
+    <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-ish-page-in">
+      {isMobileLayout ? (
+        <MobileHeader
+          title={prefetchedLead?.name ?? "Lead"}
+          subtitle={prefetchedLead?.company}
+          showBack
+          onBack={clearLeadFromUrl}
         />
-      )}
-      {activeLeadId ? (
-        <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 overflow-hidden animate-ish-page-in">
-          <RecordWorkspace
-            leadId={activeLeadId}
-            initialLead={prefetchedLead?.id === activeLeadId ? prefetchedLead : null}
-            onLeadUpdated={() => refreshLeadList({ silent: true })}
-            onEditLead={canWritePipeline ? openEditLead : undefined}
-            onDeleteLead={canWritePipeline ? handleDeleteLead : undefined}
-          />
-        </div>
-      ) : listLoading ? (
-        <div className="flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
-          <span className="mr-2 animate-spin">⟳</span> Loading leads…
-        </div>
       ) : null}
+      <RecordWorkspace
+        leadId={activeLeadId}
+        initialLead={prefetchedLead?.id === activeLeadId ? prefetchedLead : null}
+        onLeadUpdated={() => refreshLeadList({ silent: true })}
+        onEditLead={canWritePipeline ? openEditLead : undefined}
+        onDeleteLead={canWritePipeline ? handleDeleteLead : undefined}
+      />
+    </div>
+  ) : listLoading ? (
+    <div className="flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
+      <span className="mr-2 animate-spin">⟳</span> Loading leads…
+    </div>
+  ) : isMobileLayout ? (
+    <div className="hidden lg:flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
+      Select a lead
+    </div>
+  ) : null;
+
+  return (
+    <>
+      {isMobileLayout ? (
+        <MobileStackLayout showDetail={!!activeLeadId} list={listPane} detail={detailPane ?? <div />} />
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+          {listPane}
+          {detailPane}
+        </div>
+      )}
       <LeadFormModal
         open={formOpen}
         mode={formMode}
@@ -288,6 +323,6 @@ export function SalesAcceleratorApp() {
         onClose={() => setFormOpen(false)}
         onSubmit={handleLeadFormSubmit}
       />
-    </div>
+    </>
   );
 }

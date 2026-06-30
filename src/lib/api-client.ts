@@ -207,6 +207,48 @@ export async function runWriter(
   return data.draft;
 }
 
+
+
+export async function runWriterStream(
+  leadId: string,
+  options?: { outreachTemplate?: string },
+  onEvent?: (event: { type: string; message?: string; draft?: WriterDraft; code?: string }) => void,
+): Promise<WriterDraft> {
+  const res = await fetch("/api/agents/writer/run/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ leadId, outreachTemplate: options?.outreachTemplate }),
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error ?? res.statusText);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalDraft: WriterDraft | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = JSON.parse(line.slice(5).trim()) as { type: string; message?: string; draft?: WriterDraft; code?: string };
+      onEvent?.(payload);
+      if (payload.type === "complete" && payload.draft) finalDraft = payload.draft;
+      if (payload.type === "error") throw new Error(payload.message ?? "Writer failed");
+    }
+  }
+
+  if (!finalDraft) throw new Error("Writer stream ended without a draft");
+  return finalDraft;
+}
+
 export async function runWriterSequence(
   leadId: string,
   options?: { outreachTemplate?: string },
@@ -364,12 +406,16 @@ export class EmailSendRejectedError extends Error {
 
 export async function sendOutreach(
   approvalId: string,
-  options?: { overridePreflight?: boolean },
+  options?: { overridePreflight?: boolean; overrideQualityGate?: boolean },
 ): Promise<{ mode: string; messageId?: string; to?: string }> {
   const res = await fetch("/api/outreach/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ approvalId, overridePreflight: options?.overridePreflight }),
+    body: JSON.stringify({
+      approvalId,
+      overridePreflight: options?.overridePreflight,
+      overrideQualityGate: options?.overrideQualityGate,
+    }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -494,6 +540,14 @@ export type ContactEmailEntry = {
   pattern?: string;
 };
 
+export type WriterPlan = {
+  hook: string;
+  valueProp: string;
+  cta: string;
+  source?: "llm" | "user";
+  updatedAt?: string;
+};
+
 export type LeadDetailRecord = {
   id: string;
   name: string;
@@ -528,6 +582,7 @@ export type LeadDetailRecord = {
     giftingHook?: string;
     estimatedOrderValue?: string;
     scoreFactors: { label: string; bold: string }[];
+    writerPlan?: WriterPlan;
   };
   outreach?: WriterDraft;
   outreachSequence?: WriterDraft[];
@@ -807,6 +862,42 @@ export type ContactListItem = {
   status: string | null;
 };
 
+
+export async function createLeadFromContact(contact: {
+  name: string;
+  title?: string;
+  email?: string;
+  phone?: string;
+  company: string;
+  city?: string;
+  industry?: string;
+  score?: number | null;
+}): Promise<{ id: string }> {
+  const res = await post<{ ok: boolean; id: string }>("/api/leads", {
+    name: contact.name,
+    title: contact.title !== "—" ? contact.title : undefined,
+    email: contact.email !== "—" ? contact.email : undefined,
+    phone: contact.phone,
+    company: contact.company,
+    city: contact.city,
+    industry: contact.industry,
+    score: contact.score ?? undefined,
+  });
+  return { id: res.id };
+}
+
+export async function scoutExactSearch(params: {
+  query: string;
+  personName?: string;
+  city?: string;
+}): Promise<unknown> {
+  return post("/api/scout/exact", params);
+}
+
+export async function submitDraftFeedback(outreachId: string, rating: "up" | "down", comment?: string): Promise<void> {
+  await post("/api/outreach/feedback", { outreachId, rating, comment });
+}
+
 export async function fetchContacts(): Promise<ContactListItem[]> {
   return get<ContactListItem[]>("/api/contacts");
 }
@@ -850,4 +941,66 @@ export async function fetchSenderHealth(): Promise<SenderHealthResponse> {
   const res = await fetch("/api/email/sender-health");
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Failed to load sender health");
   return res.json();
+}
+
+// ─── Brand Intelligence (Gift Intel) ────────────────────────────────────────
+export type {
+  ExtractedGiftIntel,
+  GiftIntelResultRow,
+  GiftIntelSweepResult,
+  SourceTier,
+} from "./gift-intel/types";
+
+import type {
+  ExtractedGiftIntel,
+  GiftIntelSweepResult,
+  SourceTier,
+} from "./gift-intel/types";
+
+export type GiftIntelConfigView = {
+  productCategory: string;
+  competitorBrands: string[];
+};
+
+export async function fetchGiftIntelConfig(): Promise<GiftIntelConfigView> {
+  return get<GiftIntelConfigView>("/api/settings/gift-intel");
+}
+
+export async function runGiftIntelSweep(params: {
+  competitorBrands: string[];
+  cities?: string[];
+  enabledSourceTiers?: SourceTier[];
+}): Promise<GiftIntelSweepResult> {
+  return post<GiftIntelSweepResult>("/api/agents/gift-intel/run", params);
+}
+
+export async function confirmGiftIntelMerge(params: {
+  accountId: string;
+  extraction: ExtractedGiftIntel;
+}): Promise<{ ok: boolean; accountId: string }> {
+  return post<{ ok: boolean; accountId: string }>("/api/agents/gift-intel/confirm", params);
+}
+
+
+export async function sendFollowUp(
+  scheduleId: string,
+  options?: { overridePreflight?: boolean; overrideQualityGate?: boolean },
+): Promise<{ messageId: string; mode: string; outreachId: string }> {
+  return post<{ messageId: string; mode: string; outreachId: string }>("/api/outreach/send-followup", {
+    scheduleId,
+    overridePreflight: options?.overridePreflight,
+    overrideQualityGate: options?.overrideQualityGate,
+  });
+}
+
+
+export async function updateLeadWriterPlan(
+  leadId: string,
+  plan: Pick<WriterPlan, "hook" | "valueProp" | "cta">,
+): Promise<{ writerPlan: WriterPlan }> {
+  return patch<{ writerPlan: WriterPlan }>(`/api/leads/${leadId}/research-plan`, plan);
+}
+
+export async function regenerateLeadWriterPlan(leadId: string): Promise<{ writerPlan: WriterPlan }> {
+  return post<{ writerPlan: WriterPlan }>(`/api/leads/${leadId}/research-plan`, {});
 }

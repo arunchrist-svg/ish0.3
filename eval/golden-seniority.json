@@ -1,0 +1,8 @@
+[
+  { "title": "CEO", "minScore": 95, "maxScore": 100 },
+  { "title": "Chief Human Resources Officer", "minScore": 95, "maxScore": 100 },
+  { "title": "VP Sales", "minScore": 80, "maxScore": 100 },
+  { "title": "Director of Procurement", "minScore": 65, "maxScore": 85 },
+  { "title": "HR Manager", "minScore": 50, "maxScore": 75 },
+  { "title": "Intern", "minScore": 0, "maxScore": 10 }
+]

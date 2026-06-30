@@ -86,7 +86,7 @@ const AVATAR_COLORS = [
 
 function parseQueueTab(raw: string | null): QueueTab {
   if (raw && VALID_TABS.has(raw as QueueTab)) return raw as QueueTab;
-  return "needs_review";
+  return "active";
 }
 
 function timeAgo(iso: string): string {
@@ -404,10 +404,17 @@ function LeadCard({
   const location = [row.city, row.industry].filter(Boolean).join(" · ");
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => onNavigate(row.leadId)}
-      className="group w-full rounded-[18px] border border-ish-border/60 bg-white p-4 text-left shadow-[var(--shadow-ish-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-ish-stratus-blue/25 hover:shadow-[var(--shadow-ish)] active:scale-[0.995]"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onNavigate(row.leadId);
+        }
+      }}
+      className="group w-full cursor-pointer rounded-[18px] border border-ish-border/60 bg-white p-4 text-left shadow-[var(--shadow-ish-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-ish-stratus-blue/25 hover:shadow-[var(--shadow-ish)] active:scale-[0.995]"
     >
       <div className="flex items-start gap-3.5">
         <div
@@ -448,7 +455,7 @@ function LeadCard({
 
         <ChevronRight className="mt-1 size-4 shrink-0 text-ish-ink-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-ish-ink" />
       </div>
-    </button>
+    </div>
   );
 }
 

@@ -6,7 +6,7 @@ import { useSession } from "@/components/providers/session-provider";
 import { useEffect, useState } from "react";
 import {
   ChevronLeft, Contact, Home,
-  Columns3, Mail, Pin, Rocket, Settings, Shield, Telescope, User, GitFork,
+  Columns3, Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CircleButton } from "@/design-system";
@@ -33,6 +33,7 @@ const workNav: NavItemEntry[] = [
   { icon: Rocket, label: "Lead Accelerator", href: "/leads", key: "lead-accelerator" },
   { icon: Columns3, label: "Lead Board", href: "/leads/board", key: "lead-board" },
   { icon: Mail, label: "Outreach", href: "/email", key: "email" },
+  { icon: Radar, label: "Brand Intelligence", href: "/brand-intelligence", key: "brand-intelligence" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
 ];
 
@@ -194,7 +195,7 @@ export function SideNav() {
   return (
     <div
       className={cn(
-        "ish-glass-sidebar flex h-full shrink-0 flex-col overflow-hidden border-r border-white/50 transition-[width,padding] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "ish-glass-sidebar hidden h-full shrink-0 flex-col lg:flex overflow-hidden border-r border-white/50 transition-[width,padding] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
         collapsed ? "w-[68px] px-2 py-[22px]" : "w-[200px] p-[22px_16px]",
       )}
     >

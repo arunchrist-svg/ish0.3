@@ -896,3 +896,42 @@
     radial-gradient(ellipse 70% 55% at 50% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.18) 0%, transparent 58%),
     radial-gradient(ellipse 50% 40% at 80% 80%, rgba(var(--ish-stratus-blue-rgb), 0.08) 0%, transparent 50%);
 }
+
+/* ── Mobile shell utilities ─────────────────────────────────────────────── */
+
+.ish-mobile-body {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ish-scroll-tabs {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ish-scroll-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.ish-mobile-drawer {
+  animation: ish-drawer-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes ish-drawer-in {
+  from { transform: translateX(100%); opacity: 0.6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes ish-page-in-mobile {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 1023px) {
+  .animate-ish-page-in {
+    animation: ish-page-in-mobile 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .ish-ambient-canvas {
+    box-shadow: none;
+  }
+}

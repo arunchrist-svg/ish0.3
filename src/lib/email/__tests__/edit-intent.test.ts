@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bodyChangeRatio, detectEditIntent, mentionsSubject } from "@/lib/email/edit-intent";
+import { bodyChangeRatio, detectEditIntent, isStyleOnlyEdit, mentionsSubject } from "@/lib/email/edit-intent";
 
 describe("detectEditIntent", () => {
   it("detects surgical intent for section-specific fixes", () => {
@@ -48,5 +48,18 @@ describe("bodyChangeRatio", () => {
     const before = "Hi Priya,\n\nWould a call work this week?\n\nArun";
     const after = "Hello there,\n\nI wanted to reach out about our premium gift hampers for your team.\n\nBest";
     expect(bodyChangeRatio(before, after)).toBeGreaterThan(0.5);
+  });
+});
+
+describe("isStyleOnlyEdit", () => {
+  it("detects quick style prompts", () => {
+    expect(isStyleOnlyEdit("More formal tone")).toBe(true);
+    expect(isStyleOnlyEdit("Make it shorter")).toBe(true);
+    expect(isStyleOnlyEdit("Stronger CTA")).toBe(true);
+    expect(isStyleOnlyEdit("Fix the subject lines")).toBe(true);
+  });
+
+  it("does not treat content score as style-only", () => {
+    expect(isStyleOnlyEdit("Make Content score higher")).toBe(false);
   });
 });

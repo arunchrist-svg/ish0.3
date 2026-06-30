@@ -8,6 +8,13 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#83a2db",
+};
+
 export const metadata: Metadata = {
   title: "Sales Accelerator",
   description: "Scout, enrich, and outreach for B2B sales teams",
@@ -20,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} h-full stratus`}>
-      <body className="min-h-full antialiased">
+      <body className="min-h-full antialiased ish-mobile-body">
         <script
           id="theme-init"
           dangerouslySetInnerHTML={{

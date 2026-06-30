@@ -88,7 +88,7 @@ export default function FunnelPage() {
               {/* Email Accuracy KPIs */}
               <div className="mb-8 rounded-[24px] bg-white p-6 shadow-[var(--shadow-ish-sm)]">
                 <h2 className="mb-5 text-[15px] font-bold text-ish-ink">Email Accuracy</h2>
-                <div className="grid grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
                   {[
                     { label: "Enrichment Runs", value: data?.emailAccuracy.totalRuns ?? 0 },
                     { label: "With Email", value: data?.emailAccuracy.withEmail ?? 0 },

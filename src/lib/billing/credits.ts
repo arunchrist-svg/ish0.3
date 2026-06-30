@@ -11,6 +11,7 @@ export const CREDIT_COSTS: Record<string, number> = {
   "writer.revision": 3,
   "email.live": 2,
   "linkedin.import": 50,
+  "gift-intel.sweep": 20,
 };
 
 export class InsufficientCreditsError extends Error {

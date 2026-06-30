@@ -1,0 +1,86 @@
+[
+  {
+    "id": "weak-generic-e1",
+    "label": "Generic cold email 1 (calibration weak)",
+    "expectedBand": "weak",
+    "sequencePosition": 1,
+    "subjectA": "Quick question",
+    "emailBody": "Hi Raj,\n\nI wanted to reach out about our gifting services. We offer corporate hampers. Would you like to schedule a 30-minute call? Looking forward to hearing from you.",
+    "contact": {
+      "name": "Raj Kumar",
+      "firstName": "Raj",
+      "title": "HR Director"
+    },
+    "account": {
+      "name": "Acme Bangalore",
+      "industry": "IT",
+      "city": "Bangalore",
+      "employees": "500"
+    },
+    "maxRubricTotal": 45,
+    "maxDeliverability": 79
+  },
+  {
+    "id": "weak-followup-e2",
+    "label": "Follow-up only email 2 (calibration weak)",
+    "expectedBand": "weak",
+    "sequencePosition": 2,
+    "subjectA": "Following up",
+    "emailBody": "Hi Raj,\n\nJust following up on my last email. Did you get a chance to read it?",
+    "contact": {
+      "name": "Raj Kumar",
+      "firstName": "Raj",
+      "title": "HR Director"
+    },
+    "account": {
+      "name": "Acme Bangalore",
+      "industry": "IT",
+      "city": "Bangalore"
+    },
+    "maxDeliverability": 79,
+    "note": "Weak on deliverability (follow-up-only copy); rubric may stay moderate"
+  },
+  {
+    "id": "strong-personalized-e1",
+    "label": "Personalized email 1 (calibration strong)",
+    "expectedBand": "strong",
+    "sequencePosition": 1,
+    "subjectA": "Diwali gifting for Test Corp India",
+    "emailBody": "Hi Priya,\n\nI noticed Test Corp India has been investing in employee engagement across Bangalore.\n\nWe help IT companies with premium Diwali gifting for teams of 500+. Would a 15-minute call next week work to explore options for your team?\n\nNo worries if the timing is off.\n\nBest regards",
+    "contact": {
+      "name": "Priya Sharma",
+      "firstName": "Priya",
+      "title": "HR Director"
+    },
+    "account": {
+      "name": "Test Corp India",
+      "industry": "IT",
+      "city": "Bangalore",
+      "employees": "500"
+    },
+    "minRubricTotal": 70,
+    "minDeliverability": 80
+  },
+  {
+    "id": "strong-rewrite-e1",
+    "label": "Strong rewrite from cold-email-review skill",
+    "expectedBand": "strong",
+    "sequencePosition": 1,
+    "subjectA": "Diwali hampers for Acme Bangalore",
+    "emailBody": "Hi Raj,\n\nAcme's Bangalore campus expansion stood out as Diwali planning kicks off for IT teams in the city. We curate mithai and dry-fruit hampers for corporate teams. Open to a quick note on a few options?\n\nNo worries if timing is off.",
+    "contact": {
+      "name": "Raj Kumar",
+      "firstName": "Raj",
+      "title": "HR Director"
+    },
+    "account": {
+      "name": "Acme Bangalore",
+      "industry": "IT",
+      "city": "Bangalore",
+      "employees": "500"
+    },
+    "giftingHook": "Bangalore campus expansion",
+    "minRubricTotal": 65,
+    "minDeliverability": 75
+  }
+]

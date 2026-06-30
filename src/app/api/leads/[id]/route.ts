@@ -180,6 +180,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             giftingHook: research.giftingHook ?? undefined,
             estimatedOrderValue: research.estimatedOrderValue ?? undefined,
             scoreFactors: (research.scoreFactors as { label: string; bold: string }[]) ?? [],
+            writerPlan: (research.writerPlan as import("@/db/schema").WriterPlan | null) ?? undefined,
           }
         : undefined,
       outreach: activeOutreach

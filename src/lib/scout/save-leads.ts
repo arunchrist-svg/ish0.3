@@ -3,6 +3,7 @@ import { verifyEmail } from "@/lib/enrichment/verify";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { logAudit } from "@/lib/audit";
+import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
 import { callLLM } from "@/lib/llm";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
 import { eq, and, desc } from "drizzle-orm";
@@ -338,6 +339,10 @@ export async function saveScoutLeads(params: {
     });
 
     savedLeads.push({ leadId: lead.id, name: person.name, emailStatus: emailResult.status });
+  }
+
+  if (savedLeads.length > 0) {
+    void enqueueResearchForLeads(savedLeads.map((s) => s.leadId));
   }
 
   return { saved: savedLeads, skipped };

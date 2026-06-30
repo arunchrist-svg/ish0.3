@@ -2,6 +2,9 @@ import { callLLM } from "@/lib/llm";
 import { db, leadResearch, leads, contacts, accounts, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
+import { parseResearcherOutput } from "@/lib/agents/schemas/researcher-output";
+import { generateWriterPlan } from "@/lib/agents/writer-plan";
+import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 
 export async function runResearcherLite(leadId: string): Promise<void> {
   const lead = await db.query.leads.findFirst({
@@ -10,6 +13,13 @@ export async function runResearcherLite(leadId: string): Promise<void> {
   });
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
+
+  const existing = await db.query.leadResearch.findFirst({
+    where: eq(leadResearch.leadId, leadId),
+  });
+  if (existing) return;
+
+  if (lead.status !== "scouted" || !lead.researcherEligible) return;
 
   await assertCredits(lead.tenantId, "research.brief", 1);
 
@@ -50,28 +60,27 @@ Output ONLY valid JSON with this shape:
     system: "You output only valid JSON. No markdown, no commentary.",
     prompt,
     maxTokens: 512,
+    trace: {
+      agent: "researcher-lite",
+      tenantId: lead.tenantId,
+      workspaceId: lead.workspaceId,
+      leadId,
+    },
   });
 
-  let parsed: {
-    giftingHook?: string;
-    estimatedOrderValue?: string;
-    decisionChain?: string[];
-    outreachHooks?: string[];
-    scoreFactors?: { label: string; bold: string }[];
-  } = {};
-  try {
-    parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-  } catch {
-    parsed = {
-      giftingHook: `${account.name} — corporate gifting opportunity for ${contact.title ?? "HR/Admin"} team`,
-      estimatedOrderValue: "₹2–8 lakhs",
-      decisionChain: [contact.name],
-      outreachHooks: ["Diwali season", "Premium mithai"],
-      scoreFactors: [
-        { label: "Purchase timeframe is", bold: "Diwali season" },
-        { label: "Estimated budget is", bold: account.giftBudget ?? "unknown" },
-      ],
-    };
+  const { data: validated, valid } = parseResearcherOutput(raw);
+  const parsed = validated ?? {
+    giftingHook: `${account.name} corporate gifting opportunity for ${contact.title ?? "HR/Admin"} team`,
+    estimatedOrderValue: "₹2–8 lakhs",
+    decisionChain: [contact.name],
+    outreachHooks: ["Diwali season", "Premium mithai"],
+    scoreFactors: [
+      { label: "Purchase timeframe is", bold: "Diwali season" },
+      { label: "Estimated budget is", bold: account.giftBudget ?? "unknown" },
+    ],
+  };
+  if (!valid) {
+    console.warn("[researcher-lite] LLM output failed schema validation for lead", leadId);
   }
 
   await db.insert(leadResearch).values({
@@ -89,10 +98,18 @@ Output ONLY valid JSON with this shape:
   await db.update(leads).set({ status: "researched" }).where(eq(leads.id, leadId));
   await db.insert(yieldFunnel).values({ leadId, stage: "researched" });
 
+  try {
+    await generateWriterPlan(leadId);
+  } catch (e) {
+    console.warn("[researcher-lite] writer plan generation failed", leadId, e);
+  }
+
   await deductCredits({
     tenantId: lead.tenantId,
     action: "research.brief",
     referenceId: leadId,
     idempotencyKey: `research-${leadId}`,
   });
+
+  void notifyLeadEvent(leadId, "research.complete");
 }

@@ -1,6 +1,6 @@
 import { callLLM } from "@/lib/llm";
-import { db, leadOutreach, leads, contacts, accounts, leadResearch } from "@/db";
-import { eq, desc } from "drizzle-orm";
+import { db, leadOutreach, leads, contacts, accounts, leadResearch, outreachSchedule } from "@/db";
+import { eq, and, asc } from "drizzle-orm";
 import {
   scoreSpamMeter,
   deliverabilityVerdict,
@@ -15,11 +15,24 @@ import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
 import { getRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { getReplyCtaInstruction, REPLY_SEQUENCE_POSITION } from "@/lib/email/outreach-templates";
+import { extractPriorCta } from "@/lib/email/reply-intent";
+import { classifyReplyIntentAsync } from "@/lib/email/reply-intent-llm";
+import { generateReplyPlan, formatReplyPlanForPrompt } from "@/lib/agents/reply-planner";
+import { tierForAgentStep } from "@/lib/llm/routing-policy";
+import { auditContentScored } from "@/lib/email/feedback-hooks";
+import { pickOriginalEmailContext } from "@/lib/email/reply-context";
 
-const PROMPT_VERSION = "v1.2-reply-tone";
-const MAX_REVISIONS = 1;
+const PROMPT_VERSION = "v2.0-planner-quality";
+const MAX_REVISIONS = 2;
 
-export async function runReplyWriter(leadId: string): Promise<string> {
+export type ReplyWriterResult = {
+  outreachId: string;
+  rubricTotal: number;
+  intent: string;
+};
+
+export async function runReplyWriter(leadId: string): Promise<ReplyWriterResult> {
   const lead = await db.query.leads.findFirst({
     where: eq(leads.id, leadId),
     with: { contact: true, account: true },
@@ -37,10 +50,17 @@ export async function runReplyWriter(leadId: string): Promise<string> {
     where: eq(leadResearch.leadId, leadId),
   });
 
-  const originalOutreach = await db.query.leadOutreach.findFirst({
+  const sentScheduleRows = await db
+    .select()
+    .from(outreachSchedule)
+    .where(and(eq(outreachSchedule.leadId, leadId), eq(outreachSchedule.status, "sent")))
+    .orderBy(asc(outreachSchedule.sentAt));
+
+  const outreachRows = await db.query.leadOutreach.findMany({
     where: eq(leadOutreach.leadId, leadId),
-    orderBy: [desc(leadOutreach.createdAt)],
   });
+
+  const originalContext = pickOriginalEmailContext({ sentScheduleRows, outreachRows });
 
   const replyRaw = (lead as typeof leads.$inferSelect & { lastReplyContent?: string | null }).lastReplyContent;
   const replyContent = extractLatestReplyText(replyRaw);
@@ -49,6 +69,14 @@ export async function runReplyWriter(leadId: string): Promise<string> {
     throw new Error("No reply content available to draft a response");
   }
 
+  const priorCta = extractPriorCta(originalContext.emailBody);
+  const replyIntent = await classifyReplyIntentAsync(replyContent, priorCta, {
+    tenantId: lead.tenantId,
+    workspaceId: lead.workspaceId,
+    leadId,
+  });
+  const replyCtaInstruction = getReplyCtaInstruction(originalContext.templateVariant, replyIntent.intent);
+
   const brandConfig = emailConfig.brandConfig ?? {
     brandSlug: "ish" as const,
     brandName: "India Sweet House",
@@ -56,6 +84,31 @@ export async function runReplyWriter(leadId: string): Promise<string> {
     productSummary: "",
     buyerPersonas: [],
   };
+
+  const intentBlock = [
+    `Reply intent: ${replyIntent.intent}${replyIntent.agreedTo ? ` (agreed to ${replyIntent.agreedTo})` : ""}`,
+    priorCta ? `Prior CTA they answered: "${priorCta}"` : null,
+    `Next CTA (required): ${replyCtaInstruction}`,
+    replyIntent.intent === "affirmative"
+      ? "Never repeat the prior CTA question they already answered affirmatively."
+      : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const replyPlan = await generateReplyPlan({
+    contactFirstName,
+    companyName: account.name,
+    originalEmail: originalContext.emailBody,
+    replyContent,
+    intent: replyIntent,
+    replyCtaInstruction,
+    giftingHook: research?.giftingHook,
+    tenantId: lead.tenantId,
+    workspaceId: lead.workspaceId,
+    leadId,
+  });
+
 
   const systemPrompt = `You are ${brandConfig.brandName}'s reply writer. Craft specific, natural email replies.
 ${getWriterTonePersona(brandConfig)}
@@ -76,7 +129,7 @@ Gifting hook: ${research?.giftingHook ?? "Diwali season gifting"}
 
 Our original email:
 """
-${originalOutreach?.emailBody ?? "We reached out about Diwali corporate gifting."}
+${originalContext.emailBody}
 """
 
 Their reply:
@@ -84,9 +137,13 @@ Their reply:
 ${replyContent}
 """
 
+${intentBlock}
+
+${formatReplyPlanForPrompt(replyPlan)}
+
 Instructions:
 - Respond naturally and specifically to what they said
-- Move toward the next step: booking a call, confirming a sample, or answering their question
+- Follow the Next CTA above. Do not re-ask questions they already answered.
 - Keep it friendly but professional, short, and human. Not salesy, no fluff
 - Never use em dashes. One question CTA only.
 - Never cite employee counts or numeric company stats.
@@ -97,7 +154,10 @@ Instructions:
     emailStyle: emailConfig.emailStyle,
     fromName: emailConfig.fromName,
     contactFirstName,
-    sequencePosition: 2,
+    sequencePosition: REPLY_SEQUENCE_POSITION,
+    isReplyDraft: true,
+    replyIntent: replyIntent.intent,
+    priorCta,
     account: {
       name: account.name,
       employees: account.employees,
@@ -124,7 +184,7 @@ Instructions:
 
   const threadRoot =
     (lead as typeof leads.$inferSelect & { threadRootSubject?: string | null }).threadRootSubject ??
-    (originalOutreach?.subjectA ? stripReplyPrefix(originalOutreach.subjectA) : `Diwali gifting for ${account.name}`);
+    (originalContext.subjectA ? stripReplyPrefix(originalContext.subjectA) : `Diwali gifting for ${account.name}`);
 
   let emailBody = "";
   let subjectA = normalizeReplySubject(threadRoot);
@@ -133,7 +193,7 @@ Instructions:
 
   for (let attempt = 0; attempt <= MAX_REVISIONS; attempt++) {
     const raw = await callLLM({
-      tier: "fast",
+      tier: tierForAgentStep("reply.write"),
       system: systemPrompt,
       prompt:
         attempt === 0
@@ -177,6 +237,9 @@ Instructions:
   const finalSpam = scoreSpamMeter(emailBody, subjectA, delivOpts);
   const delivScore = finalSpam.inboxScore;
 
+  const finalRubric = await scoreRubric({ subjectA, emailBody, ...rubricParams });
+  const rubricTotal = scoreRubricTotal(finalRubric);
+
   const [outreach] = await db
     .insert(leadOutreach)
     .values({
@@ -188,12 +251,25 @@ Instructions:
       emailBody,
       deliverabilityScore: delivScore,
       deliverabilityVerdict: deliverabilityVerdict(delivScore),
-      revisionCount: 0,
+      rubricScore: finalRubric,
+      rubricTotal,
+      revisionCount: MAX_REVISIONS,
       templateVariant: "reply",
+      sequencePosition: REPLY_SEQUENCE_POSITION,
       outreachGoal,
       confidenceTier: research?.confidenceTier ?? "low",
     })
     .returning();
 
-  return outreach.id;
+  void auditContentScored({
+    tenantId: lead.tenantId,
+    workspaceId: lead.workspaceId,
+    leadId,
+    leadOutreachId: outreach.id,
+    contentScore: delivScore,
+    ruleHits: finalSpam.ruleHits ?? [],
+    sequencePosition: REPLY_SEQUENCE_POSITION,
+  });
+
+  return { outreachId: outreach.id, rubricTotal, intent: replyIntent.intent };
 }

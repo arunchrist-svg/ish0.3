@@ -1,5 +1,6 @@
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
+import { computeSeniorityScore } from "./seniority-score";
 
 const BASE = "https://api.apollo.io/v1";
 
@@ -91,13 +92,14 @@ function isKeyDecisionMaker(title?: string): boolean {
 }
 
 function computeMatchScore(p: Record<string, unknown>): number {
-  let score = 50;
-  const title = (p.title as string ?? "").toLowerCase();
-  if (["hr", "admin", "procurement"].some((k) => title.includes(k))) score += 20;
-  if (["director", "head", "vp", "chief", "cpo"].some((k) => title.includes(k))) score += 15;
-  if (p.email) score += 10;
-  if (p.linkedin_url) score += 5;
-  return Math.min(score, 99);
+  return computeSeniorityScore({
+    title: p.title as string | undefined,
+    seniority: p.seniority as string | undefined,
+    isKeyDM: isKeyDecisionMaker(p.title as string | undefined),
+    email: p.email as string | undefined,
+    emailStatus: p.email ? "verified" : "missing",
+    linkedIn: p.linkedin_url as string | undefined,
+  }).total;
 }
 
 function estimateGiftScore(a: Record<string, unknown>): number {
@@ -107,4 +109,63 @@ function estimateGiftScore(a: Record<string, unknown>): number {
   else if (emp > 1000) score += 15;
   else if (emp > 200) score += 8;
   return Math.min(score, 99);
+}
+
+export async function apolloSearchOrganizationByName(params: {
+  name?: string;
+  domain?: string;
+  city?: string;
+  limit?: number;
+}): Promise<ScoutCompanyResult[]> {
+  const body: Record<string, unknown> = { per_page: params.limit ?? 5 };
+  if (params.domain) body.q_organization_domains = [params.domain];
+  if (params.name) body.q_organization_name = params.name;
+  if (params.city) body.organization_locations = [params.city];
+
+  const data = await apolloPost("/organizations/search", body);
+  return (data.organizations ?? data.accounts ?? []).map((a: Record<string, unknown>) => ({
+    name: a.name as string,
+    domain: (a.primary_domain as string | undefined) ?? params.domain,
+    website: a.website_url as string | undefined,
+    industry: a.industry as string | undefined,
+    city: (a.city as string | undefined) ?? params.city,
+    employees: a.estimated_num_employees ? String(a.estimated_num_employees) : undefined,
+    logo: a.logo_url as string | undefined,
+    giftScore: estimateGiftScore(a),
+    dataSource: "apollo",
+    externalId: a.id as string | undefined,
+  }));
+}
+
+export async function apolloSearchPersonByName(params: {
+  name: string;
+  domain: string;
+  limit?: number;
+}): Promise<ScoutPersonResult[]> {
+  const data = await apolloPost("/mixed_people/search", {
+    q_organization_domains: [params.domain],
+    q_keywords: params.name,
+    per_page: params.limit ?? 5,
+  });
+
+  return (data.people ?? []).map((p: Record<string, unknown>) => {
+    const email = p.email as string | undefined;
+    return {
+      name: p.name as string,
+      firstName: p.first_name as string | undefined,
+      lastName: p.last_name as string | undefined,
+      title: p.title as string | undefined,
+      department: (p.departments as string[] | undefined)?.[0],
+      seniority: p.seniority as string | undefined,
+      email,
+      emailStatus: email ? classifyEmail(email) : "missing",
+      phone: (p.phone_numbers as Record<string, string>[] | undefined)?.[0]?.["sanitized_number"],
+      linkedIn: normalizeLinkedInUrl(p.linkedin_url as string | undefined),
+      bio: p.headline as string | undefined,
+      isKeyDM: isKeyDecisionMaker(p.title as string | undefined),
+      matchScore: computeMatchScore(p),
+      dataSource: "apollo",
+      externalId: p.id as string | undefined,
+    };
+  });
 }

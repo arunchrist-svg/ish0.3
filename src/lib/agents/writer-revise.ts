@@ -1,6 +1,7 @@
 import { callLLM } from "@/lib/llm";
-import { db, leadOutreach, outreachEditMessages, leads, contacts, accounts, leadResearch } from "@/db";
-import { eq, asc } from "drizzle-orm";
+import { tierForAgentStep } from "@/lib/llm/routing-policy";
+import { db, leadOutreach, outreachEditMessages, leads, contacts, accounts, leadResearch, outreachSchedule } from "@/db";
+import { eq, asc, and } from "drizzle-orm";
 import {
   scoreSpamMeter,
   deliverabilityVerdict,
@@ -9,11 +10,15 @@ import {
   scoreRubric,
   scoreRubricTotal,
   getCombinedRevisionIssues,
+  getDeliverabilityIssues,
 } from "@/lib/agents/writer-scoring";
 import { toWriterDraft, toEditMessage } from "@/lib/agents/writer-draft";
-import { getOutreachTemplate } from "@/lib/email/outreach-templates";
+import { getOutreachTemplate, getReplyCtaInstruction, REPLY_SEQUENCE_POSITION } from "@/lib/email/outreach-templates";
+import { classifyReplyIntent, extractPriorCta } from "@/lib/email/reply-intent";
+import { pickOriginalEmailContext } from "@/lib/email/reply-context";
+import { extractLatestReplyText } from "@/lib/email/reply-body";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { getAntiSpamWritingRules, getRevisionInstruction } from "@/lib/email/content-rules-prompt";
+import { getAntiSpamWritingRules, getRevisionInstruction, getStyleOnlyRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
 import {
   buildContentScoreImproveMessage,
@@ -22,9 +27,11 @@ import {
 import {
   bodyChangeRatio,
   detectEditIntent,
+  isStyleOnlyEdit,
   mentionsSubject,
   type EditIntent,
 } from "@/lib/email/edit-intent";
+import { normalizeEmailBody, EMAIL_BODY_FORMAT_RULE } from "@/lib/email/email-body-format";
 
 const MAX_HISTORY_IN_PROMPT = 20;
 const MAX_REVISIONS = 1;
@@ -43,8 +50,9 @@ function buildSystemPrompt(params: {
   tonePersona: string;
   antiSpamRules: string;
   intent: EditIntent;
+  styleOnly: boolean;
 }): string {
-  const { brandName, tonePersona, antiSpamRules, intent } = params;
+  const { brandName, tonePersona, antiSpamRules, intent, styleOnly } = params;
 
   const importantBlock =
     intent === "surgical"
@@ -55,7 +63,13 @@ function buildSystemPrompt(params: {
 - If the instruction does not mention subject, title, greeting, or salutation, return subjectA and subjectB IDENTICAL to the current values.
 - Still return full subjectA, subjectB, and emailBody fields in JSON, but unchanged fields must match the input exactly.
 - changeSummary must only describe the specific change you made.`
-      : `IMPORTANT:
+      : styleOnly
+        ? `IMPORTANT (STYLE-ONLY EDIT):
+- Apply ONLY the stylistic change the user asked for (tone, length, or CTA strength).
+- Do NOT add new facts, job titles, research hooks, industry details, or intel not already in the draft.
+- Keep existing facts and personalization; rephrase wording only.
+- changeSummary must describe only the tone/length/CTA change, not new research added.`
+        : `IMPORTANT:
 - Always return the FULL updated subjectA, subjectB, and emailBody, not just a summary.
 - If the user asks to change "title", "subject", "greeting", or "salutation", update the subject line(s) AND the opening line of the email body to match.
 - "Hi [Name]" requests should change both subject (if relevant) and body opening from "Dear Dr. ..." to "Hi [FirstName],".
@@ -65,6 +79,7 @@ function buildSystemPrompt(params: {
 ${tonePersona}
 Max 120 words. Open with "Hi {firstName},".
 ${antiSpamRules}
+${EMAIL_BODY_FORMAT_RULE}
 
 ${importantBlock}
 
@@ -89,6 +104,7 @@ function buildUserPrompt(params: {
   contactFirstName: string;
   companyName: string;
   intent: EditIntent;
+  styleOnly: boolean;
 }): string {
   const {
     subjectA,
@@ -102,12 +118,15 @@ function buildUserPrompt(params: {
     contactFirstName,
     companyName,
     intent,
+    styleOnly,
   } = params;
 
   const closingInstruction =
     intent === "surgical"
-      ? `Make the smallest edit that satisfies the instruction. Preserve all other text exactly. Keep personalization for ${contactFirstName} and ${companyName}.`
-      : `Apply the instruction to the full draft above. Keep personalization for ${contactFirstName} and ${companyName}.
+      ? `Make the smallest edit that satisfies the instruction. Preserve all other text exactly.`
+      : styleOnly
+        ? `Apply only the stylistic change requested. Do not add new research, role titles, or hooks. Preserve facts already in the draft.`
+        : `Apply the instruction to the full draft above. Keep personalization for ${contactFirstName} and ${companyName}.
 Return complete revised subjectA, subjectB, and emailBody reflecting every change requested.`;
 
   return `Current draft:
@@ -124,6 +143,8 @@ Edit history:
 ${history}
 
 User instruction: ${effectiveMessage}
+
+The user's edit request overrides template defaults. Apply their instruction even if it differs from the template goal.
 
 ${closingInstruction}`;
 }
@@ -144,7 +165,7 @@ async function callReviseLLM(params: {
   extraNote?: string;
 }): Promise<ParsedDraft> {
   const raw = await callLLM({
-    tier: "fast",
+    tier: tierForAgentStep("writer.revise"),
     system: params.systemPrompt,
     prompt: params.extraNote ? `${params.userPrompt}\n\n${params.extraNote}` : params.userPrompt,
     maxTokens: 1024,
@@ -197,7 +218,10 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
   const senderFirstName = emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
-  const sequencePosition = outreach.sequencePosition ?? 1;
+  const isReplyDraft = outreach.templateVariant === "reply";
+  const sequencePosition = isReplyDraft
+    ? REPLY_SEQUENCE_POSITION
+    : (outreach.sequencePosition ?? 1);
   const brandConfig = emailConfig.brandConfig ?? {
     brandSlug: "ish" as const,
     brandName: emailConfig.fromName,
@@ -205,7 +229,32 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     productSummary: "",
     buyerPersonas: [],
   };
-  const template = getOutreachTemplate(outreach.templateVariant ?? undefined);
+  const template = getOutreachTemplate(
+    isReplyDraft ? undefined : (outreach.templateVariant ?? undefined),
+  );
+
+  let templateGoal = `${template.label}: ${template.ctaInstruction}`;
+  let replyPriorCta: string | null = null;
+  let replyIntent = classifyReplyIntent("", null);
+
+  if (isReplyDraft) {
+    const sentScheduleRows = await db
+      .select()
+      .from(outreachSchedule)
+      .where(and(eq(outreachSchedule.leadId, outreach.leadId), eq(outreachSchedule.status, "sent")))
+      .orderBy(asc(outreachSchedule.sentAt));
+
+    const outreachRows = await db.query.leadOutreach.findMany({
+      where: eq(leadOutreach.leadId, outreach.leadId),
+    });
+
+    const originalContext = pickOriginalEmailContext({ sentScheduleRows, outreachRows });
+    const replyRaw = (lead as typeof leads.$inferSelect & { lastReplyContent?: string | null }).lastReplyContent;
+    const replyContent = extractLatestReplyText(replyRaw) ?? "";
+    replyPriorCta = extractPriorCta(originalContext.emailBody);
+    replyIntent = classifyReplyIntent(replyContent, replyPriorCta);
+    templateGoal = getReplyCtaInstruction(originalContext.templateVariant, replyIntent.intent);
+  }
 
   const priorMessages = await db.query.outreachEditMessages.findMany({
     where: eq(outreachEditMessages.leadOutreachId, leadOutreachId),
@@ -217,6 +266,9 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     fromName: emailConfig.fromName,
     contactFirstName,
     sequencePosition,
+    isReplyDraft,
+    replyIntent: isReplyDraft ? replyIntent.intent : undefined,
+    priorCta: isReplyDraft ? replyPriorCta : undefined,
     account: {
       name: account.name,
       employees: account.employees,
@@ -258,19 +310,22 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   }
 
   const intent = detectEditIntent(effectiveMessage);
+  const styleOnly = isStyleOnlyEdit(userMessage);
 
   const antiSpamRules = getAntiSpamWritingRules({
     sequencePosition,
     senderFirstName,
     brandName: emailConfig.brandConfig?.brandName ?? emailConfig.fromName,
     emailStyle: emailConfig.emailStyle,
-    });
+    isReplyDraft,
+  });
 
   const systemPrompt = buildSystemPrompt({
     brandName: brandConfig.brandName,
     tonePersona: getWriterTonePersona(brandConfig),
     antiSpamRules,
     intent,
+    styleOnly,
   });
 
   const originalSubjectA = outreach.subjectA ?? "";
@@ -283,12 +338,13 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     emailBody: originalBody,
     contactLine: `${contact.firstName ?? contact.name}, ${contact.title ?? "HR/Admin"}`,
     companyLine: `${account.name}, ${account.city ?? "India"}`,
-    templateGoal: `${template.label}: ${template.ctaInstruction}`,
+    templateGoal,
     history: formatHistory(priorMessages),
     effectiveMessage,
     contactFirstName: contactFirstName ?? contact.name,
     companyName: account.name,
     intent,
+    styleOnly,
   });
 
   let subjectA = originalSubjectA;
@@ -303,19 +359,23 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
         ? undefined
         : intent === "surgical"
           ? SURGICAL_RETRY_NOTE
-          : getRevisionInstruction(
-              await getCombinedRevisionIssues(emailBody, subjectA, {
-                subjectA,
-                emailBody,
-                ...rubricParams,
-              }),
-            );
+          : styleOnly
+            ? getStyleOnlyRevisionInstruction(
+                await getDeliverabilityIssues(emailBody, subjectA, delivOpts),
+              )
+            : getRevisionInstruction(
+                await getCombinedRevisionIssues(emailBody, subjectA, {
+                  subjectA,
+                  emailBody,
+                  ...rubricParams,
+                }),
+              );
 
     const parsed = await callReviseLLM({ systemPrompt, userPrompt: baseUserPrompt, extraNote });
 
     subjectA = parsed.subjectA ?? subjectA;
     subjectB = parsed.subjectB ?? subjectB;
-    emailBody = parsed.emailBody ?? emailBody;
+    emailBody = normalizeEmailBody(parsed.emailBody ?? emailBody);
     changeSummary = parsed.changeSummary ?? changeSummary;
 
     const locked = applySubjectLock({
@@ -346,7 +406,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
         });
         subjectA = retryParsed.subjectA ?? subjectA;
         subjectB = retryParsed.subjectB ?? subjectB;
-        emailBody = retryParsed.emailBody ?? emailBody;
+        emailBody = normalizeEmailBody(retryParsed.emailBody ?? emailBody);
         changeSummary = retryParsed.changeSummary ?? changeSummary;
 
         const retryLocked = applySubjectLock({
@@ -369,6 +429,8 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
       break;
     }
 
+    if (styleOnly && spamResult.inboxScore >= DELIVERABILITY_PASS_THRESHOLD) break;
+
     if (passesQuality || attempt === MAX_REVISIONS) break;
   }
 
@@ -378,6 +440,8 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   if (unchanged) {
     changeSummary = "No visible changes applied. Try being more specific (e.g. change greeting to Hi Vikram).";
   }
+
+  emailBody = normalizeEmailBody(emailBody);
 
   const finalSpam = scoreSpamMeter(emailBody, subjectA, delivOpts);
   const delivScore = finalSpam.inboxScore;

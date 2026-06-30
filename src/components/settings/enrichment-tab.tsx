@@ -8,6 +8,10 @@ import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Save } from "lucide-react";
 import {
+  formatCompetitorBrandsForInput,
+  parseCompetitorBrandsInput,
+} from "@/lib/gift-intel/config";
+import {
   SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
   DATA_MODE_OPTIONS,
@@ -186,6 +190,28 @@ export function EnrichmentTab({
         )}
       </SettingsGroup>
 
+
+      <SettingsGroup
+        title="Brand Intelligence"
+        footer="Corporate Gift Tracker uses the product category and competitor list below. Pick one competitor per sweep on the Brand Intelligence page."
+      >
+        <SettingsTextRow
+          label="Product category"
+          desc="Target product type for OSINT sweeps (ISH default: Sweets)"
+          value={config.giftIntelProductCategory ?? ""}
+          onChange={(v) => onUpdate("giftIntelProductCategory", v)}
+          placeholder="Sweets"
+        />
+        <SettingsGroupDivider />
+        <SettingsTextAreaRow
+          label="Competitor brands"
+          desc="One brand per line. These appear as sweep targets on Brand Intelligence."
+          value={formatCompetitorBrandsForInput(config.giftIntelCompetitorBrands)}
+          onChange={(v) => onUpdate("giftIntelCompetitorBrands", parseCompetitorBrandsInput(v))}
+          placeholder={"Kanti Sweets\nAnand Sweets\nHaldiram's"}
+        />
+      </SettingsGroup>
+
       <SettingsGroup title="Behaviour">
         <SettingsToggleRow
           label="Fallback to AI"
@@ -205,3 +231,64 @@ export function EnrichmentTab({
     </div>
   );
 }
+
+function SettingsTextRow({
+  label,
+  desc,
+  value,
+  onChange,
+  placeholder,
+  showDivider,
+}: {
+  label: string;
+  desc: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  showDivider?: boolean;
+}) {
+  return (
+    <>
+      {showDivider ? <SettingsGroupDivider /> : null}
+      <div className="px-4 py-3">
+        <div className="mb-1.5 text-[13px] font-semibold text-ish-ink">{label}</div>
+        <p className="mb-2 text-[11.5px] text-ish-ink-soft">{desc}</p>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded-xl border border-ish-border/70 bg-white/80 px-3 py-2 text-[13px] text-ish-ink outline-none focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)]"
+        />
+      </div>
+    </>
+  );
+}
+
+function SettingsTextAreaRow({
+  label,
+  desc,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  desc: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="px-4 py-3">
+      <div className="mb-1.5 text-[13px] font-semibold text-ish-ink">{label}</div>
+      <p className="mb-2 text-[11.5px] text-ish-ink-soft">{desc}</p>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={5}
+        className="w-full resize-y rounded-xl border border-ish-border/70 bg-white/80 px-3 py-2 text-[13px] text-ish-ink outline-none focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)]"
+      />
+    </div>
+  );
+}
+

@@ -1,0 +1,10 @@
+[
+  {
+    "id": "affirmative-sample",
+    "replyContent": "Yes please send a sample",
+    "priorCta": "Would you like a sample box?",
+    "intent": "affirmative",
+    "minRubricTotal": 75,
+    "antiPatterns": ["Thank you for your response", "I hope this finds you well"]
+  }
+]

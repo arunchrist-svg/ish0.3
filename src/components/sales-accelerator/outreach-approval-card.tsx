@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, Mail, Save, Send, Sparkles } from "lucide-react";
+import { Loader2, Mail, Save, Send, Sparkles, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { EmailThread, WriterDraft } from "@/lib/api-client";
 import {
   approveOutreach,
   sendOutreach,
+  sendFollowUp,
   updateOutreachDraft,
   SenderPreflightApiError,
   EmailSendRejectedError,
@@ -34,6 +35,7 @@ type Props = {
   generatingReply?: boolean;
   contentScore?: number;
   emailThread?: EmailThread;
+  scheduleIdForFollowUp?: string;
 };
 
 function useAutoGrowTextarea(value: string) {
@@ -74,6 +76,7 @@ export function OutreachApprovalCard({
   generatingReply,
   contentScore,
   emailThread,
+  scheduleIdForFollowUp,
 }: Props) {
   const [subjectUsed, setSubjectUsed] = useState<"A" | "B">("A");
   const [displayDraft, setDisplayDraft] = useState(draft);
@@ -82,14 +85,26 @@ export function OutreachApprovalCard({
   const [sending, setSending] = useState(false);
   const [senderHealth, setSenderHealth] = useState<SenderHealthResponse | null>(null);
   const [preflightOverrideAck, setPreflightOverrideAck] = useState(false);
+  const [qualityOverrideAck, setQualityOverrideAck] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [outreachPaused, setOutreachPaused] = useState(false);
   const [fromLabel, setFromLabel] = useState<string | null>(null);
   const bodyText = displayDraft.emailBody ?? "";
   const { ref: bodyRef, resize: resizeBody } = useAutoGrowTextarea(bodyText);
 
   const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
-  const canSend = isReplyDraft || !draft.sequencePosition || draft.sequencePosition === 1;
+  const isFollowUpReview = Boolean(scheduleIdForFollowUp);
+  const canSend = isReplyDraft || isFollowUpReview || !draft.sequencePosition || draft.sequencePosition === 1;
   const senderBlocked = Boolean(senderHealth?.hasCritical && !preflightOverrideAck);
+  const qualityBlocked =
+    !isReplyDraft &&
+    Boolean(
+      displayDraft.revisionTimeout ||
+        (displayDraft.rubricTotal != null &&
+          displayDraft.rubricTotal < 80) ||
+        (displayDraft.deliverabilityScore != null && displayDraft.deliverabilityScore < 80),
+    ) &&
+    !qualityOverrideAck;
 
   const isDraftLocked =
     ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus) ||
@@ -201,6 +216,26 @@ export function OutreachApprovalCard({
     requestAnimationFrame(resizeBody);
   }
 
+
+  async function handleReject() {
+    setRejecting(true);
+    try {
+      await approveOutreach({
+        leadOutreachId: displayDraft.id,
+        leadId,
+        channel: "email",
+        status: "rejected",
+        rejectReason: "not_ready",
+      });
+      toast.success("Draft rejected");
+      onSendFailed?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not reject draft");
+    } finally {
+      setRejecting(false);
+    }
+  }
+
   async function handleSendToOutreach() {
     if (outreachPaused) {
       toast.error("Outreach sending is paused. Resume in Email queue or Settings.");
@@ -229,6 +264,16 @@ export function OutreachApprovalCard({
         await new Promise((r) => setTimeout(r, 300));
       }
 
+      if (isFollowUpReview && scheduleIdForFollowUp) {
+        const result = await sendFollowUp(scheduleIdForFollowUp, {
+          overridePreflight: preflightOverrideAck,
+          overrideQualityGate: qualityOverrideAck,
+        });
+        toast.success(`Follow-up sent (${result.mode})`);
+        onSent?.();
+        return;
+      }
+
       const { approvalId } = await approveOutreach({
         leadOutreachId: displayDraft.id,
         leadId,
@@ -239,6 +284,7 @@ export function OutreachApprovalCard({
 
       const result = await sendOutreach(approvalId, {
         overridePreflight: preflightOverrideAck,
+        overrideQualityGate: qualityOverrideAck,
       });
       const recipient = result.to ?? contactEmail;
       const modeLabel =
@@ -275,6 +321,23 @@ export function OutreachApprovalCard({
       className="ish-record-card overflow-hidden rounded-[20px] border border-ish-border/60 bg-white shadow-[var(--shadow-ish-sm)]"
     >
       <div className="flex flex-col p-4 sm:p-5">
+
+        {!isDraftLocked && qualityBlocked ? (
+          <div className="mb-3 rounded-[14px] border border-amber-300/60 bg-amber-50 px-3.5 py-2.5 text-[11px] text-amber-900">
+            {displayDraft.revisionTimeout
+              ? "This draft did not pass automated quality checks after revision."
+              : "Inbox or rubric score is below the recommended threshold."}
+            {" "}
+            <button
+              type="button"
+              className="font-semibold underline"
+              onClick={() => setQualityOverrideAck(true)}
+            >
+              Send anyway
+            </button>
+          </div>
+        ) : null}
+
         {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet && (
           <div className="mb-3 rounded-[14px] border border-ish-stratus-blue/22 bg-ish-green-soft px-3.5 py-2.5">
             <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-ish-stratus-blue">They said</div>
@@ -371,6 +434,7 @@ export function OutreachApprovalCard({
           )}
           <div className="pointer-events-none absolute right-3 top-2 text-[9px] text-ish-ink-faint/80">
             {displayDraft.draftSource} · {displayDraft.revisionCount ?? 0} rev
+            {displayDraft.rubricTotal != null ? ` · rubric ${displayDraft.rubricTotal}` : ""}
           </div>
         </div>
 
@@ -390,6 +454,15 @@ export function OutreachApprovalCard({
               ) : saving ? (
                 <span className="text-[10px] text-ish-ink-faint">Saving…</span>
               ) : null}
+              <button
+                type="button"
+                onClick={() => void handleReject()}
+                disabled={rejecting || saving || sending}
+                className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2 text-[12px] font-semibold text-red-700 shadow-[var(--shadow-ish-sm)] transition-opacity hover:bg-red-50 disabled:opacity-50"
+              >
+                {rejecting ? <Loader2 className="size-3.5 animate-spin" /> : <XCircle className="size-3.5" />}
+                Reject
+              </button>
               <button
                 type="button"
                 onClick={() => void handleSave()}
@@ -421,11 +494,11 @@ export function OutreachApprovalCard({
                   <button
                     type="button"
                     onClick={() => void handleSendToOutreach()}
-                    disabled={sending || saving || outreachPaused || senderBlocked}
+                    disabled={sending || saving || outreachPaused || senderBlocked || qualityBlocked}
                     className="inline-flex items-center gap-2 rounded-full bg-ish-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-                    {sending ? "Sending…" : isReplyDraft ? "Send Reply" : "Send & start sequence"}
+                    {sending ? "Sending…" : isFollowUpReview ? "Send follow-up" : isReplyDraft ? "Send Reply" : "Send & start sequence"}
                   </button>
                 </div>
               )}

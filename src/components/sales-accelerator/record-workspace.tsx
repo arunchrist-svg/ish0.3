@@ -20,6 +20,8 @@ import { statusToPipelineIndex } from "@/lib/pipeline-status";
 import { hasUsableEmail } from "@/lib/enrichment/contact-emails";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
 import { WorkspaceLoader } from "@/components/sales-accelerator/workspace-loader";
+import { WriterPlanCard } from "@/components/sales-accelerator/writer-plan-card";
+import { RelatedLeadsPanel } from "@/components/sales-accelerator/related-leads-panel";
 
 type Props = {
   leadId: string;
@@ -258,7 +260,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   const hasDraft = !!lead.outreach;
 
   return (
-    <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto p-[22px_26px]">
+    <div className="relative min-h-0 min-w-0 flex-1 overflow-y-auto p-4 lg:p-[22px_26px]">
       {refreshing && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-start justify-center bg-white/50 pt-28 backdrop-blur-[2px]">
           <ActionLoader variant="refresh" contactName={lead.name} />
@@ -270,8 +272,8 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
         </div>
         <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); syncTabToUrl(tab); }} className="bg-white">
-        <div className="px-[22px] pt-4">
-          <TabsList className="h-auto gap-1.5 bg-transparent p-0">
+        <div className="ish-scroll-tabs overflow-x-auto px-4 pt-4 lg:px-[22px]">
+          <TabsList className="h-auto min-w-max gap-1.5 bg-transparent p-0">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab}
@@ -290,7 +292,10 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
         </div>
 
         <TabsContent value="Summary" className="mt-0 animate-ish-tab-in">
-          <div className="grid grid-cols-3 gap-4 px-[22px] py-[18px]">
+          <div className="px-[22px] pt-[18px]">
+            <WriterPlanCard lead={lead} onUpdated={() => void refreshInline(false)} />
+          </div>
+          <div className="grid grid-cols-1 gap-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3 lg:px-[22px] lg:py-[18px]">
             <ContactCard
               record={record}
               current={current}
@@ -362,15 +367,13 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           <RelationshipAnalyticsPanel key={leadId} leadId={leadId} />
         </TabsContent>
 
-        {["Details", "Related"].map((tab) => (
-          <TabsContent
-            key={tab}
-            value={tab}
-            className="px-[22px] py-12 text-center text-ish-ink-soft animate-ish-tab-in"
-          >
-            {tab} view coming soon.
+        <TabsContent value="Details" className="px-[22px] py-12 text-center text-ish-ink-soft animate-ish-tab-in">
+            Details view coming soon.
           </TabsContent>
-        ))}
+
+        <TabsContent value="Related" className="mt-0 animate-ish-tab-in">
+          <RelatedLeadsPanel leadId={leadId} />
+        </TabsContent>
         </Tabs>
       </div>
     </div>

@@ -48,6 +48,9 @@ export type LeadEmailRow = {
   scheduledFollowUps: ScheduledFollowUp[];
   sequenceState: SequenceControlState;
   nextAction?: ReplyNextAction;
+  pendingFollowUpScheduleId?: string | null;
+  followUpSequenceDay?: number | null;
+  draftOutreachId?: string | null;
 };
 
 function buildLeadRow(
@@ -72,8 +75,11 @@ function buildLeadRow(
   }[],
   opts: {
     replyDraftLeadIds: Set<string>;
-    needsReviewMeta?: { subject?: string | null; preview?: string | null };
+    needsReviewMeta?: { subject?: string | null; preview?: string | null; followUp?: boolean };
+    pendingFollowUpScheduleId?: string | null;
+    followUpSequenceDay?: number | null;
     inboundSnippet?: string | null;
+    draftOutreachId?: string | null;
     cadenceDays: CadenceDays;
   },
 ): LeadEmailRow {
@@ -185,6 +191,9 @@ function buildLeadRow(
     scheduledFollowUps,
     sequenceState: deriveSequenceState(first.leadStatus, leadRows.map((r) => ({ sequenceDay: r.sequenceDay, status: r.scheduleStatus }))),
     nextAction,
+    pendingFollowUpScheduleId: opts.pendingFollowUpScheduleId ?? null,
+    followUpSequenceDay: opts.followUpSequenceDay ?? null,
+    draftOutreachId: opts.draftOutreachId ?? null,
   };
 }
 
@@ -226,6 +235,35 @@ export async function GET() {
 
     const replyDraftLeadIds = new Set(replyDrafts.map((r) => r.leadId));
 
+
+    const pendingFollowUps = await db
+      .select({
+        leadId: leads.id,
+        scheduleId: outreachSchedule.id,
+        sequenceDay: outreachSchedule.sequenceDay,
+        leadStatus: leads.status,
+        contactName: contacts.name,
+        contactEmail: contacts.email,
+        companyName: accounts.name,
+        industry: accounts.industry,
+        city: accounts.city,
+        lastReplyContent: leads.lastReplyContent,
+        subjectA: leadOutreach.subjectA,
+        emailBody: leadOutreach.emailBody,
+        draftOutreachId: leadOutreach.id,
+      })
+      .from(outreachSchedule)
+      .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+      .innerJoin(contacts, eq(leads.contactId, contacts.id))
+      .innerJoin(accounts, eq(leads.accountId, accounts.id))
+      .leftJoin(leadOutreach, eq(leadOutreach.id, outreachSchedule.draftLeadOutreachId))
+      .where(
+        and(
+          eq(leads.workspaceId, ctx.workspaceId),
+          eq(outreachSchedule.status, "pending_review"),
+        ),
+      );
+
     const needsReviewLeads = await db
       .select({
         leadId: leads.id,
@@ -238,6 +276,7 @@ export async function GET() {
         lastReplyContent: leads.lastReplyContent,
         subjectA: leadOutreach.subjectA,
         emailBody: leadOutreach.emailBody,
+        draftOutreachId: leadOutreach.id,
       })
       .from(leads)
       .innerJoin(contacts, eq(leads.contactId, contacts.id))
@@ -312,6 +351,50 @@ export async function GET() {
               subject: nr.subjectA,
               preview: nr.emailBody?.slice(0, 160) ?? null,
             },
+            draftOutreachId: nr.draftOutreachId,
+            cadenceDays,
+          },
+        ),
+      );
+    }
+
+
+    for (const pf of pendingFollowUps) {
+      if (seenLeadIds.has(pf.leadId)) {
+        const existing = result.find((r) => r.leadId === pf.leadId);
+        if (existing) {
+          existing.queueStatus = "needs_review";
+          existing.pendingFollowUpScheduleId = pf.scheduleId;
+          existing.followUpSequenceDay = pf.sequenceDay;
+          existing.draftSubject = pf.subjectA;
+          existing.draftPreview = pf.emailBody?.slice(0, 160) ?? null;
+          existing.draftOutreachId = pf.draftOutreachId ?? null;
+        }
+        continue;
+      }
+      seenLeadIds.add(pf.leadId);
+      result.push(
+        buildLeadRow(
+          pf.leadId,
+          {
+            contactName: pf.contactName,
+            contactEmail: pf.contactEmail,
+            companyName: pf.companyName,
+            industry: pf.industry,
+            city: pf.city,
+            leadStatus: pf.leadStatus,
+          },
+          [],
+          {
+            replyDraftLeadIds,
+            needsReviewMeta: {
+              subject: pf.subjectA,
+              preview: pf.emailBody?.slice(0, 160) ?? null,
+              followUp: true,
+            },
+            pendingFollowUpScheduleId: pf.scheduleId,
+            followUpSequenceDay: pf.sequenceDay,
+            draftOutreachId: pf.draftOutreachId,
             cadenceDays,
           },
         ),

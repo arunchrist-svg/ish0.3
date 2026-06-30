@@ -1,4 +1,5 @@
 import type { ScoutPersonResult } from "./types";
+import { computeSeniorityScore } from "./seniority-score";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 
 type SearchHit = { title: string; url: string; content: string };
@@ -82,7 +83,7 @@ export function parsePeopleFromSearchResults(
     email: undefined,
     emailStatus: "missing" as const,
     isKeyDM: isKeyDM(c.title),
-    matchScore: isKeyDM(c.title) ? 62 : 52,
+    matchScore: computeSeniorityScore({ title: c.title, isKeyDM: isKeyDM(c.title), emailStatus: 'missing', linkedIn: c.linkedIn }).total,
     dataSource,
   }));
 }

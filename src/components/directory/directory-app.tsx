@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { SegmentedTabs } from "@/design-system";
+import { MobileHeader, SegmentedTabs } from "@/design-system";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { cn } from "@/lib/utils";
 import { CompaniesGrid } from "@/components/scouting/companies-grid";
 import { LeadsGrid } from "@/components/scouting/leads-grid";
 import { PeopleList } from "@/components/scouting/people-list";
@@ -17,6 +19,7 @@ type Tab = "companies" | "contacts";
 const EMPTY_SET = new Set<string>();
 
 export function DirectoryApp() {
+  const isMobileLayout = useIsMobileLayout();
   const [tab, setTab] = useState<Tab>("companies");
   const [companies, setCompanies] = useState<DirectoryCompany[]>([]);
   const [contacts, setContacts] = useState<DirectoryContact[]>([]);
@@ -166,7 +169,7 @@ export function DirectoryApp() {
                 </Link>
               </div>
             ) : tab === "companies" ? (
-              <div key="companies" className="flex min-h-0 h-full animate-ish-tab-in">
+              <div key="companies" className={cn("flex min-h-0 h-full animate-ish-tab-in", isMobileLayout && selectedCompany && "relative")}>
                 <div className="min-w-0 flex-1 overflow-y-auto">
                   {companyCards.length === 0 ? (
                     <p className="py-10 text-center text-[13px] text-ish-ink-faint">No companies match your search.</p>
@@ -182,9 +185,12 @@ export function DirectoryApp() {
                   )}
                 </div>
 
-                <div className="w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white">
+                <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto border-l border-ish-border bg-white lg:relative lg:inset-auto lg:z-auto lg:w-[360px] lg:shrink-0">
                   {selectedCompany ? (
                     <>
+                      {isMobileLayout ? (
+                        <MobileHeader title={selectedCompany.name} showBack onBack={() => setSelectedCompanyId(null)} className="lg:hidden" />
+                      ) : null}
                       <CompanyOverviewPanel
                         name={selectedCompany.name}
                         city={selectedCompany.city}

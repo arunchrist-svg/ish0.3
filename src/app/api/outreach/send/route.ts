@@ -13,6 +13,8 @@ import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
 import { assertSenderPreflight } from "@/lib/email/sender-preflight";
 import { logAudit } from "@/lib/audit";
+import { auditOutreachSentContent } from "@/lib/email/feedback-hooks";
+import { draftFailsQualityGate } from "@/lib/agents/quality-gate";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
@@ -27,7 +29,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { approvalId, overridePreflight } = await req.json();
+    const { approvalId, overridePreflight, overrideQualityGate } = await req.json();
     if (!approvalId) return NextResponse.json({ error: "approvalId required" }, { status: 400 });
 
     const approval = await db.query.outreachApprovals.findFirst({
@@ -42,6 +44,37 @@ export async function POST(req: Request) {
       where: eq(leadOutreach.id, approval.leadOutreachId),
     });
     if (!outreach) return NextResponse.json({ error: "Outreach not found" }, { status: 404 });
+
+    if (draftFailsQualityGate(outreach) && !overrideQualityGate) {
+      return NextResponse.json(
+        {
+          code: "QUALITY_GATE_FAILED",
+          error: "Draft did not pass the quality gate. Revise the copy or confirm override to send.",
+          canOverride: true,
+          revisionTimeout: outreach.revisionTimeout ?? false,
+          deliverabilityScore: outreach.deliverabilityScore,
+          rubricTotal: outreach.rubricTotal,
+        },
+        { status: 422 },
+      );
+    }
+
+    if (overrideQualityGate && draftFailsQualityGate(outreach)) {
+      await logAudit({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        actorId: ctx.userId,
+        action: "outreach.quality_override",
+        entityType: "lead_outreach",
+        entityId: outreach.id,
+        metadata: {
+          leadId: approval.leadId,
+          revisionTimeout: outreach.revisionTimeout,
+          deliverabilityScore: outreach.deliverabilityScore,
+          rubricTotal: outreach.rubricTotal,
+        },
+      });
+    }
 
     const leadRow = await db.query.leads.findFirst({
       where: eq(leads.id, approval.leadId),
@@ -249,6 +282,17 @@ export async function POST(req: Request) {
       { contactFirstName: contact.firstName ?? contact.name.split(" ")[0], sequencePosition: outreach.sequencePosition ?? 1 },
     );
 
+    await auditOutreachSentContent({
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      leadId: approval.leadId,
+      approvalId,
+      contentScore: outreach.deliverabilityScore ?? contentScoreResult.contentScore,
+      ruleIds: contentScoreResult.ruleHits?.map((h) => h.id) ?? [],
+      subject,
+      sendMode: sendMode,
+    });
+
     await logAudit({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
@@ -263,6 +307,7 @@ export async function POST(req: Request) {
         contentScore: outreach.deliverabilityScore ?? contentScoreResult.contentScore,
         contentRuleIds: contentScoreResult.ruleHits?.map((h) => h.id) ?? [],
         approvalId,
+        qualityOverride: Boolean(overrideQualityGate && draftFailsQualityGate(outreach)),
       },
     });
 

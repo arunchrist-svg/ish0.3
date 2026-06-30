@@ -44,7 +44,7 @@ jobs:
         run: npm ci
 
       - name: Run migrations
-        run: npm run db:migrate
+        run: npm run db:apply-sql
 
       - name: Seed test user
         run: npm run db:seed-test-user
@@ -54,6 +54,9 @@ jobs:
 
       - name: Unit tests
         run: npm run test:unit
+
+      - name: Golden eval regression
+        run: npm run test:eval
 
       - name: API tests
         run: npm run test:api

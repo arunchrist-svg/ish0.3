@@ -52,3 +52,23 @@ export async function getResolvedWorkspaceEnrichmentConfig(
   const dataMode = override?.dataMode ?? stored.dataMode ?? getEnrichmentConfig().dataMode;
   return resolveEnrichmentConfig(dataMode, { ...stored, ...override });
 }
+
+export async function loadEnrichmentOverridesForWorkspace(
+  workspaceId: string,
+): Promise<Partial<import("@/lib/enrichment/config").EnrichmentConfig>> {
+  const [row] = await db
+    .select()
+    .from(workspaceSettings)
+    .where(eq(workspaceSettings.workspaceId, workspaceId))
+    .limit(1);
+
+  return (row?.enrichmentConfig as Partial<import("@/lib/enrichment/config").EnrichmentConfig> | undefined) ?? {};
+}
+
+export async function getResolvedEnrichmentConfigForWorkspace(
+  workspaceId: string,
+): Promise<import("@/lib/enrichment/config").EnrichmentConfig> {
+  const stored = await loadEnrichmentOverridesForWorkspace(workspaceId);
+  const dataMode = stored.dataMode ?? getEnrichmentConfig().dataMode;
+  return resolveEnrichmentConfig(dataMode, stored);
+}

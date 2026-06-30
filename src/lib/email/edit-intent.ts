@@ -1,5 +1,19 @@
 export type EditIntent = "surgical" | "global";
 
+const STYLE_ONLY_PATTERNS = [
+  /^make it shorter$/i,
+  /^more formal tone$/i,
+  /^stronger cta$/i,
+  /^fix the subject lines$/i,
+  /more formal/i,
+  /more casual/i,
+  /friendlier tone/i,
+  /softer tone/i,
+  /stronger cta/i,
+  /weaker cta/i,
+  /fix the subject/i,
+];
+
 const GLOBAL_PATTERNS = [
   /\bmake it shorter\b/i,
   /\bmore formal\b/i,
@@ -69,4 +83,10 @@ export function bodyChangeRatio(before: string, after: string): number {
     if (!afterSet.has(token)) changed++;
   }
   return changed / beforeTokens.length;
+}
+
+
+export function isStyleOnlyEdit(message: string): boolean {
+  const trimmed = message.trim();
+  return STYLE_ONLY_PATTERNS.some((p) => p.test(trimmed));
 }

@@ -1,4 +1,5 @@
 import { generateText } from "ai";
+import { startAgentRun, completeAgentRun } from "@/lib/agents/log-agent-run";
 
 if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY && process.env.GEMINI_API_KEY) {
   process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.GEMINI_API_KEY;
@@ -8,6 +9,14 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
 
 type LLMTier = "fast" | "quality";
+
+export type LLMTraceContext = {
+  agent: string;
+  tenantId: string;
+  workspaceId?: string;
+  leadId?: string;
+  promptVersion?: string;
+};
 
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 
@@ -75,16 +84,21 @@ async function generateWithTier(params: {
   system: string;
   prompt: string;
   maxTokens?: number;
-}): Promise<string> {
+}): Promise<{ text: string; inputTokens?: number; outputTokens?: number; modelId?: string; latencyMs: number }> {
   const model = getModel(params.tier);
-  const { text } = await generateText({
+  const started = Date.now();
+  const result = await generateText({
     model,
     system: params.system,
     prompt: params.prompt,
     maxOutputTokens: getMaxTokens(params.maxTokens),
     maxRetries: 1,
   } as Parameters<typeof generateText>[0]);
-  return text;
+  const usage = (result as { usage?: { inputTokens?: number; outputTokens?: number; promptTokens?: number; completionTokens?: number } }).usage;
+  const inputTokens = usage?.inputTokens ?? usage?.promptTokens;
+  const outputTokens = usage?.outputTokens ?? usage?.completionTokens;
+  const modelId = (result as { response?: { modelId?: string } }).response?.modelId;
+  return { text: result.text, inputTokens, outputTokens, modelId, latencyMs: Date.now() - started };
 }
 
 export async function callLLM(params: {
@@ -92,20 +106,51 @@ export async function callLLM(params: {
   system: string;
   prompt: string;
   maxTokens?: number;
+  trace?: LLMTraceContext;
 }): Promise<string> {
   const attemptTiers = tiersToAttempt(params.tier);
   let lastError: unknown;
+  let runId: string | undefined;
+
+  if (params.trace) {
+    runId = await startAgentRun({
+      tenantId: params.trace.tenantId,
+      workspaceId: params.trace.workspaceId,
+      agent: params.trace.agent,
+      leadId: params.trace.leadId,
+      promptVersion: params.trace.promptVersion,
+      tier: params.tier,
+    });
+  }
 
   for (let i = 0; i < attemptTiers.length; i++) {
     const tier = attemptTiers[i];
     try {
-      return await generateWithTier({ ...params, tier });
+      const result = await generateWithTier({ ...params, tier });
+      if (runId) {
+        await completeAgentRun(runId, {
+          status: "completed",
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          latencyMs: result.latencyMs,
+          model: result.modelId,
+          tier,
+        });
+      }
+      return result.text;
     } catch (error) {
       lastError = error;
       const hasFallback = i < attemptTiers.length - 1;
       if (hasFallback && isQuotaOrRateLimitError(error)) {
         console.warn(`[callLLM] ${tier} tier quota/rate limit — falling back to ${attemptTiers[i + 1]}`);
         continue;
+      }
+      if (runId) {
+        await completeAgentRun(runId, {
+          status: "failed",
+          tier,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
       throw error;
     }

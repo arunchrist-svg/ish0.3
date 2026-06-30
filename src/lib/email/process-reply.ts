@@ -2,6 +2,7 @@ import { db, leads, yieldFunnel, outreachSchedule } from "@/db";
 import { eq, and } from "drizzle-orm";
 import { isPastReplyStage } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
+import { enqueueReplyOrchestrator } from "@/lib/jobs/enqueue";
 
 export type ProcessReplyResult =
   | { ok: true; skipped?: false }
@@ -63,9 +64,12 @@ export async function processLeadReply(params: {
     .where(and(eq(outreachSchedule.leadId, leadId), eq(outreachSchedule.status, "scheduled")))
     .returning({ id: outreachSchedule.id });
 
+  const resolvedTenantId = tenantId ?? lead.tenantId;
+  const resolvedWorkspaceId = workspaceId ?? lead.workspaceId;
+
   await logAudit({
-    tenantId: tenantId ?? lead.tenantId,
-    workspaceId: workspaceId ?? lead.workspaceId,
+    tenantId: resolvedTenantId,
+    workspaceId: resolvedWorkspaceId,
     action: "lead.replied",
     entityType: "lead",
     entityId: leadId,
@@ -73,12 +77,11 @@ export async function processLeadReply(params: {
   });
 
   if (replyContent) {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `http://localhost:${process.env.PORT ?? 3002}`;
-    fetch(`${appUrl}/api/agents/writer/reply`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ leadId }),
-    }).catch((e) => console.error("[process-reply] reply-writer trigger failed", e));
+    await enqueueReplyOrchestrator({
+      leadId,
+      tenantId: resolvedTenantId,
+      workspaceId: resolvedWorkspaceId,
+    });
   }
 
   return { ok: true };
