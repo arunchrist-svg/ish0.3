@@ -58,6 +58,13 @@ type LlmUsage = {
     fastModel: string;
     qualityModel: string;
   };
+  omlx: {
+    configured: boolean;
+    active: boolean;
+    baseUrl: string;
+    fastModel: string;
+    qualityModel: string;
+  };
 };
 
 function barTone(percent: number, allExhausted: boolean): string {
@@ -452,6 +459,67 @@ export function AiUsageTab() {
                 </p>
               </>
             )}
+          </>
+        )}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="oMLX (local)"
+        footer="On-device LLM via OMLX. Set LLM_PROVIDER=omlx to activate. Runs on Apple Silicon with no cloud quota."
+      >
+        <SettingsRow className="justify-between py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {llm ? (
+              <>
+                {llm.omlx.active && <ActiveBadge />}
+                <StatusBadge ok={llm.omlx.configured} label={llm.omlx.configured ? "Server configured" : "Not configured"} />
+              </>
+            ) : (
+              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+            )}
+          </div>
+          <a
+            href={llm?.omlx.baseUrl.replace(/\/v1\/?$/, "/admin") ?? "http://127.0.0.1:5200/admin"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+          >
+            Admin <ExternalLink className="size-3" />
+          </a>
+        </SettingsRow>
+
+        {llm && (
+          <>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-[13px] font-medium text-ish-ink">Base URL</p>
+                <p className="text-[11px] text-ish-ink-faint">OMLX_BASE_URL</p>
+              </div>
+              <code className="max-w-[55%] truncate rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                {llm.omlx.baseUrl}
+              </code>
+            </div>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-[13px] font-medium text-ish-ink">Fast tier</p>
+                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
+              </div>
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                {llm.omlx.fastModel}
+              </code>
+            </div>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-[13px] font-medium text-ish-ink">Quality tier</p>
+                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
+              </div>
+              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                {llm.omlx.qualityModel}
+              </code>
+            </div>
           </>
         )}
       </SettingsGroup>

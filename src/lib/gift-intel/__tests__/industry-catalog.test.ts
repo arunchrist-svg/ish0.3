@@ -1,0 +1,23 @@
+import { describe, expect, it } from "vitest";
+import { getIndustryByLabel, searchIndustries } from "../industry-catalog";
+
+describe("industry catalog", () => {
+  it("finds kitchen appliances when typing kit", () => {
+    const results = searchIndustries("kit");
+    expect(results[0]?.label).toBe("Kitchen Appliances");
+  });
+
+  it("finds sweets by keyword", () => {
+    const results = searchIndustries("mithai");
+    expect(results.some((entry) => entry.label === "Sweets")).toBe(true);
+  });
+
+  it("returns default list for empty query", () => {
+    expect(searchIndustries("").length).toBeGreaterThan(0);
+  });
+
+  it("resolves industry by label", () => {
+    const entry = getIndustryByLabel("Kitchen Appliances");
+    expect(entry?.suggestedCompetitors).toContain("Prestige");
+  });
+});

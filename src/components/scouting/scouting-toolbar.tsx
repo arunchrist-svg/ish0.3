@@ -94,6 +94,7 @@ type Props = {
   filtersCollapsed?: boolean;
   onExpandFilters?: () => void;
   hideActions?: boolean;
+  onFilterPanelChange?: (open: boolean) => void;
 };
 
 /* ─────────────────────────────────────────────
@@ -230,11 +231,11 @@ function Popover({
         open
           ? "pointer-events-auto scale-100 opacity-100 translate-y-0"
           : "pointer-events-none scale-95 opacity-0 -translate-y-1",
-        width ?? "w-[340px]",
+        width ?? "w-[min(360px,calc(100vw-2rem))]",
         className,
       )}
     >
-      {children}
+      <div className="relative z-10 bg-white">{children}</div>
     </div>
   );
 }
@@ -1092,6 +1093,7 @@ export function ScoutingToolbar({
   filtersCollapsed = false,
   onExpandFilters,
   hideActions = false,
+  onFilterPanelChange,
 }: Props) {
   const [active, setActive] = useState<ActivePanel>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -1102,6 +1104,32 @@ export function ScoutingToolbar({
   const volumeHint = `${scoutCompaniesLimit} cos · ${scoutLeadsLimit} leads`;
 
   const [mobileSheet, setMobileSheet] = useState<ActivePanel>(null);
+
+  useEffect(() => {
+    onFilterPanelChange?.(Boolean(active) || mobileSheet !== null);
+  }, [active, mobileSheet, onFilterPanelChange]);
+
+
+  // Close on outside click
+  useEffect(() => {
+    if (!active) return;
+    function handle(e: MouseEvent) {
+      if (barRef.current && !barRef.current.contains(e.target as Node)) {
+        setActive(null);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [active]);
+
+  // Close on Escape
+  useEffect(() => {
+    function handle(e: KeyboardEvent) {
+      if (e.key === "Escape") setActive(null);
+    }
+    document.addEventListener("keydown", handle);
+    return () => document.removeEventListener("keydown", handle);
+  }, []);
 
   if (isMobileLayout) {
     const isSearchMode = scoutMode === "search";
@@ -1227,38 +1255,16 @@ export function ScoutingToolbar({
     );
   }
 
-  // Close on outside click
-  useEffect(() => {
-    if (!active) return;
-    function handle(e: MouseEvent) {
-      if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        setActive(null);
-      }
-    }
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [active]);
-
-  // Close on Escape
-  useEffect(() => {
-    function handle(e: KeyboardEvent) {
-      if (e.key === "Escape") setActive(null);
-    }
-    document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
-  }, []);
-
   function toggle(panel: ActivePanel) {
     setActive((p) => (p === panel ? null : panel));
   }
 
   return (
     <>
-      {/* Subtle backdrop dimmer */}
       {active && (
         <div
           aria-hidden
-          className="fixed inset-0 z-20"
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
           onClick={() => setActive(null)}
         />
       )}
@@ -1266,7 +1272,10 @@ export function ScoutingToolbar({
       {/* ── Single unified bar ── */}
       <div
         ref={barRef}
-        className="relative z-30 flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-ish-border bg-white px-4 py-2.5"
+        className={cn(
+          "relative flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-ish-border bg-white px-4 py-2.5",
+          active ? "z-50" : "z-30",
+        )}
       >
         {/* Mode toggle: Autopilot / Search */}
         <ModeToggle

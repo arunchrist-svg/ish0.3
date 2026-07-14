@@ -5,12 +5,7 @@ import { canManageBilling } from "@/lib/auth/permissions";
 import { db, tenants, plans } from "@/db";
 import { eq } from "drizzle-orm";
 import { handleApiError } from "@/lib/api-errors";
-
-const TOP_UPS: Record<string, { credits: number; priceCents: number; name: string }> = {
-  topup_1000: { credits: 1000, priceCents: 4900, name: "1,000 Credit Top-up" },
-  topup_5000: { credits: 5000, priceCents: 19900, name: "5,000 Credit Top-up" },
-  topup_20000: { credits: 20000, priceCents: 64900, name: "20,000 Credit Top-up" },
-};
+import { BILLING_CURRENCY, TOP_UP_PACKS } from "@/lib/billing/plan-catalog";
 
 function getStripe() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -41,7 +36,7 @@ export async function POST(req: Request) {
     }
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3002";
-    const topUp = TOP_UPS[planSlug];
+    const topUp = TOP_UP_PACKS.find((pack) => pack.slug === planSlug);
 
     if (topUp) {
       const session = await stripe.checkout.sessions.create({
@@ -49,7 +44,7 @@ export async function POST(req: Request) {
         customer: customerId,
         line_items: [{
           price_data: {
-            currency: "usd",
+            currency: BILLING_CURRENCY,
             unit_amount: topUp.priceCents,
             product_data: { name: topUp.name },
           },
@@ -75,7 +70,7 @@ export async function POST(req: Request) {
           ? { price: plan.stripePriceId, quantity: 1 }
           : {
               price_data: {
-                currency: "usd",
+                currency: BILLING_CURRENCY,
                 unit_amount: plan.priceCents,
                 recurring: { interval: "month" },
                 product_data: { name: plan.name },

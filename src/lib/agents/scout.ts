@@ -3,6 +3,7 @@ import { discoverCompanies, discoverPeople } from "@/lib/enrichment/waterfall";
 import { saveScoutLeads } from "@/lib/scout/save-leads";
 import { logAudit } from "@/lib/audit";
 import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/config";
+import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { SCOUT_CITIES } from "@/lib/scouting-data";
 import type { DataMode } from "@/lib/enrichment/types";
 
@@ -59,7 +60,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
 
   for (const company of toProcess) {
     try {
-      const { people } = await discoverPeople({
+      const { people, resolvedDomain, resolvedWebsite } = await discoverPeople({
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
         companyName: company.name,
@@ -69,19 +70,25 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
         limit: getScoutLeadsLimit(),
       });
 
-      const withEmail = people.filter((p) => p.email && p.emailStatus !== "missing");
-      if (!withEmail.length) {
+      const candidates = people.filter((p) => p.name?.trim());
+      if (!candidates.length) {
         leadsSkipped += 1;
         continue;
       }
 
+      const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
       const result = await saveScoutLeads({
-        people: withEmail.slice(0, 2),
-        company,
+        people: candidates.slice(0, getScoutLeadsLimit()),
+        company: {
+          ...company,
+          domain: resolvedDomain ?? company.domain,
+          website: resolvedWebsite ?? company.website,
+        },
         dataMode,
         leadSource: "scout_agent",
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
+        enrichmentConfig: { ...enrichmentConfig, enrichOnImport: true },
       });
 
       leadsSaved += result.saved.length;

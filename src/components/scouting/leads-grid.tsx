@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import type { Person } from "@/lib/scouting-data";
 import { LeadCard } from "@/components/cards";
 
@@ -15,6 +16,7 @@ type Props = {
   selectable?: boolean;
   getCompanyName?: (person: Person) => string | undefined;
   getDirectoryLeadId?: (person: Person) => string | undefined;
+  compact?: boolean;
 };
 
 export function LeadsGrid({
@@ -29,9 +31,16 @@ export function LeadsGrid({
   selectable = true,
   getCompanyName,
   getDirectoryLeadId,
+  compact = false,
 }: Props) {
   return (
-    <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 lg:p-5">
+    <div
+      className={cn(
+        compact
+          ? "grid grid-cols-2 gap-3 px-3 py-3"
+          : "grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 lg:p-5",
+      )}
+    >
       {people.map((person, i) => (
         <LeadCard
           key={person.id}
@@ -47,6 +56,7 @@ export function LeadsGrid({
           selectable={selectable}
           companyName={getCompanyName?.(person)}
           directoryLeadId={getDirectoryLeadId?.(person)}
+          compact={compact}
         />
       ))}
     </div>

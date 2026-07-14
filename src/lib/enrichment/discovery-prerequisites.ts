@@ -1,4 +1,5 @@
 import type { EnrichmentConfig } from "./config";
+import { friendlyLLMError } from "@/lib/llm";
 import { hasTavilyKeys } from "./tavily-keys";
 
 export function hasTavilyKey(): boolean {
@@ -13,6 +14,7 @@ export function hasLLMKey(): boolean {
   const provider = process.env.LLM_PROVIDER ?? "gemini";
   if (provider === "anthropic") return !!process.env.ANTHROPIC_API_KEY;
   if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;
+  if (provider === "omlx") return true;
   return hasGeminiKey();
 }
 
@@ -32,7 +34,9 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
     !hasLLMKey()
   ) {
     errors.push(
-      "LLM API key is missing. Directory search will use basic parsing only until an AI key is configured.",
+      process.env.LLM_PROVIDER === "omlx"
+        ? "Local OMLX server is not configured. Set LLM_PROVIDER=omlx and OMLX_BASE_URL in .env.local."
+        : "LLM API key is missing. Directory search will use basic parsing only until an AI key is configured.",
     );
   }
 
@@ -48,12 +52,15 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
 }
 
 export function llmErrorMessage(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (/quota|429|rate.?limit|resource_exhausted/i.test(msg)) {
+  const detail = friendlyLLMError(err);
+  if (/quota|rate.?limit|resource_exhausted|billing/i.test(detail)) {
     return "LLM API quota exceeded — using directory parsing fallback.";
   }
-  if (/api.?key|401|403|unauthorized|invalid/i.test(msg)) {
+  if (/api.?key|unauthorized|401|403|rejected/i.test(detail)) {
     return "LLM API key rejected — using directory parsing fallback.";
   }
-  return "AI extraction failed — using directory parsing fallback.";
+  if (/AI extraction failed|directory parsing fallback/i.test(detail)) {
+    return detail;
+  }
+  return `${detail} — using directory parsing fallback.`;
 }

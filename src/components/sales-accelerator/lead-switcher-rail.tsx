@@ -110,8 +110,8 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
 
   return (
     <>
-      <div className="ish-lead-switcher-rail shrink-0 border-b border-ish-border/40 lg:hidden">
-        <div className="flex items-center gap-1.5 px-2 py-1.5">
+      <div className="ish-lead-switcher-rail sticky top-0 z-30 shrink-0 border-b border-ish-border/40 bg-white/90 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur-xl lg:hidden">
+        <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
           {onBack ? (
             <button
               type="button"

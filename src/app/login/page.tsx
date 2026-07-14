@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button, text } from "@/design-system";
 import { AuthField } from "@/components/auth/auth-field";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { completeLoginRedirect } from "@/lib/auth/complete-login";
 import { cn } from "@/lib/utils";
 
 type OrgOption = { slug: string; name: string };
@@ -24,28 +25,20 @@ function LoginForm() {
   const inviteRequired = errorCode === "invite_required";
 
   useEffect(() => {
-    fetch("/api/auth/me")
+    fetch("/api/auth/session", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) return;
-        if (data.mustChangePassword) {
-          router.replace("/change-password");
-          return;
-        }
-        if (data.tenant?.onboardingStatus && data.tenant.onboardingStatus !== "complete" && data.role === "owner") {
-          router.replace("/onboarding");
-          return;
-        }
-        router.replace("/");
+      .then((data: { authenticated?: boolean; redirect?: string } | null) => {
+        if (!data?.authenticated) return;
+        completeLoginRedirect(data.redirect ?? "/");
       })
       .catch(() => undefined);
-  }, [router]);
+  }, []);
 
 
   useEffect(() => {
     if (!email.includes("@")) return;
     const t = setTimeout(() => {
-      fetch(`/api/auth/account-type?email=${encodeURIComponent(email.trim())}`)
+      fetch(`/api/auth/account-type?email=${encodeURIComponent(email.trim())}`, { credentials: "include" })
         .then((r) => r.json())
         .then((data) => {
           if (data.slugRequired && data.slugs) {
@@ -75,7 +68,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
+        credentials: "include",
         body: JSON.stringify({
           email: trimmedEmail,
           password: trimmedPassword,
@@ -98,8 +91,8 @@ function LoginForm() {
             : redirect === "/admin"
               ? redirect
               : "/";
-        router.push(destination);
-        router.refresh();
+        completeLoginRedirect(destination);
+        return;
       } else if (data?.code === "WORKSPACE_AMBIGUOUS" && data.slugs) {
         setSlugRequired(true);
         setOrgOptions(data.slugs);

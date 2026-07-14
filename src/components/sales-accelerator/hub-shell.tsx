@@ -7,6 +7,7 @@ import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { DemoBanner } from "@/components/sales-accelerator/demo-banner";
 import { ReadOnlyBanner } from "@/components/sales-accelerator/read-only-banner";
 import { SessionProvider, useSession } from "@/components/providers/session-provider";
+import { HubPollingProvider } from "@/components/providers/hub-polling-provider";
 import { useMobileNav } from "@/hooks/use-mobile-nav";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { useAgentRuns } from "@/hooks/use-agent-runs";
@@ -42,9 +43,8 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <SideNav />
             <div
-              key={pathname}
               className={cn(
-                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-ish-page-in",
+                "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden",
                 space.tabBarInset,
               )}
             >
@@ -67,7 +67,9 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
 export function HubShell({ children }: { children: React.ReactNode }) {
   return (
     <SessionProvider>
-      <HubShellInner>{children}</HubShellInner>
+      <HubPollingProvider>
+        <HubShellInner>{children}</HubShellInner>
+      </HubPollingProvider>
     </SessionProvider>
   );
 }

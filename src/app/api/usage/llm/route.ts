@@ -27,6 +27,19 @@ export async function GET() {
       openrouter: {
         configured: Boolean(openrouterKey),
         active: provider === "openrouter",
+        fastModel: process.env.OPENROUTER_MODEL_FAST ?? "openai/gpt-4o-mini",
+        qualityModel: process.env.OPENROUTER_MODEL_QUALITY ?? "openai/gpt-4o",
+      },
+      omlx: {
+        configured: true,
+        active: provider === "omlx",
+        baseUrl: process.env.OMLX_BASE_URL ?? "http://127.0.0.1:5200/v1",
+        fastModel: process.env.OMLX_MODEL_FAST ?? process.env.OMLX_MODEL ?? "Llama-3.2-3B-Instruct-4bit",
+        qualityModel:
+          process.env.OMLX_MODEL_QUALITY ??
+          process.env.OMLX_MODEL_FAST ??
+          process.env.OMLX_MODEL ??
+          "Llama-3.2-3B-Instruct-4bit",
       },
     });
   } catch (e) {

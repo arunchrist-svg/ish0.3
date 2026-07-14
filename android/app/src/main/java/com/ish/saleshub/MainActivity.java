@@ -6,18 +6,25 @@ import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    private void enableCookies() {
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            cookieManager.setAcceptThirdPartyCookies(getBridge().getWebView(), true);
+        }
+        cookieManager.flush();
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         WebView.setWebContentsDebuggingEnabled(true);
-        CookieManager.getInstance().setAcceptCookie(true);
+        enableCookies();
     }
 
     @Override
-    public void onStart() {
-        super.onStart();
-        if (getBridge() != null && getBridge().getWebView() != null) {
-            CookieManager.getInstance().setAcceptThirdPartyCookies(getBridge().getWebView(), true);
-        }
+    public void onResume() {
+        super.onResume();
+        enableCookies();
     }
 }

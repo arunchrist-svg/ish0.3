@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, ExternalLink, Loader2, Zap } from "lucide-react";
+import { ExternalLink, Loader2, Zap } from "lucide-react";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { Button } from "@/design-system";
 import { toast } from "sonner";
+import { TOP_UP_PACKS, formatPlanPrice, formatPlanPriceMonthly } from "@/lib/billing/plan-catalog";
 
 type BillingSummary = {
   balance: number;
@@ -12,11 +13,6 @@ type BillingSummary = {
   subscription: { status: string; currentPeriodEnd: string | null } | null;
   usageLast30Days: { action: string; total: number }[];
 };
-
-const TOP_UPS = [
-  { credits: 1000, price: 49, slug: "topup_1000" },
-  { credits: 5000, price: 199, slug: "topup_5000" },
-];
 
 export function BillingTab() {
   const [data, setData] = useState<BillingSummary | null>(null);
@@ -72,11 +68,13 @@ export function BillingTab() {
             <div>
               <p className="text-lg font-semibold text-ish-ink">{data.plan?.name ?? "Trial"}</p>
               <p className="text-sm text-ish-ink-soft">
-                {data.plan ? `$${(data.plan.priceCents / 100).toFixed(0)}/mo · ${data.plan.includedCredits.toLocaleString()} credits` : "14-day trial"}
+                {data.plan
+                  ? `${formatPlanPriceMonthly(data.plan.priceCents)} · ${data.plan.includedCredits.toLocaleString("en-IN")} credits`
+                  : "14-day trial"}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-ish-ink">{data.balance.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-ish-ink">{data.balance.toLocaleString("en-IN")}</p>
               <p className="text-xs text-ish-ink-soft">credits remaining</p>
             </div>
           </div>
@@ -93,7 +91,7 @@ export function BillingTab() {
 
       <SettingsGroup title="Top-up credits">
         <div className="grid gap-3 px-4 py-4 sm:grid-cols-2">
-          {TOP_UPS.map((pack) => (
+          {TOP_UP_PACKS.slice(0, 2).map((pack) => (
             <button
               key={pack.slug}
               type="button"
@@ -103,9 +101,9 @@ export function BillingTab() {
             >
               <span className="flex items-center gap-2 font-medium">
                 <Zap className="size-4 text-amber-500" />
-                {pack.credits.toLocaleString()} credits
+                {pack.credits.toLocaleString("en-IN")} credits
               </span>
-              <span className="font-semibold">${pack.price}</span>
+              <span className="font-semibold">{formatPlanPrice(pack.priceCents)}</span>
             </button>
           ))}
         </div>

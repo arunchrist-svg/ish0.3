@@ -29,7 +29,7 @@ export async function GET() {
       .innerJoin(accounts, eq(contacts.accountId, accounts.id))
       .leftJoin(leads, eq(leads.contactId, contacts.id))
       .where(eq(contacts.tenantId, ctx.tenantId))
-      .orderBy(desc(contacts.createdAt));
+      .orderBy(desc(contacts.createdAt), desc(leads.createdAt));
 
     const seen = new Set<string>();
     const result = [];

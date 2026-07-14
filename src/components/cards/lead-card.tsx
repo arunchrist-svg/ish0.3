@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
-import { Bookmark, MessageCircle, Zap, ExternalLink, Check } from "lucide-react";
+import { Bookmark, MessageCircle, Zap, ExternalLink, Check, ChevronRight } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
 import { COMPANIES } from "@/lib/scouting-data";
 import { getInitials } from "@/lib/data";
@@ -23,6 +23,7 @@ type Props = {
   selectable?: boolean;
   companyName?: string;
   directoryLeadId?: string;
+  compact?: boolean;
 };
 
 export function LeadCard({
@@ -38,6 +39,7 @@ export function LeadCard({
   selectable = true,
   companyName,
   directoryLeadId,
+  compact = false,
 }: Props) {
   const company = companyName
     ? { name: companyName }
@@ -48,6 +50,10 @@ export function LeadCard({
   function handleCardClick(e: React.MouseEvent) {
     if (alreadyAdded) return;
     if ((e.target as HTMLElement).closest("[data-card-action]")) return;
+    if (compact) {
+      if (selectable) onToggleSelect();
+      return;
+    }
     onView();
     if (selectable) onToggleSelect();
   }
@@ -56,7 +62,97 @@ export function LeadCard({
     e.stopPropagation();
     if (alreadyAdded || !selectable) return;
     onToggleSelect();
+    if (!compact) onView();
+  }
+
+  function handleDetailsClick(e: React.MouseEvent) {
+    e.stopPropagation();
     onView();
+  }
+
+  if (compact) {
+    return (
+      <div
+        role="button"
+        tabIndex={alreadyAdded ? -1 : 0}
+        onClick={handleCardClick}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !alreadyAdded) handleCardClick(e as unknown as React.MouseEvent);
+        }}
+        className={scoutCardSurface({
+          isSelected,
+          isPrimary: false,
+          disabled: alreadyAdded,
+          layout: "column",
+          className: "min-h-[156px] p-3 text-left",
+        })}
+      >
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-[#5a4838]",
+              getAvatarColor(index),
+            )}
+          >
+            {getInitials(person.name)}
+          </div>
+          <div className="flex items-center gap-1">
+            <div
+              className="flex items-baseline gap-0.5 rounded-full px-2 py-0.5 text-white"
+              style={{ backgroundColor: scoreColor }}
+            >
+              <span className="text-[11px] font-extrabold leading-none">{person.matchScore}</span>
+            </div>
+            <button
+              type="button"
+              data-card-action
+              onClick={handleDetailsClick}
+              className="flex size-7 items-center justify-center rounded-full bg-white/90 text-ish-ink-soft shadow-sm ring-1 ring-ish-border/50 active:scale-95"
+              aria-label={`View ${person.name}`}
+            >
+              <ChevronRight className="size-3.5" />
+            </button>
+          </div>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-1">
+            <span className="line-clamp-2 text-[13px] font-semibold leading-snug text-ish-ink">{person.name}</span>
+            {person.isKeyDecisionMaker ? (
+              <span className="mt-0.5 shrink-0 rounded bg-ish-black px-1 py-0.5 text-[8px] font-bold text-white">KEY</span>
+            ) : null}
+          </div>
+          <p className="mt-0.5 line-clamp-1 text-[10px] font-medium text-ish-ink-soft">{person.title}</p>
+          {company ? <p className="mt-0.5 line-clamp-1 text-[10px] text-ish-ink-faint">{company.name}</p> : null}
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            <span className="rounded-full bg-ish-canvas px-1.5 py-0.5 text-[9px] font-medium text-ish-ink-soft">{person.department}</span>
+            <span className="rounded-full bg-ish-canvas px-1.5 py-0.5 text-[9px] font-medium text-ish-ink-soft">{person.seniority}</span>
+          </div>
+        </div>
+        {alreadyAdded ? (
+          <div className="mt-2.5 rounded-xl border border-ish-border/60 bg-ish-canvas py-2 text-center text-[10px] font-semibold text-ish-ink-faint">
+            Already added
+          </div>
+        ) : selectable ? (
+          <div
+            className={cn(
+              "mt-2.5 flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[11px] font-semibold transition-colors",
+              isSelected
+                ? "border-ish-stratus-blue/35 bg-ish-stratus-blue/10 text-ish-stratus-blue"
+                : "border-ish-border/60 bg-white/70 text-ish-ink-soft",
+            )}
+          >
+            {isSelected ? (
+              <>
+                <Check className="size-3.5" strokeWidth={2.5} />
+                Selected
+              </>
+            ) : (
+              "Tap to select"
+            )}
+          </div>
+        ) : null}
+      </div>
+    );
   }
 
   return (

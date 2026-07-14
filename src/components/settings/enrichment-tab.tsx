@@ -7,10 +7,7 @@ import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Save } from "lucide-react";
-import {
-  formatCompetitorBrandsForInput,
-  parseCompetitorBrandsInput,
-} from "@/lib/gift-intel/config";
+import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
 import {
   SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
@@ -193,23 +190,18 @@ export function EnrichmentTab({
 
       <SettingsGroup
         title="Brand Intelligence"
-        footer="Corporate Gift Tracker uses the product category and competitor list below. Pick one competitor per sweep on the Brand Intelligence page."
+        footer="Configured during Setup. Corporate Gift Tracker uses the product category and competitor list below. Add or delete competitors anytime; pick sweep targets on the Brand Intelligence page."
       >
-        <SettingsTextRow
-          label="Product category"
-          desc="Target product type for OSINT sweeps (ISH default: Sweets)"
-          value={config.giftIntelProductCategory ?? ""}
-          onChange={(v) => onUpdate("giftIntelProductCategory", v)}
-          placeholder="Sweets"
-        />
-        <SettingsGroupDivider />
-        <SettingsTextAreaRow
-          label="Competitor brands"
-          desc="One brand per line. These appear as sweep targets on Brand Intelligence."
-          value={formatCompetitorBrandsForInput(config.giftIntelCompetitorBrands)}
-          onChange={(v) => onUpdate("giftIntelCompetitorBrands", parseCompetitorBrandsInput(v))}
-          placeholder={"Kanti Sweets\nAnand Sweets\nHaldiram's"}
-        />
+        <div className="px-4 py-3">
+          <BrandIntelligenceSetup
+            productCategory={config.giftIntelProductCategory ?? ""}
+            competitorBrands={config.giftIntelCompetitorBrands ?? []}
+            onProductCategoryChange={(v) => onUpdate("giftIntelProductCategory", v)}
+            onCompetitorBrandsChange={(brands) => onUpdate("giftIntelCompetitorBrands", brands)}
+            categoryDesc="Target product type for OSINT sweeps"
+            competitorsDesc="Add or delete brands. These appear as sweep targets on Brand Intelligence."
+          />
+        </div>
       </SettingsGroup>
 
       <SettingsGroup title="Behaviour">
@@ -263,32 +255,3 @@ function SettingsTextRow({
     </>
   );
 }
-
-function SettingsTextAreaRow({
-  label,
-  desc,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  desc: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <div className="px-4 py-3">
-      <div className="mb-1.5 text-[13px] font-semibold text-ish-ink">{label}</div>
-      <p className="mb-2 text-[11.5px] text-ish-ink-soft">{desc}</p>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={5}
-        className="w-full resize-y rounded-xl border border-ish-border/70 bg-white/80 px-3 py-2 text-[13px] text-ish-ink outline-none focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)]"
-      />
-    </div>
-  );
-}
-

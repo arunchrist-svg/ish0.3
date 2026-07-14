@@ -15,6 +15,7 @@ import { mapWithConcurrency } from "@/lib/async";
 import { db } from "@/db";
 import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
+import { resolveCompanyDomain } from "./resolve-company-domain";
 
 const BUYING_TITLES = [
   "HR Director", "HR Manager", "HR Head", "Chief People Officer", "CPO",
@@ -289,6 +290,8 @@ export async function discoverCompanies(params: {
 
 export type PeopleDiscoveryResult = {
   people: ScoutPersonResult[];
+  resolvedDomain?: string;
+  resolvedWebsite?: string;
   warnings: string[];
   errors: string[];
 };
@@ -408,7 +411,18 @@ export async function discoverPeople(params: {
   const limit = params.limit ?? 15;
   const warnings: string[] = [];
   const errors: string[] = [];
-  const resolvedDomain = params.companyDomain ?? domainFromWebsite(params.companyWebsite);
+  const domainResolution = await resolveCompanyDomain({
+    companyName: params.companyName,
+    domain: params.companyDomain,
+    website: params.companyWebsite,
+  });
+  const resolvedDomain = domainResolution.domain;
+  const resolvedWebsite = domainResolution.website ?? params.companyWebsite;
+  if (domainResolution.source !== "provided" && domainResolution.source !== "unresolved" && resolvedDomain) {
+    warnings.push(`Resolved domain for ${params.companyName}: ${resolvedDomain} (${domainResolution.source})`);
+  } else if (!resolvedDomain) {
+    warnings.push(`No website domain for ${params.companyName}. People search may be less accurate.`);
+  }
   const activeSeniority = params.seniority ?? [];
   const activeDepartments = params.departments ?? [];
   const roleHints = buildRoleTitleHints(activeSeniority, activeDepartments);
@@ -442,7 +456,7 @@ export async function discoverPeople(params: {
     if (filtered.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
       warnings.push("No contacts match the selected seniority and department filters for this company.");
     }
-    return { people: filtered.slice(0, limit), warnings, errors };
+    return { people: filtered.slice(0, limit), resolvedDomain, resolvedWebsite, warnings, errors };
   }
 
   const remaining = limit - companyContacts.length;
@@ -536,6 +550,8 @@ export async function discoverPeople(params: {
 
   return {
     people: sortPeopleByScore(finalPeople).slice(0, limit),
+    resolvedDomain,
+    resolvedWebsite,
     warnings: [...new Set(warnings)],
     errors: [...new Set(errors)],
   };

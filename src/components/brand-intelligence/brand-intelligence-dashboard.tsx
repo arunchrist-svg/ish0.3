@@ -17,9 +17,12 @@ import {
   MessageSquare,
   Filter,
   MapPin,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MobileHeader, MobilePageLayout, PanelCard, SearchBar, text } from "@/design-system";
+import { ActionBar, BottomSheet, MobilePageLayout, PanelCard, text } from "@/design-system";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { toast } from "sonner";
 import {
   confirmGiftIntelMerge,
@@ -102,6 +105,8 @@ export function BrandIntelligenceDashboard() {
   const [pendingConfirmations, setPendingConfirmations] = useState<GiftIntelResultRow[]>([]);
   const [stats, setStats] = useState<GiftIntelSweepResult["stats"] | null>(null);
   const [filter, setFilter] = useState("");
+  const [citySheetOpen, setCitySheetOpen] = useState(false);
+  const isMobile = useIsMobileLayout();
 
   useEffect(() => {
     let cancelled = false;
@@ -218,11 +223,28 @@ export function BrandIntelligenceDashboard() {
     <MobilePageLayout
       title="Gift Tracker"
       subtitle="Corporate gifting intelligence"
-      largeTitle
+      largeTitle={!isMobile}
       className="ish-board-page"
       contentClassName="flex flex-col !overflow-hidden"
+      footer={
+        isMobile ? (
+          <ActionBar>
+            <button
+              type="button"
+              onClick={handleSweep}
+              disabled={isExtracting || !selectedCompetitors.length}
+              className={cn(
+                "flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
+                "bg-ish-yellow-gradient text-ish-black shadow-ish-yellow-sm",
+              )}
+            >
+              {isExtracting ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
+              {isExtracting ? "Sweeping…" : "Run Intelligence Sweep"}
+            </button>
+          </ActionBar>
+        ) : undefined
+      }
     >
-      <SearchBar value={filter} onChange={setFilter} placeholder="Search" sticky className="lg:hidden" />
       <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -253,14 +275,14 @@ export function BrandIntelligenceDashboard() {
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-        <div className="mx-auto flex max-w-[1280px] flex-col gap-5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-24 lg:px-6 lg:py-5 lg:pb-5">
+        <div className="mx-auto flex max-w-[1280px] flex-col gap-3 lg:gap-5">
           <PanelCard
             tone="white"
             className="relative overflow-hidden border border-ish-border/50 bg-white/80 p-0 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm"
           >
             <div className="settings-hero-stripe h-[3px] w-full rounded-none" aria-hidden />
-            <div className="p-5">
+            <div className="p-3 lg:p-5">
               <div className="mb-4 flex items-center gap-2">
                 <Gift className="size-4 text-ish-stratus-blue" />
                 <h2 className={text.cardTitle}>Sweep parameters</h2>
@@ -269,7 +291,7 @@ export function BrandIntelligenceDashboard() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_2fr]">
                 <div className="flex flex-col gap-1.5">
                   <span className={text.label}>Product category</span>
-                  <div className="flex h-[42px] items-center rounded-2xl border border-ish-border/60 bg-ish-yellow-soft/60 px-3.5 text-[13px] font-semibold text-ish-ink">
+                  <div className="flex min-h-[44px] items-center rounded-xl border border-ish-border/60 bg-ish-yellow-soft/60 px-3.5 text-[13px] font-semibold text-ish-ink lg:rounded-2xl lg:h-[42px]">
                     {configLoading ? "Loading…" : giftIntelConfig?.productCategory ?? "Sweets"}
                   </div>
                   <span className="text-[10.5px] text-ish-ink-faint">Set in Settings → Enrichment</span>
@@ -293,7 +315,7 @@ export function BrandIntelligenceDashboard() {
                       </Link>
                     </div>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
+                    <div className={cn(isMobile ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2")}>
                       {giftIntelConfig.competitorBrands.map((brand) => {
                         const active = selectedCompetitors.includes(brand);
                         return (
@@ -302,13 +324,14 @@ export function BrandIntelligenceDashboard() {
                             type="button"
                             onClick={() => toggleCompetitor(brand)}
                             className={cn(
-                              "rounded-full border px-3.5 py-2 text-[12px] font-semibold transition-all",
+                              "rounded-xl border text-left text-[12px] font-semibold transition-all active:scale-[0.98]",
+                              isMobile ? "min-h-[44px] px-3 py-2.5" : "rounded-full px-3.5 py-2",
                               active
                                 ? "border-[rgba(var(--ish-stratus-blue-rgb),0.4)] bg-[rgba(var(--ish-stratus-blue-rgb),0.12)] text-ish-ink shadow-[var(--shadow-ish-sm)]"
                                 : "border-ish-border/60 bg-white/70 text-ish-ink-soft hover:border-ish-border hover:text-ish-ink",
                             )}
                           >
-                            {brand}
+                            <span className="line-clamp-2">{brand}</span>
                           </button>
                         );
                       })}
@@ -319,43 +342,104 @@ export function BrandIntelligenceDashboard() {
               </div>
 
 
-              <div className="mt-5">
-                <div className="mb-2 flex items-center gap-2">
-                  <MapPin className="size-4 text-ish-stratus-blue" />
-                  <span className={text.label}>Gifting company city</span>
-                </div>
+              <div className="mt-4 lg:mt-5">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="text-[10.5px] text-ish-ink-faint">
-                    Optional. Leave empty for all cities, or select one or more.
-                  </p>
-                  <button type="button" onClick={clearCities} className="text-[10.5px] font-semibold text-ish-ink-soft hover:underline">Clear</button>
+                  <div className="flex items-center gap-2">
+                    <MapPin className="size-4 text-ish-stratus-blue" />
+                    <span className={text.label}>Gifting company city</span>
+                  </div>
+                  {selectedCities.length > 0 ? (
+                    <button type="button" onClick={clearCities} className="text-[11px] font-semibold text-ish-stratus-blue">Clear</button>
+                  ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {SCOUT_CITY_GROUPS.flatMap((g) => g.cities).map((city) => {
-                    const active = selectedCities.includes(city);
-                    return (
-                      <button
-                        key={city}
-                        type="button"
-                        onClick={() => toggleCity(city)}
-                        className={cn(
-                          "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all",
-                          active
-                            ? "border-[rgba(var(--ish-stratus-blue-rgb),0.4)] bg-[rgba(var(--ish-stratus-blue-rgb),0.12)] text-ish-ink"
-                            : "border-ish-border/60 bg-white/70 text-ish-ink-soft hover:text-ish-ink",
-                        )}
-                      >
-                        {city}
-                      </button>
-                    );
-                  })}
-                </div>
+                {isMobile ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setCitySheetOpen(true)}
+                      className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-ish-border/60 bg-white/80 px-3.5 py-2.5 text-left active:scale-[0.99]"
+                    >
+                      <span className="text-[13px] font-semibold text-ish-ink">
+                        {selectedCities.length === 0
+                          ? "All cities"
+                          : selectedCities.length === 1
+                            ? selectedCities[0]
+                            : `${selectedCities.length} cities selected`}
+                      </span>
+                      <ChevronDown className="size-4 text-ish-ink-faint" />
+                    </button>
+                    <BottomSheet open={citySheetOpen} onClose={() => setCitySheetOpen(false)} title="Select cities" contentClassName="px-0 py-0">
+                      <div className="px-3 pb-4">
+                        <p className="mb-3 text-[12px] text-ish-ink-soft">Optional. Leave empty for all cities.</p>
+                        {SCOUT_CITY_GROUPS.map((group) => (
+                          <div key={group.label} className="mb-3">
+                            <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">{group.label}</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {group.cities.map((city) => {
+                                const active = selectedCities.includes(city);
+                                return (
+                                  <button
+                                    key={city}
+                                    type="button"
+                                    onClick={() => toggleCity(city as ScoutCity)}
+                                    className={cn(
+                                      "flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-semibold transition-all active:scale-[0.98]",
+                                      active
+                                        ? "border-ish-stratus-blue/40 bg-ish-stratus-blue/10 text-ish-ink"
+                                        : "border-ish-border/60 bg-white text-ish-ink-soft",
+                                    )}
+                                  >
+                                    <span className="truncate">{city}</span>
+                                    {active ? <Check className="size-3.5 shrink-0 text-ish-stratus-blue" /> : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setCitySheetOpen(false)}
+                          className="mt-2 flex h-11 w-full items-center justify-center rounded-2xl bg-ish-black text-[14px] font-bold text-white"
+                        >
+                          Done
+                        </button>
+                      </div>
+                    </BottomSheet>
+                  </>
+                ) : (
+                  <>
+                    <p className="mb-2 text-[10.5px] text-ish-ink-faint">
+                      Optional. Leave empty for all cities, or select one or more.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {SCOUT_CITY_GROUPS.flatMap((g) => g.cities).map((city) => {
+                        const active = selectedCities.includes(city);
+                        return (
+                          <button
+                            key={city}
+                            type="button"
+                            onClick={() => toggleCity(city)}
+                            className={cn(
+                              "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all",
+                              active
+                                ? "border-[rgba(var(--ish-stratus-blue-rgb),0.4)] bg-[rgba(var(--ish-stratus-blue-rgb),0.12)] text-ish-ink"
+                                : "border-ish-border/60 bg-white/70 text-ish-ink-soft hover:text-ish-ink",
+                            )}
+                          >
+                            {city}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
 
-              <div className="mt-5">
-                <p className={cn(text.label, "mb-2.5")}>Source tiers</p>
-                <div className="flex flex-wrap gap-2">
-                  {TIER_OPTIONS.map(({ tier, label, description, icon: Icon }) => {
+              <div className="mt-4 lg:mt-5">
+                <p className={cn(text.label, "mb-2")}>Source tiers</p>
+                <div className={cn(isMobile ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2")}>
+                  {TIER_OPTIONS.map(({ tier, label, short, description, icon: Icon }) => {
                     const active = enabledTiers.includes(tier);
                     return (
                       <button
@@ -363,7 +447,8 @@ export function BrandIntelligenceDashboard() {
                         type="button"
                         onClick={() => toggleTier(tier)}
                         className={cn(
-                          "group flex min-w-[120px] sm:min-w-[148px] flex-col rounded-2xl border px-3.5 py-2.5 text-left transition-all duration-200",
+                          "group flex flex-col rounded-xl border text-left transition-all duration-200 active:scale-[0.98]",
+                          isMobile ? "min-h-[56px] px-2.5 py-2" : "min-w-[120px] sm:min-w-[148px] rounded-2xl px-3.5 py-2.5",
                           active
                             ? "border-[rgba(var(--ish-stratus-blue-rgb),0.35)] bg-[rgba(var(--ish-stratus-blue-rgb),0.08)] shadow-[var(--shadow-ish-sm)]"
                             : "border-ish-border/60 bg-white/50 hover:border-ish-border hover:bg-white/80",
@@ -372,24 +457,36 @@ export function BrandIntelligenceDashboard() {
                         <span className="flex items-center gap-2">
                           <span
                             className={cn(
-                              "flex size-7 items-center justify-center rounded-xl transition-colors",
+                              "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
                               active ? "bg-ish-yellow text-ish-ink" : "bg-ish-border/40 text-ish-ink-soft",
                             )}
                           >
                             <Icon className="size-3.5" />
                           </span>
-                          <span className={cn("text-[12px] font-bold", active ? "text-ish-ink" : "text-ish-ink-soft")}>
-                            {label}
+                          <span className={cn("text-[12px] font-bold leading-tight", active ? "text-ish-ink" : "text-ish-ink-soft")}>
+                            {isMobile ? short : label}
                           </span>
                         </span>
-                        <span className="mt-1 pl-9 text-[10.5px] leading-snug text-ish-ink-faint">{description}</span>
+                        {!isMobile ? (
+                          <span className="mt-1 pl-9 text-[10.5px] leading-snug text-ish-ink-faint">{description}</span>
+                        ) : null}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-ish-border/40 pt-5">
+              {isMobile ? (
+                <p className="mt-3 text-center text-[11px] text-ish-ink-faint">
+                  {selectedCompetitors.length} brand{selectedCompetitors.length === 1 ? "" : "s"}
+                  {" · "}
+                  {selectedCities.length === 0 ? "All cities" : `${selectedCities.length} cit${selectedCities.length === 1 ? "y" : "ies"}`}
+                  {" · "}
+                  {enabledTiers.length} tier{enabledTiers.length === 1 ? "" : "s"}
+                </p>
+              ) : null}
+
+              <div className={cn("mt-4 flex flex-wrap items-center gap-3 border-t border-ish-border/40 pt-4 lg:mt-5 lg:pt-5", isMobile && "hidden")}>
                 <button
                   type="button"
                   onClick={handleSweep}
@@ -413,6 +510,17 @@ export function BrandIntelligenceDashboard() {
             </div>
           </PanelCard>
 
+          {isMobile && stats ? (
+            <div className="flex flex-wrap gap-2">
+              {stats.combinationsRun != null && stats.combinationsRun > 1 ? (
+                <StatPill label="Combinations" value={stats.combinationsRun} />
+              ) : null}
+              <StatPill label="Queries" value={stats.queriesRun} />
+              <StatPill label="Posts" value={stats.hitsAfterPreFilter} />
+              <StatPill label="Verified" value={stats.hitsExtracted} accent />
+            </div>
+          ) : null}
+
           {errorLogs.length > 0 && (
             <div className="rounded-2xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-[12.5px] text-amber-900">
               {errorLogs.map((err) => (
@@ -425,12 +533,12 @@ export function BrandIntelligenceDashboard() {
             tone="white"
             className="overflow-hidden border border-ish-border/50 bg-white/75 p-0 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm"
           >
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ish-border/50 px-5 py-4">
+            <div className="flex flex-col gap-3 border-b border-ish-border/50 px-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5 lg:py-4">
               <div>
                 <h2 className={text.cardTitle}>Extracted intelligence</h2>
                 <p className={text.caption}>Verified corporate gifting events from public sources</p>
               </div>
-              <div className="relative w-full max-w-[280px]">
+              <div className="relative w-full lg:max-w-[280px]">
                 <Filter className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
                 <input
                   value={filter}
@@ -443,6 +551,12 @@ export function BrandIntelligenceDashboard() {
 
             {filtered.length === 0 ? (
               <EmptyState isExtracting={isExtracting} hasSweep={extractedIntelligence.length > 0 && !!filter} />
+            ) : isMobile ? (
+              <div className="space-y-2.5 p-3">
+                {filtered.map((row) => (
+                  <IntelResultCard key={row.id} row={row} onConfirm={handleConfirm} />
+                ))}
+              </div>
             ) : (
               <div className="overflow-x-auto -mx-1 px-1 lg:mx-0 lg:px-0">
                 <table className="min-w-full text-left">
@@ -576,6 +690,70 @@ export function BrandIntelligenceDashboard() {
   );
 }
 
+
+
+function IntelResultCard({
+  row,
+  onConfirm,
+}: {
+  row: GiftIntelResultRow;
+  onConfirm: (row: GiftIntelResultRow, accountId: string) => void;
+}) {
+  const tier = tierMeta(row.source_tier);
+  const status = statusMeta(row);
+  const confidence = Math.round((row.confidence_score ?? 0) * 100);
+
+  return (
+    <div className="rounded-2xl border border-ish-border/50 bg-white p-3 shadow-[var(--shadow-ish-sm)]">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[14px] font-bold text-ish-ink">
+            {row.extraction_data?.giving_company ?? "—"}
+          </div>
+          <div className="mt-0.5 truncate text-[12px] text-ish-ink-soft">
+            {[row.extraction_data?.giving_company_city, row.extraction_data?.brand_identified].filter(Boolean).join(" · ") || "—"}
+          </div>
+        </div>
+        <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold", status.className)}>
+          {status.label}
+        </span>
+      </div>
+      <div className="mt-2.5 space-y-1 text-[12px] text-ish-ink-soft">
+        <p className="line-clamp-2">
+          <span className="font-semibold text-ish-ink">Product:</span>{" "}
+          {row.extraction_data?.specific_product_details ?? row.extraction_data?.brand_identified ?? "—"}
+        </p>
+        <p className="line-clamp-1">
+          <span className="font-semibold text-ish-ink">Occasion:</span> {row.extraction_data?.occasion_or_context ?? "—"}
+        </p>
+      </div>
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-ish-border/35 pt-2">
+        <span className="rounded-full border border-ish-border/60 bg-ish-canvas px-2 py-0.5 text-[10px] font-semibold text-ish-ink-soft">
+          {tier?.short ?? "—"} · {confidence}%
+        </span>
+        {row.source_url ? (
+          <a
+            href={row.source_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-ish-stratus-blue"
+          >
+            Source <ExternalLink className="size-3" />
+          </a>
+        ) : null}
+      </div>
+      {row.mergeStatus === "pending_confirm" && row.matchedAccountId ? (
+        <button
+          type="button"
+          onClick={() => onConfirm(row, row.matchedAccountId!)}
+          className="mt-2.5 w-full rounded-xl bg-ish-black py-2 text-[12px] font-bold text-white active:scale-[0.98]"
+        >
+          Confirm & update
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 function StatPill({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (

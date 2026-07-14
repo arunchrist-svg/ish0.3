@@ -38,7 +38,7 @@ export async function tavilySearchCompanies(params: {
 
     try {
       const raw = await callLLM({
-        tier: "fast",
+        tier: "quality",
         system: `You extract structured company data for B2B corporate gifting lead generation.
 Output ONLY valid JSON array. Each item: { name, domain, industry, city, employees, intelNotes }.
 Only include real companies. Minimum confidence 40. Do NOT invent companies.`,

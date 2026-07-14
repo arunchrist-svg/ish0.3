@@ -50,7 +50,7 @@ export function MobileInboxApp() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const overview = await fetchEmailOverview();
+      const overview = await fetchEmailOverview(["needs_review", "replies"]);
       setData(overview);
     } catch {
       showError("Couldn't load inbox", { description: "Check your connection and try again." });
@@ -70,8 +70,8 @@ export function MobileInboxApp() {
 
   const counts = useMemo(
     () => ({
-      needs_review: data?.needsReview.length ?? 0,
-      replies: data?.replies.length ?? 0,
+      needs_review: data?.stats.tabCounts?.needs_review ?? data?.needsReview.length ?? 0,
+      replies: data?.stats.tabCounts?.replies ?? data?.replies.length ?? 0,
     }),
     [data],
   );

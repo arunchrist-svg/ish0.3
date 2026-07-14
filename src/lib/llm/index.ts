@@ -19,7 +19,28 @@ export type LLMTraceContext = {
 };
 
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
+let omlxClient: ReturnType<typeof createOpenAI> | null = null;
 
+
+
+function getOmlxBaseUrl(): string {
+  const base = process.env.OMLX_BASE_URL ?? "http://127.0.0.1:5200/v1";
+  return base.endsWith("/v1") ? base : `${base.replace(/\/$/, "")}/v1`;
+}
+
+function getOmlxClient() {
+  if (!omlxClient) {
+    omlxClient = createOpenAI({
+      baseURL: getOmlxBaseUrl(),
+      apiKey: process.env.OMLX_API_KEY ?? "none",
+    });
+  }
+  return omlxClient;
+}
+
+export function getLLMProvider(): string {
+  return process.env.LLM_PROVIDER ?? "gemini";
+}
 
 function getOpenRouterSiteUrl(): string {
   if (process.env.OPENROUTER_SITE_URL) return process.env.OPENROUTER_SITE_URL;
@@ -54,6 +75,14 @@ function getModel(tier: LLMTier) {
     const fast    = process.env.OPENROUTER_MODEL_FAST    ?? "openai/gpt-4o-mini";
     const quality = process.env.OPENROUTER_MODEL_QUALITY ?? "openai/gpt-4o";
     const client  = getOpenRouterClient();
+    return tier === "fast" ? client(fast) : client(quality);
+  }
+
+  if (provider === "omlx") {
+    const fallback = process.env.OMLX_MODEL ?? "Llama-3.2-3B-Instruct-4bit";
+    const fast    = process.env.OMLX_MODEL_FAST    ?? fallback;
+    const quality = process.env.OMLX_MODEL_QUALITY ?? process.env.OMLX_MODEL_FAST ?? fallback;
+    const client  = getOmlxClient();
     return tier === "fast" ? client(fast) : client(quality);
   }
 
@@ -161,6 +190,9 @@ export async function callLLM(params: {
 
 export function friendlyLLMError(error: unknown): string {
   const msg = error instanceof Error ? error.message : "AI request failed";
+  if (/ECONNREFUSED|ENOTFOUND|fetch failed|connect ECONNREFUSED|Local LLM server/i.test(msg)) {
+    return "Local LLM server is not reachable. Start OMLX and verify OMLX_BASE_URL in .env.local.";
+  }
   if (/quota|rate.?limit|resource_exhausted|exceeded your current quota/i.test(msg)) {
     return "LLM API quota exceeded. Wait about a minute and try again, or switch to a paid API plan.";
   }

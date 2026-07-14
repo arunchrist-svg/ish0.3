@@ -287,6 +287,13 @@ export type EmailOverviewData = {
     total: number;
     needsReview: number;
     replies: number;
+    tabCounts?: {
+      needs_review: number;
+      active: number;
+      hot: number;
+      replies: number;
+      done: number;
+    };
   };
   needsReview: import("@/app/api/email/overview/route").LeadEmailRow[];
   replies: import("@/app/api/email/overview/route").LeadEmailRow[];
@@ -321,8 +328,17 @@ export async function setOutreachSendingPaused(paused: boolean): Promise<{ outre
   return { outreachPaused: data.outreachPaused };
 }
 
-export async function fetchEmailOverview(): Promise<EmailOverviewData> {
-  const res = await fetch("/api/email/overview");
+export type EmailOverviewTab = "needs_review" | "active" | "hot" | "replies" | "done";
+
+export async function fetchEmailOverview(tabs?: EmailOverviewTab | EmailOverviewTab[]): Promise<EmailOverviewData> {
+  const params = new URLSearchParams();
+  if (tabs) {
+    const list = Array.isArray(tabs) ? tabs : [tabs];
+    params.set("tabs", list.join(","));
+  } else {
+    params.set("tab", "needs_review");
+  }
+  const res = await fetch(`/api/email/overview?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to load outreach queue");
   return res.json();
 }

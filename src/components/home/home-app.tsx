@@ -253,38 +253,49 @@ export function HomeApp() {
   const { session } = useSession();
   const { notifications: hotReplyNotifs, unreadCount: hotReplyCount } = useNotifications();
   const isSuperadmin = session?.isSuperadmin ?? false;
-  const [loading, setLoading] = useState(true);
+  const [funnelLoading, setFunnelLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { count: inboxCount } = useInboxBadge();
 
   async function loadAll(silent = false) {
-    if (!silent) setLoading(true);
+    if (!silent) setFunnelLoading(true);
     else setRefreshing(true);
 
-    try {
-      const superadmin = session?.isSuperadmin === true;
+    const superadmin = session?.isSuperadmin === true;
 
-      const [funnelRes, leadsRes, tavilyRes, llmRes] = await Promise.allSettled([
-        fetch("/api/funnel").then((r) => r.json()),
-        fetch("/api/leads?limit=10").then((r) => r.json()),
-        superadmin ? fetch("/api/usage/tavily").then((r) => r.json()) : Promise.resolve(null),
-        superadmin ? fetch("/api/usage/llm").then((r) => r.json()) : Promise.resolve(null),
-      ]);
+    void fetch("/api/funnel")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        const funnelData = data as FunnelData & { contactCount?: number };
+        setFunnel(funnelData);
+        if (typeof funnelData.contactCount === "number") setContacts(funnelData.contactCount);
+      })
+      .catch(() => {})
+      .finally(() => setFunnelLoading(false));
 
-      if (funnelRes.status === "fulfilled") {
-        const data = funnelRes.value as FunnelData & { contactCount?: number };
-        setFunnel(data);
-        if (typeof data.contactCount === "number") setContacts(data.contactCount);
-      }
-      if (leadsRes.status === "fulfilled") {
-        const all: LeadItem[] = (leadsRes.value as { leads: LeadItem[] }).leads ?? [];
-        setLeads(all);
-      }
-      if (tavilyRes.status === "fulfilled" && tavilyRes.value) setTavilyUsage(tavilyRes.value as TavilyUsage);
-      if (llmRes.status === "fulfilled" && llmRes.value) setLlmConfig(llmRes.value as LlmConfig);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+    void fetch("/api/leads?limit=10")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data) return;
+        setLeads((data as { leads: LeadItem[] }).leads ?? []);
+      })
+      .catch(() => {});
+
+    if (superadmin) {
+      void fetch("/api/usage/tavily")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => { if (data) setTavilyUsage(data as TavilyUsage); })
+        .catch(() => {});
+
+      void fetch("/api/usage/llm")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => { if (data) setLlmConfig(data as LlmConfig); })
+        .catch(() => {});
+    }
+
+    if (silent) {
+      window.setTimeout(() => setRefreshing(false), 400);
     }
   }
 
@@ -296,7 +307,8 @@ export function HomeApp() {
   const totalLeads   = funnel?.leadStatuses.reduce((s, r) => s + Number(r.count), 0) ?? 0;
   const closedCount  = funnel?.closedDeals.count ?? 0;
   const closedAmount = funnel?.closedDeals.totalAmount ?? 0;
-  const emailFoundRate = funnel?.emailAccuracy.emailFoundRate ?? 0;
+  const emailFoundRate = funnel?.emailAccuracy?.emailFoundRate ?? 0;
+  const kpiLoading = funnelLoading && !funnel;
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -310,26 +322,6 @@ export function HomeApp() {
     month: "long",
     day: "numeric",
   });
-
-  if (loading) {
-    return (
-      <div className="flex flex-1 flex-col overflow-y-auto bg-ish-canvas p-4 lg:p-8">
-        <div className="mb-8 h-9 w-56 animate-pulse rounded-xl bg-ish-border" />
-        <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-32 animate-pulse rounded-[20px] bg-ish-border" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
-          <div className="h-96 animate-pulse rounded-[20px] bg-ish-border" />
-          <div className="flex flex-col gap-4">
-            <div className="h-52 animate-pulse rounded-[20px] bg-ish-border" />
-            <div className="h-40 animate-pulse rounded-[20px] bg-ish-border" />
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <MobilePageLayout
@@ -410,6 +402,13 @@ export function HomeApp() {
         ) : null}
 
         {/* KPI tiles */}
+        {kpiLoading ? (
+          <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-32 animate-pulse rounded-[20px] bg-ish-border" />
+            ))}
+          </div>
+        ) : (
         <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <KpiTile
             label="Total Leads"
@@ -445,6 +444,7 @@ export function HomeApp() {
             valueClass="text-white"
           />
         </div>
+        )}
 
         {/* Main: activity + sidebar */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">

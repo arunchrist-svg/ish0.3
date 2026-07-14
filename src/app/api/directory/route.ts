@@ -39,7 +39,6 @@ export async function GET() {
         giftScore: number;
         domain?: string;
         website?: string;
-        companyOverview?: unknown;
         overviewEnrichedAt?: string;
         contacts: {
           leadId: string;
@@ -90,7 +89,6 @@ export async function GET() {
           giftScore: row.account.giftScore ?? 60,
           domain: row.account.domain ?? undefined,
           website: row.account.website ?? undefined,
-          companyOverview: row.account.companyOverview ?? undefined,
           overviewEnrichedAt: row.account.overviewEnrichedAt?.toISOString(),
           contacts: [],
         });

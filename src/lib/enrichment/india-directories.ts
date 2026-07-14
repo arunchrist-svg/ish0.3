@@ -145,7 +145,7 @@ export async function indiaDirectoriesSearchCompanies(params: {
 
     try {
       const raw = await callLLM({
-        tier: "fast",
+        tier: "quality",
         system: `You extract structured B2B company data for corporate gifting lead generation from Indian business directory listings.
 Output ONLY a valid JSON array. No markdown fences. No explanation.
 Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }

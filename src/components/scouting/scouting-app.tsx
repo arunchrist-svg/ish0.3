@@ -348,7 +348,7 @@ function ScoutCompaniesEmpty({
 }) {
   if (!hasFetched) {
     return (
-      <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-12 text-center shadow-ish backdrop-blur-xl lg:mx-5 lg:mt-8">
+      <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
         <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-yellow-gradient shadow-ish-yellow-sm">
           <Compass className="size-7 text-ish-black" />
         </div>
@@ -366,7 +366,7 @@ function ScoutCompaniesEmpty({
   }
 
   return (
-    <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-12 text-center shadow-ish backdrop-blur-xl lg:mx-5 lg:mt-8">
+    <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
       <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-canvas text-ish-ink-soft">
         <MapPin className="size-7" />
       </div>
@@ -393,7 +393,7 @@ function ScoutPeopleEmpty({
   detail: string;
 }) {
   return (
-    <div className="mx-4 mt-4 rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-12 text-center shadow-ish backdrop-blur-xl">
+    <div className="mx-4 mt-4 rounded-[24px] border border-ish-border/50 bg-white px-6 py-12 text-center shadow-ish">
       <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-canvas text-ish-ink-soft">
         <Users className="size-7" />
       </div>
@@ -443,6 +443,7 @@ export function ScoutingApp() {
   const [pendingFetchIds, setPendingFetchIds] = useState<Set<string> | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -944,7 +945,18 @@ export function ScoutingApp() {
       });
 
       if (allPeople[0]) {
-        setPrimaryPersonId(allPeople[0].id);
+        if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+          setPrimaryPersonId(allPeople[0].id);
+        } else {
+          setPrimaryPersonId(null);
+        }
+        setSelectedPersonIds(
+          new Set(
+            allPeople
+              .filter((p) => !existingContactNames.has(p.name.toLowerCase()))
+              .map((p) => p.id),
+          ),
+        );
         setPeopleNotice(null);
       } else {
         const notice = pickPeopleNotice(peopleWarnings);
@@ -1115,6 +1127,7 @@ export function ScoutingApp() {
     onScoutModeChange: handleScoutModeChange,
     onCompanySearchQueryChange: setCompanySearchQuery,
     onSearchByName: handleSearchByName,
+    onFilterPanelChange: setFilterPanelOpen,
   } as const;
 
   const companiesResults = view === "companies" ? (
@@ -1126,8 +1139,10 @@ export function ScoutingApp() {
           "Ranking by gift potential",
         ]}
       />
-    ) : companies.length === 0 ? (
+    ) : companies.length === 0 && !filterPanelOpen ? (
       <ScoutCompaniesEmpty hasFetched={hasFetched} scoutMode={scoutMode} fetchMessage={fetchMessage} />
+    ) : companies.length === 0 ? (
+      null
     ) : (
       <>
         {discoveryNotice ? (
@@ -1230,6 +1245,7 @@ export function ScoutingApp() {
           onSetPrimary={setPersonAsPrimary}
           onContact={(p) => toast.info(`Opening contact for ${p.name}`)}
           onBookmark={(p) => toast.info(`Bookmarked ${p.name}`)}
+          compact={isMobileLayout}
         />
       )}
     </div>

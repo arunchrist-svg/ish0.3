@@ -3,9 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Building2, CreditCard, Settings, Users, Rocket, Mail } from "lucide-react";
+import { Loader2, Building2, CreditCard, Radar, Users, Rocket, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, text } from "@/design-system";
+import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
+import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly } from "@/lib/billing/plan-catalog";
 
 type Plan = {
   slug: string;
@@ -18,7 +20,7 @@ type Plan = {
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
   { id: 2, label: "Plan", icon: CreditCard },
-  { id: 3, label: "Preferences", icon: Settings },
+  { id: 3, label: "Brand", icon: Radar },
   { id: 4, label: "Team", icon: Users },
   { id: 5, label: "Launch", icon: Rocket },
 ];
@@ -32,7 +34,8 @@ export default function OnboardingPage() {
 
   const [orgName, setOrgName] = useState("");
   const [planSlug, setPlanSlug] = useState("starter");
-  const [dataMode, setDataMode] = useState<"free" | "auto" | "paid">("free");
+  const [productCategory, setProductCategory] = useState("");
+  const [competitorBrands, setCompetitorBrands] = useState<string[]>([]);
 
   useEffect(() => {
     void (async () => {
@@ -111,7 +114,22 @@ export default function OnboardingPage() {
 
   async function handlePrefsSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const data = await submitStep({ step: 3, enrichmentConfig: { dataMode } });
+    const category = productCategory.trim();
+    if (!category) {
+      setError("Product category is required");
+      return;
+    }
+    if (competitorBrands.length === 0) {
+      setError("Add at least one competitor brand");
+      return;
+    }
+    const data = await submitStep({
+      step: 3,
+      enrichmentConfig: {
+        giftIntelProductCategory: category,
+        giftIntelCompetitorBrands: competitorBrands,
+      },
+    });
     if (data) setStep(data.nextStep);
   }
 
@@ -130,7 +148,7 @@ export default function OnboardingPage() {
       <div className="mb-10">
         <h1 className={cn("mb-2", text.display)}>Set up your workspace</h1>
         <p className="text-sm text-ish-ink-soft">
-          Complete these steps before accessing your sales hub. Email sending is configured later in Settings.
+          Complete these steps before accessing your sales hub. Set your product category and competitors during Brand setup; refine them later in Settings.
         </p>
       </div>
 
@@ -176,11 +194,7 @@ export default function OnboardingPage() {
         <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
           <h2 className="text-lg font-semibold">Choose a plan</h2>
           <div className="grid gap-4 sm:grid-cols-3">
-            {(plans.length ? plans : [
-              { slug: "starter", name: "Starter", priceCents: 9900, includedCredits: 500, seatLimit: 2 },
-              { slug: "growth", name: "Growth", priceCents: 29900, includedCredits: 2500, seatLimit: 5 },
-              { slug: "scale", name: "Scale", priceCents: 79900, includedCredits: 10000, seatLimit: 15 },
-            ]).map((p) => (
+            {(plans.length ? plans : SUBSCRIPTION_PLANS).map((p) => (
               <button
                 key={p.slug}
                 type="button"
@@ -191,7 +205,7 @@ export default function OnboardingPage() {
                 )}
               >
                 <div className="font-semibold">{p.name}</div>
-                <div className="mt-1 text-2xl font-bold">${(p.priceCents / 100).toFixed(0)}<span className="text-sm font-normal">/mo</span></div>
+                <div className="mt-1 text-2xl font-bold">{formatPlanPriceMonthly(p.priceCents).replace("/mo", "")}<span className="text-sm font-normal">/mo</span></div>
                 <div className="mt-2 text-xs text-ish-ink-soft">{p.includedCredits.toLocaleString()} credits · {p.seatLimit} seats</div>
               </button>
             ))}
@@ -208,22 +222,27 @@ export default function OnboardingPage() {
       )}
 
       {step === 3 && (
-        <form onSubmit={handlePrefsSubmit} className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
-          <h2 className="text-lg font-semibold">Enrichment preferences</h2>
-          <p className="text-sm text-ish-ink-soft">Choose how contact and company data is enriched during scouting.</p>
-          <div className="flex gap-3">
-            {(["free", "auto", "paid"] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => setDataMode(mode)}
-                className={cn("rounded-xl border px-4 py-3 capitalize", dataMode === mode ? "border-ish-black bg-ish-black/5" : "border-ish-border")}
-              >
-                {mode}
-              </button>
-            ))}
+        <form onSubmit={handlePrefsSubmit} className="space-y-8 rounded-2xl border border-ish-border bg-white p-8">
+          <div>
+            <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-ish-ink-faint")}>
+              Brand Intelligence
+            </p>
+            <h2 className="text-lg font-semibold">Set your category and competitors</h2>
+            <p className="mt-1 text-sm text-ish-ink-soft">
+              Used for Corporate Gift Tracker OSINT sweeps. You can add or remove competitors anytime in Settings.
+            </p>
           </div>
-          <Button type="submit" disabled={loading} className="w-full">Continue</Button>
+
+          <BrandIntelligenceSetup
+            productCategory={productCategory}
+            competitorBrands={competitorBrands}
+            onProductCategoryChange={setProductCategory}
+            onCompetitorBrandsChange={setCompetitorBrands}
+          />
+
+          <Button type="submit" disabled={loading || !productCategory.trim() || competitorBrands.length === 0} className="w-full">
+            {loading ? <Loader2 className="size-4 animate-spin" /> : "Continue"}
+          </Button>
         </form>
       )}
 
@@ -242,7 +261,11 @@ export default function OnboardingPage() {
           <Rocket className="mx-auto size-12 text-ish-black" />
           <h2 className="text-lg font-semibold">You&apos;re ready to scout</h2>
           <p className="text-sm text-ish-ink-soft">
-            Your workspace is ready. Configure outreach email anytime under{" "}
+            Your workspace is ready. Update competitors under{" "}
+            <Link href="/settings?tab=enrichment" className="font-medium text-ish-ink underline">
+              Settings → Enrichment
+            </Link>
+            {" "}and configure outreach under{" "}
             <Link href="/settings?tab=email" className="font-medium text-ish-ink underline">
               Settings → Email
             </Link>

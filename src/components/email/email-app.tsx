@@ -141,6 +141,8 @@ function tabRows(data: EmailOverviewData, tab: QueueTab): LeadEmailRow[] {
 }
 
 function tabCount(data: EmailOverviewData, tab: QueueTab): number {
+  const counts = data.stats.tabCounts;
+  if (counts) return counts[tab] ?? 0;
   return tabRows(data, tab).length;
 }
 
@@ -503,41 +505,52 @@ export function EmailApp() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [togglingSend, setTogglingSend] = useState(false);
+  const [loadedTabs, setLoadedTabs] = useState<Set<QueueTab>>(() => new Set());
 
   const activeTab = useMemo(
     () => parseQueueTab(searchParams.get("tab")),
     [searchParams],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const overview = await fetchEmailOverview();
-      setData(overview);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
+  const mergeOverview = useCallback((tab: QueueTab, overview: EmailOverviewData) => {
+    setData((prev) => ({
+      ...overview,
+      needsReview: tab === "needs_review" ? overview.needsReview : (prev?.needsReview ?? []),
+      active: tab === "active" ? overview.active : (prev?.active ?? []),
+      hot: tab === "hot" ? overview.hot : (prev?.hot ?? []),
+      replies: tab === "replies" ? overview.replies : (prev?.replies ?? []),
+      done: tab === "done" ? overview.done : (prev?.done ?? []),
+      draftReady: tab === "needs_review" ? overview.draftReady : (prev?.draftReady ?? []),
+      stopped: tab === "done" ? overview.stopped : (prev?.stopped ?? []),
+    }));
+    setLoadedTabs((prev) => new Set(prev).add(tab));
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
+  const loadTab = useCallback(
+    async (tab: QueueTab, options?: { silent?: boolean }) => {
+      if (!options?.silent) setLoading(true);
       try {
-        const overview = await fetchEmailOverview();
-        if (!cancelled) setData(overview);
+        const overview = await fetchEmailOverview(tab);
+        mergeOverview(tab, overview);
       } catch {
-        if (!cancelled) setData(null);
+        setData(null);
+        setLoadedTabs(new Set());
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!options?.silent) setLoading(false);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    },
+    [mergeOverview],
+  );
+
+  const load = useCallback(async () => {
+    setLoadedTabs(new Set());
+    await loadTab(activeTab);
+  }, [activeTab, loadTab]);
+
+  useEffect(() => {
+    if (loadedTabs.has(activeTab) && data) return;
+    void loadTab(activeTab);
+  }, [activeTab, data, loadedTabs, loadTab]);
 
   const setTab = useCallback(
     (tab: QueueTab) => {

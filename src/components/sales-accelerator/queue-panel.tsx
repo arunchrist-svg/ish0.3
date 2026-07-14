@@ -9,6 +9,8 @@ import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { statusToDisplayLabel } from "@/lib/pipeline-status";
 import { getScoreTone, scoreToneClasses, text } from "@/design-system/tokens";
 import type { LeadQueueItem } from "@/lib/api-client";
+import { scoutCardSurface } from "@/components/cards/scout-card-surface";
+import { Check } from "lucide-react";
 
 type Props = {
   leads: LeadQueueItem[];
@@ -59,9 +61,12 @@ function CompactLeadCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "ish-leads-card flex h-full w-full flex-col rounded-2xl p-3 text-left",
-        "transition-[transform,box-shadow,background-color] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
-        "active:scale-[0.98]",
+        scoutCardSurface({
+          isSelected: active,
+          isPrimary: false,
+          layout: "column",
+          className: "min-h-[132px] p-3 text-left active:scale-[0.98]",
+        }),
         active && "ish-leads-card-active",
       )}
     >
@@ -86,10 +91,13 @@ function CompactLeadCard({
         <span className="min-w-0 truncate rounded-full bg-ish-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ish-ink-soft">
           {statusToDisplayLabel(item.status)}
         </span>
-        <span
-          className={cn("size-2 shrink-0 rounded-full ring-2 ring-white", emailStatusDot(item.emailStatus))}
-          title={item.emailStatus}
-        />
+        <div className="flex items-center gap-1.5">
+          <span
+            className={cn("size-2 shrink-0 rounded-full ring-2 ring-white", emailStatusDot(item.emailStatus))}
+            title={item.emailStatus}
+          />
+          {active ? <Check className="size-3.5 text-ish-stratus-blue" strokeWidth={2.5} /> : null}
+        </div>
       </div>
     </button>
   );

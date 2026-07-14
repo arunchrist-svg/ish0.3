@@ -206,9 +206,23 @@ function buildLeadRow(
   };
 }
 
-export async function GET() {
+type QueueTabKey = "needs_review" | "active" | "hot" | "replies" | "done";
+
+const ALL_TABS: QueueTabKey[] = ["needs_review", "active", "hot", "replies", "done"];
+
+function parseTabsParam(searchParams: URLSearchParams): QueueTabKey[] {
+  const raw = searchParams.get("tabs") ?? searchParams.get("tab");
+  if (!raw || raw === "all") return ALL_TABS;
+  const requested = raw.split(",").map((t) => t.trim()) as QueueTabKey[];
+  const valid = requested.filter((t) => ALL_TABS.includes(t));
+  return valid.length > 0 ? valid : ["needs_review"];
+}
+
+export async function GET(req: Request) {
   try {
     const ctx = await requireTenantContext();
+    const { searchParams } = new URL(req.url);
+    const tabsToInclude = parseTabsParam(searchParams);
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
     const cadenceDays = normalizeCadenceDays(emailConfig.cadenceDays);
 
@@ -436,6 +450,14 @@ export async function GET() {
     const active = result.filter((r) => r.queueStatus === "active");
     const done = result.filter((r) => r.queueStatus === "done");
 
+    const tabCounts = {
+      needs_review: needsReview.length,
+      active: active.length,
+      hot: hot.length,
+      replies: replies.length,
+      done: done.length,
+    };
+
     const totalSent = result.reduce((s, r) => s + r.emailsSent, 0);
     const opened = result.filter((r) => r.openedAt != null).length;
     const replied = result.filter((r) => r.hasInboundReply).length;
@@ -450,6 +472,9 @@ export async function GET() {
     const draftReady = result.filter((r) => r.status === "draft_ready" || r.hasReplyDraft);
     const stopped = done;
 
+    const include = (tab: QueueTabKey) => tabsToInclude.includes(tab);
+    const empty: LeadEmailRow[] = [];
+
     return NextResponse.json({
       outreachPaused: emailConfig.outreachPaused ?? false,
       sendMode: emailConfig.sendMode,
@@ -460,16 +485,17 @@ export async function GET() {
         replied,
         dueToday,
         total: result.length,
-        needsReview: needsReview.length,
-        replies: replies.length,
+        needsReview: tabCounts.needs_review,
+        replies: tabCounts.replies,
+        tabCounts,
       },
-      needsReview,
-      replies,
-      hot,
-      active,
-      done,
-      draftReady,
-      stopped,
+      needsReview: include("needs_review") ? needsReview : empty,
+      replies: include("replies") ? replies : empty,
+      hot: include("hot") ? hot : empty,
+      active: include("active") ? active : empty,
+      done: include("done") ? done : empty,
+      draftReady: include("needs_review") ? draftReady : empty,
+      stopped: include("done") ? stopped : empty,
     });
   } catch (e) {
     return handleApiError(e, "[api/email/overview]");

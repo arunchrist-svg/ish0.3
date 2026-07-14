@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/api/auth/login",
   "/api/auth/signup",
   "/api/auth/account-type",
+  "/api/auth/session",
   "/api/auth/change-password",
   "/api/auth/google",
   "/api/auth/accept-invite",
@@ -22,6 +23,9 @@ const PUBLIC_PATHS = [
   "/api/track/open",
   "/_next",
   "/favicon.ico",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/sw.js",
 ];
 
 export function proxy(request: NextRequest) {
@@ -45,5 +49,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icon.svg|sw.js).*)"],
 };

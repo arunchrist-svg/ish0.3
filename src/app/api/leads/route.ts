@@ -3,7 +3,6 @@ import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, leads, contacts, accounts } from "@/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
-import { runResearcherLite } from "@/lib/agents/researcher-lite";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
@@ -53,13 +52,6 @@ export async function GET(req: Request) {
       emailStatus: r.emailStatus ?? "missing",
       nextActionDate: undefined,
     }));
-
-    const scoutedLeads = rows.filter((r) => r.status === "scouted" && r.researcherEligible);
-    if (rowLimit >= 100) for (const row of scoutedLeads.slice(0, 3)) {
-      runResearcherLite(row.id).catch((e) =>
-        console.error("[researcher-lite] failed for", row.id, e),
-      );
-    }
 
     return NextResponse.json({ leads: queue });
   } catch (e) {

@@ -15,7 +15,8 @@ export async function GET() {
       withEmail,
       verified,
       leadStatuses,
-      closedRows,
+      closedCountResult,
+      closedAmountRows,
       contactCount,
     ] = await Promise.all([
       db
@@ -45,17 +46,27 @@ export async function GET() {
         .where(eq(leads.tenantId, ctx.tenantId))
         .groupBy(leads.status),
       db
-        .select({ closedDealAmount: leads.closedDealAmount })
+        .select({ total: count() })
         .from(leads)
         .where(and(eq(leads.tenantId, ctx.tenantId), or(eq(leads.status, "closed"), eq(leads.status, "po_closed")))),
+      db
+        .select({ closedDealAmount: leads.closedDealAmount })
+        .from(leads)
+        .where(
+          and(
+            eq(leads.tenantId, ctx.tenantId),
+            or(eq(leads.status, "closed"), eq(leads.status, "po_closed")),
+          ),
+        )
+        .limit(500),
       db
         .select({ total: count() })
         .from(contacts)
         .where(eq(contacts.tenantId, ctx.tenantId)),
     ]);
 
-    const closedCount = closedRows.length;
-    const totalAmount = closedRows.reduce((sum, row) => {
+    const closedCount = closedCountResult[0]?.total ?? 0;
+    const totalAmount = closedAmountRows.reduce((sum, row) => {
       if (!row.closedDealAmount) return sum;
       return sum + (parseDealAmount(row.closedDealAmount) ?? 0);
     }, 0);

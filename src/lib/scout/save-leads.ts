@@ -16,6 +16,7 @@ import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
+import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-company-domain";
 
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
 
@@ -84,6 +85,24 @@ export type SaveLeadsResult = {
   skipped: { name: string; reason: string }[];
 };
 
+
+async function findExistingAccount(
+  tenantId: string,
+  company: ScoutCompanyResult,
+): Promise<typeof accounts.$inferSelect | undefined> {
+  const domain = normalizeDomain(company.domain);
+  if (domain) {
+    const byDomain = await db.query.accounts.findFirst({
+      where: (a, { eq: eqFn, and: andFn }) => andFn(eqFn(a.tenantId, tenantId), eqFn(a.domain, domain)),
+    });
+    if (byDomain) return byDomain;
+  }
+
+  return db.query.accounts.findFirst({
+    where: (a, { eq: eqFn, and: andFn }) => andFn(eqFn(a.tenantId, tenantId), eqFn(a.name, company.name)),
+  });
+}
+
 export async function saveScoutLeads(params: {
   people: ScoutPersonResult[];
   company: ScoutCompanyResult;
@@ -101,27 +120,40 @@ export async function saveScoutLeads(params: {
     (await getResolvedWorkspaceEnrichmentConfig({ dataMode }));
   const shouldEnrich = cfg.enrichOnImport && cfg.enrichProvider !== "none";
   const enrichMode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
+
+  const domainResolution = await resolveCompanyDomain({
+    companyName: company.name,
+    domain: company.domain,
+    website: company.website,
+    city: company.city,
+  });
+  const resolvedCompany: ScoutCompanyResult = {
+    ...company,
+    domain: domainResolution.domain ?? company.domain,
+    website: domainResolution.website ?? company.website,
+  };
+
   let resolvedAccountId: string;
   const [account] = await db
     .insert(accounts)
     .values({
       tenantId,
       workspaceId,
-      name: company.name,
-      domain: company.domain,
-      website: company.website,
-      industry: company.industry,
-      city: company.city,
-      employees: company.employees,
-      logo: company.logo,
-      giftScore: company.giftScore,
-      giftBudget: company.giftBudget,
-      revenue: company.revenue,
-      pastGifting: company.pastGifting ?? [],
-      intelNotes: company.intelNotes,
-      companyOverview: company.companyOverview ?? null,
-      dataSource: company.dataSource,
-      externalId: company.externalId,
+      name: resolvedCompany.name,
+      domain: normalizeDomain(resolvedCompany.domain) ?? null,
+      website: resolvedCompany.website,
+      industry: resolvedCompany.industry,
+      city: resolvedCompany.city,
+      employees: resolvedCompany.employees,
+      logo: resolvedCompany.logo,
+      giftScore: resolvedCompany.giftScore,
+      giftBudget: resolvedCompany.giftBudget,
+      revenue: resolvedCompany.revenue,
+      pastGifting: resolvedCompany.pastGifting ?? [],
+      intelNotes: resolvedCompany.intelNotes,
+      companyOverview: resolvedCompany.companyOverview ?? null,
+      dataSource: resolvedCompany.dataSource,
+      externalId: resolvedCompany.externalId,
     })
     .onConflictDoNothing()
     .returning();
@@ -129,11 +161,21 @@ export async function saveScoutLeads(params: {
   if (account) {
     resolvedAccountId = account.id;
   } else {
-    const existing = await db.query.accounts.findFirst({
-      where: (a, { eq: eqFn }) => eqFn(a.name, company.name),
-    });
+    const existing = await findExistingAccount(tenantId, resolvedCompany);
     if (!existing) throw new Error("Account save failed");
     resolvedAccountId = existing.id;
+    await db
+      .update(accounts)
+      .set({
+        domain: existing.domain ?? normalizeDomain(resolvedCompany.domain) ?? null,
+        website: existing.website ?? resolvedCompany.website ?? null,
+        industry: existing.industry ?? resolvedCompany.industry ?? null,
+        city: existing.city ?? resolvedCompany.city ?? null,
+        employees: existing.employees ?? resolvedCompany.employees ?? null,
+        logo: existing.logo ?? resolvedCompany.logo ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(accounts.id, existing.id));
   }
 
   const savedLeads: SaveLeadsResult["saved"] = [];
@@ -154,7 +196,7 @@ export async function saveScoutLeads(params: {
           ...person,
           email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
         },
-        company,
+        company: resolvedCompany,
         mode: enrichMode,
         dataMode: cfg.dataMode,
         enrichProvider: cfg.enrichProvider,
@@ -219,7 +261,7 @@ export async function saveScoutLeads(params: {
 
     const existingContact = existingByEmail ?? existingByName;
 
-    const filter = await preFilterCheck(person, company, leadSource);
+    const filter = await preFilterCheck(person, resolvedCompany, leadSource);
     if (!filter.pass) {
       skipped.push({ name: person.name, reason: `pre-filter rejected: ${filter.reason}` });
       continue;
@@ -330,7 +372,7 @@ export async function saveScoutLeads(params: {
       entityId: lead.id,
       metadata: {
         contactName: person.name,
-        company: company.name,
+        company: resolvedCompany.name,
         emailStatus: emailResult.status,
         emailConfidence,
         source: leadSource,
