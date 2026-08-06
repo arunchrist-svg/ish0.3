@@ -123,6 +123,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
   }
 
   async function analyzeWebsite() {
+    if (!config) return;
     const url = (config.brandConfig?.websiteUrl ?? "").trim();
     if (!url) {
       setAnalyzeMessage("Enter a website URL first.");
