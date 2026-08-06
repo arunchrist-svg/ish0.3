@@ -10,8 +10,7 @@ import {
 import {
   getEmailConfigForApi,
   getResolvedEmailConfig,
-  loadWorkspaceEmailOverrides,
-  saveWorkspaceEmailOverrides,
+  patchWorkspaceBrandConfig,
 } from "@/lib/settings/email-settings";
 import { db, tenants } from "@/db";
 import { eq } from "drizzle-orm";
@@ -57,14 +56,7 @@ export async function POST(req: Request) {
 
     const persist = body.persist !== false;
     if (persist) {
-      const overrides = await loadWorkspaceEmailOverrides(ctx.workspaceId);
-      await saveWorkspaceEmailOverrides(
-        {
-          ...overrides,
-          brandConfig,
-        },
-        ctx.workspaceId,
-      );
+      await patchWorkspaceBrandConfig(brandConfig, ctx.workspaceId);
       const config = await getEmailConfigForApi();
       return NextResponse.json({
         ok: true,

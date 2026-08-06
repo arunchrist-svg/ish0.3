@@ -99,6 +99,8 @@ export async function generateWriterPlan(leadId: string): Promise<WriterPlan> {
 Brand: ${brand.brandName} (${brand.vertical})
 Product: ${brand.productSummary || "(use brand vertical only)"}
 Tone: ${brand.toneNotes || "Friendly but professional. Plain and direct. Not salesy."}
+${brand.websiteInsights?.valueProposition ? `Value prop: ${brand.websiteInsights.valueProposition}` : ""}
+${brand.websiteInsights?.differentiators?.length ? `Differentiators: ${brand.websiteInsights.differentiators.join("; ")}` : ""}
 
 Company: ${account.name}
 Contact: ${contact.name}, ${contact.title ?? "Unknown"}

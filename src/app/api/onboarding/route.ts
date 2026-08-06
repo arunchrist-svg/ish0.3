@@ -13,8 +13,7 @@ import {
 } from "@/lib/brand/analyze-seller-website";
 import {
   getResolvedEmailConfig,
-  loadWorkspaceEmailOverrides,
-  saveWorkspaceEmailOverrides,
+  patchWorkspaceBrandConfig,
 } from "@/lib/settings/email-settings";
 import type { BrandConfig } from "@/lib/email/config";
 
@@ -58,8 +57,7 @@ type OnboardingBody =
   | { step: 5; complete?: boolean };
 
 async function persistBrandConfig(brandConfig: BrandConfig, workspaceId: string) {
-  const overrides = await loadWorkspaceEmailOverrides(workspaceId);
-  await saveWorkspaceEmailOverrides({ ...overrides, brandConfig }, workspaceId);
+  await patchWorkspaceBrandConfig(brandConfig, workspaceId);
 }
 
 export async function POST(req: Request) {
