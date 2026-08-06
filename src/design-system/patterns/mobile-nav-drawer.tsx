@@ -11,7 +11,7 @@ import {
 } from "@/lib/mobile-nav-config";
 import { text } from "@/design-system/tokens";
 import { ListGroup } from "@/design-system/primitives/list-group";
-import { ISH_LOGO_URL } from "@/lib/brand";
+import { PRODUCT_NAME } from "@/lib/brand";
 import { hapticLight } from "@/lib/capacitor/platform";
 
 type MobileNavDrawerProps = {
@@ -76,7 +76,7 @@ export function MobileNavDrawer({ open, pathname, isSuperadmin = false, onClose 
       />
       <div className="ish-mobile-drawer absolute inset-y-0 right-0 flex w-[min(340px,92vw)] flex-col bg-ish-canvas shadow-2xl">
         <div className="flex items-center justify-between ish-page-padding pb-4 pt-[max(env(safe-area-inset-top),16px)]">
-          <img src={ISH_LOGO_URL} alt="ISH" className="h-8 w-auto" />
+          <span className="text-[18px] font-extrabold tracking-tight text-ish-ink">{PRODUCT_NAME}</span>
           <button
             type="button"
             onClick={onClose}

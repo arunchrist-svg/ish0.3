@@ -20,16 +20,24 @@ function slugToName(slug: string): string | null {
   return name;
 }
 
-function parseLinkedInTitle(title: string): { name?: string; title?: string } {
+function extractLocation(text: string): string | undefined {
+  const match = text.match(
+    /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)\s*,\s*(Maharashtra|Karnataka|Tamil Nadu|Telangana|Kerala|Gujarat|Rajasthan|Delhi|Haryana|Punjab|West Bengal|India)\b/,
+  );
+  return match ? `${match[1]}, ${match[2]}` : undefined;
+}
+
+function parseLinkedInTitle(title: string): { name?: string; title?: string; location?: string } {
   const cleaned = title
     .replace(/\s*[|\-–—]\s*LinkedIn.*$/i, "")
     .replace(/\s*on LinkedIn.*$/i, "")
     .trim();
+  const location = extractLocation(cleaned);
   const parts = cleaned.split(/\s*[|\-–—]\s*/).map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
-    return { name: parts[0], title: parts.slice(1).join(" · ") };
+    return { name: parts[0], title: parts.slice(1).join(" · "), location };
   }
-  return parts[0] ? { name: parts[0] } : {};
+  return parts[0] ? { name: parts[0], location } : { location };
 }
 
 function isKeyDM(title?: string): boolean {
@@ -40,8 +48,8 @@ function isKeyDM(title?: string): boolean {
   );
 }
 
-function collectLinkedInHits(hits: SearchHit[]): { name: string; title?: string; linkedIn: string }[] {
-  const out: { name: string; title?: string; linkedIn: string }[] = [];
+function collectLinkedInHits(hits: SearchHit[]): { name: string; title?: string; linkedIn: string; location?: string }[] {
+  const out: { name: string; title?: string; linkedIn: string; location?: string }[] = [];
   const seen = new Set<string>();
 
   for (const hit of hits) {
@@ -62,7 +70,12 @@ function collectLinkedInHits(hits: SearchHit[]): { name: string; title?: string;
       if (!name || JUNK_NAME.test(name)) continue;
 
       seen.add(key);
-      out.push({ name, title: fromTitle.title, linkedIn });
+      out.push({
+        name,
+        title: fromTitle.title,
+        linkedIn,
+        location: fromTitle.location ?? extractLocation(blob),
+      });
     }
   }
 
@@ -79,11 +92,17 @@ export function parsePeopleFromSearchResults(
   return candidates.slice(0, limit).map((c) => ({
     name: c.name,
     title: c.title,
+    location: c.location,
     linkedIn: c.linkedIn,
     email: undefined,
     emailStatus: "missing" as const,
     isKeyDM: isKeyDM(c.title),
-    matchScore: computeSeniorityScore({ title: c.title, isKeyDM: isKeyDM(c.title), emailStatus: 'missing', linkedIn: c.linkedIn }).total,
+    matchScore: computeSeniorityScore({
+      title: c.title,
+      isKeyDM: isKeyDM(c.title),
+      emailStatus: "missing",
+      linkedIn: c.linkedIn,
+    }).total,
     dataSource,
   }));
 }

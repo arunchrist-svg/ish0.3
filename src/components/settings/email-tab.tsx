@@ -85,6 +85,8 @@ function StatusBadge({ ok, okLabel, failLabel }: { ok: boolean; okLabel: string;
 
 export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, resendApiKeyDraft, onResendApiKeyChange, onVerify, verifying }: Props) {
   const [showGoogleGuide, setShowGoogleGuide] = useState(false);
+  const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
+  const [analyzeMessage, setAnalyzeMessage] = useState("");
 
   if (!config) {
     return (
@@ -117,6 +119,41 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
     if (email.includes("@")) {
       onUpdate("fromAddress", email);
       onUpdate("replyToAddress", email);
+    }
+  }
+
+  async function analyzeWebsite() {
+    const url = (config.brandConfig?.websiteUrl ?? "").trim();
+    if (!url) {
+      setAnalyzeMessage("Enter a website URL first.");
+      return;
+    }
+    setAnalyzingWebsite(true);
+    setAnalyzeMessage("Reading your website…");
+    try {
+      const res = await fetch("/api/settings/brand/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ websiteUrl: url, persist: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAnalyzeMessage(data.error ?? "Website analysis failed");
+        return;
+      }
+      if (data.brandConfig) {
+        onUpdate("brandConfig", data.brandConfig as BrandConfig);
+      }
+      const industries = data.insights?.scoutIndustries?.join(", ");
+      setAnalyzeMessage(
+        industries
+          ? `Updated product summary, writing style, and Scout targets (${industries}). Save if you change anything else.`
+          : "Updated product summary and writing style from your website.",
+      );
+    } catch {
+      setAnalyzeMessage("Website analysis failed. Try again.");
+    } finally {
+      setAnalyzingWebsite(false);
     }
   }
 
@@ -263,7 +300,55 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
         </SettingsGroup>
       )}
 
-      <SettingsGroup title="Brand & Campaign" footer="Writer uses this to tailor product language and CTAs for your company.">
+      <SettingsGroup title="Brand & Campaign" footer="Writer uses this to tailor product language and CTAs for your company. Analyse your website to auto-fill product summary, tone, and Scout targeting.">
+        <SettingsRow className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-medium text-ish-ink">Company website</div>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-ish-ink-soft">
+              Used to customise email writing and scout industries / buyer roles
+            </p>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:max-w-[320px]">
+            <input
+              type="url"
+              value={config.brandConfig?.websiteUrl ?? ""}
+              onChange={(e) =>
+                onUpdate("brandConfig", {
+                  ...(config.brandConfig as BrandConfig),
+                  websiteUrl: e.target.value,
+                })
+              }
+              placeholder="https://yourcompany.com"
+              className={cn(
+                "w-full rounded-xl border border-ish-border/60 bg-ish-canvas/50 px-3 py-2 text-[14px] text-ish-ink",
+                "focus:border-ish-stratus-blue/50 focus:outline-none focus:ring-2 focus:ring-ish-stratus-blue/15",
+              )}
+            />
+            <button
+              type="button"
+              disabled={analyzingWebsite || !(config.brandConfig?.websiteUrl ?? "").trim()}
+              onClick={() => void analyzeWebsite()}
+              className={cn(
+                "inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium",
+                "bg-ish-black text-white disabled:cursor-not-allowed disabled:opacity-50",
+              )}
+            >
+              {analyzingWebsite ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              {analyzingWebsite ? "Analysing…" : "Analyse website"}
+            </button>
+            {analyzeMessage ? (
+              <p className="text-[11px] leading-relaxed text-ish-ink-soft">{analyzeMessage}</p>
+            ) : config.brandConfig?.websiteInsights?.analyzedAt ? (
+              <p className="text-[11px] text-ish-ink-faint">
+                Last analysed {new Date(config.brandConfig.websiteInsights.analyzedAt).toLocaleString()}
+                {config.brandConfig.websiteInsights.scoutIndustries?.length
+                  ? ` · Scout: ${config.brandConfig.websiteInsights.scoutIndustries.join(", ")}`
+                  : ""}
+              </p>
+            ) : null}
+          </div>
+        </SettingsRow>
+        <SettingsGroupDivider />
         {BRAND_PRESET_OPTIONS.map((option, i) => (
           <SettingsSelectRow
             key={option.value}
@@ -271,7 +356,11 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
             desc={option.desc}
             selected={config.brandConfig?.brandSlug === option.value}
             onSelect={() => {
-              const preset = resolveBrandConfig({ brandSlug: option.value as BrandSlug });
+              const preset = resolveBrandConfig({
+                brandSlug: option.value as BrandSlug,
+                websiteUrl: config.brandConfig?.websiteUrl,
+                websiteInsights: config.brandConfig?.websiteInsights,
+              });
               onUpdate("brandConfig", preset);
             }}
             showDivider={i > 0}

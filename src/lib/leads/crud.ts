@@ -5,6 +5,9 @@ import { normalizeLinkedInUrl } from "@/lib/utils";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { logAudit } from "@/lib/audit";
+import { withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
+import { domainFromCompany } from "@/lib/enrichment/provider-utils";
 export class LeadNotFoundError extends Error {
   constructor() {
     super("Lead not found");
@@ -113,11 +116,31 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     employees: input.employees,
   });
 
+  const accountRow = await db.query.accounts.findFirst({
+    where: eq(accounts.id, accountId),
+  });
+
   const resolvedEmail = sanitizeEmail(input.email);
   const emailResult = await verifyEmail(resolvedEmail ?? "");
   const parts = name.split(/\s+/);
   const firstName = parts[0];
   const lastName = parts.slice(1).join(" ") || undefined;
+
+  const companyDomain =
+    resolveAccountDomain({
+      domain: accountRow?.domain,
+      website: accountRow?.website,
+      companyName: company,
+    }) ?? domainFromCompany(company);
+
+  const alternateEmails = withFirstLastSecondaryEmail(resolvedEmail, [], {
+    firstName,
+    lastName,
+    name,
+    domain: companyDomain,
+    website: accountRow?.website,
+    companyName: company,
+  });
 
   const [contact] = await db
     .insert(contacts)
@@ -131,6 +154,7 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
       title: input.title?.trim() || null,
       email: resolvedEmail ?? null,
       emailStatus: emailResult.status,
+      alternateEmails,
       phone: input.phone?.trim() || null,
       linkedIn: normalizeLinkedInUrl(input.linkedIn) ?? null,
       dataSource: "manual",

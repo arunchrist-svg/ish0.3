@@ -11,7 +11,7 @@ export function hasGeminiKey(): boolean {
 }
 
 export function hasLLMKey(): boolean {
-  const provider = process.env.LLM_PROVIDER ?? "gemini";
+  const provider = (process.env.LLM_PROVIDER ?? "gemini").trim().toLowerCase();
   if (provider === "anthropic") return !!process.env.ANTHROPIC_API_KEY;
   if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;
   if (provider === "omlx") return true;

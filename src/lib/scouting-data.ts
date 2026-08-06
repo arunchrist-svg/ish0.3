@@ -33,6 +33,7 @@ export type Person = {
   email: string;
   phone: string;
   bio: string;
+  location?: string;
 };
 
 export const SCOUT_CITIES = [

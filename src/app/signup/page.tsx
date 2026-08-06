@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Button, text } from "@/design-system";
 import { AuthField } from "@/components/auth/auth-field";
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { cn } from "@/lib/utils";
 
@@ -127,16 +128,19 @@ function SignupForm() {
             className="w-full rounded-2xl border border-ish-border bg-ish-app px-5 py-4 text-[15px] font-medium text-ish-ink-soft"
           />
         </div>
-        <AuthField
-          id="password"
-          label="Password"
-          type="password"
-          value={password}
-          onChange={setPassword}
-          placeholder="8+ characters"
-          required
-          minLength={8}
-        />
+        <div>
+          <AuthField
+            id="password"
+            label="Password"
+            type="password"
+            value={password}
+            onChange={setPassword}
+            placeholder="8+ characters"
+            required
+            minLength={8}
+          />
+          <PasswordStrengthMeter password={password} />
+        </div>
 
         {error ? (
           <p className="rounded-xl bg-red-50 px-4 py-2.5 text-center text-[13px] font-medium text-red-600">

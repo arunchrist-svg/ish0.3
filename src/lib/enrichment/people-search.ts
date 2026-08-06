@@ -10,6 +10,7 @@ import { computeSeniorityScore } from "./seniority-score";
 import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
 import { parsePeopleFromSearchResults } from "./people-parser";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, TAVILY_QUOTA_PEOPLE_MSG, tavilySearch } from "./tavily-client";
+import { citySearchClause, personLocationMatchesSelection, rankPeopleByCityMatch } from "./city-search";
 
 function cleanCompanyName(name: string): string {
   return name
@@ -33,12 +34,17 @@ function mapLLMPerson(p: Record<string, unknown>, dataSource: string): ScoutPers
   if (name.length < 3) return null;
 
   const title = (p.title as string | null) ?? undefined;
+  const location =
+    (typeof p.location === "string" && p.location.trim()) ||
+    (typeof p.city === "string" && p.city.trim()) ||
+    undefined;
   return {
     name,
     title,
     department: (p.department as string | null) ?? undefined,
     seniority: (p.seniority as string | null) ?? undefined,
     linkedIn: normalizeLinkedInUrl(p.linkedIn as string | null),
+    location,
     bio: (p.bio as string | null) ?? undefined,
     email: undefined,
     emailStatus: "missing",
@@ -48,16 +54,32 @@ function mapLLMPerson(p: Record<string, unknown>, dataSource: string): ScoutPers
   };
 }
 
+function filterPeopleByCities(people: ScoutPersonResult[], cities?: string[]): ScoutPersonResult[] {
+  if (!cities?.length) return people;
+  const local = people.filter((p) => personLocationMatchesSelection(p.location, cities));
+  const knownWrongCity = people.filter(
+    (p) => p.location?.trim() && !personLocationMatchesSelection(p.location, cities),
+  );
+  if (local.some((p) => p.location?.trim())) return rankPeopleByCityMatch(local, cities);
+  if (knownWrongCity.length && knownWrongCity.length === people.filter((p) => p.location?.trim()).length) {
+    return [];
+  }
+  return rankPeopleByCityMatch(local.length ? local : people, cities);
+}
+
+
 export async function searchPeopleViaTavily(params: {
   companyName: string;
   companyDomain?: string;
   limit?: number;
   dataSource?: string;
   roleHints?: string[];
+  cities?: string[];
 }): Promise<ScoutPersonResult[]> {
   const limit = params.limit ?? 8;
   const dataSource = params.dataSource ?? "tavily+llm";
   const company = cleanCompanyName(params.companyName);
+  const cityClause = params.cities?.length ? citySearchClause(params.cities, 4) : "India";
 
   if (!hasTavilyKey()) throw new Error("TAVILY_API_KEY not set");
 
@@ -67,11 +89,11 @@ export async function searchPeopleViaTavily(params: {
       : "HR OR Admin OR Procurement";
 
   const queries = [
-    `site:linkedin.com/in "${company}" ${roleTerm} India`,
-    `site:linkedin.com/in "${company}" Director OR Manager OR Head India`,
-    `"${company}" ${roleTerm} LinkedIn profile India`,
+    `site:linkedin.com/in "${company}" ${roleTerm} (${cityClause})`,
+    `site:linkedin.com/in "${company}" Director OR Manager OR Head (${cityClause})`,
+    `"${company}" ${roleTerm} LinkedIn profile ${cityClause}`,
     params.companyDomain
-      ? `site:${params.companyDomain} leadership OR team OR "our people" OR contact`
+      ? `site:${params.companyDomain} leadership OR team OR "our people" OR contact ${cityClause}`
       : null,
   ].filter(Boolean) as string[];
 
@@ -107,7 +129,10 @@ export async function searchPeopleViaTavily(params: {
     return [];
   }
 
-  const heuristic = parsePeopleFromSearchResults(allResults, limit, `${dataSource}_heuristic`);
+  const heuristic = filterPeopleByCities(
+    parsePeopleFromSearchResults(allResults, Math.max(limit * 2, 8), `${dataSource}_heuristic`),
+    params.cities,
+  );
   const keyDmCount = heuristic.filter((p) => p.isKeyDM).length;
   if (heuristic.length >= limit || (heuristic.length > 0 && keyDmCount > 0)) {
     return heuristic.slice(0, limit);
@@ -124,20 +149,26 @@ export async function searchPeopleViaTavily(params: {
         tier: "fast",
         system: `Extract named individuals from search results for a B2B outreach contact list.
 Output ONLY a valid JSON array. No markdown fences.
-Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "bio": string | null }
-Only real named people at the target company. Never invent emails or phones.`,
+Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
+Only real named people at the target company. Never invent emails or phones.
+Prefer people located in the target city when location is stated.`,
         prompt: `Company: ${company}
-Find: HR, Admin, Procurement, Facilities, or senior decision-makers in India.
+Target city: ${cityClause}
+Find: HR, Admin, Procurement, Facilities, or senior decision-makers based in or near ${cityClause}.
+Exclude people who clearly work from a different city (e.g. Pune for a Mysuru scout).
 
 ${context}
 
 Return up to ${limit} people.`,
-        maxTokens: 1000,
+        maxTokens: 1200,
       });
 
-      const parsed = parseJsonArrayFromLLM(raw)
-        .map((p) => mapLLMPerson(p, dataSource))
-        .filter((p): p is ScoutPersonResult => !!p);
+      const parsed = filterPeopleByCities(
+        parseJsonArrayFromLLM(raw)
+          .map((person) => mapLLMPerson(person, dataSource))
+          .filter((person): person is ScoutPersonResult => !!person),
+        params.cities,
+      );
 
       if (parsed.length) return parsed.slice(0, limit);
     } catch (e) {

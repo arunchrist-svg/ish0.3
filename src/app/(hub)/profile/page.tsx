@@ -7,7 +7,6 @@ import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/s
 import { SettingsHero } from "@/components/settings/settings-hero";
 import { cn } from "@/lib/utils";
 import { ListGroup, ListRow, MobilePageLayout } from "@/design-system";
-import { ISH_LOGO_URL } from "@/lib/brand";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -61,7 +60,7 @@ export default function ProfilePage() {
         <SettingsGroup title="Identity">
           <SettingsRow className="gap-4 !py-5">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-ish-yellow-soft shadow-[var(--shadow-ish-sm)]">
-              <img src={ISH_LOGO_URL} alt="ISH" className="h-8 w-auto" />
+              <User className="size-7 text-ish-ink" />
             </div>
             <div className="min-w-0">
               <p className="text-[16px] font-semibold text-ish-ink">{userName || "Account"}</p>

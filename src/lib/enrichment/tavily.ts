@@ -20,7 +20,7 @@ export async function tavilySearchCompanies(params: {
   const indStr = params.industries.length > 0 ? params.industries.join(" OR ") : "corporate";
   const query = params.nameQuery
     ? `${params.nameQuery} company India`
-    : `corporate companies ${indStr} ${cityStr} India employee gifting Diwali`;
+    : `${indStr} companies ${cityStr} India`;
   const meta = params.meta;
 
   if (!hasTavilyKey()) throw new Error("TAVILY_API_KEY not set");
@@ -37,32 +37,42 @@ export async function tavilySearchCompanies(params: {
       .join("\n\n");
 
     try {
-      const raw = await callLLM({
-        tier: "quality",
-        system: `You extract structured company data for B2B corporate gifting lead generation.
-Output ONLY valid JSON array. Each item: { name, domain, industry, city, employees, intelNotes }.
-Only include real companies. Minimum confidence 40. Do NOT invent companies.`,
-        prompt: `Extract companies from these search results. Target: ${indStr} industries in ${cityStr}, India, employee count > 50.\n\n${context}`,
-        maxTokens: 1024,
-      });
+      const system = `You extract structured company data for B2B corporate gifting lead generation.
+Output ONLY a valid JSON array. No markdown fences. No explanation.
+Each item: { "name": string, "domain": string | null, "industry": string, "city": string, "employees": string | null, "intelNotes": string | null }
+Only include real companies from the listings. Do NOT invent companies.`;
+      const prompt = `Extract companies from these search results.
+Target: ${indStr} companies in ${cityStr}, India.
+Prefer established businesses; include manufacturers and corporate offices when listed.
 
+${context}
+
+Return up to ${params.limit ?? 10} companies.`;
+
+      let raw = await callLLM({ tier: "quality", system, prompt, maxTokens: 2048 });
+      let parsed: Record<string, unknown>[] = [];
       try {
-        const parsed = parseJsonArrayFromLLM(raw);
-        const mapped = parsed.map((c) => ({
+        parsed = parseJsonArrayFromLLM(raw);
+      } catch {
+        raw = await callLLM({ tier: "quality", system, prompt, maxTokens: 4096 });
+        parsed = parseJsonArrayFromLLM(raw);
+      }
+
+      const mapped = parsed
+        .filter((c) => typeof c.name === "string" && c.name.trim())
+        .slice(0, params.limit ?? 10)
+        .map((c) => ({
           name: c.name as string,
-          domain: c.domain as string | undefined,
-          industry: c.industry as string | undefined,
-          city: c.city as string | undefined,
-          employees: c.employees as string | undefined,
-          intelNotes: c.intelNotes as string | undefined,
+          domain: (c.domain as string | null) ?? undefined,
+          industry: (c.industry as string | null) ?? undefined,
+          city: (c.city as string | null) ?? undefined,
+          employees: (c.employees as string | null) ?? undefined,
+          intelNotes: (c.intelNotes as string | null) ?? undefined,
           giftScore: 65,
           dataSource: "tavily+llm",
         }));
-        if (mapped.length) return mapped;
-        meta?.warnings.push("AI extraction returned no companies — using web parsing fallback.");
-      } catch {
-        meta?.warnings.push("AI response could not be parsed — using web parsing fallback.");
-      }
+      if (mapped.length) return mapped;
+      meta?.warnings.push("AI extraction returned no companies — using web parsing fallback.");
     } catch (e) {
       console.error("[tavily] LLM failed:", e);
       meta?.warnings.push(llmErrorMessage(e));

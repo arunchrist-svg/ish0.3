@@ -48,6 +48,13 @@ export function PersonDetailPanel({ person, index }: Props) {
         </div>
       </div>
 
+      {person.location ? (
+        <div className="rounded-2xl bg-ish-canvas px-4 py-3 text-[12.5px] text-ish-ink-soft">
+          <span className="font-semibold text-ish-ink">Location: </span>
+          {person.location}
+        </div>
+      ) : null}
+
       {/* ── Bio ─────────────────────────────────────────────── */}
       {person.bio && (
         <div className="rounded-2xl bg-ish-canvas p-4">

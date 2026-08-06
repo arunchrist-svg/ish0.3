@@ -77,13 +77,7 @@ export async function runReplyWriter(leadId: string): Promise<ReplyWriterResult>
   });
   const replyCtaInstruction = getReplyCtaInstruction(originalContext.templateVariant, replyIntent.intent);
 
-  const brandConfig = emailConfig.brandConfig ?? {
-    brandSlug: "ish" as const,
-    brandName: "India Sweet House",
-    vertical: "sweets_gifting",
-    productSummary: "",
-    buyerPersonas: [],
-  };
+  const brandConfig = emailConfig.brandConfig;
 
   const intentBlock = [
     `Reply intent: ${replyIntent.intent}${replyIntent.agreedTo ? ` (agreed to ${replyIntent.agreedTo})` : ""}`,

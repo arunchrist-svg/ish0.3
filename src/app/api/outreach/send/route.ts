@@ -24,12 +24,65 @@ import {
   applySendRejectionUpdates,
   shouldHandleSendFailure,
 } from "@/lib/enrichment/email-candidate-queue";
+import { buildContactEmails, hasUsableEmail } from "@/lib/enrichment/contact-emails";
+
+function resolveSendRecipients(
+  contact: typeof contacts.$inferSelect,
+  requested?: unknown,
+): { recipients: string[]; error?: string } {
+  const allowed = buildContactEmails({
+    primaryEmail: contact.email,
+    emailStatus: contact.emailStatus,
+    emailConfidence: contact.emailConfidence,
+    enrichmentSource: contact.enrichmentSource,
+    enrichmentProvider: contact.enrichmentProvider,
+    alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
+  })
+    .map((e) => e.email.trim().toLowerCase())
+    .filter((e) => hasUsableEmail(e));
+
+  const allowedSet = new Set(allowed);
+  const rawList = Array.isArray(requested)
+    ? requested.filter((v): v is string => typeof v === "string")
+    : [];
+
+  const requestedEmails = [...new Set(rawList.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+
+  if (requestedEmails.length === 0) {
+    const primary = contact.email?.trim();
+    if (!primary || !hasUsableEmail(primary, contact.emailStatus)) {
+      return { recipients: [], error: "Contact has no usable email address" };
+    }
+    return { recipients: [primary] };
+  }
+
+  const invalid = requestedEmails.filter((e) => !allowedSet.has(e));
+  if (invalid.length) {
+    return {
+      recipients: [],
+      error: `Email not on this contact: ${invalid.join(", ")}`,
+    };
+  }
+
+  // Preserve original casing from contact records where possible
+  const byLower = new Map(
+    buildContactEmails({
+      primaryEmail: contact.email,
+      emailStatus: contact.emailStatus,
+      alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
+    }).map((e) => [e.email.trim().toLowerCase(), e.email.trim()]),
+  );
+
+  return {
+    recipients: requestedEmails.map((e) => byLower.get(e) ?? e),
+  };
+}
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { approvalId, overridePreflight, overrideQualityGate } = await req.json();
+    const { approvalId, overridePreflight, overrideQualityGate, toEmails } = await req.json();
     if (!approvalId) return NextResponse.json({ error: "approvalId required" }, { status: 400 });
 
     const approval = await db.query.outreachApprovals.findFirst({
@@ -89,13 +142,18 @@ export async function POST(req: Request) {
     }
 
     const contact = leadRow.contact as typeof contacts.$inferSelect;
+    const { recipients, error: recipientError } = resolveSendRecipients(contact, toEmails);
+    if (recipientError || recipients.length === 0) {
+      return NextResponse.json({ error: recipientError ?? "No recipients selected" }, { status: 400 });
+    }
+
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
     if (isOutreachSendingPaused(emailConfig)) {
       return NextResponse.json({ error: OUTREACH_PAUSED_MESSAGE }, { status: 423 });
     }
     if (emailConfig.sendMode === "live") {
       await assertPlanEntitlement(ctx.tenantId, "live_send");
-      await assertCredits(ctx.tenantId, "email.live", 1);
+      await assertCredits(ctx.tenantId, "email.live", recipients.length);
     }
 
     const preflight = await assertSenderPreflight(emailConfig, ctx.workspaceId, {
@@ -129,28 +187,38 @@ export async function POST(req: Request) {
     });
 
     const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@ish.local";
+    const primaryRecipient = recipients[0];
     const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();
 
-    let result;
+    const sentResults: { to: string; messageId?: string; mode: string }[] = [];
+
     try {
-      result = await sendEmail({
-        workspaceId: ctx.workspaceId,
-        to: contact.email ?? "",
-        subject,
-        html: buildEmailHtml({
-          body: outreach.emailBody ?? "",
-          trackingToken: email1TrackingToken,
-          appUrl: emailConfig.appUrl,
-          emailStyle: emailConfig.emailStyle,
-        }),
-        replyTo: emailConfig.replyToAddress,
-        messageId: rfcMessageId,
-        inReplyTo: threadHeaders.inReplyTo,
-        references: threadHeaders.references,
-      });
+      for (let i = 0; i < recipients.length; i++) {
+        const to = recipients[i];
+        const isPrimarySend = i === 0;
+        const messageId = isPrimarySend ? rfcMessageId : generateRfcMessageId(fromAddress);
+        const trackingToken = isPrimarySend ? email1TrackingToken : crypto.randomUUID();
+
+        const result = await sendEmail({
+          workspaceId: ctx.workspaceId,
+          to,
+          subject,
+          html: buildEmailHtml({
+            body: outreach.emailBody ?? "",
+            trackingToken,
+            appUrl: emailConfig.appUrl,
+            emailStyle: emailConfig.emailStyle,
+          }),
+          replyTo: emailConfig.replyToAddress,
+          messageId,
+          inReplyTo: isPrimarySend ? threadHeaders.inReplyTo : undefined,
+          references: isPrimarySend ? threadHeaders.references : undefined,
+        });
+        sentResults.push({ to: result.to, messageId, mode: result.mode });
+      }
     } catch (sendError) {
-      if (shouldHandleSendFailure(contact)) {
+      if (shouldHandleSendFailure(contact) && sentResults.length === 0) {
         const rejection = applySendRejectionUpdates(contact);
         const contactUpdates: Partial<typeof contacts.$inferInsert> = {
           updatedAt: new Date(),
@@ -202,6 +270,7 @@ export async function POST(req: Request) {
       throw sendError;
     }
 
+    const result = sentResults[0];
     const sendMode = emailConfig.sendMode;
     const scheduleBase = {
       leadId: approval.leadId,
@@ -229,7 +298,7 @@ export async function POST(req: Request) {
       await db.insert(yieldFunnel).values({
         leadId: approval.leadId,
         stage: "replied",
-        metadata: { sendMode: result.mode, messageId: rfcMessageId, kind: "reply_sent" },
+        metadata: { sendMode: result.mode, messageId: rfcMessageId, kind: "reply_sent", recipients },
       });
     } else {
       await db.update(leads).set({
@@ -240,7 +309,7 @@ export async function POST(req: Request) {
       await db.insert(yieldFunnel).values({
         leadId: approval.leadId,
         stage: "outreached",
-        metadata: { sendMode: result.mode, messageId: rfcMessageId },
+        metadata: { sendMode: result.mode, messageId: rfcMessageId, recipients },
       });
 
       await db.insert(outreachSchedule).values({
@@ -248,6 +317,27 @@ export async function POST(req: Request) {
         sequenceDay: 0,
         emailKind: "initial",
       });
+
+      // Extra recipients: log as additional initial sends (no separate follow-up sequences)
+      for (let i = 1; i < sentResults.length; i++) {
+        const extra = sentResults[i];
+        await db.insert(outreachSchedule).values({
+          leadId: approval.leadId,
+          approvalId,
+          channel: "email",
+          sequenceDay: 0,
+          scheduledFor: new Date(),
+          sentAt: new Date(),
+          status: "sent",
+          sendMode,
+          resendId: extra.messageId,
+          rfcMessageId: extra.messageId ?? null,
+          subjectSent: subject,
+          bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
+          trackingToken: crypto.randomUUID(),
+          emailKind: "initial",
+        });
+      }
 
       const cadence = emailConfig.cadenceDays;
       const now = Date.now();
@@ -272,7 +362,12 @@ export async function POST(req: Request) {
     }
 
     if (emailConfig.sendMode === "live") {
-      await deductCredits({ tenantId: ctx.tenantId, action: "email.live", referenceId: approval.leadId });
+      await deductCredits({
+        tenantId: ctx.tenantId,
+        action: "email.live",
+        quantity: recipients.length,
+        referenceId: approval.leadId,
+      });
       void checkLowBalanceAlerts(ctx.tenantId);
     }
 
@@ -302,16 +397,23 @@ export async function POST(req: Request) {
       metadata: {
         mode: result.mode,
         messageId: rfcMessageId,
-        subject: result.subject,
+        subject,
         threaded: Boolean(threadHeaders.inReplyTo),
         contentScore: outreach.deliverabilityScore ?? contentScoreResult.contentScore,
         contentRuleIds: contentScoreResult.ruleHits?.map((h) => h.id) ?? [],
         approvalId,
         qualityOverride: Boolean(overrideQualityGate && draftFailsQualityGate(outreach)),
+        recipients,
+        primaryRecipient,
       },
     });
 
-    return NextResponse.json({ mode: result.mode, messageId: rfcMessageId, to: result.to });
+    return NextResponse.json({
+      mode: result.mode,
+      messageId: rfcMessageId,
+      to: recipients.join(", "),
+      recipients,
+    });
   } catch (e) {
     return handleApiError(e, "[api/outreach/send]");
   }

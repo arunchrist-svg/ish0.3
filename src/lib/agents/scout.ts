@@ -4,6 +4,7 @@ import { saveScoutLeads } from "@/lib/scout/save-leads";
 import { logAudit } from "@/lib/audit";
 import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { SCOUT_CITIES } from "@/lib/scouting-data";
 import type { DataMode } from "@/lib/enrichment/types";
 
@@ -15,6 +16,8 @@ export type ScoutBatchParams = {
   dataMode?: DataMode;
   companyLimit?: number;
   maxCompaniesToProcess?: number;
+  seniority?: string[];
+  departments?: string[];
 };
 
 export type ScoutBatchResult = {
@@ -23,15 +26,50 @@ export type ScoutBatchResult = {
   leadsSaved: number;
   leadsSkipped: number;
   errors: string[];
+  appliedBrandDefaults?: {
+    industries: string[];
+    departments: string[];
+    seniority: string[];
+  };
 };
 
 export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
   const runId = randomUUID();
   const cities = params.cities?.length ? params.cities : [...SCOUT_CITIES];
-  const industries = params.industries ?? [];
   const dataMode = params.dataMode ?? (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free";
   const companyLimit = params.companyLimit ?? getScoutCompaniesLimit();
   const maxCompanies = params.maxCompaniesToProcess ?? 20;
+
+  // Prefer caller filters; otherwise use website-derived scout targets from brand setup
+  let industries = params.industries ?? [];
+  let seniority = params.seniority ?? [];
+  let departments = params.departments ?? [];
+  let appliedBrandDefaults: ScoutBatchResult["appliedBrandDefaults"];
+
+  if (!industries.length || !seniority.length || !departments.length) {
+    try {
+      const emailConfig = await getResolvedEmailConfig(params.workspaceId);
+      const insights = emailConfig.brandConfig?.websiteInsights;
+      if (insights) {
+        if (!industries.length && insights.scoutIndustries.length) {
+          industries = [...insights.scoutIndustries];
+        }
+        if (!departments.length && insights.scoutDepartments.length) {
+          departments = [...insights.scoutDepartments];
+        }
+        if (!seniority.length && insights.scoutSeniority.length) {
+          seniority = [...insights.scoutSeniority];
+        }
+        appliedBrandDefaults = {
+          industries: insights.scoutIndustries,
+          departments: insights.scoutDepartments,
+          seniority: insights.scoutSeniority,
+        };
+      }
+    } catch (e) {
+      console.warn("[scout] brand defaults load failed:", e);
+    }
+  }
 
   const errors: string[] = [];
   let leadsSaved = 0;
@@ -42,7 +80,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     workspaceId: params.workspaceId,
     action: "scout.batch.started",
     entityType: "scout_run",
-    metadata: { runId, cities, industries, dataMode, companyLimit, maxCompanies },
+    metadata: { runId, cities, industries, seniority, departments, dataMode, companyLimit, maxCompanies },
   });
 
   const discovery = await discoverCompanies({
@@ -68,6 +106,8 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
         companyWebsite: company.website,
         dataMode,
         limit: getScoutLeadsLimit(),
+        seniority: seniority.length ? seniority : undefined,
+        departments: departments.length ? departments : undefined,
       });
 
       const candidates = people.filter((p) => p.name?.trim());
@@ -104,7 +144,13 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     workspaceId: params.workspaceId,
     action: "scout.batch.completed",
     entityType: "scout_run",
-    metadata: { runId, companiesDiscovered: discovery.companies.length, leadsSaved, leadsSkipped, errors: errors.length },
+    metadata: {
+      runId,
+      companiesDiscovered: discovery.companies.length,
+      leadsSaved,
+      leadsSkipped,
+      errors: errors.length,
+    },
   });
 
   return {
@@ -113,5 +159,6 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     leadsSaved,
     leadsSkipped,
     errors,
+    appliedBrandDefaults,
   };
 }

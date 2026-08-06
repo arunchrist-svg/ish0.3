@@ -5,6 +5,24 @@ export type EmailStyle = "primary" | "marketing";
 export type BrandSlug = "ish" | "prestige" | "custom";
 export type CampaignMode = "diwali_gifting" | "mass_ordering" | "festival_bundle" | "custom";
 
+/** Insights extracted from the seller's website during setup / Settings. */
+export type WebsiteBrandInsights = {
+  analyzedAt: string;
+  brandName?: string;
+  vertical: string;
+  productSummary: string;
+  toneNotes: string;
+  buyerPersonas: string[];
+  valueProposition?: string;
+  differentiators?: string[];
+  /** Target industries for Scout (subset of SCOUT_INDUSTRIES). */
+  scoutIndustries: string[];
+  /** Target departments for Scout people discovery. */
+  scoutDepartments: string[];
+  /** Target seniority for Scout people discovery. */
+  scoutSeniority: string[];
+};
+
 export type BrandConfig = {
   brandSlug: BrandSlug;
   brandName: string;
@@ -12,6 +30,10 @@ export type BrandConfig = {
   productSummary: string;
   buyerPersonas: string[];
   toneNotes?: string;
+  /** Seller company website collected during onboarding or Settings. */
+  websiteUrl?: string;
+  /** Auto-filled from website analysis; Writer and Scout consume these. */
+  websiteInsights?: WebsiteBrandInsights;
 };
 export type EmailProvider = "smtp" | "resend";
 
@@ -188,7 +210,7 @@ export function getDefaultEmailConfig(): EmailConfig {
     cadenceDays: [3, 7],
     appUrl,
     emailStyle: (process.env.EMAIL_STYLE === "marketing" ? "marketing" : "primary") as EmailStyle,
-    brandConfig: resolveBrandConfig({ brandSlug: "ish" }),
+    brandConfig: resolveBrandConfig({ brandSlug: "custom" }),
     campaignMode: "diwali_gifting",
     dailySendCapPerDomain: 50,
     followUpPolicy: "auto_send",

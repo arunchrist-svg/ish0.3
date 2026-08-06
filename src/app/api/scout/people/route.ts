@@ -21,6 +21,7 @@ export async function POST(req: Request) {
       limit: requestedLimit,
       seniority = [],
       departments = [],
+      cities = [],
     } = body;
 
     if (!companyName) {
@@ -49,6 +50,7 @@ export async function POST(req: Request) {
       limit,
       seniority,
       departments,
+      cities,
     });
 
     if (people.length > 0) {

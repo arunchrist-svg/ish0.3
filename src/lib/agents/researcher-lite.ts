@@ -5,6 +5,7 @@ import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { parseResearcherOutput } from "@/lib/agents/schemas/researcher-output";
 import { generateWriterPlan } from "@/lib/agents/writer-plan";
 import { notifyLeadEvent } from "@/lib/push/notify-workspace";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 
 export async function runResearcherLite(leadId: string): Promise<void> {
   const lead = await db.query.leads.findFirst({
@@ -25,13 +26,33 @@ export async function runResearcherLite(leadId: string): Promise<void> {
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const brand = emailConfig.brandConfig;
 
   const confidenceScore = lead.score ?? 55;
   const confidenceTier =
     confidenceScore >= 75 ? "high" : confidenceScore >= 50 ? "medium" : "low";
 
-  const prompt = `You are a B2B gifting intelligence analyst. Write a structured brief for this corporate gifting lead.
+  const productHint = brand.productSummary?.trim()
+    || (brand.brandSlug === "prestige"
+      ? "kitchen appliances and employee reward bundles"
+      : brand.brandSlug === "ish"
+        ? "premium mithai and dry fruit hampers"
+        : `products from ${brand.brandName}`);
 
+  const websiteBlock = brand.websiteInsights
+    ? `
+Website value prop: ${brand.websiteInsights.valueProposition ?? "n/a"}
+Differentiators: ${(brand.websiteInsights.differentiators ?? []).join("; ") || "n/a"}
+Buyer personas: ${brand.websiteInsights.buyerPersonas.join(", ")}
+`
+    : "";
+
+  const prompt = `You are a B2B gifting intelligence analyst. Write a structured brief for this corporate outreach lead.
+
+Seller brand: ${brand.brandName} (${brand.vertical})
+Seller product: ${brand.productSummary || productHint}
+${websiteBlock}
 Company: ${account.name}
 City: ${account.city ?? "India"}
 Industry: ${account.industry ?? "Corporate"}
@@ -42,9 +63,13 @@ Intel: ${account.intelNotes ?? "No intel available"}
 Contact: ${contact.name}, ${contact.title ?? "Unknown title"}
 Confidence tier: ${confidenceTier}
 
+Rules:
+- Gifting hook and outreach hooks must match the seller brand/product above.
+- Never invent sweets, mithai, or hampers unless the seller brand is sweets/gifting.
+
 Output ONLY valid JSON with this shape:
 {
-  "giftingHook": "one sentence specific to this company/contact",
+  "giftingHook": "one sentence specific to this company/contact and seller product",
   "estimatedOrderValue": "₹X–Y lakhs",
   "decisionChain": ["Name/Title", ...],
   "outreachHooks": ["hook 1", "hook 2"],
@@ -68,14 +93,21 @@ Output ONLY valid JSON with this shape:
     },
   });
 
+  const fallbackHooks =
+    brand.brandSlug === "prestige"
+      ? ["Employee reward season", "Appliance bundles"]
+      : brand.brandSlug === "ish"
+        ? ["Diwali season", "Premium mithai"]
+        : ["Corporate rewards", brand.brandName];
+
   const { data: validated, valid } = parseResearcherOutput(raw);
   const parsed = validated ?? {
-    giftingHook: `${account.name} corporate gifting opportunity for ${contact.title ?? "HR/Admin"} team`,
+    giftingHook: `${account.name} corporate opportunity for ${contact.title ?? "HR/Admin"} team with ${brand.brandName}`,
     estimatedOrderValue: "₹2–8 lakhs",
     decisionChain: [contact.name],
-    outreachHooks: ["Diwali season", "Premium mithai"],
+    outreachHooks: fallbackHooks,
     scoreFactors: [
-      { label: "Purchase timeframe is", bold: "Diwali season" },
+      { label: "Purchase timeframe is", bold: brand.brandSlug === "ish" ? "Diwali season" : "Upcoming reward cycle" },
       { label: "Estimated budget is", bold: account.giftBudget ?? "unknown" },
     ],
   };

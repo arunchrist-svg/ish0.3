@@ -1,5 +1,6 @@
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
+import { ensureGeminiApiKeyForOcr, geminiModelId } from "@/lib/llm/gemini-env";
 import { z } from "zod";
 
 const BusinessCardSchema = z.object({
@@ -21,7 +22,8 @@ export async function extractBusinessCardFromImage(imageBase64: string): Promise
   const mime = imageBase64.startsWith("/9j/") ? "image/jpeg" : "image/png";
   const dataUrl = `data:${mime};base64,${imageBase64.replace(/^data:image\/\w+;base64,/, "")}`;
 
-  const model = google(process.env.GEMINI_MODEL_FLASH_LITE ?? "gemini-2.0-flash");
+  ensureGeminiApiKeyForOcr();
+  const model = google(geminiModelId("fast"));
   const { text } = await generateText({
     model,
     messages: [

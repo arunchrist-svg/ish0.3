@@ -25,8 +25,10 @@ function loadBrandRules(brandSlug: BrandSlug): string {
   return loadFile(`src/knowledge/brands/${brandSlug}.md`, "");
 }
 
-function loadCampaignRules(campaignMode: CampaignMode): string {
+function loadCampaignRules(campaignMode: CampaignMode, brandSlug: BrandSlug): string {
   if (campaignMode === "custom" || campaignMode === "festival_bundle") return "";
+  // Sweets-leaning Diwali campaign MD is ISH-only (tasting samples, hampers).
+  if (campaignMode === "diwali_gifting" && brandSlug !== "ish") return "";
   return loadFile(`src/knowledge/campaigns/${campaignMode}.md`, "");
 }
 
@@ -38,25 +40,49 @@ export function retrieveRelevantRules(context: {
   campaignMode?: CampaignMode;
   productSummary?: string;
   campaignNotes?: string;
+  websiteInsights?: {
+    valueProposition?: string;
+    differentiators?: string[];
+    toneNotes?: string;
+  };
 }): string {
   const sections: string[] = [];
+  const brandSlug = context.brandSlug ?? "custom";
+  const campaignMode = context.campaignMode ?? "diwali_gifting";
 
-  const brand = loadBrandRules(context.brandSlug ?? "ish");
+  const brand = loadBrandRules(brandSlug);
   if (brand) sections.push(brand);
 
-  const campaign = loadCampaignRules(context.campaignMode ?? "diwali_gifting");
+  const campaign = loadCampaignRules(campaignMode, brandSlug);
   if (campaign) sections.push(campaign);
 
   if (context.productSummary?.trim()) {
     sections.push(`## Company product catalog\n${context.productSummary.trim()}`);
   }
 
+  if (context.websiteInsights?.valueProposition?.trim()) {
+    sections.push(`## Value proposition\n${context.websiteInsights.valueProposition.trim()}`);
+  }
+
+  if (context.websiteInsights?.differentiators?.length) {
+    sections.push(
+      `## Differentiators\n${context.websiteInsights.differentiators.map((d) => `- ${d}`).join("\n")}`,
+    );
+  }
+
+  if (context.websiteInsights?.toneNotes?.trim()) {
+    sections.push(`## Website-derived writing style\n${context.websiteInsights.toneNotes.trim()}`);
+  }
+
   if (context.campaignNotes?.trim()) {
     sections.push(`## Campaign notes\n${context.campaignNotes.trim()}`);
   }
 
-  const legacy = filterLegacyRules(loadGiftingRules(), context);
-  if (legacy) sections.push(legacy);
+  // Legacy ISH gifting rules contain mithai/pure-ghee copy. Never inject for other brands.
+  if (brandSlug === "ish") {
+    const legacy = filterLegacyRules(loadGiftingRules(), context);
+    if (legacy) sections.push(legacy);
+  }
 
   return sections.join("\n\n").slice(0, 6000) || getDefaultRules();
 }

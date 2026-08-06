@@ -38,6 +38,7 @@ export function getWriterFewShotExample(
   senderFirstName: string,
   contactFirstName = "Priya",
   companyName = "TechCorp",
+  productSummary = "",
 ): string {
   if (brandSlug === "prestige") {
     return `
@@ -61,7 +62,8 @@ Partnerships, ${brandName}
 `;
   }
 
-  return `
+  if (brandSlug === "ish") {
+    return `
 ---
 GOOD EXAMPLE (follow this pattern):
 Subject A: Diwali hampers for ${companyName}
@@ -72,6 +74,31 @@ Hi ${contactFirstName},
 ${companyName} has been growing its Bangalore tech campus. With Diwali a few weeks out, we have been curating mithai and dry-fruit hampers for IT teams in the city.
 
 Open to a quick note on a few options?
+
+No worries if the timing is off.
+
+${senderFirstName}
+Partnerships, ${brandName}
+
+---
+`;
+  }
+
+  const productLine = productSummary.trim()
+    ? productSummary.trim().replace(/\.\s*$/, "")
+    : "we help teams with corporate rewards and gifting";
+
+  return `
+---
+GOOD EXAMPLE (follow this pattern):
+Subject A: Corporate options for ${companyName}
+Subject B: ${contactFirstName}, ${companyName} team rewards
+Body:
+Hi ${contactFirstName},
+
+${companyName}'s team rewards program came up in our research. At ${brandName}, ${productLine}.
+
+Open to a quick note on a few options that fit your team?
 
 No worries if the timing is off.
 

@@ -1,5 +1,6 @@
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
+import { ensureGeminiApiKeyForOcr, geminiModelId } from "@/lib/llm/gemini-env";
 import { mapWithConcurrency } from "@/lib/async";
 import type { RawGiftIntelPost } from "@/lib/gift-intel/types";
 
@@ -11,7 +12,8 @@ async function ocrImageUrl(imageUrl: string): Promise<string | undefined> {
   }
 
   try {
-    const model = google(process.env.GEMINI_MODEL_FLASH_LITE ?? "gemini-2.0-flash");
+    ensureGeminiApiKeyForOcr();
+  const model = google(geminiModelId("fast"));
     const { text } = await generateText({
       model,
       messages: [

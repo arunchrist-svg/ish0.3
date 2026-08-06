@@ -495,6 +495,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             contactName={lead.name}
             companyName={lead.company}
             contactEmail={lead.email}
+            contactEmails={lead.emails}
             emailThread={thread}
             onDraftUpdated={(d) => {
               setActiveDraft(d);

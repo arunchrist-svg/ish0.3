@@ -25,6 +25,7 @@ import type { EnrichmentProviderId } from "./enrich-types";
 import {
   type ContactEmailEntry,
   mergeAlternateEmails,
+  withFirstLastSecondaryEmail,
 } from "./contact-emails";
 import type { ScoredCandidate } from "./enrich-accurate";
 
@@ -284,11 +285,19 @@ export async function enrichLeadById(params: {
   const nextTitle = enriched.title?.trim() || contact.title || undefined;
   const nextStatus = nextEmail ? enriched.emailStatus : (contact.emailStatus ?? "missing");
 
-  const alternateEmails = mergeAlternateEmails(
+  const discovered = mergeAlternateEmails(
     nextEmail,
     (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
     enriched.discoveredEmails ?? [],
   );
+  const alternateEmails = withFirstLastSecondaryEmail(nextEmail, discovered, {
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    name: contact.name,
+    domain: account.domain,
+    website: account.website,
+    companyName: account.name,
+  });
 
   await db
     .update(contacts)

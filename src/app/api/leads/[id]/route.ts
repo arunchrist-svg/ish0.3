@@ -7,7 +7,8 @@ import { logAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
-import { buildContactEmails, hasUsableEmail } from "@/lib/enrichment/contact-emails";
+import { buildContactEmails, hasUsableEmail, withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { buildEmailThread } from "@/lib/email/email-thread";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
@@ -34,6 +35,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     if (lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    const existingAlternates =
+      (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
+    const ensuredAlternates = withFirstLastSecondaryEmail(contact.email, existingAlternates, {
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      name: contact.name,
+      domain: account.domain,
+      website: account.website,
+      companyName: account.name,
+    });
+    const alternateEmailsChanged =
+      JSON.stringify(existingAlternates) !== JSON.stringify(ensuredAlternates);
+    if (alternateEmailsChanged) {
+      await db
+        .update(contacts)
+        .set({ alternateEmails: ensuredAlternates, updatedAt: new Date() })
+        .where(eq(contacts.id, contact.id));
+      contact.alternateEmails = ensuredAlternates;
     }
 
     const [research, outreach, scheduleRows, sequenceDraftRows, emailConfig] = await Promise.all([
@@ -132,6 +153,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       replyDraftSent,
     );
 
+    const alternateEmails =
+      (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
+
     const record: LeadDetailRecord = {
       id: lead.id,
       name: contact.name,
@@ -156,7 +180,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
               ? "sent"
               : "saved"
             : undefined,
-        alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
+        alternateEmails,
       }),
       emailStatus: contact.emailStatus ?? "missing",
       emailConfidence: contact.emailConfidence ?? undefined,

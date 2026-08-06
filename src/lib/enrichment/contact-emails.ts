@@ -1,5 +1,11 @@
 import { isEmailOutreachStarted } from "@/lib/pipeline-status";
 import { isGenericCompanyEmail } from "@/lib/enrichment/validate-contact";
+import {
+  generateEmailPermutations,
+  normalizeDomain,
+  resolveAccountDomain,
+  resolveContactName,
+} from "@/lib/enrichment/email-permutations";
 
 export type EmailTestStatus = "saved" | "sent" | "rejected";
 
@@ -127,6 +133,58 @@ export function buildPermutationEmailEntry(email: string, pattern: string): Cont
     testStatus: "saved",
     pattern,
   };
+}
+
+/** LinkedIn-style secondary: firstname.lastname@companydomain */
+export function buildFirstLastSecondaryEmail(input: {
+  firstName?: string | null;
+  lastName?: string | null;
+  name?: string | null;
+  domain?: string | null;
+  website?: string | null;
+  companyName?: string | null;
+  primaryEmail?: string | null;
+}): ContactEmailEntry | null {
+  const domain =
+    normalizeDomain(input.domain) ??
+    resolveAccountDomain({
+      domain: input.domain,
+      website: input.website,
+      companyName: input.companyName,
+    });
+  if (!domain) return null;
+
+  const { firstName, lastName } = resolveContactName(input);
+  const suggestions = generateEmailPermutations({ firstName, lastName, domain });
+  const firstLast = suggestions.find((s) => s.pattern === "first.last");
+  if (!firstLast) return null;
+
+  const primaryKey = input.primaryEmail?.trim().toLowerCase();
+  if (primaryKey && firstLast.email.toLowerCase() === primaryKey) return null;
+
+  return buildPermutationEmailEntry(firstLast.email, "first.last");
+}
+
+export function withFirstLastSecondaryEmail(
+  primaryEmail: string | undefined | null,
+  existing: ContactEmailEntry[] | null | undefined,
+  identity: {
+    firstName?: string | null;
+    lastName?: string | null;
+    name?: string | null;
+    domain?: string | null;
+    website?: string | null;
+    companyName?: string | null;
+  },
+): ContactEmailEntry[] {
+  const secondary = buildFirstLastSecondaryEmail({
+    ...identity,
+    primaryEmail,
+  });
+  if (!secondary) {
+    return mergeAlternateEmails(primaryEmail ?? undefined, existing, []);
+  }
+  return mergeAlternateEmails(primaryEmail ?? undefined, existing, [secondary]);
 }
 
 export type ContactEmailQueueState = {

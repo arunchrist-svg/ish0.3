@@ -6,7 +6,7 @@ import { apolloSearchCompanies, apolloSearchPeople } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
-import { companyCityMatchesSelection } from "./city-search";
+import { companyCityMatchesSelection, personLocationMatchesSelection, rankPeopleByCityMatch } from "./city-search";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -405,6 +405,7 @@ export async function discoverPeople(params: {
   limit?: number;
   seniority?: string[];
   departments?: string[];
+  cities?: string[];
   tenantAccounts?: (typeof accounts.$inferSelect)[];
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
@@ -468,7 +469,7 @@ export async function discoverPeople(params: {
   if (cfg.searchProvider === "apollo" && resolvedDomain) {
     await runStep(
       "apollo_people",
-      () => apolloSearchPeople({ companyDomain: resolvedDomain, titles: effectiveTitles, limit: remaining }),
+      () => apolloSearchPeople({ companyDomain: resolvedDomain, titles: effectiveTitles, limit: remaining, cities: params.cities }),
       external,
       remaining,
       [],
@@ -489,6 +490,7 @@ export async function discoverPeople(params: {
           companyDomain: resolvedDomain,
           limit: remaining,
           roleHints: roleHints.length > 0 ? roleHints : undefined,
+          cities: params.cities,
         }),
       external,
       remaining,
@@ -536,7 +538,7 @@ export async function discoverPeople(params: {
 
   // Email/phone enrichment runs on save (save-leads.ts) — skip here for faster scout preview.
 
-  // ── Step 3: Filter + rank by selected roles ─────────────────────────────
+  // ── Step 3: Filter + rank by selected roles / city ──────────────────────
   const allPeople = [...companyContacts.map(contactToResult), ...external];
   let finalPeople: ScoutPersonResult[];
   if (activeSeniority.length > 0 || activeDepartments.length > 0) {
@@ -546,6 +548,26 @@ export async function discoverPeople(params: {
     }
   } else {
     finalPeople = allPeople;
+  }
+
+  const scoutCities = params.cities ?? [];
+  if (scoutCities.length) {
+    const withKnownLocation = finalPeople.filter((person) => Boolean(person.location?.trim()));
+    const localPeople = finalPeople.filter((person) =>
+      personLocationMatchesSelection(person.location, scoutCities),
+    );
+    // Prefer city matches. If every located person is in the wrong city, drop them.
+    if (localPeople.some((person) => person.location?.trim())) {
+      finalPeople = localPeople;
+    } else if (withKnownLocation.length > 0 && localPeople.length === 0) {
+      warnings.push(
+        `No decision-makers found in ${scoutCities.join(", ")} for ${params.companyName}. Try another company or nearby city.`,
+      );
+      finalPeople = [];
+    } else {
+      finalPeople = localPeople;
+    }
+    finalPeople = rankPeopleByCityMatch(finalPeople, scoutCities);
   }
 
   return {
@@ -574,6 +596,7 @@ export async function discoverPeopleBatch(params: {
   limit?: number;
   seniority?: string[];
   departments?: string[];
+  cities?: string[];
   concurrency?: number;
 }): Promise<Record<string, PeopleDiscoveryResult>> {
   let tenantAccounts: (typeof accounts.$inferSelect)[] = [];
@@ -612,6 +635,7 @@ export async function discoverPeopleBatchStream(
     limit?: number;
     seniority?: string[];
     departments?: string[];
+    cities?: string[];
     concurrency?: number;
   },
   onResult: (companyId: string, result: PeopleDiscoveryResult) => void | Promise<void>,

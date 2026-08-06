@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button, text } from "@/design-system";
 import { AuthField } from "@/components/auth/auth-field";
+import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { cn } from "@/lib/utils";
 
@@ -71,15 +72,18 @@ export default function ChangePasswordPage() {
             required
           />
         ) : null}
-        <AuthField
-          id="newPassword"
-          label="New password"
-          type="password"
-          value={newPassword}
-          onChange={setNewPassword}
-          required
-          minLength={8}
-        />
+        <div>
+          <AuthField
+            id="newPassword"
+            label="New password"
+            type="password"
+            value={newPassword}
+            onChange={setNewPassword}
+            required
+            minLength={8}
+          />
+          <PasswordStrengthMeter password={newPassword} />
+        </div>
         <AuthField
           id="confirmPassword"
           label="Confirm new password"

@@ -158,11 +158,28 @@ Minimum confidence: company must be named, local, and plausibly corporate.
 ${context}
 
 Return up to ${limit} companies.`,
-        maxTokens: 1500,
+        maxTokens: 2048,
       });
 
       try {
-        const llmResults = parseLLMCompanies(raw, limit);
+        let llmResults = parseLLMCompanies(raw, limit);
+        if (!llmResults.length) {
+          const retryRaw = await callLLM({
+            tier: "quality",
+            system: `You extract structured B2B company data for corporate gifting lead generation from Indian business directory listings.
+Output ONLY a valid JSON array. No markdown fences. No explanation.
+Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }
+Only include REAL named Indian companies. Do NOT invent companies.`,
+            prompt: `Extract companies from these directory results.
+Target: ${indStr} industry companies in ${cityStr}, India.
+
+${context}
+
+Return up to ${limit} companies.`,
+            maxTokens: 4096,
+          });
+          llmResults = parseLLMCompanies(retryRaw, limit);
+        }
         if (llmResults.length) return llmResults;
         meta?.warnings.push("AI extraction returned no companies — using directory parsing fallback.");
       } catch {
@@ -191,6 +208,7 @@ export async function indiaDirectoriesSearchPeople(params: {
   companyDomain?: string;
   limit?: number;
   roleHints?: string[];
+  cities?: string[];
 }): Promise<ScoutPersonResult[]> {
   return searchPeopleViaTavily({
     companyName: params.companyName,
@@ -198,6 +216,7 @@ export async function indiaDirectoriesSearchPeople(params: {
     limit: params.limit,
     dataSource: "india_directories",
     roleHints: params.roleHints,
+    cities: params.cities,
   });
 }
 

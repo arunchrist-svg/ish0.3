@@ -66,11 +66,18 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const rules = retrieveRelevantRules({
     industry: account.industry ?? undefined,
     city: account.city ?? undefined,
-    season: "diwali",
+    season: brandConfig.brandSlug === "ish" ? "diwali" : undefined,
     brandSlug: brandConfig.brandSlug,
     campaignMode,
     productSummary: brandConfig.productSummary,
     campaignNotes: emailConfig.campaignNotes,
+    websiteInsights: brandConfig.websiteInsights
+      ? {
+          valueProposition: brandConfig.websiteInsights.valueProposition,
+          differentiators: brandConfig.websiteInsights.differentiators,
+          toneNotes: brandConfig.websiteInsights.toneNotes,
+        }
+      : undefined,
   });
 
   const confidenceTier = research?.confidenceTier ?? "low";
@@ -90,6 +97,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     senderFirstName,
     contactFirstName,
     account.name,
+    brandConfig.productSummary,
   );
 
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);

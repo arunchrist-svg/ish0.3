@@ -28,6 +28,17 @@ export async function GET() {
 
     const permissions = getPermissionFlags(ctx);
 
+    const insights = emailConfig.brandConfig?.websiteInsights;
+    const scoutBrandDefaults = insights
+      ? {
+          industries: insights.scoutIndustries ?? [],
+          departments: insights.scoutDepartments ?? [],
+          seniority: insights.scoutSeniority ?? [],
+          brandName: emailConfig.brandConfig.brandName,
+          analyzedAt: insights.analyzedAt,
+        }
+      : null;
+
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name },
       tenant: {
@@ -47,6 +58,7 @@ export async function GET() {
       permissions,
       sendMode: emailConfig.sendMode,
       credits,
+      scoutBrandDefaults,
     });
   } catch (e) {
     if (e instanceof UnauthorizedError) {

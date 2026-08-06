@@ -40,6 +40,7 @@ export async function POST(req: Request) {
       limit: requestedLimit,
       seniority = [],
       departments = [],
+      cities = [],
     } = body;
 
     if (!Array.isArray(companies) || companies.length === 0) {
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
       limit: batchLimit,
       seniority,
       departments,
+      cities,
       concurrency: Math.min(parseInt(process.env.SCOUT_PEOPLE_CONCURRENCY ?? "5", 10) || 5, 8),
     };
 

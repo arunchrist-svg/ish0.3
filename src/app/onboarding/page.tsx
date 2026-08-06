@@ -7,15 +7,8 @@ import { Loader2, Building2, CreditCard, Radar, Users, Rocket, Mail } from "luci
 import { cn } from "@/lib/utils";
 import { Button, text } from "@/design-system";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
-import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly } from "@/lib/billing/plan-catalog";
-
-type Plan = {
-  slug: string;
-  name: string;
-  priceCents: number;
-  includedCredits: number;
-  seatLimit: number;
-};
+import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly, getPlanBySlug } from "@/lib/billing/plan-catalog";
+import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
 
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
@@ -30,28 +23,25 @@ export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [plans, setPlans] = useState<Plan[]>([]);
-
   const [orgName, setOrgName] = useState("");
   const [planSlug, setPlanSlug] = useState("starter");
   const [productCategory, setProductCategory] = useState("");
   const [competitorBrands, setCompetitorBrands] = useState<string[]>([]);
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
+  const [websiteStatus, setWebsiteStatus] = useState("");
 
   useEffect(() => {
     void (async () => {
-      const [onbRes, plansRes, meRes] = await Promise.all([
+      const [onbRes, meRes] = await Promise.all([
         fetch("/api/onboarding"),
-        fetch("/api/billing/plans"),
         fetch("/api/auth/me"),
       ]);
       if (onbRes.ok) {
         const data = await onbRes.json();
         setStep(data.step ?? 1);
         if (data.orgName) setOrgName(data.orgName);
-      }
-      if (plansRes.ok) {
-        const data = await plansRes.json();
-        setPlans(data.plans ?? []);
+        if (data.websiteUrl) setWebsiteUrl(data.websiteUrl);
       }
       if (meRes.ok) {
         const data = await meRes.json();
@@ -123,14 +113,30 @@ export default function OnboardingPage() {
       setError("Add at least one competitor brand");
       return;
     }
+    const hasWebsite = Boolean(websiteUrl.trim());
+    if (hasWebsite) {
+      setAnalyzingWebsite(true);
+      setWebsiteStatus("Reading your website to customise email writing and scouting…");
+    }
     const data = await submitStep({
       step: 3,
+      websiteUrl: websiteUrl.trim() || undefined,
       enrichmentConfig: {
         giftIntelProductCategory: category,
         giftIntelCompetitorBrands: competitorBrands,
       },
     });
-    if (data) setStep(data.nextStep);
+    setAnalyzingWebsite(false);
+    setWebsiteStatus("");
+    if (!data) return;
+    if (data.websiteWarning) {
+      setWebsiteStatus(
+        `Saved your website, but auto-customise had an issue: ${data.websiteWarning}. You can retry in Settings → Email.`,
+      );
+    } else if (data.brandAnalyzed) {
+      setWebsiteStatus("Writer and Scout are now tuned from your website.");
+    }
+    setStep(data.nextStep);
   }
 
   async function handleTeamSkip() {
@@ -148,7 +154,7 @@ export default function OnboardingPage() {
       <div className="mb-10">
         <h1 className={cn("mb-2", text.display)}>Set up your workspace</h1>
         <p className="text-sm text-ish-ink-soft">
-          Complete these steps before accessing your sales hub. Set your product category and competitors during Brand setup; refine them later in Settings.
+          Complete these steps before accessing your sales hub. Add your website during Brand setup so Writer and Scout match how you sell; refine later in Settings.
         </p>
       </div>
 
@@ -192,9 +198,14 @@ export default function OnboardingPage() {
 
       {step === 2 && (
         <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
-          <h2 className="text-lg font-semibold">Choose a plan</h2>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {(plans.length ? plans : SUBSCRIPTION_PLANS).map((p) => (
+          <div>
+            <h2 className="text-lg font-semibold">Choose a plan</h2>
+            <p className="mt-1 text-sm text-ish-ink-soft">
+              All plans include one shared credit pool for your workspace. Credits cover scouting accounts, AI email writing, and live sends.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {SUBSCRIPTION_PLANS.map((p) => (
               <button
                 key={p.slug}
                 type="button"
@@ -204,12 +215,30 @@ export default function OnboardingPage() {
                   planSlug === p.slug ? "border-ish-black ring-2 ring-ish-black/10" : "border-ish-border hover:border-ish-black/30",
                 )}
               >
-                <div className="font-semibold">{p.name}</div>
-                <div className="mt-1 text-2xl font-bold">{formatPlanPriceMonthly(p.priceCents).replace("/mo", "")}<span className="text-sm font-normal">/mo</span></div>
-                <div className="mt-2 text-xs text-ish-ink-soft">{p.includedCredits.toLocaleString()} credits · {p.seatLimit} seats</div>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-semibold">{p.name}</div>
+                    <p className="mt-1 text-xs text-ish-ink-soft">{p.tagline}</p>
+                  </div>
+                  {p.highlight ? (
+                    <span className="rounded-full bg-ish-black px-2 py-0.5 text-[10px] font-semibold text-white">
+                      Popular
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 text-2xl font-bold">
+                  {formatPlanPriceMonthly(p.priceCents).replace("/mo", "")}
+                  <span className="text-sm font-normal">/mo</span>
+                </div>
+                <PlanBenefitsList plan={p} compact />
               </button>
             ))}
           </div>
+          {getPlanBySlug(planSlug) ? (
+            <p className="text-xs text-ish-ink-faint">
+              Selected: {getPlanBySlug(planSlug)?.name}. Capacity numbers assume you use the full monthly credit pool on one activity type.
+            </p>
+          ) : null}
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button type="button" variant="outline" onClick={handlePlanTrial} disabled={loading} className="flex-1">
               Start 14-day trial (200 credits)
@@ -227,10 +256,25 @@ export default function OnboardingPage() {
             <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-ish-ink-faint")}>
               Brand Intelligence
             </p>
-            <h2 className="text-lg font-semibold">Set your category and competitors</h2>
+            <h2 className="text-lg font-semibold">Your website, category, and competitors</h2>
             <p className="mt-1 text-sm text-ish-ink-soft">
-              Used for Corporate Gift Tracker OSINT sweeps. You can add or remove competitors anytime in Settings.
+              We read your website to customise email writing and scout targeting. Category and competitors power Corporate Gift Tracker sweeps.
             </p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[13px] font-semibold text-ish-ink">Company website</label>
+            <p className="mb-2 text-[11.5px] text-ish-ink-soft">
+              Optional but recommended. Product summary, writing tone, and scout industries come from this page.
+            </p>
+            <input
+              type="url"
+              value={websiteUrl}
+              onChange={(e) => setWebsiteUrl(e.target.value)}
+              className="w-full rounded-xl border border-ish-border px-4 py-3"
+              placeholder="https://yourcompany.com"
+              autoComplete="url"
+            />
           </div>
 
           <BrandIntelligenceSetup
@@ -240,8 +284,25 @@ export default function OnboardingPage() {
             onCompetitorBrandsChange={setCompetitorBrands}
           />
 
-          <Button type="submit" disabled={loading || !productCategory.trim() || competitorBrands.length === 0} className="w-full">
-            {loading ? <Loader2 className="size-4 animate-spin" /> : "Continue"}
+          {websiteStatus ? (
+            <p className="rounded-xl bg-ish-app/80 px-4 py-3 text-[12px] text-ish-ink-soft">{websiteStatus}</p>
+          ) : null}
+
+          <Button
+            type="submit"
+            disabled={loading || analyzingWebsite || !productCategory.trim() || competitorBrands.length === 0}
+            className="w-full"
+          >
+            {loading || analyzingWebsite ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                {analyzingWebsite ? "Analysing website…" : "Saving…"}
+              </>
+            ) : websiteUrl.trim() ? (
+              "Analyse website & continue"
+            ) : (
+              "Continue"
+            )}
           </Button>
         </form>
       )}
@@ -261,16 +322,19 @@ export default function OnboardingPage() {
           <Rocket className="mx-auto size-12 text-ish-black" />
           <h2 className="text-lg font-semibold">You&apos;re ready to scout</h2>
           <p className="text-sm text-ish-ink-soft">
-            Your workspace is ready. Update competitors under{" "}
+            Your workspace is ready. If you added a website, email drafts and scout filters already use it. Update competitors under{" "}
             <Link href="/settings?tab=enrichment" className="font-medium text-ish-ink underline">
               Settings → Enrichment
             </Link>
-            {" "}and configure outreach under{" "}
+            {" "}or re-analyse your site under{" "}
             <Link href="/settings?tab=email" className="font-medium text-ish-ink underline">
               Settings → Email
             </Link>
             .
           </p>
+          {websiteStatus ? (
+            <p className="rounded-xl bg-ish-app/80 px-4 py-3 text-left text-[12px] text-ish-ink-soft">{websiteStatus}</p>
+          ) : null}
           <div className="flex items-center justify-center gap-2 rounded-xl bg-ish-app/80 px-4 py-3 text-[12px] text-ish-ink-soft">
             <Mail className="size-4 shrink-0" />
             SMTP, Resend, send mode, and test sends live in Settings, not setup.

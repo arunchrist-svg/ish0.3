@@ -48,15 +48,23 @@ export async function apolloSearchPeople(params: {
   companyDomain: string;
   titles: string[];
   limit?: number;
+  cities?: string[];
 }): Promise<ScoutPersonResult[]> {
-  const data = await apolloPost("/mixed_people/search", {
+  const body: Record<string, unknown> = {
     q_organization_domains: [params.companyDomain],
     person_titles: params.titles,
     per_page: params.limit ?? 10,
-  });
+  };
+  if (params.cities?.length) {
+    body.person_locations = params.cities;
+  }
+  const data = await apolloPost("/mixed_people/search", body);
 
   return (data.people ?? []).map((p: Record<string, unknown>) => {
     const email = p.email as string | undefined;
+    const locationParts = [p.city, p.state, p.country].filter(
+      (part): part is string => typeof part === "string" && Boolean(part.trim()),
+    );
     return {
       name: p.name as string,
       firstName: p.first_name as string | undefined,
@@ -68,6 +76,7 @@ export async function apolloSearchPeople(params: {
       emailStatus: email ? classifyEmail(email) : "missing",
       phone: (p.phone_numbers as Record<string, string>[] | undefined)?.[0]?.["sanitized_number"],
       linkedIn: normalizeLinkedInUrl(p.linkedin_url as string | undefined),
+      location: locationParts.length ? locationParts.join(", ") : undefined,
       bio: p.headline as string | undefined,
       isKeyDM: isKeyDecisionMaker(p.title as string | undefined),
       matchScore: computeMatchScore(p),

@@ -1,2 +1,2 @@
-export const ISH_LOGO_URL =
-  "https://indiasweethouse.in/cdn/shop/files/Group_604.svg?v=1758777285&width=300";
+/** Product display name for UI chrome. */
+export const PRODUCT_NAME = "Nebula";

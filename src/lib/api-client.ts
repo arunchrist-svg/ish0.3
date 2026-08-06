@@ -83,6 +83,7 @@ export async function scoutPeople(params: {
   limit?: number;
   seniority?: string[];
   departments?: string[];
+  cities?: string[];
 }): Promise<ScoutPeopleResponse> {
   return post<ScoutPeopleResponse>("/api/scout/people", params);
 }
@@ -103,6 +104,7 @@ export async function scoutPeopleBatch(params: {
   limit?: number;
   seniority?: string[];
   departments?: string[];
+  cities?: string[];
 }): Promise<ScoutPeopleBatchResponse> {
   return post<ScoutPeopleBatchResponse>("/api/scout/people/batch", params);
 }
@@ -120,6 +122,7 @@ export async function scoutPeopleBatchStream(
     limit?: number;
     seniority?: string[];
     departments?: string[];
+    cities?: string[];
   },
   onResult: (companyId: string, result: ScoutPeopleResponse) => void,
 ): Promise<void> {
@@ -422,8 +425,12 @@ export class EmailSendRejectedError extends Error {
 
 export async function sendOutreach(
   approvalId: string,
-  options?: { overridePreflight?: boolean; overrideQualityGate?: boolean },
-): Promise<{ mode: string; messageId?: string; to?: string }> {
+  options?: {
+    overridePreflight?: boolean;
+    overrideQualityGate?: boolean;
+    toEmails?: string[];
+  },
+): Promise<{ mode: string; messageId?: string; to?: string; recipients?: string[] }> {
   const res = await fetch("/api/outreach/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -431,6 +438,7 @@ export async function sendOutreach(
       approvalId,
       overridePreflight: options?.overridePreflight,
       overrideQualityGate: options?.overrideQualityGate,
+      toEmails: options?.toEmails,
     }),
   });
   const data = await res.json().catch(() => ({}));

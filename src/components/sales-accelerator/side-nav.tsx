@@ -13,7 +13,7 @@ import { CircleButton } from "@/design-system";
 import { SlidingHighlight } from "@/design-system/primitives/sliding-highlight";
 import { useSlidingHighlight } from "@/design-system/hooks/use-sliding-highlight";
 import { text } from "@/design-system/tokens";
-import { ISH_LOGO_URL } from "@/lib/brand";
+import { PRODUCT_NAME } from "@/lib/brand";
 
 type NavItemEntry = {
   icon: React.ElementType;
@@ -205,14 +205,14 @@ export function SideNav() {
           collapsed ? "flex-col gap-2.5" : "justify-between gap-2",
         )}
       >
-        <img
-          src={ISH_LOGO_URL}
-          alt="ISH"
+        <span
           className={cn(
-            "w-auto shrink-0",
-            collapsed ? "h-7" : "h-8",
+            "shrink-0 font-extrabold tracking-tight text-ish-ink",
+            collapsed ? "text-[15px]" : "text-[18px]",
           )}
-        />
+        >
+          {PRODUCT_NAME}
+        </span>
         <CircleButton
           size={28}
           onClick={toggleCollapsed}

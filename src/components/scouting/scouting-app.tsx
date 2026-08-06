@@ -76,6 +76,13 @@ function pickPeopleNotice(messages: string[]): { headline: string; detail: strin
     };
   }
 
+  if (/insufficient credits/i.test(joined)) {
+    return {
+      headline: "Not enough credits to fetch decision-makers.",
+      detail: primary,
+    };
+  }
+
   if (/quota|usage limit|exhausted|people search needs tavily credits/i.test(joined)) {
     return {
       headline: "Tavily credits exhausted for people search.",
@@ -176,6 +183,7 @@ function toPersonShape(p: ScoutPersonResult, companyId: string, idx: number) {
     email: p.email ? maskEmail(p.email) : "—",
     phone: p.phone ? maskPhone(p.phone) : "—",
     bio: p.bio ?? "",
+    location: p.location ?? "",
     emailStatus: p.emailStatus,
     _raw: p,
   };
@@ -520,6 +528,27 @@ export function ScoutingApp() {
         setDataMode(fallback);
       })
       .finally(() => setSettingsLoaded(true));
+  }, []);
+
+  // Prefill Scout filters from website-derived brand insights (onboarding / Settings)
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (!res.ok) return;
+        const data = await res.json();
+        const defaults = data.scoutBrandDefaults as
+          | { industries?: string[]; departments?: string[]; seniority?: string[] }
+          | null
+          | undefined;
+        if (!defaults) return;
+        setIndustries((prev) => (prev.length ? prev : defaults.industries ?? []));
+        setDepartments((prev) => (prev.length ? prev : defaults.departments ?? []));
+        setSeniority((prev) => (prev.length ? prev : defaults.seniority ?? []));
+      } catch {
+        // non-critical
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -878,6 +907,7 @@ export function ScoutingApp() {
         limit: scoutLeadsLimit,
         seniority: activeSeniority,
         departments: activeDepartments,
+        cities,
       });
       peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
       const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
@@ -920,6 +950,7 @@ export function ScoutingApp() {
               limit: scoutLeadsLimit,
               seniority: activeSeniority,
               departments: activeDepartments,
+              cities,
             },
             (companyId, batchResult) => {
               const company = selected.find((c) => c.id === companyId);
@@ -933,8 +964,14 @@ export function ScoutingApp() {
             },
           );
         } catch (batchErr) {
-          console.warn("[scouting] batch fetch failed, falling back to parallel singles:", batchErr);
-          await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
+          const message = batchErr instanceof Error ? batchErr.message : String(batchErr);
+          if (/insufficient credits/i.test(message)) {
+            peopleWarnings.push(message);
+            toast.error(message);
+          } else {
+            console.warn("[scouting] batch fetch failed, falling back to parallel singles:", batchErr);
+            await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
+          }
         }
       } else {
         await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
@@ -970,7 +1007,7 @@ export function ScoutingApp() {
           }
         }
         const errorMsg = pickPrimaryNotice(peopleWarnings);
-        if (errorMsg && /missing|exhausted|quota|usage limit|people search needs tavily/i.test(errorMsg)) {
+        if (errorMsg && /insufficient credits|missing|exhausted|quota|usage limit|people search needs tavily/i.test(errorMsg)) {
           const key = noticeKey(errorMsg);
           if (!shownNoticesRef.current.has(key)) {
             shownNoticesRef.current.add(key);

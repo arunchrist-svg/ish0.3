@@ -1,37 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/design-system";
+import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
 import {
   SUBSCRIPTION_PLANS,
   PRICING_VALUE_PROPS,
   effectiveCreditRate,
   formatPlanPriceMonthly,
-  type PlanDefinition,
 } from "@/lib/billing/plan-catalog";
 
-type Plan = Pick<PlanDefinition, "slug" | "name" | "priceCents" | "includedCredits" | "seatLimit"> & {
-  highlight?: boolean;
-};
-
 export default function PricingPage() {
-  const [plans, setPlans] = useState<Plan[]>([]);
-
-  useEffect(() => {
-    fetch("/api/billing/plans")
-      .then((r) => r.json())
-      .then((d) => setPlans(d.plans ?? []));
-  }, []);
-
-  const display = plans.length ? plans : SUBSCRIPTION_PLANS;
-
   return (
     <div className="min-h-screen bg-ish-canvas px-6 py-16">
-      <div className="mx-auto max-w-5xl text-center">
+      <div className="mx-auto max-w-6xl text-center">
         <h1 className="mb-3 text-4xl font-bold text-ish-ink">Simple credit-based pricing</h1>
         <p className="mb-4 text-ish-ink-soft">
-          Scout, enrich, research, and send outreach. One shared credit pool per workspace, not per seat.
+          Scout accounts, enrich contacts, write outreach, and send emails. One shared credit pool per workspace, not per seat.
           14-day trial with 200 credits. All prices in INR.
         </p>
         <p className="mb-12 text-sm text-ish-ink-faint">
@@ -46,11 +31,11 @@ export default function PricingPage() {
             </li>
           ))}
         </ul>
-        <div className="grid gap-6 sm:grid-cols-3">
-          {display.map((p) => (
+        <div className="grid gap-6 text-left lg:grid-cols-3">
+          {SUBSCRIPTION_PLANS.map((p) => (
             <div
               key={p.slug}
-              className={`rounded-2xl border bg-white p-8 text-left shadow-sm ${
+              className={`rounded-2xl border bg-white p-8 shadow-sm ${
                 p.highlight ? "border-ish-black ring-2 ring-ish-black/10" : "border-ish-border"
               }`}
             >
@@ -60,15 +45,15 @@ export default function PricingPage() {
                 </span>
               ) : null}
               <h2 className="text-xl font-semibold">{p.name}</h2>
-              <p className="mt-2 text-3xl font-bold">
+              <p className="mt-1 text-sm text-ish-ink-soft">{p.tagline}</p>
+              <p className="mt-3 text-3xl font-bold">
                 {formatPlanPriceMonthly(p.priceCents).replace("/mo", "")}
                 <span className="text-base font-normal text-ish-ink-soft">/mo</span>
               </p>
-              <ul className="mt-6 space-y-2 text-sm text-ish-ink-soft">
-                <li>{p.includedCredits.toLocaleString("en-IN")} credits included</li>
-                <li>{p.seatLimit} seats · shared pool</li>
-                <li>{effectiveCreditRate(p.priceCents, p.includedCredits)} effective</li>
-              </ul>
+              <p className="mt-2 text-sm text-ish-ink-soft">
+                {p.includedCredits.toLocaleString("en-IN")} credits · {p.seatLimit} seats · {effectiveCreditRate(p.priceCents, p.includedCredits)} effective
+              </p>
+              <PlanBenefitsList plan={p} />
               <Link href="/signup" className="mt-8 block">
                 <Button className="w-full">Start free trial</Button>
               </Link>

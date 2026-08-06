@@ -35,7 +35,9 @@ export const BRAND_PRESETS: Record<Exclude<BrandSlug, "custom">, BrandConfig> = 
 };
 
 export function resolveBrandConfig(partial?: Partial<BrandConfig>): BrandConfig {
-  const slug = partial?.brandSlug ?? "ish";
+  const slug = partial?.brandSlug ?? "custom";
+  const websiteUrl = partial?.websiteUrl?.trim() || undefined;
+  const websiteInsights = partial?.websiteInsights;
   if (slug === "custom") {
     return {
       brandSlug: "custom",
@@ -44,8 +46,10 @@ export function resolveBrandConfig(partial?: Partial<BrandConfig>): BrandConfig 
       productSummary: partial?.productSummary?.trim() || "",
       buyerPersonas: partial?.buyerPersonas?.length ? partial.buyerPersonas : ["HR Manager"],
       toneNotes: partial?.toneNotes,
+      websiteUrl,
+      websiteInsights,
     };
   }
   const preset = BRAND_PRESETS[slug];
-  return { ...preset, ...partial, brandSlug: slug };
+  return { ...preset, ...partial, brandSlug: slug, websiteUrl, websiteInsights };
 }

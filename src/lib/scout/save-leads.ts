@@ -17,6 +17,9 @@ import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-company-domain";
+import { resolveContactName } from "@/lib/enrichment/email-permutations";
+import { withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
 
@@ -269,16 +272,40 @@ export async function saveScoutLeads(params: {
 
     let contactId: string;
 
+    const { firstName: resolvedFirstName, lastName: resolvedLastName } = resolveContactName({
+      firstName: person.firstName,
+      lastName: person.lastName,
+      name: person.name,
+    });
+
+    const secondaryIdentity = {
+      firstName: resolvedFirstName,
+      lastName: resolvedLastName,
+      name: person.name,
+      domain: resolvedCompany.domain,
+      website: resolvedCompany.website,
+      companyName: resolvedCompany.name,
+    };
+
     if (existingContact) {
+      const nextEmail = resolvedEmail ?? existingContact.email;
+      const alternateEmails = withFirstLastSecondaryEmail(
+        nextEmail,
+        (existingContact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+        secondaryIdentity,
+      );
       await db
         .update(contacts)
         .set({
           title: resolvedTitle ?? existingContact.title,
-          email: resolvedEmail ?? existingContact.email,
+          firstName: existingContact.firstName || resolvedFirstName || null,
+          lastName: existingContact.lastName || resolvedLastName || null,
+          email: nextEmail,
           emailStatus: emailResult.status,
           emailConfidence: emailConfidence || existingContact.emailConfidence,
           enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
           enrichmentProvider: enrichmentProvider ?? existingContact.enrichmentProvider,
+          alternateEmails,
           phone: resolvedPhone ?? existingContact.phone,
           linkedIn: normalizeLinkedInUrl(person.linkedIn) ?? existingContact.linkedIn,
           matchScore: person.matchScore ?? existingContact.matchScore,
@@ -303,6 +330,11 @@ export async function saveScoutLeads(params: {
         continue;
       }
     } else {
+      const alternateEmails = withFirstLastSecondaryEmail(
+        resolvedEmail,
+        [],
+        secondaryIdentity,
+      );
       const [contact] = await db
         .insert(contacts)
         .values({
@@ -310,8 +342,8 @@ export async function saveScoutLeads(params: {
           workspaceId,
           accountId: resolvedAccountId,
           name: person.name,
-          firstName: person.firstName,
-          lastName: person.lastName,
+          firstName: resolvedFirstName || person.firstName || null,
+          lastName: resolvedLastName || person.lastName || null,
           title: resolvedTitle ?? person.title,
           department: person.department,
           seniority: person.seniority,
@@ -320,6 +352,7 @@ export async function saveScoutLeads(params: {
           emailConfidence: emailConfidence || null,
           enrichmentSource: enrichmentSource ?? null,
           enrichmentProvider: enrichmentProvider ?? null,
+          alternateEmails,
           phone: resolvedPhone,
           linkedIn: normalizeLinkedInUrl(person.linkedIn),
           bio: person.bio,

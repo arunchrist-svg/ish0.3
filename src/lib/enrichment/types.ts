@@ -31,6 +31,7 @@ export type ScoutPersonResult = {
   emailStatus: "verified" | "unverified" | "missing" | "generic";
   phone?: string;
   linkedIn?: string;
+  location?: string;
   bio?: string;
   isKeyDM?: boolean;
   matchScore?: number;

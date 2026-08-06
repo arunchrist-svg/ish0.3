@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Loader2, Mail, Save, Send, Sparkles, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { EmailThread, WriterDraft } from "@/lib/api-client";
+import type { ContactEmailEntry, EmailThread, WriterDraft } from "@/lib/api-client";
 import {
   approveOutreach,
   sendOutreach,
@@ -27,6 +27,7 @@ type Props = {
   contactName?: string;
   companyName?: string;
   contactEmail?: string;
+  contactEmails?: ContactEmailEntry[];
   onDraftUpdated: (draft: WriterDraft) => void;
   onSavingChange?: (saving: boolean) => void;
   onSent?: () => void;
@@ -68,6 +69,7 @@ export function OutreachApprovalCard({
   contactName,
   companyName,
   contactEmail,
+  contactEmails,
   onDraftUpdated,
   onSavingChange,
   onSent,
@@ -89,6 +91,63 @@ export function OutreachApprovalCard({
   const [rejecting, setRejecting] = useState(false);
   const [outreachPaused, setOutreachPaused] = useState(false);
   const [fromLabel, setFromLabel] = useState<string | null>(null);
+
+  const selectableEmails = (() => {
+    const seen = new Set<string>();
+    const out: { email: string; label?: string; isPrimary: boolean }[] = [];
+    const add = (email: string, label?: string, isPrimary = false) => {
+      const key = email.trim().toLowerCase();
+      if (!key || !key.includes("@") || key === "—" || seen.has(key)) return;
+      seen.add(key);
+      out.push({ email: email.trim(), label, isPrimary });
+    };
+    if (contactEmail?.trim()) add(contactEmail.trim(), "Fetched", true);
+    for (const entry of contactEmails ?? []) {
+      const isPrimary =
+        Boolean(contactEmail?.trim()) &&
+        entry.email.trim().toLowerCase() === contactEmail!.trim().toLowerCase();
+      const label =
+        entry.pattern === "first.last"
+          ? "first.last@company"
+          : entry.enrichmentProvider === "permutation"
+            ? entry.pattern ?? "Guessed"
+            : isPrimary
+              ? "Fetched"
+              : undefined;
+      add(entry.email, label, isPrimary);
+    }
+    return out;
+  })();
+
+  const canChooseMultiple = selectableEmails.length > 1;
+  const [selectedEmails, setSelectedEmails] = useState<string[]>(() =>
+    selectableEmails.length
+      ? selectableEmails.filter((e) => e.isPrimary).map((e) => e.email).length
+        ? selectableEmails.filter((e) => e.isPrimary).map((e) => e.email)
+        : [selectableEmails[0].email]
+      : contactEmail?.trim()
+        ? [contactEmail.trim()]
+        : [],
+  );
+
+  useEffect(() => {
+    const defaults = selectableEmails.length
+      ? selectableEmails.some((e) => e.isPrimary)
+        ? selectableEmails.filter((e) => e.isPrimary).map((e) => e.email)
+        : [selectableEmails[0].email]
+      : contactEmail?.trim()
+        ? [contactEmail.trim()]
+        : [];
+    setSelectedEmails((prev) => {
+      const stillValid = prev.filter((e) =>
+        selectableEmails.some((s) => s.email.toLowerCase() === e.toLowerCase()),
+      );
+      return stillValid.length ? stillValid : defaults;
+    });
+    // selectableEmails is derived from props; re-sync when contact emails change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactEmail, contactEmails]);
+
   const bodyText = displayDraft.emailBody ?? "";
   const { ref: bodyRef, resize: resizeBody } = useAutoGrowTextarea(bodyText);
 
@@ -200,7 +259,23 @@ export function OutreachApprovalCard({
   const threadSubject = emailThread?.threadRootSubject;
   const showReRow = Boolean(isReplyDraft && threadSubject);
   const toLine = [contactName, companyName].filter(Boolean).join(" · ");
-  const toDetail = contactEmail?.trim() ? `${toLine || "Contact"} · ${contactEmail.trim()}` : toLine || "Add contact email";
+  const selectedSummary =
+    selectedEmails.length > 1
+      ? `${selectedEmails.length} addresses`
+      : selectedEmails[0] ?? contactEmail?.trim();
+  const toDetail = selectedSummary
+    ? `${toLine || "Contact"} · ${selectedSummary}`
+    : toLine || "Add contact email";
+
+  function toggleRecipient(email: string) {
+    setSelectedEmails((prev) => {
+      if (prev.some((e) => e.toLowerCase() === email.toLowerCase())) {
+        const next = prev.filter((e) => e.toLowerCase() !== email.toLowerCase());
+        return next.length ? next : prev;
+      }
+      return [...prev, email];
+    });
+  }
 
   function handleSubjectChange(value: string) {
     const key = subjectUsed === "A" ? "subjectA" : "subjectB";
@@ -241,8 +316,8 @@ export function OutreachApprovalCard({
       toast.error("Outreach sending is paused. Resume in Email queue or Settings.");
       return;
     }
-    if (!contactEmail?.trim()) {
-      toast.error("Add a contact email before sending");
+    if (!selectedEmails.length) {
+      toast.error("Select at least one email address before sending");
       return;
     }
     const subjectToSend = isReplyDraft && threadSubject ? threadSubject : activeSubject;
@@ -285,8 +360,12 @@ export function OutreachApprovalCard({
       const result = await sendOutreach(approvalId, {
         overridePreflight: preflightOverrideAck,
         overrideQualityGate: qualityOverrideAck,
+        toEmails: selectedEmails,
       });
-      const recipient = result.to ?? contactEmail;
+      const recipient =
+        result.recipients?.length
+          ? result.recipients.join(", ")
+          : result.to ?? selectedEmails.join(", ");
       const modeLabel =
         result.mode === "dry_run" ? "logged (dry run, not sent)" : `sent to ${recipient}`;
       toast.success(`Email ${modeLabel}`, {
@@ -358,6 +437,41 @@ export function OutreachApprovalCard({
               </div>
             ) : null}
           </div>
+          {canChooseMultiple && !isDraftLocked ? (
+            <div className="border-t border-ish-border/30 px-3 py-2.5 lg:px-0 lg:py-2">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-soft">
+                Send to
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {selectableEmails.map((entry) => {
+                  const checked = selectedEmails.some(
+                    (e) => e.toLowerCase() === entry.email.toLowerCase(),
+                  );
+                  return (
+                    <label
+                      key={entry.email}
+                      className="flex cursor-pointer items-start gap-2 rounded-[10px] px-1 py-1 hover:bg-white/60"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRecipient(entry.email)}
+                        className="mt-0.5 size-3.5 shrink-0 rounded border-ish-border text-ish-stratus-blue focus:ring-ish-stratus-blue/30"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-all text-[12px] font-medium text-ish-ink">
+                          {entry.email}
+                        </span>
+                        {entry.label ? (
+                          <span className="text-[10px] text-ish-ink-faint">{entry.label}</span>
+                        ) : null}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {showReRow ? (
             <EnvelopeRow label="Re">
               <p className="truncate text-[12px] font-semibold text-ish-stratus-blue">{threadSubject}</p>

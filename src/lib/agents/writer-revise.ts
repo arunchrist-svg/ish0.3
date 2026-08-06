@@ -222,13 +222,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const sequencePosition = isReplyDraft
     ? REPLY_SEQUENCE_POSITION
     : (outreach.sequencePosition ?? 1);
-  const brandConfig = emailConfig.brandConfig ?? {
-    brandSlug: "ish" as const,
-    brandName: emailConfig.fromName,
-    vertical: "general",
-    productSummary: "",
-    buyerPersonas: [],
-  };
+  const brandConfig = emailConfig.brandConfig;
   const template = getOutreachTemplate(
     isReplyDraft ? undefined : (outreach.templateVariant ?? undefined),
   );

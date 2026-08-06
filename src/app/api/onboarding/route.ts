@@ -6,6 +6,17 @@ import { saveWorkspaceEnrichmentOverrides } from "@/lib/settings/workspace-setti
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import {
+  analyzeSellerWebsite,
+  mergeWebsiteInsightsIntoBrand,
+  normalizeWebsiteUrl,
+} from "@/lib/brand/analyze-seller-website";
+import {
+  getResolvedEmailConfig,
+  loadWorkspaceEmailOverrides,
+  saveWorkspaceEmailOverrides,
+} from "@/lib/settings/email-settings";
+import type { BrandConfig } from "@/lib/email/config";
 
 /** Map legacy 6-step onboarding (with email at step 3) to 5-step flow. */
 export function normalizeOnboardingStep(step: number): number {
@@ -20,11 +31,14 @@ export async function GET() {
   try {
     const ctx = await requireTenantContext();
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
+    const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
     const rawStep = tenant?.onboardingStep ?? 1;
     return NextResponse.json({
       step: tenant?.onboardingStatus === "complete" ? 5 : normalizeOnboardingStep(rawStep),
       status: tenant?.onboardingStatus ?? "pending",
       orgName: tenant?.name,
+      websiteUrl: emailConfig.brandConfig?.websiteUrl ?? "",
+      brandReady: Boolean(emailConfig.brandConfig?.productSummary?.trim()),
     });
   } catch (e) {
     return handleApiError(e, "[onboarding/GET]");
@@ -34,9 +48,19 @@ export async function GET() {
 type OnboardingBody =
   | { step: 1; orgName: string; workspaceName?: string }
   | { step: 2; planSlug: string }
-  | { step: 3; enrichmentConfig: Partial<EnrichmentConfig> }
+  | {
+      step: 3;
+      enrichmentConfig: Partial<EnrichmentConfig>;
+      websiteUrl?: string;
+      skipWebsiteAnalyze?: boolean;
+    }
   | { step: 4; skip?: boolean }
   | { step: 5; complete?: boolean };
+
+async function persistBrandConfig(brandConfig: BrandConfig, workspaceId: string) {
+  const overrides = await loadWorkspaceEmailOverrides(workspaceId);
+  await saveWorkspaceEmailOverrides({ ...overrides, brandConfig }, workspaceId);
+}
 
 export async function POST(req: Request) {
   try {
@@ -48,10 +72,25 @@ export async function POST(req: Request) {
       if (!body.orgName?.trim()) {
         return NextResponse.json({ error: "Organization name required" }, { status: 400 });
       }
+      const orgName = body.orgName.trim();
       await db
         .update(tenants)
-        .set({ name: body.orgName.trim(), onboardingStep: 2 })
+        .set({ name: orgName, onboardingStep: 2 })
         .where(eq(tenants.id, ctx.tenantId));
+
+      // Seed brandName from org so Writer does not say "Your Company"
+      try {
+        const existing = await getResolvedEmailConfig(ctx.workspaceId);
+        if (existing.brandConfig.brandSlug === "custom") {
+          await persistBrandConfig(
+            { ...existing.brandConfig, brandName: orgName },
+            ctx.workspaceId,
+          );
+        }
+      } catch (e) {
+        console.warn("[onboarding] brand name seed failed:", e);
+      }
+
       return NextResponse.json({ ok: true, nextStep: 2 });
     }
 
@@ -66,8 +105,66 @@ export async function POST(req: Request) {
 
     if (body.step === 3) {
       await saveWorkspaceEnrichmentOverrides(body.enrichmentConfig);
+
+      const rawWebsite = body.websiteUrl?.trim() ?? "";
+      let websiteWarning: string | undefined;
+      let brandAnalyzed = false;
+
+      if (rawWebsite && !body.skipWebsiteAnalyze) {
+        const websiteUrl = normalizeWebsiteUrl(rawWebsite);
+        if (!websiteUrl) {
+          return NextResponse.json(
+            { error: "Enter a valid website URL (e.g. https://acme.com)" },
+            { status: 400 },
+          );
+        }
+
+        const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
+        const existing = await getResolvedEmailConfig(ctx.workspaceId);
+
+        try {
+          const result = await analyzeSellerWebsite({
+            websiteUrl,
+            orgName: tenant?.name,
+            tenantId: ctx.tenantId,
+            workspaceId: ctx.workspaceId,
+          });
+          const brandConfig = mergeWebsiteInsightsIntoBrand(existing.brandConfig, result, {
+            forceCustomSlug: true,
+          });
+          // Prefer org name from step 1 when analysis returns a weak brand name
+          if (tenant?.name?.trim() && brandConfig.brandName === "Your Company") {
+            brandConfig.brandName = tenant.name.trim();
+          }
+          await persistBrandConfig(brandConfig, ctx.workspaceId);
+          brandAnalyzed = true;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "Website analysis failed";
+          // Still store the URL so Settings can retry; do not block onboarding
+          try {
+            await persistBrandConfig(
+              {
+                ...existing.brandConfig,
+                brandSlug: "custom",
+                brandName: tenant?.name?.trim() || existing.brandConfig.brandName,
+                websiteUrl,
+              },
+              ctx.workspaceId,
+            );
+          } catch (persistErr) {
+            console.warn("[onboarding] website URL persist failed:", persistErr);
+          }
+          websiteWarning = msg;
+        }
+      }
+
       await db.update(tenants).set({ onboardingStep: 4 }).where(eq(tenants.id, ctx.tenantId));
-      return NextResponse.json({ ok: true, nextStep: 4 });
+      return NextResponse.json({
+        ok: true,
+        nextStep: 4,
+        brandAnalyzed,
+        websiteWarning,
+      });
     }
 
     if (body.step === 4) {

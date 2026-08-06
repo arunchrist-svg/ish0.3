@@ -5,6 +5,8 @@ import { db, leadResearch, leads, contacts, accounts } from "@/db";
 import { eq } from "drizzle-orm";
 import type { WriterPlan } from "@/db/schema";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import type { BrandConfig } from "@/lib/email/config";
 
 export const writerPlanSchema = z.object({
   hook: z.string().min(8),
@@ -49,6 +51,33 @@ export function formatWriterPlanForPrompt(plan: WriterPlan): string {
 - CTA: ${plan.cta}`;
 }
 
+function brandAwareFallbackPlan(
+  brand: BrandConfig,
+  accountName: string,
+  giftingHook?: string | null,
+): ParsedWriterPlan {
+  const product =
+    brand.productSummary?.trim() ||
+    (brand.brandSlug === "prestige"
+      ? "Kitchen appliance bundles for corporate rewards with volume pricing and warranty support."
+      : brand.brandSlug === "ish"
+        ? "Premium corporate mithai and hamper options for teams."
+        : `Corporate rewards and gifting options from ${brand.brandName}.`);
+
+  const cta =
+    brand.brandSlug === "prestige"
+      ? "Open to a quick note on a few appliance bundle formats?"
+      : brand.brandSlug === "ish"
+        ? "Open to a quick note on a few hamper formats?"
+        : "Open to a quick note on a few options for your team?";
+
+  return {
+    hook: giftingHook?.trim() || `Corporate gifting angle for ${accountName}`,
+    valueProp: product.split(".")[0].trim() + ".",
+    cta,
+  };
+}
+
 export async function generateWriterPlan(leadId: string): Promise<WriterPlan> {
   const lead = await db.query.leads.findFirst({
     where: eq(leads.id, leadId),
@@ -62,19 +91,29 @@ export async function generateWriterPlan(leadId: string): Promise<WriterPlan> {
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const brand = emailConfig.brandConfig;
 
-  const prompt = `Create a 3-part cold email plan for B2B corporate gifting outreach.
+  const prompt = `Create a 3-part cold email plan for B2B corporate outreach.
+
+Brand: ${brand.brandName} (${brand.vertical})
+Product: ${brand.productSummary || "(use brand vertical only)"}
+Tone: ${brand.toneNotes || "Friendly but professional. Plain and direct. Not salesy."}
 
 Company: ${account.name}
 Contact: ${contact.name}, ${contact.title ?? "Unknown"}
 Industry: ${account.industry ?? "Corporate"}
-Gifting hook: ${research?.giftingHook ?? "General Diwali gifting"}
+Gifting hook: ${research?.giftingHook ?? "General corporate gifting"}
 Intel: ${account.intelNotes ?? "none"}
+
+Rules:
+- Value prop must match the brand product above. Never invent sweets/mithai if the brand sells something else.
+- Never use em dashes.
 
 Output ONLY JSON:
 {
   "hook": "one specific opening angle (no em dashes)",
-  "valueProp": "one sentence on why our gifting offer matters to them",
+  "valueProp": "one sentence on why our offer matters to them",
   "cta": "one soft CTA question for email 1"
 }`;
 
@@ -88,7 +127,7 @@ Output ONLY JSON:
       tenantId: lead.tenantId,
       workspaceId: lead.workspaceId,
       leadId,
-      promptVersion: "v1",
+      promptVersion: "v2-brand-aware",
     },
   });
 
@@ -99,11 +138,7 @@ Output ONLY JSON:
     if (!parsed.success) throw parsed.error;
     plan = parsed.data;
   } catch {
-    plan = {
-      hook: research?.giftingHook ?? `Diwali gifting angle for ${account.name}`,
-      valueProp: "Premium corporate mithai and hamper options for teams.",
-      cta: "Open to a quick note on a few hamper formats?",
-    };
+    plan = brandAwareFallbackPlan(brand, account.name, research?.giftingHook);
   }
 
   const writerPlan: WriterPlan = {

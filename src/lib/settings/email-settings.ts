@@ -5,6 +5,7 @@ import {
   resolveEmailConfig,
   validateEmailConfig,
 } from "@/lib/email/config";
+import type { BrandConfig } from "@/lib/email/config";
 import { invalidateEmailConfigCache } from "@/lib/email/email-sender";
 import { isPublicAppUrl } from "@/lib/email/plain-text";
 import { smtpTransport } from "@/lib/email/smtp-transport";
@@ -146,6 +147,17 @@ export async function saveWorkspaceEmailOverrides(
 export async function getResolvedEmailConfig(workspaceId?: string): Promise<EmailConfig> {
   const stored = await loadWorkspaceEmailOverrides(workspaceId);
   return resolveEmailConfig(stored);
+}
+
+/** Merge brand fields without re-running SMTP/send-mode validation (onboarding / website analyse). */
+export async function patchWorkspaceBrandConfig(
+  brandConfig: BrandConfig,
+  workspaceId?: string,
+): Promise<EmailConfig> {
+  const existing = await loadWorkspaceEmailOverrides(workspaceId);
+  const merged = resolveEmailConfig({ ...existing, brandConfig });
+  await persistEmailConfig(merged, workspaceId);
+  return merged;
 }
 
 export async function verifyEmailConnection(

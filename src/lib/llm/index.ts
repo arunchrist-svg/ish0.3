@@ -1,12 +1,13 @@
 import { generateText } from "ai";
 import { startAgentRun, completeAgentRun } from "@/lib/agents/log-agent-run";
 
-if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY && process.env.GEMINI_API_KEY) {
-  process.env.GOOGLE_GENERATIVE_AI_API_KEY = process.env.GEMINI_API_KEY;
-}
 import { google } from "@ai-sdk/google";
 import { anthropic } from "@ai-sdk/anthropic";
 import { createOpenAI } from "@ai-sdk/openai";
+import {
+  ensureGeminiApiKey,
+  sanitizeModelId,
+} from "@/lib/llm/gemini-env";
 
 type LLMTier = "fast" | "quality";
 
@@ -38,8 +39,13 @@ function getOmlxClient() {
   return omlxClient;
 }
 
+
+function normalizeLLMProvider(raw?: string): string {
+  return (raw ?? "gemini").trim().toLowerCase();
+}
+
 export function getLLMProvider(): string {
-  return process.env.LLM_PROVIDER ?? "gemini";
+  return normalizeLLMProvider(process.env.LLM_PROVIDER);
 }
 
 function getOpenRouterSiteUrl(): string {
@@ -63,31 +69,35 @@ function getOpenRouterClient() {
 }
 
 function getModel(tier: LLMTier) {
-  const provider = process.env.LLM_PROVIDER ?? "gemini";
+  const provider = getLLMProvider();
 
   if (provider === "anthropic") {
-    const haiku  = process.env.ANTHROPIC_MODEL_HAIKU  ?? "claude-haiku-4-5";
-    const sonnet = process.env.ANTHROPIC_MODEL_SONNET ?? "claude-sonnet-4-5";
+    const haiku = sanitizeModelId(process.env.ANTHROPIC_MODEL_HAIKU, "claude-haiku-4-5");
+    const sonnet = sanitizeModelId(process.env.ANTHROPIC_MODEL_SONNET, "claude-sonnet-4-5");
     return tier === "fast" ? anthropic(haiku) : anthropic(sonnet);
   }
 
   if (provider === "openrouter") {
-    const fast    = process.env.OPENROUTER_MODEL_FAST    ?? "openai/gpt-4o-mini";
-    const quality = process.env.OPENROUTER_MODEL_QUALITY ?? "openai/gpt-4o";
-    const client  = getOpenRouterClient();
-    return tier === "fast" ? client(fast) : client(quality);
+    const fast = sanitizeModelId(process.env.OPENROUTER_MODEL_FAST, "openai/gpt-4o-mini");
+    const quality = sanitizeModelId(process.env.OPENROUTER_MODEL_QUALITY, "openai/gpt-4o");
+    const client = getOpenRouterClient();
+    return tier === "fast" ? client.chat(fast) : client.chat(quality);
   }
 
   if (provider === "omlx") {
-    const fallback = process.env.OMLX_MODEL ?? "Llama-3.2-3B-Instruct-4bit";
-    const fast    = process.env.OMLX_MODEL_FAST    ?? fallback;
-    const quality = process.env.OMLX_MODEL_QUALITY ?? process.env.OMLX_MODEL_FAST ?? fallback;
-    const client  = getOmlxClient();
-    return tier === "fast" ? client(fast) : client(quality);
+    const fallback = sanitizeModelId(process.env.OMLX_MODEL, "Llama-3.2-3B-Instruct-4bit");
+    const fast = sanitizeModelId(process.env.OMLX_MODEL_FAST, fallback);
+    const quality = sanitizeModelId(
+      process.env.OMLX_MODEL_QUALITY ?? process.env.OMLX_MODEL_FAST,
+      fallback,
+    );
+    const client = getOmlxClient();
+    return tier === "fast" ? client.chat(fast) : client.chat(quality);
   }
 
-  const flash     = process.env.GEMINI_MODEL_FLASH      ?? "gemini-2.5-flash";
-  const flashLite = process.env.GEMINI_MODEL_FLASH_LITE ?? "gemini-2.0-flash";
+  ensureGeminiApiKey();
+  const flash = sanitizeModelId(process.env.GEMINI_MODEL_FLASH, "gemini-2.5-flash");
+  const flashLite = sanitizeModelId(process.env.GEMINI_MODEL_FLASH_LITE, "gemini-2.5-flash-lite");
   return tier === "fast" ? google(flashLite) : google(flash);
 }
 
@@ -192,6 +202,12 @@ export function friendlyLLMError(error: unknown): string {
   const msg = error instanceof Error ? error.message : "AI request failed";
   if (/ECONNREFUSED|ENOTFOUND|fetch failed|connect ECONNREFUSED|Local LLM server/i.test(msg)) {
     return "Local LLM server is not reachable. Start OMLX and verify OMLX_BASE_URL in .env.local.";
+  }
+  if (/GenerateContentRequest\.model|unexpected model name format/i.test(msg)) {
+    return "Cloud Gemini was called with an invalid model name. Set LLM_PROVIDER=omlx and restart the dev server.";
+  }
+  if (/Failed to process successful response|\/v1\/responses/i.test(msg)) {
+    return "Local LLM response could not be parsed. Ensure OMLX is running and models are loaded.";
   }
   if (/quota|rate.?limit|resource_exhausted|exceeded your current quota/i.test(msg)) {
     return "LLM API quota exceeded. Wait about a minute and try again, or switch to a paid API plan.";
