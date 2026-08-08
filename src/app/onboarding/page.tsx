@@ -11,7 +11,7 @@ import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly, getPlanBySlug } from "@/lib
 import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
 import { PLATFORM_INTENT_OPTIONS, type PlatformIntent } from "@/lib/brand/platform-intent";
 import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
-import { DEFAULT_SCOUT_GEO } from "@/lib/geo/india";
+import { DEFAULT_SCOUT_GEO, type ScoutGeoSelection } from "@/lib/geo/india";
 
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
@@ -151,7 +151,7 @@ export default function OnboardingPage() {
     setStep(data.nextStep);
   }
 
-  async function handleLocationComplete(scoutGeo: import("@/lib/geo/india").ScoutGeoSelection) {
+  async function handleLocationComplete(scoutGeo: ScoutGeoSelection) {
     const data = await submitStep({ step: "location", scoutGeo });
     if (data) {
       setShowLocation(false);
