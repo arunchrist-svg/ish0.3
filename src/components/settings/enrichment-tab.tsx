@@ -202,15 +202,16 @@ export function EnrichmentTab({
 
       <SettingsGroup
         title="Brand Intelligence"
-        footer="Configured during Setup. Corporate Gift Tracker uses the product category and competitor list below. Add or delete competitors anytime; pick sweep targets on the Brand Intelligence page."
+        footer="Configured during Setup. Update product categories in the popup. Add or delete competitors anytime; pick sweep targets on the Brand Intelligence page."
       >
         <div className="px-4 py-3">
           <BrandIntelligenceSetup
+            editCategoryInModal
             productCategory={config.giftIntelProductCategory ?? ""}
             competitorBrands={config.giftIntelCompetitorBrands ?? []}
             onProductCategoryChange={(v) => onUpdate("giftIntelProductCategory", v)}
             onCompetitorBrandsChange={(brands) => onUpdate("giftIntelCompetitorBrands", brands)}
-            categoryDesc="Target product type for OSINT sweeps"
+            categoryDesc="Only the categories you choose are used for OSINT sweeps."
             competitorsDesc="Add or delete brands. These appear as sweep targets on Brand Intelligence."
           />
         </div>

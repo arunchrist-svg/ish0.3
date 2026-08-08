@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { getIndustryByLabel, searchIndustries } from "../industry-catalog";
+import {
+  formatProductCategories,
+  getIndustryByLabel,
+  parseProductCategories,
+  searchIndustries,
+  suggestedCompetitorsForCategories,
+} from "../industry-catalog";
 
 describe("industry catalog", () => {
   it("finds kitchen appliances when typing kit", () => {
@@ -19,5 +25,21 @@ describe("industry catalog", () => {
   it("resolves industry by label", () => {
     const entry = getIndustryByLabel("Kitchen Appliances");
     expect(entry?.suggestedCompetitors).toContain("Prestige");
+  });
+
+  it("parses chosen product categories from a stored string", () => {
+    expect(parseProductCategories("Sweets, Kitchen Appliances")).toEqual([
+      "Sweets",
+      "Kitchen Appliances",
+    ]);
+    expect(formatProductCategories(["Sweets", "sweets", "Kitchen Appliances"])).toBe(
+      "Sweets, Kitchen Appliances",
+    );
+  });
+
+  it("merges suggested competitors across chosen categories", () => {
+    const brands = suggestedCompetitorsForCategories("Sweets, Kitchen Appliances");
+    expect(brands).toContain("Haldiram's");
+    expect(brands).toContain("Prestige");
   });
 });
