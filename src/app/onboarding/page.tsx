@@ -3,18 +3,21 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Building2, CreditCard, Radar, Users, Rocket, Mail } from "lucide-react";
+import { Loader2, Building2, CreditCard, Radar, Users, Rocket, Mail, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, text } from "@/design-system";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
 import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly, getPlanBySlug } from "@/lib/billing/plan-catalog";
 import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
 import { PLATFORM_INTENT_OPTIONS, type PlatformIntent } from "@/lib/brand/platform-intent";
+import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
+import { DEFAULT_SCOUT_GEO } from "@/lib/geo/india";
 
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
   { id: 2, label: "Plan", icon: CreditCard },
   { id: 3, label: "Brand", icon: Radar },
+  { id: 3.5, label: "Location", icon: MapPin },
   { id: 4, label: "Team", icon: Users },
   { id: 5, label: "Launch", icon: Rocket },
 ];
@@ -32,6 +35,7 @@ export default function OnboardingPage() {
   const [platformIntent, setPlatformIntent] = useState<PlatformIntent>("b2b_saas");
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [websiteStatus, setWebsiteStatus] = useState("");
+  const [showLocation, setShowLocation] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -44,6 +48,7 @@ export default function OnboardingPage() {
         setStep(data.step ?? 1);
         if (data.orgName) setOrgName(data.orgName);
         if (data.websiteUrl) setWebsiteUrl(data.websiteUrl);
+        if ((data.step ?? 1) === 3 && data.brandReady) setShowLocation(true);
       }
       if (meRes.ok) {
         const data = await meRes.json();
@@ -139,7 +144,19 @@ export default function OnboardingPage() {
     } else if (data.brandAnalyzed) {
       setWebsiteStatus("Writer and Scout are now tuned from your website.");
     }
+    if (data.needsLocation) {
+      setShowLocation(true);
+      return;
+    }
     setStep(data.nextStep);
+  }
+
+  async function handleLocationComplete(scoutGeo: import("@/lib/geo/india").ScoutGeoSelection) {
+    const data = await submitStep({ step: "location", scoutGeo });
+    if (data) {
+      setShowLocation(false);
+      setStep(data.nextStep);
+    }
   }
 
   async function handleTeamSkip() {
@@ -167,7 +184,13 @@ export default function OnboardingPage() {
             key={s.id}
             className={cn(
               "flex min-w-[100px] flex-col items-center gap-1 rounded-xl px-3 py-2 text-center text-xs",
-              step === s.id ? "bg-brand-black text-white" : step > s.id ? "bg-brand-black/10 text-brand-ink" : "bg-white text-brand-ink-faint",
+              (s.id === 3.5 ? showLocation : step === s.id && !showLocation)
+                ? "bg-brand-black text-white"
+                : s.id === 3 && showLocation
+                  ? "bg-brand-black/10 text-brand-ink"
+                  : step > s.id
+                    ? "bg-brand-black/10 text-brand-ink"
+                    : "bg-white text-brand-ink-faint",
             )}
           >
             <s.icon className="size-4" />
@@ -253,7 +276,16 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 3 && showLocation && (
+        <div className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
+          {websiteStatus ? (
+            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
+          ) : null}
+          <AreaOfInterestWizard value={DEFAULT_SCOUT_GEO} onComplete={handleLocationComplete} />
+        </div>
+      )}
+
+      {step === 3 && !showLocation && (
         <form onSubmit={handlePrefsSubmit} className="space-y-8 rounded-2xl border border-brand-border bg-white p-8">
           <div>
             <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-brand-ink-faint")}>

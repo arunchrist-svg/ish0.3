@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { saveWorkspaceEnrichmentOverrides } from "@/lib/settings/workspace-settings";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
+import type { ScoutGeoSelection } from "@/lib/geo/india";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import {
@@ -63,7 +64,8 @@ type OnboardingBody =
       platformIntent?: PlatformIntent;
     }
   | { step: 4; skip?: boolean }
-  | { step: 5; complete?: boolean };
+  | { step: 5; complete?: boolean }
+  | { step: "location"; scoutGeo: ScoutGeoSelection };
 
 async function persistBrandConfig(
   brandConfig: BrandConfig,
@@ -190,14 +192,20 @@ export async function POST(req: Request) {
         }
       }
 
-      await db.update(tenants).set({ onboardingStep: 4 }).where(eq(tenants.id, ctx.tenantId));
       return NextResponse.json({
         ok: true,
-        nextStep: 4,
+        nextStep: 3,
+        needsLocation: true,
         brandAnalyzed,
         websiteWarning,
         platformIntent,
       });
+    }
+
+    if (body.step === "location") {
+      await saveWorkspaceEnrichmentOverrides({ scoutGeo: body.scoutGeo });
+      await db.update(tenants).set({ onboardingStep: 4 }).where(eq(tenants.id, ctx.tenantId));
+      return NextResponse.json({ ok: true, nextStep: 4 });
     }
 
     if (body.step === 4) {
