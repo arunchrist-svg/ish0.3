@@ -412,10 +412,11 @@ export function scoutGeoFromStateAndDistrictPicks(
     const state = STATE_BY_ID.get(stateId);
     if (!state) continue;
     const picked = districtIdsByState[stateId];
-    if (!picked || picked.length === 0 || picked.length >= state.districts.length) {
+    if (!picked || picked.length >= state.districts.length) {
       nextStateIds.push(stateId);
       continue;
     }
+    if (picked.length === 0) continue;
     const allowed = new Set(state.districts.map((d) => d.id));
     for (const districtId of picked) {
       if (allowed.has(districtId)) nextDistrictIds.push(districtId);

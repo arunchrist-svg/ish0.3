@@ -8,8 +8,8 @@ import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Save } from "lucide-react";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
-import { GeographyPicker } from "@/components/settings/geography-picker";
-import { DEFAULT_SCOUT_GEO, type ScoutGeoSelection } from "@/lib/geo/india";
+import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
+import { DEFAULT_SCOUT_GEO, summarizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
 import {
   SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
@@ -109,12 +109,13 @@ export function EnrichmentTab({
       </SettingsGroup>
 
       <SettingsGroup
-        title="Scout locations"
-        footer="Choose Entire India, or mix regions, states, and districts. Scout’s city dropdown only shows what you select here."
+        title="Area of Interest"
+        footer="India map, then districts. Scout’s location dropdown only shows what you complete here."
       >
-        <GeographyPicker
+        <AreaOfInterestWizard
+          key={summarizeScoutGeo(config.scoutGeo ?? DEFAULT_SCOUT_GEO)}
           value={config.scoutGeo ?? DEFAULT_SCOUT_GEO}
-          onChange={(next: ScoutGeoSelection) => onUpdate("scoutGeo", next)}
+          onComplete={(next: ScoutGeoSelection) => onUpdate("scoutGeo", next)}
         />
       </SettingsGroup>
 
@@ -122,7 +123,7 @@ export function EnrichmentTab({
         title="Scout Volume"
         footer={
           scoutVolumeDirty
-            ? "Unsaved changes — scouting uses the previous limits until you save."
+            ? "Unsaved changes. Scouting uses the previous limits until you save."
             : "Scout volume applies to your next run. Higher volume uses more credits."
         }
       >
