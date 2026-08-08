@@ -8,6 +8,8 @@ import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Save } from "lucide-react";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
+import { GeographyPicker } from "@/components/settings/geography-picker";
+import { DEFAULT_SCOUT_GEO, type ScoutGeoSelection } from "@/lib/geo/india";
 import {
   SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
@@ -104,6 +106,16 @@ export function EnrichmentTab({
             showDivider={i > 0}
           />
         ))}
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Scout locations"
+        footer="Choose Entire India, or mix regions, states, and districts. Scout’s city dropdown only shows what you select here."
+      >
+        <GeographyPicker
+          value={config.scoutGeo ?? DEFAULT_SCOUT_GEO}
+          onChange={(next: ScoutGeoSelection) => onUpdate("scoutGeo", next)}
+        />
       </SettingsGroup>
 
       <SettingsGroup

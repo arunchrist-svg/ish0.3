@@ -24,6 +24,11 @@ import {
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Compass, MapPin, MoreVertical, Search, Users } from "lucide-react";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS } from "@/lib/scouting-data";
+import {
+  locationOptionsFromSelection,
+  type ScoutGeoSelection,
+  type ScoutLocationOption,
+} from "@/lib/geo/india";
 
 type View = "companies" | "people";
 
@@ -414,7 +419,8 @@ function ScoutPeopleEmpty({
 export function ScoutingApp() {
   const isMobileLayout = useIsMobileLayout();
   const [view, setView] = useState<View>("companies");
-  const [cities, setCities] = useState<string[]>(["Bengaluru"]);
+  const [cities, setCities] = useState<string[]>([]);
+  const [locationOptions, setLocationOptions] = useState<ScoutLocationOption[]>([]);
   const [industries, setIndustries] = useState<string[]>([]);
   const [seniority, setSeniority] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
@@ -530,6 +536,28 @@ export function ScoutingApp() {
       .finally(() => setSettingsLoaded(true));
   }, []);
 
+  function applyLocationOptions(locations: ScoutLocationOption[]) {
+    setLocationOptions(locations);
+    const allowed = new Set(locations.map((l) => l.label));
+    setCities((prev) => {
+      const kept = prev.filter((c) => allowed.has(c));
+      if (kept.length) return kept;
+      if (!locations.length) return [];
+      return locations.length <= 12 ? locations.map((l) => l.label) : locations.slice(0, 8).map((l) => l.label);
+    });
+  }
+
+  useEffect(() => {
+    fetch("/api/scout/locations")
+      .then((r) => r.json())
+      .then((data: { locations?: ScoutLocationOption[] }) => {
+        applyLocationOptions(data.locations ?? locationOptionsFromSelection());
+      })
+      .catch(() => {
+        applyLocationOptions(locationOptionsFromSelection());
+      });
+  }, []);
+
   // Prefill Scout filters from website-derived brand insights (onboarding / Settings)
   useEffect(() => {
     void (async () => {
@@ -557,8 +585,23 @@ export function ScoutingApp() {
       if (typeof detail?.scoutCompaniesLimit === "number") setScoutCompaniesLimit(detail.scoutCompaniesLimit);
       if (typeof detail?.scoutLeadsLimit === "number") setScoutLeadsLimit(detail.scoutLeadsLimit);
     }
+    function onScoutGeoUpdated(e: Event) {
+      const detail = (e as CustomEvent<{ scoutGeo?: ScoutGeoSelection }>).detail;
+      void fetch("/api/scout/locations")
+        .then((r) => r.json())
+        .then((data: { locations?: ScoutLocationOption[]; scoutGeo?: ScoutGeoSelection }) => {
+          applyLocationOptions(data.locations ?? locationOptionsFromSelection(data.scoutGeo ?? detail?.scoutGeo));
+        })
+        .catch(() => {
+          if (detail?.scoutGeo) applyLocationOptions(locationOptionsFromSelection(detail.scoutGeo));
+        });
+    }
     window.addEventListener("scout-volume-updated", onScoutVolumeUpdated);
-    return () => window.removeEventListener("scout-volume-updated", onScoutVolumeUpdated);
+    window.addEventListener("scout-geo-updated", onScoutGeoUpdated);
+    return () => {
+      window.removeEventListener("scout-volume-updated", onScoutVolumeUpdated);
+      window.removeEventListener("scout-geo-updated", onScoutGeoUpdated);
+    };
   }, []);
 
 
@@ -1168,6 +1211,7 @@ export function ScoutingApp() {
     onCompanySearchQueryChange: setCompanySearchQuery,
     onSearchByName: handleSearchByName,
     onFilterPanelChange: setFilterPanelOpen,
+    locationOptions: locationOptions.map((o) => ({ label: o.label, group: o.group })),
   } as const;
 
   const companiesResults = view === "companies" ? (

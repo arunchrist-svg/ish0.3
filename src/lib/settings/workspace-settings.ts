@@ -1,6 +1,7 @@
 import { db, workspaceSettings } from "@/db";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { getEnrichmentConfig, resolveEnrichmentConfig } from "@/lib/enrichment/config";
+import { normalizeScoutGeo } from "@/lib/geo/india";
 import { requireTenantContext } from "@/lib/tenant";
 import { eq } from "drizzle-orm";
 
@@ -26,6 +27,9 @@ export async function saveWorkspaceEnrichmentOverrides(
   const { workspaceId } = await requireTenantContext();
   const existing = await loadWorkspaceEnrichmentOverrides();
   const merged = { ...existing, ...partial };
+  if (partial.scoutGeo !== undefined || existing.scoutGeo) {
+    merged.scoutGeo = normalizeScoutGeo(merged.scoutGeo);
+  }
 
   await db
     .insert(workspaceSettings)

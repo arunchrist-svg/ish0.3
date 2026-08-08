@@ -137,11 +137,7 @@ export async function indiaDirectoriesSearchCompanies(params: {
     return [];
   }
 
-  // Heuristic first: skip quality LLM when directory parsing already yields enough names.
   const heuristic = parseCompaniesFromDirectoryResults(allResults, params.cities, limit);
-  if (heuristic.length >= Math.min(limit, 5)) {
-    return heuristic.slice(0, limit);
-  }
 
   const threshold = aiConfidenceThreshold();
 
@@ -158,8 +154,8 @@ export async function indiaDirectoriesSearchCompanies(params: {
 Output ONLY a valid JSON array. No markdown fences. No explanation.
 Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }
 Only include REAL named Indian companies. Do NOT invent companies.
-Never use job-post titles, document blurbs, report titles, or UI text as company names.
-If a listing is a hiring page for Acme, return "Acme" only.
+Never use job-post titles, document blurbs, report titles, or review-site headings (Work Satisfaction, Company Culture, Salary) as company names.
+If a listing is a hiring or reviews page for Acme, return "Acme" only.
 Minimum confidence score: ${threshold}.`,
         prompt: `Extract companies from these directory results.
 Target: ${indStr} industry companies in ${cityStr}, India.

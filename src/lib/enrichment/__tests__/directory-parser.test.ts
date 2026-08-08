@@ -6,7 +6,7 @@ import {
 } from "@/lib/enrichment/directory-parser";
 
 describe("cleanCompanyName / isPlausibleCompanyName", () => {
-  it("rejects job posts, documents, and report titles", () => {
+  it("rejects job posts, documents, report titles, and geo names", () => {
     const junk = [
       "IT and operations. Samsara is Hiring",
       "View 295 Jobs ### Navan",
@@ -14,6 +14,16 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
       "India in 2026",
       "Browse top technology companies",
       "Find business near me",
+      "Karnataka",
+      "Bengaluru",
+      "Maharashtra",
+      "India",
+      "Companies in Karnataka",
+      "Work Satisfaction",
+      "Company Culture",
+      "Salary",
+      "Reviews",
+      "Work Life Balance",
     ];
     for (const name of junk) {
       expect(isPlausibleCompanyName(name), name).toBe(false);
@@ -72,6 +82,32 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
     expect(names).toContain("Navan");
     expect(names).toContain("SingleStore");
     expect(names.some((n) => /is Hiring|View 295|This document|India in 2026/i.test(n))).toBe(
+      false,
+    );
+  });
+
+  it("does not treat AmbitionBox review headings as companies", () => {
+    const results = parseCompaniesFromDirectoryResults(
+      [
+        {
+          title: "Razorpay Reviews | AmbitionBox",
+          url: "https://www.ambitionbox.com/overview/razorpay-reviews",
+          content:
+            "Work Satisfaction · Company Culture · Salary · Job Security · Work Life Balance · Skill Development",
+        },
+        {
+          title: "StartupBlink | Company Profile",
+          url: "https://www.startupblink.com/startups/razorpay",
+          content: "Startup ecosystem directory · Bengaluru",
+        },
+      ],
+      ["Bengaluru"],
+      10,
+    );
+
+    const names = results.map((r) => r.name);
+    expect(names).toContain("Razorpay");
+    expect(names.some((n) => /work satisfaction|company culture|^salary$|job security/i.test(n))).toBe(
       false,
     );
   });

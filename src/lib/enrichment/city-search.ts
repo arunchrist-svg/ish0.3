@@ -1,3 +1,9 @@
+import { isNationwideLabel } from "@/lib/geo/india";
+
+export function isNationwideSelection(cities: string[]): boolean {
+  return cities.some((c) => isNationwideLabel(c));
+}
+
 /** Expand UI city labels into search terms used by directory/web queries. */
 const CITY_SEARCH_ALIASES: Record<string, string[]> = {
   Bengaluru: ["Bengaluru", "Bangalore"],
@@ -27,6 +33,7 @@ const CITY_SEARCH_ALIASES: Record<string, string[]> = {
 };
 
 export function expandCitySearchTerms(cities: string[]): string[] {
+  if (isNationwideSelection(cities)) return ["India"];
   const terms = new Set<string>();
   for (const city of cities) {
     for (const alias of CITY_SEARCH_ALIASES[city] ?? [city]) {
@@ -51,7 +58,7 @@ export function companyCityMatchesSelection(
   companyCity: string | null | undefined,
   selectedCities: string[],
 ): boolean {
-  if (selectedCities.length === 0) return true;
+  if (selectedCities.length === 0 || isNationwideSelection(selectedCities)) return true;
   if (!companyCity?.trim()) return false;
 
   const normalizedCompany = normalizeCity(companyCity);
@@ -109,7 +116,7 @@ export function personLocationMatchesSelection(
   location: string | null | undefined,
   selectedCities: string[],
 ): boolean {
-  if (selectedCities.length === 0) return true;
+  if (selectedCities.length === 0 || isNationwideSelection(selectedCities)) return true;
   if (!location?.trim()) return true; // keep unknown locations; bias ranking elsewhere
 
   const normalizedLocation = normalizeCity(location);

@@ -42,7 +42,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getCurrentPosition } from "@/lib/capacitor/geolocation";
-import { findNearestScoutCity } from "@/lib/scouting/near-me";
+import { findNearestScoutLocation } from "@/lib/scouting/near-me";
 import { toast } from "sonner";
 import { BottomSheet } from "@/design-system";
 import {
@@ -51,7 +51,6 @@ import {
   SCOUT_INDUSTRIES,
   SCOUT_SENIORITY,
   getCityMeta,
-  type ScoutCity,
 } from "@/lib/scouting-data";
 
 /* ─────────────────────────────────────────────
@@ -95,6 +94,7 @@ type Props = {
   onExpandFilters?: () => void;
   hideActions?: boolean;
   onFilterPanelChange?: (open: boolean) => void;
+  locationOptions?: { label: string; group: string }[];
 };
 
 /* ─────────────────────────────────────────────
@@ -102,9 +102,28 @@ type Props = {
 ───────────────────────────────────────────── */
 
 function cityLabel(cities: string[]): string {
-  if (cities.length === 0) return "Add city";
+  if (cities.length === 0) return "Add location";
   if (cities.length === 1) return cities[0];
   return `${cities[0]} +${cities.length - 1}`;
+}
+
+function defaultLocationOptions(): { label: string; group: string }[] {
+  return SCOUT_CITY_GROUPS.flatMap((g) => g.cities.map((c) => ({ label: c, group: g.label })));
+}
+
+function groupLocationOptions(options: { label: string; group: string }[]) {
+  const groups: { label: string; cities: string[] }[] = [];
+  const index = new Map<string, string[]>();
+  for (const option of options) {
+    let list = index.get(option.group);
+    if (!list) {
+      list = [];
+      index.set(option.group, list);
+      groups.push({ label: option.group, cities: list });
+    }
+    list.push(option.label);
+  }
+  return groups;
 }
 
 function industryLabel(industries: string[]): string {
@@ -367,11 +386,13 @@ function MobileSheetPrimaryButton({
 function MobileCitySheetContent({
   cities,
   onCitiesChange,
+  locationOptions,
 }: {
   cities: string[];
   onCitiesChange: (c: string[]) => void;
+  locationOptions: { label: string; group: string }[];
 }) {
-  function toggle(city: ScoutCity) {
+  function toggle(city: string) {
     if (cities.includes(city)) {
       if (cities.length <= 1) return;
       onCitiesChange(cities.filter((c) => c !== city));
@@ -380,9 +401,19 @@ function MobileCitySheetContent({
     }
   }
 
+  const groups = groupLocationOptions(locationOptions);
+
+  if (!groups.length) {
+    return (
+      <p className="px-4 py-8 text-center text-[12px] text-brand-ink-faint">
+        No locations enabled. An admin can set India / region / state / district in Settings → Enrichment.
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col px-1 py-2">
-      {SCOUT_CITY_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.label} className="mb-2 last:mb-0">
           <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
             {group.label}
@@ -400,7 +431,7 @@ function MobileCitySheetContent({
                   sublabel={meta.tagline}
                   selected={selected}
                   disabled={locked}
-                  onClick={() => toggle(city as ScoutCity)}
+                  onClick={() => toggle(city)}
                 />
               );
             })}
@@ -524,9 +555,11 @@ function MobilePeopleSheetContent({
 function CityPopoverContent({
   cities,
   onCitiesChange,
+  locationOptions,
 }: {
   cities: string[];
   onCitiesChange: (c: string[]) => void;
+  locationOptions: { label: string; group: string }[];
 }) {
   const [query, setQuery] = useState("");
   const [locating, setLocating] = useState(false);
@@ -535,7 +568,15 @@ function CityPopoverContent({
     setLocating(true);
     try {
       const pos = await getCurrentPosition();
-      const city = findNearestScoutCity(pos.latitude, pos.longitude);
+      const city = findNearestScoutLocation(
+        pos.latitude,
+        pos.longitude,
+        locationOptions.map((o) => o.label),
+      );
+      if (!city) {
+        toast.error("No nearby location in your Settings list.");
+        return;
+      }
       onCitiesChange([city]);
       toast.success(`Scouting near ${city}`);
     } catch (e) {
@@ -547,15 +588,14 @@ function CityPopoverContent({
   const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
 
-  const filtered = SCOUT_CITY_GROUPS.map((g) => ({
-    ...g,
-    cities: g.cities.filter((c) => {
-      const m = getCityMeta(c);
-      return !q || c.toLowerCase().includes(q);
-    }),
-  })).filter((g) => g.cities.length > 0);
+  const filtered = groupLocationOptions(locationOptions)
+    .map((g) => ({
+      ...g,
+      cities: g.cities.filter((c) => !q || c.toLowerCase().includes(q)),
+    }))
+    .filter((g) => g.cities.length > 0);
 
-  function toggle(city: ScoutCity) {
+  function toggle(city: string) {
     if (cities.includes(city)) {
       if (cities.length <= 1) return;
       onCitiesChange(cities.filter((c) => c !== city));
@@ -584,7 +624,7 @@ function CityPopoverContent({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search city…"
+            placeholder="Search location…"
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
           />
           {query && (
@@ -601,8 +641,12 @@ function CityPopoverContent({
 
       {/* City groups */}
       <div className="p-3">
-        {filtered.length === 0 ? (
-          <p className="py-4 text-center text-[12px] text-brand-ink-faint">No cities match.</p>
+        {locationOptions.length === 0 ? (
+          <p className="py-4 text-center text-[12px] text-brand-ink-faint">
+            Set locations in Settings → Enrichment (India, region, state, or district).
+          </p>
+        ) : filtered.length === 0 ? (
+          <p className="py-4 text-center text-[12px] text-brand-ink-faint">No locations match.</p>
         ) : (
           filtered.map((group) => (
             <div key={group.label} className="mb-3 last:mb-0">
@@ -617,7 +661,7 @@ function CityPopoverContent({
                     <button
                       key={city}
                       type="button"
-                      onClick={() => toggle(city as ScoutCity)}
+                      onClick={() => toggle(city)}
                       className={cn(
                         "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150",
                         selected
@@ -1094,7 +1138,9 @@ export function ScoutingToolbar({
   onExpandFilters,
   hideActions = false,
   onFilterPanelChange,
+  locationOptions,
 }: Props) {
+  const resolvedLocationOptions = locationOptions ?? defaultLocationOptions();
   const [active, setActive] = useState<ActivePanel>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
@@ -1212,7 +1258,7 @@ export function ScoutingToolbar({
             />
           }
         >
-          <MobileCitySheetContent cities={cities} onCitiesChange={onCitiesChange} />
+          <MobileCitySheetContent cities={cities} onCitiesChange={onCitiesChange} locationOptions={resolvedLocationOptions} />
         </BottomSheet>
         <BottomSheet
           open={mobileSheet === "industry"}
@@ -1299,7 +1345,7 @@ export function ScoutingToolbar({
               onClick={() => toggle("city")}
             />
             <Popover open={active === "city"} onClose={() => setActive(null)} width="w-[360px]">
-              <CityPopoverContent cities={cities} onCitiesChange={onCitiesChange} />
+              <CityPopoverContent cities={cities} onCitiesChange={onCitiesChange} locationOptions={resolvedLocationOptions} />
             </Popover>
           </div>
 

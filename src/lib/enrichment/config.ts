@@ -1,5 +1,6 @@
 // Enrichment configuration — loaded from env at runtime, overridable via Settings UI
 import { resolveGiftIntelConfig } from "@/lib/brand-intel/config";
+import { DEFAULT_SCOUT_GEO, normalizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
 
 export type SearchProvider = "india_directories" | "google_places" | "tavily_ai" | "apollo";
 export type EnrichProvider = "website_email" | "apollo" | "hunter" | "none";
@@ -21,6 +22,7 @@ export type EnrichmentConfig = {
   giftIntelCompetitorBrands?: string[];
   brandIntelProductCategory?: string;
   brandIntelCompetitorBrands?: string[];
+  scoutGeo?: ScoutGeoSelection;
 };
 
 export const SCOUT_VOLUME_PRESETS = {
@@ -149,6 +151,7 @@ export function getEnrichmentConfig(): EnrichmentConfig {
     dataMode: (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free",
     scoutCompaniesLimit: getScoutCompaniesLimit(),
     scoutLeadsLimit: getScoutLeadsLimit(),
+    scoutGeo: { ...DEFAULT_SCOUT_GEO },
   };
 }
 
@@ -172,5 +175,6 @@ export function resolveEnrichmentConfig(
     giftIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
     brandIntelProductCategory: giftIntel.productCategory || undefined,
     brandIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
+    scoutGeo: normalizeScoutGeo(base.scoutGeo),
   };
 }

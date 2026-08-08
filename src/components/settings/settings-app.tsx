@@ -31,7 +31,7 @@ const ALL_NAV_ITEMS: SettingsNavItem[] = [
 ];
 
 const TAB_SUBTITLES: Record<string, string> = {
-  enrichment: "Configure search, enrichment, and scout volume",
+  enrichment: "Locations, search, enrichment, and scout volume",
   email: "SMTP, send mode, cadence, and open tracking",
   billing: "Plan, credits, top-ups, and subscription",
   team: "Invite teammates to your workspace",
@@ -174,6 +174,11 @@ function SettingsAppInner() {
             scoutCompaniesLimit: config.scoutCompaniesLimit,
             scoutLeadsLimit: config.scoutLeadsLimit,
           },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent("scout-geo-updated", {
+          detail: { scoutGeo: config.scoutGeo },
         }),
       );
       toast.success("Settings saved — applies to next Scout run");

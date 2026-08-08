@@ -1,5 +1,6 @@
 import type { ScoutCompanyResult } from "./types";
 import { expandCitySearchTerms } from "./city-search";
+import { isGeographicEntity } from "./company-name-match";
 
 type DirectoryHit = { title: string; url: string; content: string };
 
@@ -13,6 +14,13 @@ const LISTING_JUNK =
   /^(top|popular|corporate companies|leading businesses|professional services|name|page \d|find business|near |in |the hudson$)/i;
 const GENERIC_JUNK =
   /^(star office|softinu|sandyrtr|embassy icon|newtimes group|vdrone|cuem \(head office\)|careers?|jobs?|hiring|about|home|contact|blog|news|press)$/i;
+
+/** AmbitionBox / Glassdoor section headings that are not company names. */
+const PAGE_SECTION_NAME =
+  /^(work satisfaction|company culture|salary|salaries|reviews?|interviews?|benefits|work[\s-]?life[\s-]?balance|job security|skill development|promotions?|ratings?|overview|photos?|q\s*&\s*a|interview questions|jobs?|compare|similar companies|competitors?|awards?|perks?|office|locations?|diversity|inclusion|management|leadership|compensation|ctc|package|bonus|happiness|work happiness|job satisfaction|company reviews?|employee reviews?|about us|why join|life at|work policy|legal name|founded|headquarters|website|industry)$/i;
+
+const REVIEW_HOST =
+  /ambitionbox|glassdoor|comparably|levels\.fyi|teamblind|mouthshut|in\.indeed|naukri\.com|cutshort|instahyre/i;
 
 /** Page titles / snippets that are clearly not company names. */
 const NON_COMPANY_NAME =
@@ -115,6 +123,7 @@ export function cleanCompanyName(raw: string): string | null {
   if (name.startsWith("#")) return null;
   if (LISTING_JUNK.test(name)) return null;
   if (GENERIC_JUNK.test(name)) return null;
+  if (PAGE_SECTION_NAME.test(name)) return null;
   if (WEEKDAYS.test(name)) return null;
   if (REGISTRY_JUNK.test(name)) return null;
   if (PLACEMENT_JUNK.test(name)) return null;
@@ -123,9 +132,10 @@ export function cleanCompanyName(raw: string): string | null {
   if (/^\d{4,}/.test(name)) return null;
   if (/justdial|indiamart|zauba|tradeindia|sulekha|linkedin|glassdoor|indeed/i.test(name)) return null;
   if (/^[\d\s·•,.-]+$/.test(name)) return null;
-  if (/^(bangalore|bengaluru|hosur|mysore|mysuru|india|chennai|mumbai|hyderabad|pune|delhi)$/i.test(name)) {
-    return null;
-  }
+  if (isGeographicEntity(name)) return null;
+  if (LISTING_TITLE.test(name)) return null;
+  if (/^(companies|businesses|firms|offices)\s+in\b/i.test(name)) return null;
+  if (/\bincluding\b/i.test(name)) return null;
   if (/offers placement consultants/i.test(name)) return null;
   if (/;\s*U\d/.test(name)) return null;
 
@@ -190,6 +200,7 @@ function slugToCompanyName(slug: string): string | null {
     .replace(/-near-.*$/i, "")
     .replace(/-in-.*$/i, "")
     .replace(/-+/g, " ")
+    .replace(/\b([a-z])/g, (letter) => letter.toUpperCase())
     .replace(/\b(pvt|ltd|llp|inc|corp)\b/gi, (m) => m.toUpperCase())
     .replace(/\s+/g, " ")
     .trim();
@@ -208,6 +219,35 @@ function extractFromJustDialUrl(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isReviewHost(urlOrHost: string): boolean {
+  return REVIEW_HOST.test(urlOrHost);
+}
+
+function extractFromReviewSiteUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!isReviewHost(parsed.hostname)) return null;
+    const path = parsed.pathname;
+    const patterns = [
+      /\/overview\/([a-z0-9-]+)-reviews?/i,
+      /\/reviews\/([a-z0-9-]+)/i,
+      /\/working-at-([a-z0-9-]+)/i,
+      /\/company\/([a-z0-9-]+)/i,
+      /\/companies\/([a-z0-9-]+)/i,
+    ];
+    for (const pattern of patterns) {
+      const match = path.match(pattern);
+      if (match?.[1]) {
+        const slug = match[1].replace(/-ei-.*$/i, "").replace(/-reviews?$/i, "");
+        return slugToCompanyName(slug);
+      }
+    }
+  } catch {
+    // ignore bad URLs
+  }
+  return null;
 }
 
 function extractFromContent(content: string): string[] {
@@ -258,12 +298,13 @@ export function parseCompaniesFromDirectoryResults(
   };
 
   for (const hit of hits) {
-    const fromUrl = extractFromJustDialUrl(hit.url);
-    const fromTitle = extractCompanyFromTitle(hit.title);
+    const reviewHost = isReviewHost(hit.url);
+    const fromUrl = extractFromJustDialUrl(hit.url) ?? extractFromReviewSiteUrl(hit.url);
+    const fromTitle = reviewHost ? null : extractCompanyFromTitle(hit.title);
     const candidates = [
       ...(fromUrl ? [fromUrl] : []),
       ...(fromTitle ? [fromTitle] : []),
-      ...extractFromContent(hit.content),
+      ...(reviewHost ? [] : extractFromContent(hit.content)),
     ];
     const industry = inferIndustryFromTitle(hit.title);
     const city = inferCityFromHit(hit, cities);

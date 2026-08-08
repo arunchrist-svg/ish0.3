@@ -3,9 +3,12 @@ import { discoverCompanies, discoverPeople } from "@/lib/enrichment/waterfall";
 import { saveScoutLeads } from "@/lib/scout/save-leads";
 import { logAudit } from "@/lib/audit";
 import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/config";
-import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import {
+  getResolvedEnrichmentConfigForWorkspace,
+  getResolvedWorkspaceEnrichmentConfig,
+} from "@/lib/settings/workspace-settings";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { SCOUT_CITIES } from "@/lib/scouting-data";
+import { locationOptionsFromSelection, searchTermsForScoutLabels } from "@/lib/geo/india";
 import type { DataMode } from "@/lib/enrichment/types";
 import { mapWithConcurrency } from "@/lib/async";
 import { db, accounts } from "@/db";
@@ -40,7 +43,12 @@ const AGENT_COMPANY_CONCURRENCY = 4;
 
 export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
   const runId = randomUUID();
-  const cities = params.cities?.length ? params.cities : [...SCOUT_CITIES];
+  const workspaceCfg = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
+  const locationLabels = locationOptionsFromSelection(workspaceCfg.scoutGeo).map((o) => o.label);
+  const cities = searchTermsForScoutLabels(
+    params.cities?.length ? params.cities : locationLabels,
+    workspaceCfg.scoutGeo,
+  );
   const dataMode = params.dataMode ?? (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free";
   const companyLimit = params.companyLimit ?? getScoutCompaniesLimit();
   const maxCompanies = params.maxCompaniesToProcess ?? 20;

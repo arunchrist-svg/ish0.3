@@ -2,11 +2,11 @@ import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { sortPeopleByScore } from "./seniority-score";
 import type { EnrichmentConfig } from "./config";
 import { resolveEnrichmentConfig } from "./config";
-import { apolloSearchCompanies, apolloSearchPeople } from "./apollo";
+import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
-import { companyCityMatchesSelection, personLocationMatchesSelection, rankPeopleByCityMatch } from "./city-search";
+import { companyCityMatchesSelection, isNationwideSelection, personLocationMatchesSelection, rankPeopleByCityMatch } from "./city-search";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -16,6 +16,7 @@ import { db } from "@/db";
 import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
 import { resolveCompanyDomain } from "./resolve-company-domain";
+import { filterCompaniesMatchingQuery, isGeographicEntity } from "./company-name-match";
 
 const BUYING_TITLES = [
   "Director", "Manager", "Head", "VP", "Vice President",
@@ -89,6 +90,7 @@ export async function discoverCompanies(params: {
   // ── SEARCH MODE: targeted lookup by company name ──────────────────────────
   if (isNameSearch) {
     const nameQuery = params.companyName!.trim();
+    const locationHint = params.cities.filter((c) => !isNationwideSelection([c])).slice(0, 2);
     let dbResults: (typeof accounts.$inferSelect)[] = [];
     try {
       dbResults = await db
@@ -100,50 +102,75 @@ export async function discoverCompanies(params: {
             or(
               ilike(accounts.name, `%${nameQuery}%`),
             ),
-            params.cities.length > 0 ? inArray(accounts.city, params.cities) : undefined,
           ),
         )
-        .limit(limit);
+        .limit(Math.max(limit * 3, 10));
     } catch (e) {
       console.error("[waterfall:name_search_db] failed:", e);
       warnings.push("Could not search saved companies from the database.");
     }
 
-    const dbMapped = filterExcluded(dbResults.map(dbToResult), excludeNames);
+    const dbMapped = filterExcluded(
+      filterCompaniesMatchingQuery(dbResults.map(dbToResult), nameQuery),
+      excludeNames,
+    );
     const external: ScoutCompanyResult[] = [];
 
-    // Search external source with the exact company name as query
-    if (dbMapped.length < limit) {
-      const remaining = limit - dbMapped.length;
-      const cityStr = params.cities.slice(0, 2).join(", ");
-      const searchQuery = cityStr ? `${nameQuery} ${cityStr}` : nameQuery;
-
-      if (!tavilyQuotaHit([...warnings, ...errors])) {
-        await runStep("name_search_tavily", () =>
-          tavilySearchCompanies({
-            cities: params.cities,
-            industries: params.industries,
-            limit: remaining,
-            meta: searchMeta,
-            nameQuery: searchQuery,
-          }),
-          external, remaining, excludeNames, warnings, errors,
-        );
-        appendTavilyKeySwitchWarning(warnings);
+    if (dbMapped.length < limit && !isGeographicEntity(nameQuery)) {
+      try {
+        const resolved = await resolveCompanyDomain({
+          companyName: nameQuery,
+          city: locationHint[0],
+        });
+        if (resolved.domain) {
+          external.push({
+            name: nameQuery,
+            domain: resolved.domain,
+            website: resolved.website,
+            city: locationHint[0],
+            industry: params.industries[0],
+            dataSource: resolved.source === "unresolved" ? "tavily+llm" : resolved.source,
+            fitScore: 72,
+          });
+        }
+      } catch (e) {
+        console.warn("[waterfall:name_search_domain] failed:", e);
       }
     }
 
-    // Sort: exact match first, then partial matches
-    const allResults = [...dbMapped, ...filterExcluded(external, dbMapped.map((r) => r.name))];
+    if (dbMapped.length + external.length < limit && !tavilyQuotaHit([...warnings, ...errors])) {
+      const remaining = limit - dbMapped.length - external.length;
+      await runStep("name_search_tavily", () =>
+        tavilySearchCompanies({
+          cities: params.cities,
+          industries: params.industries,
+          limit: remaining,
+          meta: searchMeta,
+          nameQuery,
+        }),
+        external, remaining, excludeNames, warnings, errors,
+      );
+      appendTavilyKeySwitchWarning(warnings);
+    }
+
+    const matched = filterCompaniesMatchingQuery(
+      [...dbMapped, ...filterExcluded(external, dbMapped.map((r) => r.name))],
+      nameQuery,
+    );
     const lowerQuery = nameQuery.toLowerCase();
-    allResults.sort((a, b) => {
+    matched.sort((a, b) => {
       const aExact = a.name.toLowerCase() === lowerQuery ? 0 : a.name.toLowerCase().includes(lowerQuery) ? 1 : 2;
       const bExact = b.name.toLowerCase() === lowerQuery ? 0 : b.name.toLowerCase().includes(lowerQuery) ? 1 : 2;
       return aExact - bExact;
     });
 
+    if (matched.length === 0) {
+      const where = locationHint.length ? ` in ${locationHint.join(", ")}` : "";
+      warnings.push(`No company matching "${nameQuery}"${where}.`);
+    }
+
     return {
-      companies: filterBySelectedCities(allResults, params.cities).slice(0, limit),
+      companies: matched.slice(0, limit),
       warnings: [...new Set(warnings)],
       errors: [...new Set(errors)],
     };
@@ -162,7 +189,9 @@ export async function discoverCompanies(params: {
         .where(
           and(
             eq(accounts.tenantId, params.tenantId),
-            params.cities.length > 0 ? inArray(accounts.city, params.cities) : undefined,
+            params.cities.length > 0 && !isNationwideSelection(params.cities)
+              ? inArray(accounts.city, params.cities)
+              : undefined,
           ),
         )
         .limit(limit);
@@ -467,15 +496,28 @@ export async function discoverPeople(params: {
   const effectiveTitles = roleHints.length > 0 ? roleHints : BUYING_TITLES;
 
   if (cfg.searchProvider === "apollo" && resolvedDomain) {
-    await runStep(
-      "apollo_people",
-      () => apolloSearchPeople({ companyDomain: resolvedDomain, titles: effectiveTitles, limit: remaining, cities: params.cities }),
-      external,
-      remaining,
-      [],
-      warnings,
-      errors,
-    );
+    try {
+      const apolloPeople = await apolloSearchPeople({
+        companyDomain: resolvedDomain,
+        titles: effectiveTitles,
+        limit: remaining,
+        cities: params.cities,
+      });
+      const seen = new Set(external.map((p) => normalizeName(p.name)));
+      for (const person of apolloPeople) {
+        if (external.length >= remaining) break;
+        const key = normalizeName(person.name);
+        if (seen.has(key)) continue;
+        external.push(person);
+        seen.add(key);
+      }
+    } catch (e) {
+      if (isApolloAuthError(e)) {
+        warnings.push("Apollo key invalid, using web search.");
+      } else {
+        errors.push(stepFailureMessage("apollo_people", e));
+      }
+    }
   }
 
   if (external.length === 0) {
@@ -671,6 +713,9 @@ function stepFailureMessage(label: string, err: unknown): string {
   }
   if (/APOLLO_API_KEY/i.test(msg)) {
     return "APOLLO_API_KEY is missing. Switch Data Mode to Free or add your Apollo key.";
+  }
+  if (isApolloAuthError(err) || /apollo.*(401|403|invalid api key|unauthorized|authentication failed)/i.test(msg)) {
+    return "Apollo key invalid, using web search.";
   }
   if (/GOOGLE_PLACES_API_KEY/i.test(msg)) {
     return "GOOGLE_PLACES_API_KEY is missing. Switch search provider or add a Google Places key.";

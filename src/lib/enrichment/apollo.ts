@@ -4,6 +4,22 @@ import { computeSeniorityScore } from "./seniority-score";
 
 const BASE = "https://api.apollo.io/v1";
 
+export class ApolloAuthError extends Error {
+  status: number;
+
+  constructor(status: number, _detail = "") {
+    super(`Apollo authentication failed (${status}).`);
+    this.name = "ApolloAuthError";
+    this.status = status;
+  }
+}
+
+export function isApolloAuthError(err: unknown): boolean {
+  if (err instanceof ApolloAuthError) return true;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /apollo.*(401|403|invalid api key|unauthorized|authentication failed)/i.test(msg);
+}
+
 async function apolloPost(path: string, body: object) {
   const key = process.env.APOLLO_API_KEY;
   if (!key) throw new Error("APOLLO_API_KEY not set");
@@ -14,6 +30,9 @@ async function apolloPost(path: string, body: object) {
   });
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      throw new ApolloAuthError(res.status, text);
+    }
     throw new Error(`Apollo ${path} failed: ${res.status} ${text}`);
   }
   return res.json();
