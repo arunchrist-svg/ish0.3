@@ -8,8 +8,8 @@ import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import { cn } from "@/lib/utils";
 import { Check, Loader2, Save } from "lucide-react";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
-import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
-import { DEFAULT_SCOUT_GEO, summarizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
+import { AreaOfInterestSettings } from "@/components/settings/area-of-interest-settings";
+import type { ScoutGeoSelection } from "@/lib/geo/india";
 import {
   SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
@@ -110,11 +110,10 @@ export function EnrichmentTab({
 
       <SettingsGroup
         title="Area of Interest"
-        footer="India map, then districts. Scout’s location dropdown only shows what you complete here."
+        footer="Scout’s location dropdown only shows the regions you complete here."
       >
-        <AreaOfInterestWizard
-          key={summarizeScoutGeo(config.scoutGeo ?? DEFAULT_SCOUT_GEO)}
-          value={config.scoutGeo ?? DEFAULT_SCOUT_GEO}
+        <AreaOfInterestSettings
+          value={config.scoutGeo}
           onComplete={(next: ScoutGeoSelection) => onUpdate("scoutGeo", next)}
         />
       </SettingsGroup>

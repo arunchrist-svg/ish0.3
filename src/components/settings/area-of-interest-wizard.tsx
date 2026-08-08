@@ -5,23 +5,46 @@ import { Check, ChevronLeft, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/design-system";
 import {
+  INDIA_REGIONS,
+  INDIA_STATES,
   getState,
   sanitizeScoutGeo,
   scoutGeoFromStateAndDistrictPicks,
   scoutGeoHasSelection,
   statesInSelection,
   summarizeScoutGeo,
+  type IndiaRegionId,
   type ScoutGeoSelection,
 } from "@/lib/geo/india";
 import { IndiaStateMap } from "@/components/settings/india-state-map";
+import { DistrictPicker } from "@/components/settings/district-picker";
 
 type Props = {
   value: ScoutGeoSelection;
   onComplete: (next: ScoutGeoSelection) => void;
   ctaLabel?: string;
+  className?: string;
+  showHeading?: boolean;
 };
 
 type Phase = "map" | "districts";
+
+const MAP_REGION_PRESETS: { id: IndiaRegionId; name: string }[] = [
+  { id: "north", name: "North India" },
+  { id: "south", name: "South India" },
+  { id: "west", name: "West India" },
+  { id: "central", name: "Central India" },
+  { id: "east", name: "East India" },
+];
+
+function regionStateIds(regionId: IndiaRegionId): string[] {
+  return INDIA_REGIONS.find((region) => region.id === regionId)?.states.map((s) => s.id) ?? [];
+}
+
+function orderedStateIds(ids: Iterable<string>): string[] {
+  const set = new Set(ids);
+  return INDIA_STATES.filter((state) => set.has(state.id)).map((state) => state.id);
+}
 
 function initialFromValue(value: ScoutGeoSelection) {
   const geo = sanitizeScoutGeo(value);
@@ -48,6 +71,8 @@ export function AreaOfInterestWizard({
   value,
   onComplete,
   ctaLabel = "Choose Regions & Complete Location",
+  className,
+  showHeading = true,
 }: Props) {
   const seed = useMemo(() => initialFromValue(value), [value]);
   const [phase, setPhase] = useState<Phase>("map");
@@ -84,6 +109,39 @@ export function AreaOfInterestWizard({
     setDistrictIdsByState({});
     setDistrictStateId("");
     setPhase("map");
+  }
+
+  function clearSelection() {
+    setEntireIndia(false);
+    setStateIds([]);
+    setDistrictIdsByState({});
+    setDistrictStateId("");
+    setPhase("map");
+  }
+
+  function regionIsSelected(regionId: IndiaRegionId): boolean {
+    if (entireIndia) return false;
+    const ids = regionStateIds(regionId);
+    return ids.length > 0 && ids.every((id) => stateIds.includes(id));
+  }
+
+  function toggleRegionPreset(regionId: IndiaRegionId) {
+    const ids = regionStateIds(regionId);
+    if (!ids.length) return;
+    const allOn = ids.every((id) => stateIds.includes(id));
+    setEntireIndia(false);
+    setStateIds((prev) => {
+      const next = allOn
+        ? orderedStateIds(prev.filter((id) => !ids.includes(id)))
+        : orderedStateIds([...prev, ...ids]);
+      setDistrictStateId((current) => (next.includes(current) ? current : next[0] ?? ""));
+      return next;
+    });
+    setDistrictIdsByState((prev) => {
+      const next = { ...prev };
+      for (const id of ids) delete next[id];
+      return next;
+    });
   }
 
   function handleNext() {
@@ -134,54 +192,81 @@ export function AreaOfInterestWizard({
   const showStateDropdown = selectedStates.length >= 2;
 
   return (
-    <div className="px-4 py-3">
-      <div className="mb-3">
-        <p className="text-[13px] font-semibold text-brand-ink">Area of Interest</p>
-        <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+    <div className={cn("px-4 py-3", className)}>
+      {showHeading ? (
+        <div className="mb-3">
+          <p className="text-[13px] font-semibold text-brand-ink">Area of Interest</p>
+          <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+            {phase === "map"
+              ? "Pick a region preset or tap states on the map."
+              : "Choose districts Scout should search."}
+          </p>
+        </div>
+      ) : (
+        <p className="mb-3 text-[12px] text-brand-ink-soft">
           {phase === "map"
-            ? "Pick Entire India or one or more states on the map."
-            : "Uncheck districts you do not want Scout to search."}
+            ? "Pick a region preset or tap states on the map."
+            : "Choose districts Scout should search."}
         </p>
-      </div>
+      )}
 
       {phase === "map" ? (
         <>
-          <button
-            type="button"
-            onClick={selectEntireIndia}
-            className={cn(
-              "mb-3 flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
-              entireIndia
-                ? "border-brand-black bg-brand-black text-white"
-                : "border-brand-border/70 bg-white/80 hover:bg-black/[0.03]",
-            )}
-          >
-            <MapPin className={cn("size-4 shrink-0", entireIndia ? "text-white" : "text-brand-ink-soft")} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-semibold">Entire India</span>
-              <span className={cn("block text-[11.5px]", entireIndia ? "text-white/75" : "text-brand-ink-faint")}>
-                Nationwide scout. District filters are skipped.
-              </span>
-            </span>
-            <span
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={selectEntireIndia}
               className={cn(
-                "flex size-4 shrink-0 items-center justify-center rounded-[5px] border",
-                entireIndia ? "border-white bg-white text-brand-black" : "border-brand-border bg-white",
+                "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors",
+                entireIndia
+                  ? "border-brand-black bg-brand-black text-white"
+                  : "border-brand-border/70 bg-white text-brand-ink hover:border-brand-black/40",
               )}
             >
+              <MapPin className="size-3.5" />
+              Entire India
               {entireIndia ? <Check className="size-3" strokeWidth={3} /> : null}
-            </span>
-          </button>
+            </button>
+            {MAP_REGION_PRESETS.map((region) => {
+              const active = regionIsSelected(region.id);
+              return (
+                <button
+                  key={region.id}
+                  type="button"
+                  onClick={() => toggleRegionPreset(region.id)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition-colors",
+                    active
+                      ? "border-brand-stratus-blue bg-brand-stratus-blue/15 text-brand-ink"
+                      : "border-brand-border/70 bg-white text-brand-ink hover:border-brand-stratus-blue/50",
+                  )}
+                >
+                  {region.name}
+                  {active ? <Check className="size-3 text-brand-stratus-blue" strokeWidth={3} /> : null}
+                </button>
+              );
+            })}
+          </div>
 
           <IndiaStateMap selectedIds={entireIndia ? [] : stateIds} disabled={entireIndia} onToggle={toggleState} />
 
-          <p className="mt-3 text-[12px] text-brand-ink-soft">
-            {entireIndia
-              ? "Entire India selected."
-              : stateIds.length === 0
-                ? "Select at least one state to continue."
-                : summarizeScoutGeo(preview)}
-          </p>
+          <div className="mt-3 flex items-center justify-between gap-2">
+            <p className="text-[12px] text-brand-ink-soft">
+              {entireIndia
+                ? "Entire India selected. District filters are skipped."
+                : stateIds.length === 0
+                  ? "Select a region or tap states on the map."
+                  : summarizeScoutGeo(preview)}
+            </p>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={!entireIndia && stateIds.length === 0}
+              className="shrink-0 text-[12px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+            >
+              Clear selection
+            </button>
+          </div>
 
           <Button
             type="button"
@@ -204,48 +289,50 @@ export function AreaOfInterestWizard({
           </button>
 
           {showStateDropdown ? (
-            <label className="mb-3 block">
-              <span className="mb-1 block text-[12px] font-semibold text-brand-ink">State</span>
-              <select
-                value={activeDistrictState?.id ?? ""}
-                onChange={(e) => setDistrictStateId(e.target.value)}
-                className="w-full rounded-xl border border-brand-border bg-white px-3 py-2 text-[13px] outline-none"
-              >
-                {selectedStates.map((state) => (
-                  <option key={state.id} value={state.id}>
+            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+              {selectedStates.map((state) => {
+                const active = state.id === activeDistrictState?.id;
+                return (
+                  <button
+                    key={state.id}
+                    type="button"
+                    onClick={() => setDistrictStateId(state.id)}
+                    className={cn(
+                      "shrink-0 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors",
+                      active
+                        ? "bg-brand-black text-white"
+                        : "bg-brand-canvas text-brand-ink-soft hover:bg-black/[0.05]",
+                    )}
+                  >
                     {state.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                  </button>
+                );
+              })}
+            </div>
           ) : (
-            <p className="mb-2 text-[13px] font-semibold text-brand-ink">
+            <p className="mb-3 text-[15px] font-semibold text-brand-ink">
               Districts in {activeDistrictState?.name ?? "selected state"}
             </p>
           )}
 
           {activeDistrictState ? (
-            <div className="max-h-64 overflow-y-auto rounded-xl border border-brand-border bg-white p-2">
-              <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-                {activeDistrictState.districts.map((district) => {
-                  const checked = checkedDistricts(activeDistrictState.id).includes(district.id);
-                  return (
-                    <label
-                      key={district.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-[12.5px] hover:bg-black/[0.03]"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleDistrict(activeDistrictState.id, district.id)}
-                        className="size-3.5 accent-brand-black"
-                      />
-                      <span>{district.displayName}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+            <DistrictPicker
+              key={activeDistrictState.id}
+              stateName={activeDistrictState.name}
+              districts={[...activeDistrictState.districts]}
+              selectedIds={checkedDistricts(activeDistrictState.id)}
+              onToggle={(districtId) => toggleDistrict(activeDistrictState.id, districtId)}
+              onSelectAll={() => {
+                setDistrictIdsByState((prev) => {
+                  const next = { ...prev };
+                  delete next[activeDistrictState.id];
+                  return next;
+                });
+              }}
+              onClear={() => {
+                setDistrictIdsByState((prev) => ({ ...prev, [activeDistrictState.id]: [] }));
+              }}
+            />
           ) : null}
 
           <Button

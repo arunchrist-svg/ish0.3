@@ -4,6 +4,7 @@ import {
   matchTermsForScoutLabels,
   resolveScoutLabel,
   scoutGeoFromStateAndDistrictPicks,
+  scoutGeoPickGroups,
   searchTermsForScoutLabels,
 } from "@/lib/geo/india";
 
@@ -44,5 +45,18 @@ describe("scout geo label expansion", () => {
     });
     expect(narrowed.stateIds).toEqual([]);
     expect(narrowed.districtIds).toEqual(["TS-hyderabad"]);
+  });
+
+  it("groups chosen districts by state for Settings", () => {
+    const groups = scoutGeoPickGroups({
+      entireIndia: false,
+      regionIds: [],
+      stateIds: ["TS"],
+      districtIds: ["KA-bengaluru-urban"],
+    });
+    expect(groups.entireIndia).toBe(false);
+    expect(groups.states).toEqual(["Telangana"]);
+    expect(groups.districtGroups[0]?.state).toBe("Karnataka");
+    expect(groups.districtGroups[0]?.districts).toContain("Bengaluru");
   });
 });
