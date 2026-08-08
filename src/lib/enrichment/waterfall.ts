@@ -9,9 +9,10 @@ import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from ".
 import {
   companyCityMatchesSelection,
   expandCityMatchTerms,
-  expandCitySearchTerms,
   isNationwideSelection,
   personLocationMatchesSelection,
+  primaryCitiesForSearch,
+  rankCompaniesByFitAndDiversity,
   rankPeopleByCityMatch,
 } from "./city-search";
 import { isTavilyQuotaError } from "./tavily-client";
@@ -95,13 +96,15 @@ export async function discoverCompanies(params: {
   const isNameSearch = !!params.companyName?.trim();
   const selectionLabels = params.cities;
   const nationwide = isNationwideSelection(selectionLabels);
-  const queryCities = expandCitySearchTerms(selectionLabels);
+  const queryCities = selectionLabels;
   const matchCities = expandCityMatchTerms(selectionLabels);
+  const locationHint = primaryCitiesForSearch(selectionLabels)
+    .filter((c) => c !== "India")
+    .slice(0, 2);
 
   // ── SEARCH MODE: targeted lookup by company name ──────────────────────────
   if (isNameSearch) {
     const nameQuery = params.companyName!.trim();
-    const locationHint = queryCities.filter((c) => !isNationwideSelection([c])).slice(0, 2);
     let dbResults: (typeof accounts.$inferSelect)[] = [];
     try {
       dbResults = await db
@@ -153,7 +156,7 @@ export async function discoverCompanies(params: {
       const remaining = limit - dbMapped.length - external.length;
       await runStep("name_search_tavily", () =>
         tavilySearchCompanies({
-          cities: queryCities,
+          cities: selectionLabels,
           industries: params.industries,
           limit: remaining,
           meta: searchMeta,
@@ -219,6 +222,7 @@ export async function discoverCompanies(params: {
   }
 
   const remaining = limit - dbMapped.length;
+  const fetchLimit = Math.min(Math.max(remaining * 2, remaining), 40);
   const external: ScoutCompanyResult[] = [];
 
   // ── Step 2: Primary search provider (resolved from dataMode) ─────────────
@@ -228,25 +232,25 @@ export async function discoverCompanies(params: {
         indiaDirectoriesSearchCompanies({
           cities: queryCities,
           industries: params.industries,
-          limit: remaining,
+          limit: fetchLimit,
           meta: searchMeta,
           fetchSeed: params.fetchSeed,
         }),
-        external, remaining, excludeNames, warnings, errors,
+        external, fetchLimit, excludeNames, warnings, errors,
       );
       break;
 
     case "google_places":
       await runStep("google_places", () =>
-        googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
-        external, remaining, excludeNames, warnings, errors,
+        googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: fetchLimit }),
+        external, fetchLimit, excludeNames, warnings, errors,
       );
       break;
 
     case "apollo":
       await runStep("apollo", () =>
-        apolloSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
-        external, remaining, excludeNames, warnings, errors,
+        apolloSearchCompanies({ cities: queryCities, industries: params.industries, limit: fetchLimit }),
+        external, fetchLimit, excludeNames, warnings, errors,
       );
       break;
 
@@ -255,10 +259,11 @@ export async function discoverCompanies(params: {
         tavilySearchCompanies({
           cities: queryCities,
           industries: params.industries,
-          limit: remaining,
+          limit: fetchLimit,
           meta: searchMeta,
+          fetchSeed: params.fetchSeed,
         }),
-        external, remaining, excludeNames, warnings, errors,
+        external, fetchLimit, excludeNames, warnings, errors,
       );
       break;
   }
@@ -272,9 +277,9 @@ export async function discoverCompanies(params: {
     if (hasGooglePlacesKey()) {
       await runStep(
         "google_places_fallback",
-        () => googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
+        () => googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: fetchLimit }),
         external,
-        remaining,
+        fetchLimit,
         excludeNames,
         warnings,
         errors,
@@ -306,20 +311,37 @@ export async function discoverCompanies(params: {
       tavilySearchCompanies({
         cities: queryCities,
         industries: params.industries,
-        limit: remaining - external.length,
+        limit: Math.max(fetchLimit - external.length, remaining),
         meta: searchMeta,
+        fetchSeed: params.fetchSeed,
       }),
-      external, remaining, excludeNames, warnings, errors,
+      external, fetchLimit, excludeNames, warnings, errors,
     );
     appendTavilyKeySwitchWarning(warnings);
   }
 
   const merged = [...dbMapped, ...external];
-  const companies = filterBySelectedCities(merged, selectionLabels).slice(0, limit);
+  const filtered = filterBySelectedCities(merged, selectionLabels);
+  const companies = rankCompaniesByFitAndDiversity(filtered, selectionLabels, limit);
   if (merged.length > 0 && companies.length === 0 && selectionLabels.length > 0 && !nationwide) {
     warnings.push(
       `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
     );
+  } else if (selectionLabels.length >= 3 && companies.length > 0 && !nationwide) {
+    const groups = new Set(
+      companies.map((c) => {
+        for (const label of selectionLabels) {
+          if (companyCityMatchesSelection(c.city, [label])) return label.toLowerCase();
+        }
+        return (c.city ?? "").trim().toLowerCase() || "unknown";
+      }),
+    );
+    if (groups.size <= 1) {
+      const cityLabel = companies[0]?.city?.trim() || "one city";
+      warnings.push(
+        `Results are concentrated in ${cityLabel} even though ${selectionLabels.length} locations were selected. Refresh or Load More to cover more cities.`,
+      );
+    }
   }
   return {
     companies,

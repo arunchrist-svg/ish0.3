@@ -8,7 +8,12 @@ import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
-import { citySearchClause, expandCitySearchTerms } from "./city-search";
+import {
+  citySearchBatches,
+  citySearchClause,
+  primaryCitiesForSearch,
+  rotateCityBatches,
+} from "./city-search";
 import { isPlausibleCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { searchPeopleViaTavily } from "./people-search";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
@@ -33,33 +38,32 @@ function aiConfidenceThreshold(): number {
   return Number.isFinite(parsed) ? parsed : 40;
 }
 
-function buildQueries(cities: string[], industries: string[], fetchSeed = 0): string[] {
-  const cityStr = citySearchClause(cities);
-  const indStr =
-    industries.length > 0 ? industries.slice(0, 3).join(" OR ") : "corporate";
+function industryClause(industries: string[]): string {
+  return industries.length > 0 ? industries.slice(0, 3).join(" OR ") : "corporate";
+}
 
-  const queries = [
-    `(${DIRECTORIES.slice(0, 2).join(" OR ")}) ${indStr} companies ${cityStr} India`,
-    `(${DIRECTORIES.slice(2, 4).join(" OR ")}) ${indStr} businesses ${cityStr}`,
-    `ZaubaCorp ${indStr} ${cityStr} India registered companies`,
-  ];
+function buildQueriesForBatches(cities: string[], industries: string[], fetchSeed = 0): string[] {
+  const indStr = industryClause(industries);
+  const batches = rotateCityBatches(citySearchBatches(cities, 6, 2), fetchSeed);
+  const queries: string[] = [];
 
-  // Per-city queries improve coverage for smaller cities like Hosur
-  for (const city of expandCitySearchTerms(cities).slice(0, 3)) {
+  batches.forEach((batch, batchIndex) => {
+    const cityStr = citySearchClause(batch);
+    const primaries = primaryCitiesForSearch(batch);
     queries.push(
-      `(site:justdial.com OR site:indiamart.com) ${indStr} companies ${city} India`,
+      `(${DIRECTORIES.slice(0, 2).join(" OR ")}) ${indStr} companies ${cityStr} India`,
     );
-  }
+    const focus = primaries.length
+      ? primaries[Math.abs(fetchSeed + batchIndex) % primaries.length]
+      : undefined;
+    if (focus && focus !== "India") {
+      queries.push(
+        `(site:justdial.com OR site:indiamart.com) ${indStr} companies ${focus} India`,
+      );
+    }
+  });
 
-  const extras = [
-    `site:indiamart.com ${indStr} ${cityStr} company directory`,
-    `site:tradeindia.com ${indStr} manufacturers ${cityStr}`,
-    `site:sulekha.com ${indStr} companies ${cityStr}`,
-  ];
-  const offset = Math.abs(fetchSeed) % extras.length;
-  const rotatedExtras = [...extras.slice(offset), ...extras.slice(0, offset)];
-
-  return [...queries, ...rotatedExtras];
+  return queries.slice(0, 4);
 }
 
 function parseLLMCompanies(
@@ -103,8 +107,7 @@ export async function indiaDirectoriesSearchCompanies(params: {
   }
 
   const fetchSeed = params.fetchSeed ?? 0;
-  const queries = buildQueries(params.cities, params.industries, fetchSeed);
-  const queryBatch = queries.slice(0, 2);
+  const queryBatch = buildQueriesForBatches(params.cities, params.industries, fetchSeed);
   const perQueryLimit = optimizedMaxResults(Math.ceil(limit / 3));
 
   let quotaExceeded = false;

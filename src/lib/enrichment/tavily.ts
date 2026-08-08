@@ -1,7 +1,7 @@
 import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
-import { citySearchClause } from "./city-search";
+import { citySearchBatches, citySearchClause, rotateCityBatches } from "./city-search";
 import {
   companyMatchesNameQuery,
   filterCompaniesMatchingQuery,
@@ -168,13 +168,21 @@ async function tavilyDiscoverCompanies(params: {
   industries: string[];
   limit: number;
   meta?: DirectorySearchMeta;
+  fetchSeed?: number;
 }): Promise<ScoutCompanyResult[]> {
-  const cityStr = citySearchClause(params.cities);
+  const batches = rotateCityBatches(citySearchBatches(params.cities, 6, 2), params.fetchSeed ?? 0);
+  const searchBatches = batches.length ? batches : [params.cities];
+  const cityStr = searchBatches.map((batch) => citySearchClause(batch)).join(" ; ");
   const indStr = params.industries.length > 0 ? params.industries.join(" OR ") : "corporate";
-  const query = `${indStr} companies ${cityStr} India`;
   const meta = params.meta;
 
-  const results = await tavilySearch(query, params.limit);
+  const hitBatches = await Promise.all(
+    searchBatches.map(async (batch) => {
+      const query = `${indStr} companies ${citySearchClause(batch)} India`;
+      return tavilySearch(query, params.limit);
+    }),
+  );
+  const results = hitBatches.flat();
   if (!results.length) {
     meta?.warnings.push(`No web results found for ${cityStr}.`);
     return [];
@@ -249,6 +257,7 @@ export async function tavilySearchCompanies(params: {
   limit?: number;
   meta?: DirectorySearchMeta;
   nameQuery?: string;
+  fetchSeed?: number;
 }): Promise<ScoutCompanyResult[]> {
   const limit = params.limit ?? 10;
 
@@ -269,6 +278,7 @@ export async function tavilySearchCompanies(params: {
     industries: params.industries,
     limit,
     meta: params.meta,
+    fetchSeed: params.fetchSeed,
   });
 }
 

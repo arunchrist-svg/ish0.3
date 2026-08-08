@@ -9,6 +9,7 @@ import {
   getResolvedWorkspaceEnrichmentConfig,
   loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
+
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();

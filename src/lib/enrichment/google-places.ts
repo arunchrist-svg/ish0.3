@@ -1,4 +1,5 @@
 import type { ScoutCompanyResult } from "./types";
+import { primaryCitiesForSearch } from "./city-search";
 
 const NEW_API = "https://places.googleapis.com/v1/places:searchText";
 const LEGACY_BASE = "https://maps.googleapis.com/maps/api/place";
@@ -199,8 +200,10 @@ export async function googlePlacesSearchCompanies(params: {
   const results: ScoutCompanyResult[] = [];
   const limit = params.limit ?? 20;
   let lastError: Error | null = null;
+  const cities = primaryCitiesForSearch(params.cities).slice(0, 6);
+  const perCity = Math.max(1, Math.ceil(limit / Math.max(cities.length, 1)));
 
-  for (const city of params.cities.slice(0, 3)) {
+  for (const city of cities) {
     if (results.length >= limit) break;
 
     const industryStr =
@@ -210,7 +213,7 @@ export async function googlePlacesSearchCompanies(params: {
     try {
       const places = await placesTextSearch(query);
 
-      for (const place of places.slice(0, Math.ceil(limit / params.cities.length))) {
+      for (const place of places.slice(0, perCity)) {
         if (results.length >= limit) break;
         if (place.business_status === "CLOSED_PERMANENTLY") continue;
 

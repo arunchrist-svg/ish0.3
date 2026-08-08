@@ -1,4 +1,5 @@
 import {
+  compactSearchTermsForLabel,
   compactSearchTermsForScoutLabels,
   isBroadGeoLabel,
   isNationwideLabel,
@@ -60,8 +61,130 @@ export function expandCityMatchTerms(cities: string[]): string[] {
   return applyCityAliases(matchTermsForScoutLabels(cities));
 }
 
+/**
+ * Unique cities to search: district labels stay as picked; state/region expand to metros only.
+ * Does not dump every district alias into the query budget.
+ */
+export function primaryCitiesForSearch(labels: string[]): string[] {
+  if (isNationwideSelection(labels)) return ["India"];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const label of labels) {
+    const trimmed = label.trim();
+    if (!trimmed) continue;
+    const terms = isBroadGeoLabel(trimmed) ? compactSearchTermsForLabel(trimmed) : [trimmed];
+    for (const term of terms) {
+      const key = term.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(term.trim());
+    }
+  }
+  return out;
+}
+
+function extraAliasForCity(city: string): string | undefined {
+  return (CITY_SEARCH_ALIASES[city] ?? []).find((alias) => alias.toLowerCase() !== city.toLowerCase());
+}
+
+/** Query terms: unique cities first, then at most one alias each if slots remain. */
+export function citySearchTerms(cities: string[], max = 6): string[] {
+  const primaries = primaryCitiesForSearch(cities);
+  if (primaries.length === 1 && primaries[0] === "India") return ["India"];
+
+  const terms: string[] = [];
+  const seen = new Set<string>();
+  const add = (term: string) => {
+    const key = term.toLowerCase();
+    if (!term || seen.has(key) || terms.length >= max) return;
+    seen.add(key);
+    terms.push(term);
+  };
+
+  for (const city of primaries) add(city);
+  if (terms.length < max) {
+    for (const city of primaries) {
+      const alias = extraAliasForCity(city);
+      if (alias) add(alias);
+    }
+  }
+  return terms;
+}
+
 export function citySearchClause(cities: string[], max = 6): string {
-  return expandCitySearchTerms(cities).slice(0, max).join(" OR ");
+  return citySearchTerms(cities, max).join(" OR ");
+}
+
+/** Split selected cities into query batches so later cities are not dropped. */
+export function citySearchBatches(labels: string[], batchSize = 6, maxBatches = 2): string[][] {
+  const primaries = primaryCitiesForSearch(labels);
+  if (!primaries.length) return [];
+  if (primaries.length === 1 && primaries[0] === "India") return [["India"]];
+  const batches: string[][] = [];
+  for (let i = 0; i < primaries.length && batches.length < maxBatches; i += batchSize) {
+    batches.push(primaries.slice(i, i + batchSize));
+  }
+  return batches;
+}
+
+export function rotateCityBatches<T>(batches: T[], fetchSeed = 0): T[] {
+  if (batches.length <= 1) return batches;
+  const offset = Math.abs(fetchSeed) % batches.length;
+  if (offset === 0) return batches;
+  return [...batches.slice(offset), ...batches.slice(0, offset)];
+}
+
+function companyCityGroupKey(
+  companyCity: string | null | undefined,
+  selectedCities: string[],
+): string {
+  for (const label of selectedCities) {
+    if (companyCityMatchesSelection(companyCity, [label])) return label.toLowerCase();
+  }
+  const normalized = (companyCity ?? "").trim().toLowerCase();
+  return normalized || "unknown";
+}
+
+/** Highest fitScore first, then fill remaining slots from under-represented cities. */
+export function rankCompaniesByFitAndDiversity<T extends { city?: string; fitScore?: number }>(
+  companies: T[],
+  selectedCities: string[],
+  limit: number,
+): T[] {
+  const sorted = [...companies].sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0));
+  if (sorted.length <= limit) return sorted;
+
+  const diverseCityCount = primaryCitiesForSearch(selectedCities).filter((c) => c !== "India").length;
+  const reserve =
+    diverseCityCount >= 2
+      ? Math.min(Math.max(1, Math.floor(limit * 0.4)), diverseCityCount - 1, Math.max(limit - 1, 0))
+      : 0;
+  const scoreSlots = Math.max(limit - reserve, 1);
+
+  const result: T[] = [];
+  const used = new Set<number>();
+  for (let i = 0; i < sorted.length && result.length < scoreSlots; i++) {
+    result.push(sorted[i]);
+    used.add(i);
+  }
+
+  const represented = new Set(result.map((c) => companyCityGroupKey(c.city, selectedCities)));
+  for (let i = 0; i < sorted.length && result.length < limit; i++) {
+    if (used.has(i)) continue;
+    const key = companyCityGroupKey(sorted[i].city, selectedCities);
+    if (represented.has(key)) continue;
+    result.push(sorted[i]);
+    used.add(i);
+    represented.add(key);
+  }
+
+  for (let i = 0; i < sorted.length && result.length < limit; i++) {
+    if (used.has(i)) continue;
+    result.push(sorted[i]);
+    used.add(i);
+  }
+
+  return result;
 }
 
 const UNVERIFIED_CITY_LABELS = new Set(["", "india", "unknown"]);
