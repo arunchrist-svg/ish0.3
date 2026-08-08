@@ -192,27 +192,51 @@ export function AreaOfInterestWizard({
   const showStateDropdown = selectedStates.length >= 2;
 
   return (
-    <div className={cn("px-4 py-3", className)}>
+    <div className={cn("px-4 py-2", className)}>
       {showHeading ? (
-        <div className="mb-3">
-          <p className="text-[13px] font-semibold text-brand-ink">Area of Interest</p>
-          <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold text-brand-ink">Area of Interest</p>
+            <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+              {phase === "map"
+                ? "Pick a region preset or tap states on the map."
+                : "Choose districts Scout should search."}
+            </p>
+          </div>
+          {phase === "districts" ? (
+            <button
+              type="button"
+              onClick={() => setPhase("map")}
+              className="inline-flex shrink-0 items-center gap-0.5 pt-0.5 text-[12px] font-semibold text-brand-stratus-blue"
+            >
+              <ChevronLeft className="size-3.5" />
+              Map
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[12px] text-brand-ink-soft">
             {phase === "map"
               ? "Pick a region preset or tap states on the map."
               : "Choose districts Scout should search."}
           </p>
+          {phase === "districts" ? (
+            <button
+              type="button"
+              onClick={() => setPhase("map")}
+              className="inline-flex shrink-0 items-center gap-0.5 text-[12px] font-semibold text-brand-stratus-blue"
+            >
+              <ChevronLeft className="size-3.5" />
+              Map
+            </button>
+          ) : null}
         </div>
-      ) : (
-        <p className="mb-3 text-[12px] text-brand-ink-soft">
-          {phase === "map"
-            ? "Pick a region preset or tap states on the map."
-            : "Choose districts Scout should search."}
-        </p>
       )}
 
       {phase === "map" ? (
         <>
-          <div className="mb-3 flex flex-wrap gap-1.5">
+          <div className="mb-2 flex flex-wrap gap-1.5">
             <button
               type="button"
               onClick={selectEntireIndia}
@@ -250,7 +274,7 @@ export function AreaOfInterestWizard({
 
           <IndiaStateMap selectedIds={entireIndia ? [] : stateIds} disabled={entireIndia} onToggle={toggleState} />
 
-          <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="mt-2 flex items-center justify-between gap-2">
             <p className="text-[12px] text-brand-ink-soft">
               {entireIndia
                 ? "Entire India selected. District filters are skipped."
@@ -270,7 +294,7 @@ export function AreaOfInterestWizard({
 
           <Button
             type="button"
-            className="mt-3 w-full"
+            className="mt-2 w-full"
             disabled={!entireIndia && stateIds.length === 0}
             onClick={handleNext}
           >
@@ -279,17 +303,8 @@ export function AreaOfInterestWizard({
         </>
       ) : (
         <>
-          <button
-            type="button"
-            onClick={() => setPhase("map")}
-            className="mb-3 inline-flex items-center gap-1 text-[12px] font-semibold text-brand-stratus-blue"
-          >
-            <ChevronLeft className="size-3.5" />
-            Back to map
-          </button>
-
           {showStateDropdown ? (
-            <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+            <div className="mb-2 flex gap-1.5 overflow-x-auto">
               {selectedStates.map((state) => {
                 const active = state.id === activeDistrictState?.id;
                 return (
@@ -310,7 +325,7 @@ export function AreaOfInterestWizard({
               })}
             </div>
           ) : (
-            <p className="mb-3 text-[15px] font-semibold text-brand-ink">
+            <p className="mb-2 text-[13px] font-semibold text-brand-ink">
               Districts in {activeDistrictState?.name ?? "selected state"}
             </p>
           )}
@@ -337,7 +352,7 @@ export function AreaOfInterestWizard({
 
           <Button
             type="button"
-            className="mt-3 w-full"
+            className="mt-2 w-full"
             disabled={!scoutGeoHasSelection(preview)}
             onClick={handleComplete}
           >

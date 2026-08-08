@@ -277,11 +277,15 @@ export default function OnboardingPage() {
       )}
 
       {step === 3 && showLocation && (
-        <div className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
+        <div className="space-y-2 rounded-2xl border border-brand-border bg-white p-4">
           {websiteStatus ? (
-            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
+            <p className="rounded-lg bg-brand-app/80 px-3 py-1.5 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
-          <AreaOfInterestWizard value={DEFAULT_SCOUT_GEO} onComplete={handleLocationComplete} />
+          <AreaOfInterestWizard
+            value={DEFAULT_SCOUT_GEO}
+            onComplete={handleLocationComplete}
+            className="px-0 py-0"
+          />
         </div>
       )}
 
