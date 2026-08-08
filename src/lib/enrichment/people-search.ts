@@ -57,14 +57,10 @@ function mapLLMPerson(p: Record<string, unknown>, dataSource: string): ScoutPers
 function filterPeopleByCities(people: ScoutPersonResult[], cities?: string[]): ScoutPersonResult[] {
   if (!cities?.length) return people;
   const local = people.filter((p) => personLocationMatchesSelection(p.location, cities));
-  const knownWrongCity = people.filter(
-    (p) => p.location?.trim() && !personLocationMatchesSelection(p.location, cities),
-  );
-  if (local.some((p) => p.location?.trim())) return rankPeopleByCityMatch(local, cities);
-  if (knownWrongCity.length && knownWrongCity.length === people.filter((p) => p.location?.trim()).length) {
-    return [];
+  if (local.some((p) => p.location?.trim()) || local.length > 0) {
+    return rankPeopleByCityMatch(local, cities);
   }
-  return rankPeopleByCityMatch(local.length ? local : people, cities);
+  return rankPeopleByCityMatch(people, cities);
 }
 
 
@@ -79,31 +75,31 @@ export async function searchPeopleViaTavily(params: {
   const limit = params.limit ?? 8;
   const dataSource = params.dataSource ?? "tavily+llm";
   const company = cleanCompanyName(params.companyName);
-  const cityClause = params.cities?.length ? citySearchClause(params.cities, 4) : "India";
+  const cityClause = params.cities?.length ? citySearchClause(params.cities, 6) : "India";
 
   if (!hasTavilyKey()) throw new Error("TAVILY_API_KEY not set");
 
   const roleTerm =
     params.roleHints && params.roleHints.length > 0
-      ? params.roleHints.slice(0, 4).join(" OR ")
-      : "Director OR Manager OR Head OR Founder OR VP OR CEO";
+      ? params.roleHints.slice(0, 6).join(" OR ")
+      : "Director OR Manager OR Head OR Founder OR VP OR CEO OR HR";
 
   const queries = [
     `site:linkedin.com/in "${company}" ${roleTerm} (${cityClause})`,
-    `site:linkedin.com/in "${company}" Director OR Manager OR Head (${cityClause})`,
-    `"${company}" ${roleTerm} LinkedIn profile ${cityClause}`,
+    `site:linkedin.com/in "${company}" (${cityClause})`,
+    `site:linkedin.com/in "${company}" Director OR Manager OR Head OR HR`,
     params.companyDomain
       ? `site:${params.companyDomain} leadership OR team OR "our people" OR contact ${cityClause}`
-      : null,
+      : `"${company}" ${roleTerm} LinkedIn profile ${cityClause}`,
   ].filter(Boolean) as string[];
 
   const allResults: { title: string; url: string; content: string }[] = [];
   const errors: Error[] = [];
   let quotaHit = false;
-  const perQueryLimit = optimizedMaxResults(Math.ceil(limit / 2));
+  const perQueryLimit = optimizedMaxResults(Math.max(4, Math.ceil(limit / 2)));
 
   const tavilyBatches = await Promise.all(
-    queries.slice(0, 2).map(async (q) => {
+    queries.slice(0, 3).map(async (q) => {
       try {
         return await tavilySearch(q, perQueryLimit);
       } catch (e) {
@@ -134,7 +130,7 @@ export async function searchPeopleViaTavily(params: {
     params.cities,
   );
   const keyDmCount = heuristic.filter((p) => p.isKeyDM).length;
-  if (heuristic.length >= limit || (heuristic.length > 0 && keyDmCount > 0)) {
+  if (heuristic.length >= limit || (heuristic.length >= 3 && keyDmCount >= 2)) {
     return heuristic.slice(0, limit);
   }
 

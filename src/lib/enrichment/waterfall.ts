@@ -25,6 +25,20 @@ import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
 import { resolveCompanyDomain } from "./resolve-company-domain";
 import { filterCompaniesMatchingQuery, isGeographicEntity } from "./company-name-match";
+import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
+
+function roleRelaxWarning(
+  companyName: string,
+  relaxed: "or" | "untitled" | "unfiltered",
+): string {
+  if (relaxed === "or") {
+    return `Few exact role matches at ${companyName}. Showing people who match seniority or department.`;
+  }
+  if (relaxed === "untitled") {
+    return `Titles were missing for ${companyName} contacts. Showing LinkedIn profiles to review.`;
+  }
+  return `Role filters were too tight for ${companyName}. Showing the best people found.`;
+}
 
 const BUYING_TITLES = [
   "Director", "Manager", "Head", "VP", "Vice President",
@@ -380,81 +394,6 @@ function domainFromWebsite(website?: string): string | undefined {
   }
 }
 
-// Maps UI seniority labels → search title keywords
-const SENIORITY_TITLES: Record<string, string[]> = {
-  "C-Level": ["CEO", "COO", "CHRO", "CPO", "CXO", "Chief"],
-  "Founders": ["Founder", "Co-Founder", "Co-founder", "Founding"],
-  "VP": ["VP", "Vice President"],
-  "Director": ["Director"],
-  "Manager": ["Manager", "Head"],
-};
-
-// Maps UI department labels → search title keywords
-const DEPARTMENT_TITLES: Record<string, string[]> = {
-  "HR": ["HR", "Human Resources", "People", "CHRO", "CPO"],
-  "Admin": ["Admin", "Administration"],
-  "Procurement": ["Procurement", "Purchase", "Sourcing"],
-  "Facilities": ["Facilities", "Facility"],
-  "Marketing": ["Marketing"],
-  "Operations": ["Operations"],
-  "Leadership": ["CEO", "MD", "Managing Director", "COO", "CXO"],
-};
-
-function buildRoleTitleHints(seniority: string[], departments: string[]): string[] {
-  const hints = new Set<string>();
-  for (const s of seniority) {
-    for (const t of SENIORITY_TITLES[s] ?? []) hints.add(t);
-  }
-  for (const d of departments) {
-    for (const t of DEPARTMENT_TITLES[d] ?? []) hints.add(t);
-  }
-  return [...hints];
-}
-
-const NON_SENIOR_TITLE_PATTERNS = [
-  /\bjunior\b/i,
-  /\bintern\b/i,
-  /\btrainee\b/i,
-  /\bassociate\b/i,
-  /\bentry[- ]level\b/i,
-  /\bgraduate\b/i,
-  /\bassistant\b/i,
-];
-
-function isNonSeniorTitle(title: string): boolean {
-  return NON_SENIOR_TITLE_PATTERNS.some((re) => re.test(title));
-}
-
-function filterPeopleByRoles(
-  people: ScoutPersonResult[],
-  seniority: string[],
-  departments: string[],
-): ScoutPersonResult[] {
-  if (!seniority.length && !departments.length) return people;
-  return people.filter((p) => personMatchesRoles(p, seniority, departments));
-}
-
-function personMatchesRoles(person: ScoutPersonResult, seniority: string[], departments: string[]): boolean {
-  if (!seniority.length && !departments.length) return true;
-  const titleLower = (person.title ?? "").toLowerCase();
-  if (seniority.length > 0 && titleLower && isNonSeniorTitle(titleLower)) return false;
-  const senLower = (person.seniority ?? "").toLowerCase();
-  const deptLower = (person.department ?? "").toLowerCase();
-
-  const senMatch = seniority.length === 0 || seniority.some((s) => {
-    const keywords = SENIORITY_TITLES[s] ?? [s];
-    return keywords.some((k) => titleLower.includes(k.toLowerCase()) || senLower.includes(k.toLowerCase()));
-  });
-
-  const deptMatch = departments.length === 0 || departments.some((d) => {
-    const keywords = DEPARTMENT_TITLES[d] ?? [d];
-    return keywords.some((k) => titleLower.includes(k.toLowerCase()) || deptLower.includes(k.toLowerCase()));
-  });
-
-  // Both must match if both filters are active; either if only one is
-  if (seniority.length > 0 && departments.length > 0) return senMatch && deptMatch;
-  return senMatch || deptMatch;
-}
 
 export async function discoverPeople(params: {
   tenantId: string;
@@ -516,10 +455,10 @@ export async function discoverPeople(params: {
       activeSeniority,
       activeDepartments,
     );
-    if (filtered.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
-      warnings.push("No contacts match the selected seniority and department filters for this company.");
+    if (filtered.relaxed) {
+      warnings.push(roleRelaxWarning(params.companyName, filtered.relaxed));
     }
-    return { people: filtered.slice(0, limit), resolvedDomain, resolvedWebsite, warnings, errors };
+    return { people: filtered.people.slice(0, limit), resolvedDomain, resolvedWebsite, warnings, errors };
   }
 
   const remaining = limit - companyContacts.length;
@@ -617,9 +556,10 @@ export async function discoverPeople(params: {
   const allPeople = [...companyContacts.map(contactToResult), ...external];
   let finalPeople: ScoutPersonResult[];
   if (activeSeniority.length > 0 || activeDepartments.length > 0) {
-    finalPeople = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments);
-    if (finalPeople.length === 0 && allPeople.length > 0) {
-      warnings.push("No contacts match the selected seniority and department filters for this company.");
+    const filtered = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments);
+    finalPeople = filtered.people;
+    if (filtered.relaxed) {
+      warnings.push(roleRelaxWarning(params.companyName, filtered.relaxed));
     }
   } else {
     finalPeople = allPeople;
@@ -627,20 +567,17 @@ export async function discoverPeople(params: {
 
   const scoutCities = params.cities ?? [];
   if (scoutCities.length) {
-    const withKnownLocation = finalPeople.filter((person) => Boolean(person.location?.trim()));
     const localPeople = finalPeople.filter((person) =>
       personLocationMatchesSelection(person.location, scoutCities),
     );
-    // Prefer city matches. If every located person is in the wrong city, drop them.
     if (localPeople.some((person) => person.location?.trim())) {
       finalPeople = localPeople;
-    } else if (withKnownLocation.length > 0 && localPeople.length === 0) {
-      warnings.push(
-        `No decision-makers found in ${scoutCities.join(", ")} for ${params.companyName}. Try another company or nearby city.`,
-      );
-      finalPeople = [];
-    } else {
+    } else if (localPeople.length > 0) {
       finalPeople = localPeople;
+    } else if (finalPeople.length > 0) {
+      warnings.push(
+        `No decision-makers clearly in ${scoutCities.join(", ")} for ${params.companyName}. Showing best matches anyway.`,
+      );
     }
     finalPeople = rankPeopleByCityMatch(finalPeople, scoutCities);
   }

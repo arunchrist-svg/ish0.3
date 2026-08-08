@@ -5,6 +5,7 @@ import {
   companyCityMatchesSelection,
   expandCitySearchTerms,
   isNationwideSelection,
+  personLocationMatchesSelection,
   primaryCitiesForSearch,
   rankCompaniesByFitAndDiversity,
 } from "@/lib/enrichment/city-search";
@@ -57,6 +58,18 @@ describe("companyCityMatchesSelection", () => {
   it("still requires a city match for district picks", () => {
     expect(companyCityMatchesSelection("", ["Hyderabad"])).toBe(false);
     expect(companyCityMatchesSelection("Hyderabad", ["Hyderabad"])).toBe(true);
+  });
+});
+
+describe("personLocationMatchesSelection", () => {
+  it("keeps Greater Bengaluru Area when Karnataka is selected", () => {
+    expect(personLocationMatchesSelection("Greater Bengaluru Area", ["Karnataka"])).toBe(true);
+    expect(personLocationMatchesSelection("Bengaluru, Karnataka", ["Karnataka"])).toBe(true);
+  });
+
+  it("keeps unknown location instead of dropping the person", () => {
+    expect(personLocationMatchesSelection(undefined, ["Karnataka"])).toBe(true);
+    expect(personLocationMatchesSelection("", ["Bengaluru"])).toBe(true);
   });
 });
 
