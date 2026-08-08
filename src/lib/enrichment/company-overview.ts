@@ -54,12 +54,20 @@ function mergeOverview(
     sector?: string;
     employees?: string;
     giftBudget?: string;
-    giftScore?: number;
+    budgetBand?: string;
+    fitScore?: number;
     intelligenceNotes?: string;
     pastGiftingBrands?: PastGiftingBrand[];
     decisionMaker?: string;
   },
 ): CompanyOverview {
+  const budget =
+    known.budgetBand ||
+    known.giftBudget ||
+    base.budgetBand ||
+    base.giftBudget ||
+    llm.budgetBand ||
+    llm.giftBudget;
   return {
     sector: known.sector || base.sector || llm.sector,
     decisionMaker: known.decisionMaker || base.decisionMaker || llm.decisionMaker,
@@ -75,8 +83,9 @@ function mergeOverview(
       (known.pastGiftingBrands?.length ? known.pastGiftingBrands : undefined) ||
       (base.pastGiftingBrands?.length ? base.pastGiftingBrands : undefined) ||
       (llm.pastGiftingBrands?.length ? llm.pastGiftingBrands : undefined),
-    giftBudget: known.giftBudget || base.giftBudget || llm.giftBudget,
-    giftScore: known.giftScore ?? base.giftScore ?? llm.giftScore,
+    budgetBand: budget,
+    giftBudget: budget,
+    fitScore: known.fitScore ?? base.fitScore ?? llm.fitScore,
     intelligenceNotes:
       known.intelligenceNotes || base.intelligenceNotes || llm.intelligenceNotes,
     confidence: llm.confidence ?? base.confidence ?? "medium",
@@ -113,7 +122,18 @@ function parseLlmOverview(raw: Record<string, unknown>): CompanyOverview {
           ? String(raw.compliance_requirements)
           : undefined,
     pastGiftingBrands: normalizePastGifting(pastGifting),
-    giftBudget: raw.giftBudget != null ? String(raw.giftBudget) : undefined,
+    budgetBand:
+      raw.budgetBand != null
+        ? String(raw.budgetBand)
+        : raw.giftBudget != null
+          ? String(raw.giftBudget)
+          : undefined,
+    giftBudget:
+      raw.giftBudget != null
+        ? String(raw.giftBudget)
+        : raw.budgetBand != null
+          ? String(raw.budgetBand)
+          : undefined,
     intelligenceNotes:
       raw.intelligenceNotes != null
         ? String(raw.intelligenceNotes)
@@ -177,7 +197,8 @@ export async function enrichCompanyOverview(
     website,
     employees,
     giftBudget,
-    giftScore,
+    budgetBand,
+    fitScore,
     intelligenceNotes,
     accountId,
     force,
@@ -187,8 +208,8 @@ export async function enrichCompanyOverview(
   let storedOverview: CompanyOverview | undefined;
   let dbEmployees = employees;
   let dbSector = industry;
-  let dbGiftBudget = giftBudget;
-  let dbGiftScore = giftScore;
+  let dbGiftBudget = budgetBand ?? giftBudget;
+  let dbFitScore = fitScore;
   let dbIntel = intelligenceNotes;
   let dbPastGifting: PastGiftingBrand[] | undefined;
   let keyContacts: { name: string; title: string | null }[] = [];
@@ -203,8 +224,8 @@ export async function enrichCompanyOverview(
       overviewEnrichedAt = account.overviewEnrichedAt;
       dbEmployees = account.employees ?? dbEmployees;
       dbSector = account.industry ?? dbSector;
-      dbGiftBudget = account.giftBudget ?? dbGiftBudget;
-      dbGiftScore = account.giftScore ?? dbGiftScore;
+      dbGiftBudget = account.budgetBand ?? dbGiftBudget;
+      dbFitScore = account.fitScore ?? dbFitScore;
       dbIntel = account.intelNotes ?? dbIntel;
       dbPastGifting = normalizePastGifting(account.pastGifting);
       keyContacts = ctx.keyContacts;
@@ -214,8 +235,8 @@ export async function enrichCompanyOverview(
         const merged = mergeOverview(storedOverview, {}, {
           sector: dbSector,
           employees: dbEmployees,
-          giftBudget: dbGiftBudget,
-          giftScore: dbGiftScore,
+          budgetBand: dbGiftBudget,
+          fitScore: dbFitScore,
           intelligenceNotes: dbIntel,
           pastGiftingBrands: dbPastGifting,
           decisionMaker: pickDecisionMaker(keyContacts, decisionChain, decisionMakerHint),
@@ -260,21 +281,22 @@ Known decision maker: ${knownDecisionMaker ?? "unknown"}
 Web research:
 ${webContext}
 
-You are a B2B corporate gifting analyst for India Sweet House (India).
+You are a B2B sales analyst helping a seller research buyer companies in India.
+Seller brand and offer will be supplied separately when drafting outreach; here focus on factual company intelligence for corporate outreach fit.
 Output ONLY valid JSON with this shape:
 {
   "sector": "industry sector string",
-  "decisionMaker": "Name — Title or role likely to own gifting/procurement",
+  "decisionMaker": "Name — Title or role likely to own procurement or partnership decisions",
   "employees": "employee count or range as string",
-  "nextGiftingCalendarCycle": "next likely gifting occasion and timing (e.g. Diwali Oct 2026)",
+  "nextGiftingCalendarCycle": "next likely buying or recognition occasion and timing",
   "corporateMilestones": ["recent milestone 1", "milestone 2"],
-  "complianceRequirements": "vendor onboarding, PO, GST, or compliance notes for gifting vendors",
-  "pastGiftingBrands": [{ "year": "2024", "occasion": "Diwali", "items": "brand or item types", "perPerson": "₹range" }],
-  "giftBudget": "estimated annual gifting budget range",
-  "intelligenceNotes": "1-2 sentence gifting intelligence hook",
+  "complianceRequirements": "vendor onboarding, PO, GST, or compliance notes for vendors",
+  "pastGiftingBrands": [{ "year": "2024", "occasion": "occasion", "items": "brand or item types", "perPerson": "₹range" }],
+  "giftBudget": "estimated annual budget range for this category of spend",
+  "intelligenceNotes": "1-2 sentence intelligence hook for outreach",
   "confidence": "high" | "medium" | "low"
 }
-Use "unknown" sparingly; infer reasonable India corporate gifting context when web data is thin. Do NOT invent specific people names unless supported by context.`;
+Use "unknown" sparingly; infer reasonable India corporate context when web data is thin. Do NOT invent specific people names unless supported by context.`;
 
   let llmOverview: CompanyOverview = {};
   try {
@@ -292,7 +314,7 @@ Use "unknown" sparingly; infer reasonable India corporate gifting context when w
       employees: dbEmployees,
       decisionMaker: knownDecisionMaker,
       intelligenceNotes: dbIntel,
-      giftBudget: dbGiftBudget,
+      budgetBand: dbGiftBudget,
       pastGiftingBrands: dbPastGifting,
       confidence: "low",
       source: "fallback",
@@ -302,8 +324,8 @@ Use "unknown" sparingly; infer reasonable India corporate gifting context when w
   const overview = mergeOverview(storedOverview ?? {}, llmOverview, {
     sector: dbSector,
     employees: dbEmployees,
-    giftBudget: dbGiftBudget,
-    giftScore: dbGiftScore,
+    budgetBand: dbGiftBudget,
+    fitScore: dbFitScore,
     intelligenceNotes: dbIntel,
     pastGiftingBrands: dbPastGifting,
     decisionMaker: knownDecisionMaker,
@@ -319,7 +341,7 @@ Use "unknown" sparingly; infer reasonable India corporate gifting context when w
         overviewEnrichedAt: enrichedAt,
         employees: overview.employees ?? dbEmployees,
         industry: overview.sector ?? dbSector,
-        giftBudget: overview.giftBudget ?? dbGiftBudget,
+        budgetBand: overview.budgetBand ?? overview.giftBudget ?? dbGiftBudget,
         intelNotes: overview.intelligenceNotes ?? dbIntel,
         pastGifting: overview.pastGiftingBrands?.length
           ? overview.pastGiftingBrands

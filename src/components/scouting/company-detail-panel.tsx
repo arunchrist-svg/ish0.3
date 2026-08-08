@@ -16,7 +16,7 @@ export function CompanyDetailPanel({ company, decisionMakerHint, decisionMakerLe
       logo={company.logo}
       domain={company.domain}
       city={company.city}
-      giftScore={company.giftScore}
+      fitScore={company.fitScore}
       industry={company.industry || company.type}
       initialOverview={company.overview}
       decisionMakerLeadId={decisionMakerLeadId}
@@ -26,8 +26,8 @@ export function CompanyDetailPanel({ company, decisionMakerHint, decisionMakerLe
         industry: company.industry || company.type,
         domain: company.domain,
         employees: company.employees !== "—" ? company.employees : undefined,
-        giftBudget: company.giftBudget !== "—" ? company.giftBudget : undefined,
-        giftScore: company.giftScore,
+        budgetBand: company.budgetBand !== "—" ? company.budgetBand : undefined,
+        fitScore: company.fitScore,
         intelligenceNotes: company.intelligenceNotes || undefined,
         accountId: company.accountId,
         decisionMakerHint: dmHint,

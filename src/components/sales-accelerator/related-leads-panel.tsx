@@ -24,34 +24,34 @@ export function RelatedLeadsPanel({ leadId }: { leadId: string }) {
   }, [leadId]);
 
   if (loading) {
-    return <div className="px-6 py-12 text-center text-[13px] text-ish-ink-soft">Loading related leads…</div>;
+    return <div className="px-6 py-12 text-center text-[13px] text-brand-ink-soft">Loading related leads…</div>;
   }
 
   if (!related.length) {
     return (
       <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-        <Users className="size-8 text-ish-ink-faint" />
-        <p className="text-[13px] text-ish-ink-soft">No related leads yet. Scout more contacts at this company or in this industry.</p>
+        <Users className="size-8 text-brand-ink-faint" />
+        <p className="text-[13px] text-brand-ink-soft">No related leads yet. Scout more contacts at this company or in this industry.</p>
       </div>
     );
   }
 
   return (
     <div className="p-6">
-      <h3 className="mb-4 text-[14px] font-bold text-ish-ink">People you may also want to reach</h3>
+      <h3 className="mb-4 text-[14px] font-bold text-brand-ink">People you may also want to reach</h3>
       <div className="grid gap-3 sm:grid-cols-2">
         {related.map((item, i) => (
-          <div key={i} className="rounded-2xl border border-ish-border bg-white p-4 shadow-[var(--shadow-ish-sm)]">
+          <div key={i} className="rounded-2xl border border-brand-border bg-white p-4 shadow-[var(--shadow-brand-sm)]">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <div className="text-[13px] font-bold text-ish-ink">{item.person.name}</div>
-                <div className="text-[11px] text-ish-ink-soft">{item.person.title ?? "—"}</div>
+                <div className="text-[13px] font-bold text-brand-ink">{item.person.name}</div>
+                <div className="text-[11px] text-brand-ink-soft">{item.person.title ?? "—"}</div>
               </div>
-              <span className="rounded-full bg-ish-yellow/40 px-2 py-0.5 text-[10px] font-bold text-ish-ink">
+              <span className="rounded-full bg-brand-yellow/40 px-2 py-0.5 text-[10px] font-bold text-brand-ink">
                 {item.person.matchScore ?? item.score}
               </span>
             </div>
-            <div className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-ish-ink-soft">
+            <div className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-brand-ink-soft">
               <Building2 className="size-3" />
               {item.reason}
             </div>

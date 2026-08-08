@@ -19,7 +19,7 @@ export function SuggestedCompetitorsPicker({ suggestions, selected, onToggle, cl
 
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-[11.5px] text-ish-ink-soft">
+      <p className="text-[11.5px] text-brand-ink-soft">
         Suggested competitors for this category. Click to add or remove.
       </p>
       <div className="flex flex-wrap gap-2">
@@ -33,8 +33,8 @@ export function SuggestedCompetitorsPicker({ suggestions, selected, onToggle, cl
               className={cn(
                 "rounded-full border px-3 py-1.5 text-[12px] font-medium transition",
                 active
-                  ? "border-ish-black bg-ish-black text-white"
-                  : "border-ish-border bg-white text-ish-ink hover:border-ish-black/30",
+                  ? "border-brand-black bg-brand-black text-white"
+                  : "border-brand-border bg-white text-brand-ink hover:border-brand-black/30",
               )}
             >
               {brand}

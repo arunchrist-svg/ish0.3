@@ -15,8 +15,8 @@ export function SettingsToggleRow({
   return (
     <SettingsRow className="justify-between">
       <div className="min-w-0 flex-1 pr-4">
-        <div className="text-[15px] font-medium leading-snug text-ish-ink">{label}</div>
-        {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-ish-ink-soft">{desc}</p> : null}
+        <div className="text-[15px] font-medium leading-snug text-brand-ink">{label}</div>
+        {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">{desc}</p> : null}
       </div>
       <button
         type="button"
@@ -25,7 +25,7 @@ export function SettingsToggleRow({
         onClick={() => onChange(!value)}
         className={cn(
           "relative h-[31px] w-[51px] shrink-0 overflow-hidden rounded-full transition-colors duration-200",
-          value ? "bg-ish-black" : "bg-ish-border",
+          value ? "bg-brand-black" : "bg-brand-border",
         )}
       >
         <span

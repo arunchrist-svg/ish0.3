@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, FlaskConical, Zap } from "lucide-react";
+import { Eye, FlaskConical, Mail, Zap } from "lucide-react";
 import { useSession } from "@/components/providers/session-provider";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -35,12 +35,24 @@ export function useHubAlerts(): HubAlert[] {
     });
   }
 
-  if (session.tenant.demoMode || session.sendMode === "dry_run") {
+  if (session.emailConfigured === false) {
+    alerts.push({
+      id: "email-setup",
+      icon: Mail,
+      title: "Connect outbound email",
+      description:
+        "Add your own Gmail App Password or Resend key before sending outreach. Nothing is shared from other companies.",
+      href: "/settings?tab=email",
+      hrefLabel: "Settings → Email",
+    });
+  } else if (session.tenant.demoMode || session.sendMode === "dry_run") {
     alerts.push({
       id: "demo",
       icon: FlaskConical,
       title: "Demo mode",
       description: `Emails are logged only (${session.sendMode}). Scout, enrich, and draft work without sending live outreach.`,
+      href: "/settings?tab=email",
+      hrefLabel: "Settings → Email",
     });
   }
 

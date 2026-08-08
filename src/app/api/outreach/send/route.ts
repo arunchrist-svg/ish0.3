@@ -171,7 +171,7 @@ export async function POST(req: Request) {
     }
 
     const thread = await loadThreadContext(approval.leadId, leadRow);
-    const fallbackSubject = approval.subjectUsed ?? outreach.subjectA ?? "Diwali gifting for your team";
+    const fallbackSubject = approval.subjectUsed ?? outreach.subjectA ?? "Outreach for your team";
     const subject = resolveOutboundSubject({
       isReplySend,
       rootSubject: thread.rootSubject,
@@ -186,7 +186,7 @@ export async function POST(req: Request) {
       referencesChain: thread.referencesChain,
     });
 
-    const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@ish.local";
+    const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@localhost";
     const primaryRecipient = recipients[0];
     const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();

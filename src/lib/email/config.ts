@@ -1,9 +1,12 @@
 import { resolveBrandConfig } from "@/lib/email/brand-presets";
+import type { PlatformIntent } from "@/lib/brand/platform-intent";
 
 export type EmailSendMode = "dry_run" | "test" | "live";
 export type EmailStyle = "primary" | "marketing";
+/** Legacy preset ids kept for migration; new saves use "custom" + verticalPackId. */
 export type BrandSlug = "ish" | "prestige" | "custom";
 export type CampaignMode = "diwali_gifting" | "mass_ordering" | "festival_bundle" | "custom";
+export type VerticalPackId = "general" | "gifting-sweets" | "gifting-appliances";
 
 /** Insights extracted from the seller's website during setup / Settings. */
 export type WebsiteBrandInsights = {
@@ -30,6 +33,13 @@ export type BrandConfig = {
   productSummary: string;
   buyerPersonas: string[];
   toneNotes?: string;
+  /** Applied vertical pack (knowledge, CTAs, Brand Intel defaults). */
+  verticalPackId?: VerticalPackId;
+  /**
+   * What the client uses Nebula for (SaaS sales, gifting, etc.).
+   * Drives campaign-mode dropdowns and Scout fallbacks with verticalPackId.
+   */
+  platformIntent?: PlatformIntent;
   /** Seller company website collected during onboarding or Settings. */
   websiteUrl?: string;
   /** Auto-filled from website analysis; Writer and Scout consume these. */
@@ -165,53 +175,31 @@ export const EMAIL_SEND_MODE_OPTIONS: {
   },
 ];
 
-function parseEmailProvider(value: string | undefined): EmailProvider {
-  return value === "resend" ? "resend" : "smtp";
-}
-
 export function getDefaultEmailConfig(): EmailConfig {
+  // Workspace-owned defaults only. Never seed SMTP/from/test addresses from
+  // process.env — those are platform secrets and must not appear on new orgs.
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3002");
 
-  const legacyFrom = process.env.EMAIL_FROM?.trim();
-  let fromAddress = process.env.EMAIL_FROM_ADDRESS ?? process.env.SMTP_USER ?? "";
-  let fromName = process.env.EMAIL_FROM_NAME ?? "ISH Gifting Team";
-  if (legacyFrom?.includes("<")) {
-    const match = legacyFrom.match(/^(.+?)\s*<([^>]+)>$/);
-    if (match) {
-      fromName = match[1].trim();
-      fromAddress = match[2].trim();
-    }
-  } else if (legacyFrom && legacyFrom.includes("@")) {
-    fromAddress = legacyFrom;
-  }
-
-  const smtpUser = process.env.SMTP_USER?.trim() ?? fromAddress;
-
-  const testRecipient =
-    process.env.EMAIL_TEST_RECIPIENT?.trim() ||
-    process.env.RESEND_TEST_RECIPIENT?.trim() ||
-    "";
-
   return {
-    provider: parseEmailProvider(process.env.EMAIL_PROVIDER),
-    sendMode: (process.env.EMAIL_SEND_MODE ?? "dry_run") as EmailSendMode,
-    smtpHost: process.env.SMTP_HOST?.trim() || "smtp.gmail.com",
-    smtpPort: Number(process.env.SMTP_PORT ?? "587"),
-    smtpSecure: process.env.SMTP_SECURE === "true",
-    smtpUser,
-    smtpPass: process.env.SMTP_PASS?.trim() ?? "",
-    fromAddress: fromAddress || smtpUser,
-    fromName,
-    replyToAddress: process.env.EMAIL_REPLY_TO_ADDRESS ?? fromAddress ?? smtpUser,
-    replyToName: process.env.EMAIL_REPLY_TO_NAME ?? fromName,
-    testRecipient,
+    provider: "smtp",
+    sendMode: "dry_run",
+    smtpHost: "smtp.gmail.com",
+    smtpPort: 587,
+    smtpSecure: false,
+    smtpUser: "",
+    smtpPass: "",
+    fromAddress: "",
+    fromName: "",
+    replyToAddress: "",
+    replyToName: "",
+    testRecipient: "",
     cadenceDays: [3, 7],
     appUrl,
-    emailStyle: (process.env.EMAIL_STYLE === "marketing" ? "marketing" : "primary") as EmailStyle,
-    brandConfig: resolveBrandConfig({ brandSlug: "custom" }),
-    campaignMode: "diwali_gifting",
+    emailStyle: "primary",
+    brandConfig: resolveBrandConfig({ brandSlug: "custom", verticalPackId: "general" }),
+    campaignMode: "custom",
     dailySendCapPerDomain: 50,
     followUpPolicy: "auto_send",
   };
@@ -227,7 +215,7 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
 
   const brandConfig = resolveBrandConfig(merged.brandConfig);
   const emailStyle = merged.emailStyle ?? "primary";
-  const campaignMode = merged.campaignMode ?? "diwali_gifting";
+  const campaignMode = merged.campaignMode ?? "custom";
 
   return {
     ...merged,
@@ -263,22 +251,29 @@ export function getSmtpEnv(): SmtpCredentials {
 }
 
 export function resolveSmtpCredentials(config: EmailConfig): SmtpCredentials {
-  const env = getSmtpEnv();
+  // Use only workspace-stored credentials. Do not fall back to process.env SMTP_* —
+  // that would share one mailbox across every tenant.
   return {
-    host: config.smtpHost?.trim() || env.host || "smtp.gmail.com",
-    port: config.smtpPort || env.port || 587,
-    secure: config.smtpSecure ?? env.secure ?? false,
-    user: config.smtpUser?.trim() || env.user,
-    pass: config.smtpPass?.trim() || env.pass,
+    host: config.smtpHost?.trim() || "smtp.gmail.com",
+    port: config.smtpPort || 587,
+    secure: config.smtpSecure ?? false,
+    user: config.smtpUser?.trim() || "",
+    pass: config.smtpPass?.trim() || "",
   };
 }
 
 export function getSmtpStatus(config?: EmailConfig): ProviderStatus {
-  const creds = config ? resolveSmtpCredentials(config) : getSmtpEnv();
+  if (!config) {
+    return {
+      configured: false,
+      hint: "Add your Gmail address and App Password in Settings → Email",
+    };
+  }
+  const creds = resolveSmtpCredentials(config);
   if (!creds.host || !creds.user || !creds.pass) {
     return {
       configured: false,
-      hint: "Add your Gmail address and App Password in Settings below",
+      hint: "Add your Gmail address and App Password in Settings → Email",
       user: creds.user || undefined,
     };
   }

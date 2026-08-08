@@ -13,7 +13,7 @@ export function IshAvatar({ name, index = 0, size = 40, className }: IshAvatarPr
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full border-2 border-white font-bold text-[#5a4838] shadow-[var(--shadow-ish-sm)]",
+        "flex shrink-0 items-center justify-center rounded-full border-2 border-white font-bold text-[#5a4838] shadow-[var(--shadow-brand-sm)]",
         getAvatarColor(index),
         className,
       )}

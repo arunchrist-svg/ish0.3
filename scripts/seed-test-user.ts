@@ -137,7 +137,7 @@ async function main() {
       season: "diwali",
       startDate: new Date("2026-09-15"),
       endDate: new Date("2026-10-31"),
-      giftingContext: "Automated test campaign",
+      buyingContext: "Automated test campaign",
       targetCities: ["Bangalore"],
       targetIndustries: ["IT"],
       cadenceDays: [4, 8, 14],
@@ -157,7 +157,7 @@ async function main() {
       industry: "IT",
       city: "Bangalore",
       employees: "500",
-      giftScore: 75,
+      fitScore: 75,
       dataSource: "test",
     })
     .onConflictDoNothing();
@@ -266,8 +266,8 @@ async function main() {
       industry: "IT",
       city: "Bangalore",
       employees: "120",
-      giftScore: 78,
-      giftBudget: "₹1–2L",
+      fitScore: 78,
+      budgetBand: "₹1–2L",
       intelNotes: "Demo account for outreach email testing (Arun).",
       dataSource: "test",
     })

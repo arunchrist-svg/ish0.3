@@ -58,7 +58,7 @@ export default function ChangePasswordPage() {
     <AuthShell>
       <div className="mb-8">
         <h1 className={cn("mb-2 leading-tight", text.display)}>Change password</h1>
-        <p className="text-[14px] text-ish-ink-soft">Set a new password for your account.</p>
+        <p className="text-[14px] text-brand-ink-soft">Set a new password for your account.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -98,7 +98,7 @@ export default function ChangePasswordPage() {
           <p className="rounded-xl bg-red-50 px-4 py-2.5 text-center text-[13px] font-medium text-red-600">{error}</p>
         ) : null}
 
-        <Button type="submit" disabled={loading || newPassword.length < 8} className="h-12 w-full rounded-2xl bg-ish-black text-[14px] font-bold text-white">
+        <Button type="submit" disabled={loading || newPassword.length < 8} className="h-12 w-full rounded-2xl bg-brand-black text-[14px] font-bold text-white">
           {loading ? <Loader2 className="mx-auto size-4 animate-spin" /> : "Update password"}
         </Button>
       </form>

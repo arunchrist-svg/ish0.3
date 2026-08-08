@@ -141,8 +141,8 @@ function FilterChip({
       className={cn(
         "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150 active:scale-[0.97]",
         active
-          ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-          : "bg-ish-app text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
+          ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+          : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
       )}
     >
       {icon ? <span className="shrink-0 leading-none">{icon}</span> : null}
@@ -177,21 +177,21 @@ function PillSegment({
       className={cn(
         "group flex items-center gap-2 rounded-full px-4 py-2 text-left transition-all duration-150",
         active
-          ? "bg-white shadow-[0_2px_12px_rgba(20,20,30,0.10)] ring-1 ring-ish-border"
-          : "hover:bg-ish-app",
+          ? "bg-white shadow-[0_2px_12px_rgba(20,20,30,0.10)] ring-1 ring-brand-border"
+          : "hover:bg-brand-app",
       )}
     >
-      <span className={cn("transition-colors", active || hasSelection ? "text-ish-ink" : "text-ish-ink-faint")}>
+      <span className={cn("transition-colors", active || hasSelection ? "text-brand-ink" : "text-brand-ink-faint")}>
         {icon}
       </span>
       <span className="flex flex-col">
-        <span className="text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+        <span className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
           {label}
         </span>
         <span
           className={cn(
             "text-[13px] font-semibold leading-tight",
-            hasSelection ? "text-ish-ink" : "text-ish-ink-soft",
+            hasSelection ? "text-brand-ink" : "text-brand-ink-soft",
           )}
         >
           {value}
@@ -199,7 +199,7 @@ function PillSegment({
       </span>
       <ChevronDown
         className={cn(
-          "size-3.5 shrink-0 text-ish-ink-faint transition-transform duration-200",
+          "size-3.5 shrink-0 text-brand-ink-faint transition-transform duration-200",
           active && "rotate-180",
         )}
       />
@@ -227,7 +227,7 @@ function Popover({
   return (
     <div
       className={cn(
-        "absolute top-full left-0 z-50 mt-2 overflow-hidden rounded-2xl border border-ish-border bg-white shadow-[var(--shadow-ish-float)] transition-all duration-200 origin-top",
+        "absolute top-full left-0 z-50 mt-2 overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-float)] transition-all duration-200 origin-top",
         open
           ? "pointer-events-auto scale-100 opacity-100 translate-y-0"
           : "pointer-events-none scale-95 opacity-0 -translate-y-1",
@@ -305,31 +305,31 @@ function MobileFilterGridChip({
         "flex flex-col items-start rounded-2xl border text-left transition-all active:scale-[0.98]",
         large ? "min-h-[92px] gap-2.5 p-4" : "min-h-[80px] gap-2 p-3",
         selected
-          ? "border-ish-stratus-blue/40 bg-ish-stratus-blue/10 ring-1 ring-ish-stratus-blue/25"
-          : "border-ish-border/55 bg-white hover:bg-ish-canvas",
+          ? "border-brand-stratus-blue/40 bg-brand-stratus-blue/10 ring-1 ring-brand-stratus-blue/25"
+          : "border-brand-border/55 bg-white hover:bg-brand-canvas",
         disabled && "cursor-not-allowed opacity-60",
       )}
     >
       <div className="flex w-full items-start justify-between gap-2">
         <span
           className={cn(
-            "flex shrink-0 items-center justify-center rounded-xl bg-ish-canvas text-ish-stratus-blue shadow-ish-sm",
+            "flex shrink-0 items-center justify-center rounded-xl bg-brand-canvas text-brand-stratus-blue shadow-brand-sm",
             large ? "size-11" : "size-9",
           )}
         >
           {icon}
         </span>
         {selected ? (
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ish-stratus-blue text-white">
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-stratus-blue text-white">
             <Check className="size-3" strokeWidth={2.5} />
           </span>
         ) : null}
       </div>
-      <span className={cn("line-clamp-2 font-semibold leading-snug text-ish-ink", large ? "text-[15px]" : "text-[13px]")}>
+      <span className={cn("line-clamp-2 font-semibold leading-snug text-brand-ink", large ? "text-[15px]" : "text-[13px]")}>
         {label}
       </span>
       {sublabel ? (
-        <span className="line-clamp-1 text-[11px] text-ish-ink-soft">{sublabel}</span>
+        <span className="line-clamp-1 text-[11px] text-brand-ink-soft">{sublabel}</span>
       ) : null}
     </button>
   );
@@ -354,8 +354,8 @@ function MobileSheetPrimaryButton({
       className={cn(
         "flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         disabled
-          ? "bg-ish-canvas text-ish-ink-faint"
-          : "bg-ish-yellow-gradient text-ish-black shadow-ish-yellow-sm",
+          ? "bg-brand-canvas text-brand-ink-faint"
+          : "bg-brand-yellow-gradient text-brand-black shadow-brand-yellow-sm",
       )}
     >
       {label}
@@ -384,7 +384,7 @@ function MobileCitySheetContent({
     <div className="flex flex-col px-1 py-2">
       {SCOUT_CITY_GROUPS.map((group) => (
         <div key={group.label} className="mb-2 last:mb-0">
-          <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">
+          <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
             {group.label}
           </p>
           <div className="grid grid-cols-2 gap-2 px-3">
@@ -421,7 +421,7 @@ function MobileIndustrySheetContent({
   return (
     <div className="flex flex-col px-1 py-2">
       <div className="mb-2 last:mb-0">
-        <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">
+        <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
           Industries
         </p>
         <div className="grid grid-cols-2 gap-2 px-3">
@@ -459,7 +459,7 @@ function MobilePeopleSheetContent({
   return (
     <div className="flex flex-col px-1 py-2">
       <div className="mb-2 flex items-center justify-between px-3">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
           People filters
         </p>
         {hasAny ? (
@@ -469,14 +469,14 @@ function MobilePeopleSheetContent({
               [...seniority].forEach((s) => onSeniorityToggle(s));
               [...departments].forEach((d) => onDepartmentToggle(d));
             }}
-            className="text-[12px] font-semibold text-ish-stratus-blue"
+            className="text-[12px] font-semibold text-brand-stratus-blue"
           >
             Clear all
           </button>
         ) : null}
       </div>
 
-      <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">
+      <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
         Seniority
       </p>
       <div className="mb-4 grid grid-cols-2 gap-2.5 px-3">
@@ -495,7 +495,7 @@ function MobilePeopleSheetContent({
         })}
       </div>
 
-      <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">
+      <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
         Department
       </p>
       <div className="grid grid-cols-2 gap-2.5 px-3">
@@ -566,32 +566,32 @@ function CityPopoverContent({
 
   return (
     <div className="flex flex-col">
-      <div className="border-b border-ish-border p-3">
+      <div className="border-b border-brand-border p-3">
         <button
           type="button"
           disabled={locating}
           onClick={() => void useNearMe()}
-          className="mb-2 flex w-full min-h-[40px] items-center justify-center gap-2 rounded-xl bg-ish-black text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
+          className="mb-2 flex w-full min-h-[40px] items-center justify-center gap-2 rounded-xl bg-brand-black text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
         >
           {locating ? "Locating..." : "Near me"}
         </button>
       </div>
-      <div className="border-b border-ish-border p-3 pt-0">
-        <div className="flex items-center gap-2 rounded-xl border border-ish-border bg-ish-app px-3 py-2">
-          <Search className="size-3.5 shrink-0 text-ish-ink-faint" />
+      <div className="border-b border-brand-border p-3 pt-0">
+        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-app px-3 py-2">
+          <Search className="size-3.5 shrink-0 text-brand-ink-faint" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search city…"
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ish-ink outline-none placeholder:text-ish-ink-faint"
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
           />
           {query && (
             <button
               type="button"
               onClick={() => { setQuery(""); inputRef.current?.focus(); }}
-              className="text-ish-ink-faint hover:text-ish-ink"
+              className="text-brand-ink-faint hover:text-brand-ink"
             >
               <X className="size-3" />
             </button>
@@ -602,11 +602,11 @@ function CityPopoverContent({
       {/* City groups */}
       <div className="p-3">
         {filtered.length === 0 ? (
-          <p className="py-4 text-center text-[12px] text-ish-ink-faint">No cities match.</p>
+          <p className="py-4 text-center text-[12px] text-brand-ink-faint">No cities match.</p>
         ) : (
           filtered.map((group) => (
             <div key={group.label} className="mb-3 last:mb-0">
-              <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+              <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
                 {group.label}
               </p>
               <div className="flex flex-wrap gap-1.5">
@@ -621,8 +621,8 @@ function CityPopoverContent({
                       className={cn(
                         "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150",
                         selected
-                          ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-                          : "bg-ish-app text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
+                          ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+                          : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
                       )}
                     >
                       <span className="leading-none">{meta.icon}</span>
@@ -638,11 +638,11 @@ function CityPopoverContent({
 
       {/* Footer: selected chips + clear */}
       {cities.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-ish-border bg-ish-app/60 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
           {cities.map((c) => (
             <span
               key={c}
-              className="flex items-center gap-1 rounded-full bg-ish-yellow px-2.5 py-0.5 text-[11px] font-bold text-ish-ink"
+              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
             >
               {c}
               <button
@@ -682,16 +682,16 @@ function IndustryPopoverContent({
 
   return (
     <div className="flex flex-col">
-      <div className="border-b border-ish-border p-3">
-        <div className="flex items-center gap-2 rounded-xl border border-ish-border bg-ish-app px-3 py-2">
-          <Search className="size-3.5 shrink-0 text-ish-ink-faint" />
+      <div className="border-b border-brand-border p-3">
+        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-app px-3 py-2">
+          <Search className="size-3.5 shrink-0 text-brand-ink-faint" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search industry…"
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-ish-ink outline-none placeholder:text-ish-ink-faint"
+            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
           />
           {query && (
             <button
@@ -700,7 +700,7 @@ function IndustryPopoverContent({
                 setQuery("");
                 inputRef.current?.focus();
               }}
-              className="text-ish-ink-faint hover:text-ish-ink"
+              className="text-brand-ink-faint hover:text-brand-ink"
             >
               <X className="size-3" />
             </button>
@@ -710,7 +710,7 @@ function IndustryPopoverContent({
 
       <div className="p-3">
         {filtered.length === 0 ? (
-          <p className="py-4 text-center text-[12px] text-ish-ink-faint">No industries match.</p>
+          <p className="py-4 text-center text-[12px] text-brand-ink-faint">No industries match.</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {filtered.map((ind) => {
@@ -724,8 +724,8 @@ function IndustryPopoverContent({
                   className={cn(
                     "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150",
                     selected
-                      ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-                      : "bg-ish-app text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
+                      ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+                      : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
                   )}
                 >
                   <Icon className="size-3.5 shrink-0" />
@@ -738,11 +738,11 @@ function IndustryPopoverContent({
       </div>
 
       {industries.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-ish-border bg-ish-app/60 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
           {industries.map((ind) => (
             <span
               key={ind}
-              className="flex items-center gap-1 rounded-full bg-ish-yellow px-2.5 py-0.5 text-[11px] font-bold text-ish-ink"
+              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
             >
               {ind}
               <button
@@ -782,7 +782,7 @@ function PeoplePopoverContent({
     <div className="flex flex-col">
       <div className="p-3">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+          <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
             People Filters
           </p>
           {hasAny && (
@@ -792,7 +792,7 @@ function PeoplePopoverContent({
                 [...seniority].forEach((s) => onSeniorityToggle(s));
                 [...departments].forEach((d) => onDepartmentToggle(d));
               }}
-              className="text-[11px] font-semibold text-ish-ink-faint hover:text-ish-ink"
+              className="text-[11px] font-semibold text-brand-ink-faint hover:text-brand-ink"
             >
               Clear
             </button>
@@ -800,7 +800,7 @@ function PeoplePopoverContent({
         </div>
 
         <div className="mb-3">
-          <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+          <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
             Seniority
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -820,7 +820,7 @@ function PeoplePopoverContent({
         </div>
 
         <div>
-          <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+          <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
             Department
           </p>
           <div className="flex flex-wrap gap-1.5">
@@ -841,17 +841,17 @@ function PeoplePopoverContent({
       </div>
 
       {hasAny && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-ish-border bg-ish-app/60 px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
           {seniority.map((s) => (
             <span
               key={`seniority-${s}`}
-              className="flex items-center gap-1 rounded-full bg-ish-yellow px-2.5 py-0.5 text-[11px] font-bold text-ish-ink"
+              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
             >
               {s}
               <button
                 type="button"
                 onClick={() => onSeniorityToggle(s)}
-                className="text-ish-ink/70 hover:text-ish-ink"
+                className="text-brand-ink/70 hover:text-brand-ink"
                 aria-label={`Remove ${s}`}
               >
                 <X className="size-2.5" />
@@ -861,13 +861,13 @@ function PeoplePopoverContent({
           {departments.map((d) => (
             <span
               key={`department-${d}`}
-              className="flex items-center gap-1 rounded-full bg-ish-yellow px-2.5 py-0.5 text-[11px] font-bold text-ish-ink"
+              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
             >
               {d}
               <button
                 type="button"
                 onClick={() => onDepartmentToggle(d)}
-                className="text-ish-ink/70 hover:text-ish-ink"
+                className="text-brand-ink/70 hover:text-brand-ink"
                 aria-label={`Remove ${d}`}
               >
                 <X className="size-2.5" />
@@ -892,15 +892,15 @@ function ModeToggle({
   onChange: (m: ScoutMode) => void;
 }) {
   return (
-    <div className="flex items-center rounded-full border border-ish-border bg-ish-app/60 p-1 shadow-[var(--shadow-ish-sm)]">
+    <div className="flex items-center rounded-full border border-brand-border bg-brand-app/60 p-1 shadow-[var(--shadow-brand-sm)]">
       <button
         type="button"
         onClick={() => onChange("autopilot")}
         className={cn(
           "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-all duration-150",
           mode === "autopilot"
-            ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-            : "text-ish-ink-soft hover:text-ish-ink",
+            ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+            : "text-brand-ink-soft hover:text-brand-ink",
         )}
       >
         <span className="text-[10px]">⚡</span>
@@ -912,8 +912,8 @@ function ModeToggle({
         className={cn(
           "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-all duration-150",
           mode === "search"
-            ? "bg-ish-ink text-white shadow-[var(--shadow-ish)]"
-            : "text-ish-ink-soft hover:text-ish-ink",
+            ? "bg-brand-ink text-white shadow-[var(--shadow-brand)]"
+            : "text-brand-ink-soft hover:text-brand-ink",
         )}
       >
         <Search className="size-3" />
@@ -939,22 +939,22 @@ function CompanySearchInput({
   loading?: boolean;
 }) {
   return (
-    <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-ish-border bg-white px-3.5 py-2 shadow-[var(--shadow-ish-sm)]">
-      <Building2 className="size-3.5 shrink-0 text-ish-ink-faint" />
+    <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-brand-border bg-white px-3.5 py-2 shadow-[var(--shadow-brand-sm)]">
+      <Building2 className="size-3.5 shrink-0 text-brand-ink-faint" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && value.trim()) onSearch(); }}
         placeholder="e.g. Chandra Sekar Hospital"
-        className="min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-ish-ink outline-none placeholder:text-ish-ink-faint"
+        className="min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-brand-ink outline-none placeholder:text-brand-ink-faint"
         disabled={loading}
       />
       {value && (
         <button
           type="button"
           onClick={() => onChange("")}
-          className="shrink-0 text-ish-ink-faint hover:text-ish-ink"
+          className="shrink-0 text-brand-ink-faint hover:text-brand-ink"
         >
           <X className="size-3" />
         </button>
@@ -983,7 +983,7 @@ function SecondaryBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex shrink-0 items-center gap-1.5 rounded-full border border-ish-border bg-white px-4 py-2 text-[12.5px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-canvas active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+      className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-border bg-white px-4 py-2 text-[12.5px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-canvas active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       {label}
@@ -1012,10 +1012,10 @@ function PrimaryBtn({
       className={cn(
         "flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2 text-[13px] font-bold transition-all duration-150 active:scale-[0.97]",
         !disabled && color === "yellow" &&
-          "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)] hover:opacity-90",
+          "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] hover:opacity-90",
         !disabled && color === "green" &&
-          "bg-ish-green text-white shadow-[0_2px_8px_rgba(63,190,130,0.35)] hover:opacity-90",
-        disabled && "cursor-not-allowed bg-ish-canvas text-ish-ink-faint",
+          "bg-brand-green text-white shadow-[0_2px_8px_rgba(63,190,130,0.35)] hover:opacity-90",
+        disabled && "cursor-not-allowed bg-brand-canvas text-brand-ink-faint",
       )}
     >
       {label}
@@ -1047,11 +1047,11 @@ function CompactFilterChip({
       className={cn(
         "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-[0.97]",
         active
-          ? "border-ish-stratus-yellow/50 bg-white text-ish-ink shadow-ish-sm"
-          : "border-ish-border/60 bg-white/80 text-ish-ink-soft shadow-ish-sm",
+          ? "border-brand-stratus-yellow/50 bg-white text-brand-ink shadow-brand-sm"
+          : "border-brand-border/60 bg-white/80 text-brand-ink-soft shadow-brand-sm",
       )}
     >
-      <span className={cn(active ? "text-ish-stratus-blue" : "text-ish-ink-faint")}>{icon}</span>
+      <span className={cn(active ? "text-brand-stratus-blue" : "text-brand-ink-faint")}>{icon}</span>
       {label}
     </button>
   );
@@ -1136,22 +1136,22 @@ export function ScoutingToolbar({
 
     if (filtersCollapsed) {
       return (
-        <div className="border-b border-ish-border/40 bg-white/70 px-4 py-2 backdrop-blur-xl">
+        <div className="border-b border-brand-border/40 bg-white/70 px-4 py-2 backdrop-blur-xl">
           <button
             type="button"
             onClick={onExpandFilters}
-            className="flex w-full items-center justify-between gap-2 rounded-2xl border border-ish-border/50 bg-white/90 px-3.5 py-2.5 text-left shadow-ish-sm active:scale-[0.99]"
+            className="flex w-full items-center justify-between gap-2 rounded-2xl border border-brand-border/50 bg-white/90 px-3.5 py-2.5 text-left shadow-brand-sm active:scale-[0.99]"
           >
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">Filters</p>
-              <p className="truncate text-[13px] font-semibold text-ish-ink">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">Filters</p>
+              <p className="truncate text-[13px] font-semibold text-brand-ink">
                 {cityLabel(cities)} · {industryLabel(industries)}
                 {!isSearchMode && seniority.length + departments.length > 0
                   ? ` · ${peopleLabel(seniority, departments)}`
                   : ""}
               </p>
             </div>
-            <ChevronDown className="size-4 shrink-0 text-ish-ink-faint" />
+            <ChevronDown className="size-4 shrink-0 text-brand-ink-faint" />
           </button>
         </div>
       );
@@ -1159,7 +1159,7 @@ export function ScoutingToolbar({
 
     return (
       <>
-        <div className="border-b border-ish-border/40 bg-white/70 backdrop-blur-xl">
+        <div className="border-b border-brand-border/40 bg-white/70 backdrop-blur-xl">
           {isSearchMode ? (
             <div className="px-4 pb-3 pt-2">
               <CompanySearchInput
@@ -1273,7 +1273,7 @@ export function ScoutingToolbar({
       <div
         ref={barRef}
         className={cn(
-          "relative flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-ish-border bg-white px-4 py-2.5",
+          "relative flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-brand-border bg-white px-4 py-2.5",
           active ? "z-50" : "z-30",
         )}
       >
@@ -1284,10 +1284,10 @@ export function ScoutingToolbar({
         />
 
         {/* Thin separator */}
-        <div className="mx-1 hidden h-6 w-px bg-ish-border sm:block" aria-hidden />
+        <div className="mx-1 hidden h-6 w-px bg-brand-border sm:block" aria-hidden />
 
         {/* Left cluster: filter pills inside a rounded container */}
-        <div className="flex items-center rounded-full border border-ish-border bg-ish-app/60 p-1 shadow-[var(--shadow-ish-sm)]">
+        <div className="flex items-center rounded-full border border-brand-border bg-brand-app/60 p-1 shadow-[var(--shadow-brand-sm)]">
           {/* City pill */}
           <div className="relative">
             <PillSegment
@@ -1304,7 +1304,7 @@ export function ScoutingToolbar({
           </div>
 
           {/* Divider */}
-          <div className="mx-0.5 h-6 w-px bg-ish-border" aria-hidden />
+          <div className="mx-0.5 h-6 w-px bg-brand-border" aria-hidden />
 
           {/* Industry pill */}
           <div className="relative">
@@ -1324,7 +1324,7 @@ export function ScoutingToolbar({
           {/* People pill — Autopilot only */}
           {!isSearchMode && (
             <>
-              <div className="mx-0.5 h-6 w-px bg-ish-border" aria-hidden />
+              <div className="mx-0.5 h-6 w-px bg-brand-border" aria-hidden />
               <div className="relative">
                 <PillSegment
                   icon={<Users className="size-3.5" />}
@@ -1360,7 +1360,7 @@ export function ScoutingToolbar({
         {/* Autopilot: volume hint */}
         {!isSearchMode && (
           <span
-            className="hidden rounded-full bg-ish-app px-2.5 py-1 text-[10px] font-medium text-ish-ink-soft sm:inline"
+            className="hidden rounded-full bg-brand-app px-2.5 py-1 text-[10px] font-medium text-brand-ink-soft sm:inline"
             title="Scout volume from Settings — lower saves Tavily/Gemini tokens"
           >
             {volumeHint}
@@ -1376,8 +1376,8 @@ export function ScoutingToolbar({
             className={cn(
               "flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-bold transition-all duration-150",
               canSearch
-                ? "bg-ish-ink text-white shadow-[var(--shadow-ish)] hover:opacity-90"
-                : "cursor-not-allowed bg-ish-app text-ish-ink-faint",
+                ? "bg-brand-ink text-white shadow-[var(--shadow-brand)] hover:opacity-90"
+                : "cursor-not-allowed bg-brand-app text-brand-ink-faint",
             )}
           >
             <Search className="size-3.5" />
@@ -1391,8 +1391,8 @@ export function ScoutingToolbar({
             className={cn(
               "flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-bold transition-all duration-150",
               canScout
-                ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)] hover:opacity-90"
-                : "cursor-not-allowed bg-ish-app text-ish-ink-faint",
+                ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] hover:opacity-90"
+                : "cursor-not-allowed bg-brand-app text-brand-ink-faint",
             )}
           >
             <Search className="size-3.5" />
@@ -1401,7 +1401,7 @@ export function ScoutingToolbar({
         )}
 
         {/* Thin separator */}
-        <div className="mx-1 hidden h-6 w-px bg-ish-border sm:block" aria-hidden />
+        <div className="mx-1 hidden h-6 w-px bg-brand-border sm:block" aria-hidden />
 
         {/* Right cluster: context-aware action buttons */}
         {!hideActions ? (

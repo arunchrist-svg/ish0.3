@@ -15,7 +15,7 @@ type Props = {
 };
 
 const btnClass =
-  "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold shadow-[var(--shadow-ish-sm)] transition-opacity disabled:opacity-50";
+  "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold shadow-[var(--shadow-brand-sm)] transition-opacity disabled:opacity-50";
 
 export function SequenceControlButtons({
   leadId,
@@ -55,7 +55,7 @@ export function SequenceControlButtons({
           type="button"
           disabled={disabled || loading !== null}
           onClick={() => void run("start")}
-          className={cn(btnClass, "border-ish-green/30 bg-ish-green-soft text-ish-green hover:opacity-90")}
+          className={cn(btnClass, "border-brand-green/30 bg-brand-green-soft text-brand-green hover:opacity-90")}
         >
           {loading === "start" ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
           {sequenceState === "not_started" ? "Start" : "Resume"}
@@ -66,7 +66,7 @@ export function SequenceControlButtons({
           type="button"
           disabled={disabled || loading !== null}
           onClick={() => void run("pause")}
-          className={cn(btnClass, "border-ish-border bg-white text-ish-ink hover:bg-ish-canvas")}
+          className={cn(btnClass, "border-brand-border bg-white text-brand-ink hover:bg-brand-canvas")}
         >
           {loading === "pause" ? <Loader2 className="size-3 animate-spin" /> : <Pause className="size-3" />}
           Pause
@@ -77,14 +77,14 @@ export function SequenceControlButtons({
           type="button"
           disabled={disabled || loading !== null}
           onClick={() => void run("cancel")}
-          className={cn(btnClass, "border-ish-stratus-salmon/30 bg-ish-pink-soft/40 text-ish-stratus-salmon hover:opacity-90")}
+          className={cn(btnClass, "border-brand-stratus-salmon/30 bg-brand-pink-soft/40 text-brand-stratus-salmon hover:opacity-90")}
         >
           {loading === "cancel" ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
           Cancel
         </button>
       )}
       {sequenceState === "cancelled" && (
-        <span className="text-[10px] font-medium text-ish-ink-faint">Follow-ups cancelled</span>
+        <span className="text-[10px] font-medium text-brand-ink-faint">Follow-ups cancelled</span>
       )}
     </div>
   );

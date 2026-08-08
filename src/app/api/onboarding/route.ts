@@ -12,10 +12,18 @@ import {
   normalizeWebsiteUrl,
 } from "@/lib/brand/analyze-seller-website";
 import {
+  brandConfigFromPlatformIntent,
+} from "@/lib/email/brand-presets";
+import {
+  defaultCampaignModeForIntent,
+  resolvePlatformIntent,
+  type PlatformIntent,
+} from "@/lib/brand/platform-intent";
+import {
   getResolvedEmailConfig,
   patchWorkspaceBrandConfig,
 } from "@/lib/settings/email-settings";
-import type { BrandConfig } from "@/lib/email/config";
+import type { BrandConfig, CampaignMode } from "@/lib/email/config";
 
 /** Map legacy 6-step onboarding (with email at step 3) to 5-step flow. */
 export function normalizeOnboardingStep(step: number): number {
@@ -52,12 +60,17 @@ type OnboardingBody =
       enrichmentConfig: Partial<EnrichmentConfig>;
       websiteUrl?: string;
       skipWebsiteAnalyze?: boolean;
+      platformIntent?: PlatformIntent;
     }
   | { step: 4; skip?: boolean }
   | { step: 5; complete?: boolean };
 
-async function persistBrandConfig(brandConfig: BrandConfig, workspaceId: string) {
-  await patchWorkspaceBrandConfig(brandConfig, workspaceId);
+async function persistBrandConfig(
+  brandConfig: BrandConfig,
+  workspaceId: string,
+  extras?: { campaignMode?: CampaignMode },
+) {
+  await patchWorkspaceBrandConfig(brandConfig, workspaceId, extras);
 }
 
 export async function POST(req: Request) {
@@ -107,6 +120,7 @@ export async function POST(req: Request) {
       const rawWebsite = body.websiteUrl?.trim() ?? "";
       let websiteWarning: string | undefined;
       let brandAnalyzed = false;
+      const platformIntent = resolvePlatformIntent(body.platformIntent);
 
       if (rawWebsite && !body.skipWebsiteAnalyze) {
         const websiteUrl = normalizeWebsiteUrl(rawWebsite);
@@ -126,33 +140,53 @@ export async function POST(req: Request) {
             orgName: tenant?.name,
             tenantId: ctx.tenantId,
             workspaceId: ctx.workspaceId,
+            platformIntent,
           });
           const brandConfig = mergeWebsiteInsightsIntoBrand(existing.brandConfig, result, {
             forceCustomSlug: true,
+            platformIntent,
           });
-          // Prefer org name from step 1 when analysis returns a weak brand name
           if (tenant?.name?.trim() && brandConfig.brandName === "Your Company") {
             brandConfig.brandName = tenant.name.trim();
           }
-          await persistBrandConfig(brandConfig, ctx.workspaceId);
+          await persistBrandConfig(brandConfig, ctx.workspaceId, {
+            campaignMode: defaultCampaignModeForIntent(platformIntent),
+          });
           brandAnalyzed = true;
         } catch (e) {
           const msg = e instanceof Error ? e.message : "Website analysis failed";
-          // Still store the URL so Settings can retry; do not block onboarding
           try {
-            await persistBrandConfig(
-              {
-                ...existing.brandConfig,
-                brandSlug: "custom",
-                brandName: tenant?.name?.trim() || existing.brandConfig.brandName,
-                websiteUrl,
-              },
-              ctx.workspaceId,
-            );
+            const seeded = brandConfigFromPlatformIntent(platformIntent, {
+              ...existing.brandConfig,
+              brandSlug: "custom",
+              brandName: tenant?.name?.trim() || existing.brandConfig.brandName,
+              websiteUrl,
+              platformIntent,
+            });
+            await persistBrandConfig(seeded, ctx.workspaceId, {
+              campaignMode: defaultCampaignModeForIntent(platformIntent),
+            });
           } catch (persistErr) {
             console.warn("[onboarding] website URL persist failed:", persistErr);
           }
           websiteWarning = msg;
+        }
+      } else {
+        // Intent only (no website): still seed pack + campaign mode for email dropdowns
+        try {
+          const existing = await getResolvedEmailConfig(ctx.workspaceId);
+          const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
+          const seeded = brandConfigFromPlatformIntent(platformIntent, {
+            ...existing.brandConfig,
+            brandName: tenant?.name?.trim() || existing.brandConfig.brandName,
+            websiteUrl: existing.brandConfig.websiteUrl,
+            websiteInsights: existing.brandConfig.websiteInsights,
+          });
+          await persistBrandConfig(seeded, ctx.workspaceId, {
+            campaignMode: defaultCampaignModeForIntent(platformIntent),
+          });
+        } catch (e) {
+          console.warn("[onboarding] intent seed failed:", e);
         }
       }
 
@@ -162,6 +196,7 @@ export async function POST(req: Request) {
         nextStep: 4,
         brandAnalyzed,
         websiteWarning,
+        platformIntent,
       });
     }
 

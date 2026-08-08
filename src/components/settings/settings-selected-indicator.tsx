@@ -7,7 +7,7 @@ export function SettingsSelectedIndicator({ selected }: { selected: boolean }) {
     <div
       className={cn(
         "flex size-6 shrink-0 items-center justify-center rounded-full border-2 transition-all",
-        selected ? "border-ish-black bg-ish-black text-white" : "border-ish-border bg-transparent",
+        selected ? "border-brand-black bg-brand-black text-white" : "border-brand-border bg-transparent",
       )}
       aria-hidden={!selected}
     >

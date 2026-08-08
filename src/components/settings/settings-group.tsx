@@ -12,22 +12,22 @@ export function SettingsGroup({ title, footer, children, className }: SettingsGr
   return (
     <section className={cn("mb-7", className)}>
       {title ? (
-        <h3 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-ish-ink-faint">
+        <h3 className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-ink-faint">
           {title}
         </h3>
       ) : null}
-      <div className="settings-group overflow-hidden rounded-2xl border border-ish-border/40 bg-white/85 shadow-[var(--shadow-ish-sm)] backdrop-blur-xl transition-shadow duration-300 hover:shadow-[var(--shadow-ish)]">
+      <div className="settings-group overflow-hidden rounded-2xl border border-brand-border/40 bg-white/85 shadow-[var(--shadow-brand-sm)] backdrop-blur-xl transition-shadow duration-300 hover:shadow-[var(--shadow-brand)]">
         {children}
       </div>
       {footer ? (
-        <p className="mt-2.5 px-3 text-[12px] leading-relaxed text-ish-ink-faint">{footer}</p>
+        <p className="mt-2.5 px-3 text-[12px] leading-relaxed text-brand-ink-faint">{footer}</p>
       ) : null}
     </section>
   );
 }
 
 export function SettingsGroupDivider() {
-  return <div className="mx-4 h-px bg-ish-border/60" aria-hidden />;
+  return <div className="mx-4 h-px bg-brand-border/60" aria-hidden />;
 }
 
 type SettingsRowProps = {

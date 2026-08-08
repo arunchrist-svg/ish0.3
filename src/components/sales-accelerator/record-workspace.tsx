@@ -252,14 +252,14 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
     return (
       <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
         <div className="text-3xl">⚠️</div>
-        <div className="text-[14px] font-semibold text-ish-ink">Couldn't load this lead</div>
-        <p className="max-w-sm text-[12px] text-ish-ink-soft">
+        <div className="text-[14px] font-semibold text-brand-ink">Couldn't load this lead</div>
+        <p className="max-w-sm text-[12px] text-brand-ink-soft">
           {loadError ?? "Something went wrong while fetching lead details."}
         </p>
         <button
           type="button"
           onClick={() => load()}
-          className="mt-1 rounded-xl bg-ish-black px-4 py-2 text-[12px] font-bold text-white"
+          className="mt-1 rounded-xl bg-brand-black px-4 py-2 text-[12px] font-bold text-white"
         >
           Try again
         </button>
@@ -278,13 +278,13 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           <ActionLoader variant="refresh" contactName={lead.name} />
         </div>
       )}
-      <div className="ish-record-card overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-ish-sm)]">
-        <div className="bg-ish-yellow-gradient">
+      <div className="ish-record-card overflow-hidden rounded-[22px] bg-white shadow-[var(--shadow-brand-sm)]">
+        <div className="bg-brand-yellow-gradient">
           <RecordHeader current={current} lead={lead} onRefresh={refreshInline} refreshing={refreshing} onLeadUpdated={onLeadUpdated} onEditLead={onEditLead} onDeleteLead={onDeleteLead} />
           <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
         </div>
         <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); syncTabToUrl(tab); }} className="bg-white">
-        <div className="border-b border-ish-border/40 px-2 py-1 lg:hidden">
+        <div className="border-b border-brand-border/40 px-2 py-1 lg:hidden">
             <ScrollableTabs
               compact
               tabs={TABS.map((tab) => TAB_SHORT[tab])}
@@ -307,7 +307,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
               <TabsTrigger
                 key={tab}
                 value={tab}
-                className="h-auto flex-none rounded-[14px] border-0 px-[18px] py-2.5 text-[13px] font-semibold text-ish-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-ish-ink active:scale-[0.97] data-active:!bg-ish-black data-active:!text-white data-active:shadow-none after:hidden"
+                className="h-auto flex-none rounded-[14px] border-0 px-[18px] py-2.5 text-[13px] font-semibold text-brand-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-brand-ink active:scale-[0.97] data-active:!bg-brand-black data-active:!text-white data-active:shadow-none after:hidden"
               >
                 <span className="flex items-center gap-1.5">
                   {tab}
@@ -320,7 +320,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           </TabsList>
         </div>
 
-        <TabsContent value="Summary" className="mt-0 animate-ish-tab-in">
+        <TabsContent value="Summary" className="mt-0 animate-brand-tab-in">
           <div className="px-[22px] pt-[18px]">
             <WriterPlanCard lead={lead} onUpdated={() => void refreshInline(false)} />
           </div>
@@ -365,8 +365,8 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
                 city: lead.city,
                 industry: lead.industry,
                 employees: lead.employees !== "—" ? lead.employees : undefined,
-                giftBudget: lead.giftBudget,
-                giftScore: lead.giftScore,
+                budgetBand: lead.budgetBand,
+                fitScore: lead.fitScore,
                 accountId: lead.accountId,
                 decisionMakerHint:
                   lead.title && lead.title !== "—"
@@ -392,15 +392,15 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           />
         </TabsContent>
 
-        <TabsContent value="Relationship Analytics" className="mt-0 animate-ish-tab-in">
+        <TabsContent value="Relationship Analytics" className="mt-0 animate-brand-tab-in">
           <RelationshipAnalyticsPanel key={leadId} leadId={leadId} />
         </TabsContent>
 
-        <TabsContent value="Details" className="px-[22px] py-12 text-center text-ish-ink-soft animate-ish-tab-in">
+        <TabsContent value="Details" className="px-[22px] py-12 text-center text-brand-ink-soft animate-brand-tab-in">
             Details view coming soon.
           </TabsContent>
 
-        <TabsContent value="Related" className="mt-0 animate-ish-tab-in">
+        <TabsContent value="Related" className="mt-0 animate-brand-tab-in">
           <RelatedLeadsPanel leadId={leadId} />
         </TabsContent>
         </Tabs>

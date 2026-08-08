@@ -112,13 +112,13 @@ function LoginForm() {
   return (
     <AuthShell>
       <div className="mb-8">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-ish-stratus-blue">Sign in</p>
+        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-stratus-blue">Sign in</p>
         <h1 className={cn("mb-2 leading-tight", text.display)}>Welcome back</h1>
-        <p className="text-[14px] leading-relaxed text-ish-ink-soft">Use the same email and password as the web app.</p>
+        <p className="text-[14px] leading-relaxed text-brand-ink-soft">Use the same email and password as the web app.</p>
       </div>
 
       {inviteRequired ? (
-        <p className="mb-4 rounded-2xl border border-ish-stratus-yellow/40 bg-ish-yellow-soft/80 px-4 py-2.5 text-center text-[13px] text-ish-ink">
+        <p className="mb-4 rounded-2xl border border-brand-stratus-yellow/40 bg-brand-yellow-soft/80 px-4 py-2.5 text-center text-[13px] text-brand-ink">
           You need an invite to join. Ask your admin for an invite link to create your account.
         </p>
       ) : null}
@@ -136,13 +136,13 @@ function LoginForm() {
         {slugRequired ? (
           orgOptions.length > 0 ? (
             <div>
-              <label htmlFor="slug" className="mb-1.5 block text-[12px] font-semibold text-ish-ink">Organization</label>
+              <label htmlFor="slug" className="mb-1.5 block text-[12px] font-semibold text-brand-ink">Organization</label>
               <select
                 id="slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 required
-                className="w-full rounded-xl border border-ish-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-ish-stratus-blue/50 focus:ring-2 focus:ring-ish-stratus-blue/20"
+                className="w-full rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50 focus:ring-2 focus:ring-brand-stratus-blue/20"
               >
                 <option value="">Select organization</option>
                 {orgOptions.map((o) => (
@@ -174,16 +174,16 @@ function LoginForm() {
         />
 
         {error ? (
-          <p className="rounded-2xl border border-ish-stratus-salmon/35 bg-ish-pink-soft/80 px-4 py-2.5 text-center text-[13px] font-medium text-ish-stratus-salmon">{error}</p>
+          <p className="rounded-2xl border border-brand-stratus-salmon/35 bg-brand-pink-soft/80 px-4 py-2.5 text-center text-[13px] font-medium text-brand-stratus-salmon">{error}</p>
         ) : null}
 
         <Button
           type="submit"
           disabled={loading || !email.trim() || password.trim().length < 8 || (slugRequired && !slug.trim())}
           className={cn(
-            "h-12 w-full rounded-2xl text-[14px] font-bold text-white shadow-[var(--shadow-ish)]",
-            "bg-ish-black hover:bg-ish-black/90 disabled:opacity-50",
-            "ring-1 ring-ish-stratus-blue/20",
+            "h-12 w-full rounded-2xl text-[14px] font-bold text-white shadow-[var(--shadow-brand)]",
+            "bg-brand-black hover:bg-brand-black/90 disabled:opacity-50",
+            "ring-1 ring-brand-stratus-blue/20",
           )}
         >
           {loading ? (
@@ -196,7 +196,7 @@ function LoginForm() {
           )}
         </Button>
 
-        <p className="text-center text-[12px] text-ish-ink-faint">
+        <p className="text-center text-[12px] text-brand-ink-faint">
           Need an account? Use the invite link your admin sent you.
         </p>
       </form>
@@ -207,8 +207,8 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="ish-ambient-canvas flex min-h-dvh items-center justify-center bg-ish-canvas">
-        <Loader2 className="size-8 animate-spin text-ish-stratus-blue" />
+      <div className="ish-ambient-canvas flex min-h-dvh items-center justify-center bg-brand-canvas">
+        <Loader2 className="size-8 animate-spin text-brand-stratus-blue" />
       </div>
     }>
       <LoginForm />

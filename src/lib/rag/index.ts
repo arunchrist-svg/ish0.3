@@ -1,10 +1,11 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import type { BrandSlug, CampaignMode } from "@/lib/email/config";
+import type { BrandConfig, CampaignMode } from "@/lib/email/config";
+import { getVerticalPack, resolveVerticalPackId, type VerticalPackId } from "@/vertical-packs";
 
 const cache = new Map<string, string>();
 
-function loadFile(relativePath: string, fallback: string): string {
+function loadFile(relativePath: string, fallback = ""): string {
   const cached = cache.get(relativePath);
   if (cached) return cached;
   try {
@@ -16,27 +17,26 @@ function loadFile(relativePath: string, fallback: string): string {
   }
 }
 
+function loadPackKnowledge(packId: VerticalPackId): string {
+  const pack = getVerticalPack(packId);
+  if (!pack.knowledgeFiles.length) return "";
+  return pack.knowledgeFiles
+    .map((rel) => loadFile(`src/vertical-packs/${pack.id}/${rel}`))
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** @deprecated Prefer retrieveRelevantRules with brandConfig.verticalPackId */
 export function loadGiftingRules(): string {
-  return loadFile("src/knowledge/gifting_rules.md", getDefaultRules());
-}
-
-function loadBrandRules(brandSlug: BrandSlug): string {
-  if (brandSlug === "custom") return "";
-  return loadFile(`src/knowledge/brands/${brandSlug}.md`, "");
-}
-
-function loadCampaignRules(campaignMode: CampaignMode, brandSlug: BrandSlug): string {
-  if (campaignMode === "custom" || campaignMode === "festival_bundle") return "";
-  // Sweets-leaning Diwali campaign MD is ISH-only (tasting samples, hampers).
-  if (campaignMode === "diwali_gifting" && brandSlug !== "ish") return "";
-  return loadFile(`src/knowledge/campaigns/${campaignMode}.md`, "");
+  return loadPackKnowledge("gifting-sweets") || getDefaultRules();
 }
 
 export function retrieveRelevantRules(context: {
   industry?: string;
   city?: string;
   season?: string;
-  brandSlug?: BrandSlug;
+  brandSlug?: BrandConfig["brandSlug"];
+  verticalPackId?: VerticalPackId | string;
   campaignMode?: CampaignMode;
   productSummary?: string;
   campaignNotes?: string;
@@ -47,14 +47,12 @@ export function retrieveRelevantRules(context: {
   };
 }): string {
   const sections: string[] = [];
-  const brandSlug = context.brandSlug ?? "custom";
-  const campaignMode = context.campaignMode ?? "diwali_gifting";
+  const packId = resolveVerticalPackId(context.verticalPackId, context.brandSlug);
 
-  const brand = loadBrandRules(brandSlug);
-  if (brand) sections.push(brand);
-
-  const campaign = loadCampaignRules(campaignMode, brandSlug);
-  if (campaign) sections.push(campaign);
+  const packKnowledge = loadPackKnowledge(packId);
+  if (packKnowledge) {
+    sections.push(filterPackKnowledge(packKnowledge, context));
+  }
 
   if (context.productSummary?.trim()) {
     sections.push(`## Company product catalog\n${context.productSummary.trim()}`);
@@ -78,16 +76,13 @@ export function retrieveRelevantRules(context: {
     sections.push(`## Campaign notes\n${context.campaignNotes.trim()}`);
   }
 
-  // Legacy ISH gifting rules contain mithai/pure-ghee copy. Never inject for other brands.
-  if (brandSlug === "ish") {
-    const legacy = filterLegacyRules(loadGiftingRules(), context);
-    if (legacy) sections.push(legacy);
-  }
-
   return sections.join("\n\n").slice(0, 6000) || getDefaultRules();
 }
 
-function filterLegacyRules(all: string, context: { industry?: string; city?: string; season?: string }): string {
+function filterPackKnowledge(
+  all: string,
+  context: { industry?: string; city?: string; season?: string; campaignMode?: CampaignMode },
+): string {
   const lines = all.split("\n");
   const relevant: string[] = [];
   let inRelevantSection = false;
@@ -95,9 +90,14 @@ function filterLegacyRules(all: string, context: { industry?: string; city?: str
   const keywords = [
     context.industry?.toLowerCase(),
     context.city?.toLowerCase(),
-    context.season?.toLowerCase() ?? "diwali",
-    "tone", "compliance", "cta",
+    context.season?.toLowerCase(),
+    context.campaignMode?.toLowerCase(),
+    "tone",
+    "compliance",
+    "cta",
   ].filter(Boolean) as string[];
+
+  if (!keywords.length) return all.slice(0, 4000);
 
   for (const line of lines) {
     const lower = line.toLowerCase();
@@ -109,7 +109,7 @@ function filterLegacyRules(all: string, context: { industry?: string; city?: str
     }
   }
 
-  return relevant.slice(0, 40).join("\n");
+  return (relevant.length ? relevant : lines).slice(0, 80).join("\n");
 }
 
 function getDefaultRules(): string {

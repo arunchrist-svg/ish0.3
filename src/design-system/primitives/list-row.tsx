@@ -32,14 +32,14 @@ export function ListRow({
 }: ListRowProps) {
   const content = (
     <>
-      {icon ? <span className="flex size-8 shrink-0 items-center justify-center text-ish-ink-soft">{icon}</span> : null}
+      {icon ? <span className="flex size-8 shrink-0 items-center justify-center text-brand-ink-soft">{icon}</span> : null}
       <div className="min-w-0 flex-1">
-        <div className={cn(text.listTitle, destructive && "text-ish-stratus-salmon")}>{title}</div>
+        <div className={cn(text.listTitle, destructive && "text-brand-stratus-salmon")}>{title}</div>
         {subtitle ? <div className={text.listSubtitle}>{subtitle}</div> : null}
         {meta ? <div className={cn(text.listMeta, "mt-0.5")}>{meta}</div> : null}
       </div>
       {trailing}
-      {showChevron ? <ChevronRight className="size-5 shrink-0 text-ish-ink-faint" aria-hidden /> : null}
+      {showChevron ? <ChevronRight className="size-5 shrink-0 text-brand-ink-faint" aria-hidden /> : null}
     </>
   );
 

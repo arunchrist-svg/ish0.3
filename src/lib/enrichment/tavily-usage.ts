@@ -1,6 +1,6 @@
 import { getTavilyKeyConfigIssues, getTavilyKeys } from "./tavily-keys";
 import type { TavilyAccountKeyUsage } from "./tavily-account";
-import { fetchTavilyAccountUsage, invalidateTavilyAccountUsageCache } from "./tavily-account";
+import { fetchTavilyAccountUsage } from "./tavily-account";
 
 const BASIC_SEARCH_CREDITS = 1;
 
@@ -34,7 +34,8 @@ export function recordTavilySearch(keyId: string, credits = BASIC_SEARCH_CREDITS
   entry.sessionUsed += credits;
   entry.lastUsedAt = Date.now();
   sessionByKeyId.set(keyId, entry);
-  invalidateTavilyAccountUsageCache();
+  // Do not invalidate Tavily /usage cache here. Search volume is tracked in-session;
+  // re-fetching /usage on every search made scouting dramatically slower.
 }
 
 /** Mark key unavailable for this session after a quota rejection (rotation only). */

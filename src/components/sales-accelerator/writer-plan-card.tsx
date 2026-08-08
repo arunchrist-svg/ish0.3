@@ -29,7 +29,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
 
   if (!lead.research) {
     return (
-      <div className="mb-4 rounded-[16px] border border-ish-border/50 bg-ish-canvas/30 px-4 py-3 text-[12px] text-ish-ink-soft">
+      <div className="mb-4 rounded-[16px] border border-brand-border/50 bg-brand-canvas/30 px-4 py-3 text-[12px] text-brand-ink-soft">
         Research brief pending. Writer plan will appear after research completes.
       </div>
     );
@@ -68,11 +68,11 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
   }
 
   return (
-    <div className="mb-4 rounded-[16px] border border-ish-border/60 bg-white p-4 shadow-[var(--shadow-ish-sm)]">
+    <div className="mb-4 rounded-[16px] border border-brand-border/60 bg-white p-4 shadow-[var(--shadow-brand-sm)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-[13px] font-semibold text-ish-ink">Writer plan</h3>
-          <p className="text-[11px] text-ish-ink-soft">
+          <h3 className="text-[13px] font-semibold text-brand-ink">Writer plan</h3>
+          <p className="text-[11px] text-brand-ink-soft">
             Email 1 follows this hook, value, and CTA. Edit before drafting.
           </p>
         </div>
@@ -86,7 +86,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
             type="button"
             onClick={() => void handleRegenerate()}
             disabled={regenerating || saving}
-            className="inline-flex items-center gap-1.5 rounded-full border border-ish-border px-3 py-1.5 text-[11px] font-semibold text-ish-ink hover:bg-ish-canvas disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-brand-border px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-brand-canvas disabled:opacity-50"
           >
             {regenerating ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
             Regenerate
@@ -97,7 +97,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
             disabled={!dirty || saving || regenerating}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold text-white",
-              dirty ? "bg-ish-black hover:bg-ish-black/90" : "bg-ish-ink-faint",
+              dirty ? "bg-brand-black hover:bg-brand-black/90" : "bg-brand-ink-faint",
             )}
           >
             {saving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
@@ -114,19 +114,19 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
           ] as const
         ).map(([label, value, setter, placeholder]) => (
           <label key={label} className="block">
-            <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-ish-ink-soft">{label}</span>
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-brand-ink-soft">{label}</span>
             <textarea
               value={value}
               onChange={(e) => setter(e.target.value)}
               placeholder={placeholder}
               rows={3}
-              className="w-full resize-y rounded-[12px] border border-ish-border/50 bg-ish-canvas/20 px-3 py-2 text-[12px] leading-relaxed text-ish-ink focus:border-ish-stratus-blue/40 focus:outline-none focus:ring-2 focus:ring-ish-stratus-blue/10"
+              className="w-full resize-y rounded-[12px] border border-brand-border/50 bg-brand-canvas/20 px-3 py-2 text-[12px] leading-relaxed text-brand-ink focus:border-brand-stratus-blue/40 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/10"
             />
           </label>
         ))}
       </div>
       {plan?.source ? (
-        <p className="mt-2 text-[10px] text-ish-ink-faint">Source: {plan.source === "user" ? "Edited by you" : "AI generated"}</p>
+        <p className="mt-2 text-[10px] text-brand-ink-faint">Source: {plan.source === "user" ? "Edited by you" : "AI generated"}</p>
       ) : null}
     </div>
   );

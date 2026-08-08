@@ -3,15 +3,16 @@ import {
   assertCompetitorInList,
   formatCompetitorBrandsForInput,
   parseCompetitorBrandsInput,
+  resolveBrandIntelConfig,
   resolveGiftIntelConfig,
 } from "../config";
 
-describe("gift-intel config", () => {
-  it("defaults to ISH sweets category and competitors", () => {
+describe("brand-intel config", () => {
+  it("does not default to Sweets / ISH competitors when unset", () => {
     const cfg = resolveGiftIntelConfig({});
-    expect(cfg.productCategory).toBe("Sweets");
-    expect(cfg.competitorBrands).toContain("Kanti Sweets");
-    expect(cfg.competitorBrands.length).toBeGreaterThan(2);
+    expect(cfg.productCategory).toBe("");
+    expect(cfg.competitorBrands).toEqual([]);
+    expect(cfg.configured).toBe(false);
   });
 
   it("parses competitor textarea input", () => {
@@ -27,15 +28,18 @@ describe("gift-intel config", () => {
   });
 
   it("uses workspace overrides when provided", () => {
-    const cfg = resolveGiftIntelConfig({
+    const cfg = resolveBrandIntelConfig({
       giftIntelProductCategory: "Mithai",
       giftIntelCompetitorBrands: ["Brand X"],
     });
     expect(cfg.productCategory).toBe("Mithai");
     expect(cfg.competitorBrands).toEqual(["Brand X"]);
+    expect(cfg.configured).toBe(true);
   });
 
   it("assertCompetitorInList rejects unknown brand", () => {
-    expect(() => assertCompetitorInList("Unknown", ["Kanti Sweets"])).toThrow(/not in your configured competitor list/);
+    expect(() => assertCompetitorInList("Unknown", ["Kanti Sweets"])).toThrow(
+      /not in your configured competitor list/,
+    );
   });
 });

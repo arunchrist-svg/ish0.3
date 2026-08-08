@@ -23,8 +23,8 @@ export function scoutCardSurface({
     isSelected
       ? "ish-scout-card-selected"
       : isPrimary
-      ? "bg-white shadow-[var(--shadow-ish)] ring-[1.5px] ring-ish-ink/25"
-      : "bg-white shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)] hover:-translate-y-0.5",
+      ? "bg-white shadow-[var(--shadow-brand)] ring-[1.5px] ring-brand-ink/25"
+      : "bg-white shadow-[var(--shadow-brand-sm)] hover:shadow-[var(--shadow-brand)] hover:-translate-y-0.5",
     className,
   );
 }

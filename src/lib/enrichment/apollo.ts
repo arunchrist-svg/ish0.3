@@ -38,7 +38,7 @@ export async function apolloSearchCompanies(params: {
     city: a.city as string | undefined,
     employees: a.estimated_num_employees ? String(a.estimated_num_employees) : undefined,
     logo: a.logo_url as string | undefined,
-    giftScore: estimateGiftScore(a),
+    fitScore: estimateFitScore(a),
     dataSource: "apollo",
     externalId: a.id as string | undefined,
   }));
@@ -111,7 +111,7 @@ function computeMatchScore(p: Record<string, unknown>): number {
   }).total;
 }
 
-function estimateGiftScore(a: Record<string, unknown>): number {
+function estimateFitScore(a: Record<string, unknown>): number {
   let score = 60;
   const emp = Number(a.estimated_num_employees ?? 0);
   if (emp > 5000) score += 25;
@@ -140,7 +140,7 @@ export async function apolloSearchOrganizationByName(params: {
     city: (a.city as string | undefined) ?? params.city,
     employees: a.estimated_num_employees ? String(a.estimated_num_employees) : undefined,
     logo: a.logo_url as string | undefined,
-    giftScore: estimateGiftScore(a),
+    fitScore: estimateFitScore(a),
     dataSource: "apollo",
     externalId: a.id as string | undefined,
   }));

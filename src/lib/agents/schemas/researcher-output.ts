@@ -7,7 +7,7 @@ const scoreFactorSchema = z.object({
 });
 
 export const researcherOutputSchema = z.object({
-  giftingHook: z.string().min(1),
+  outreachHook: z.string().min(1),
   estimatedOrderValue: z.string().optional(),
   decisionChain: z.array(z.string()).default([]),
   outreachHooks: z.array(z.string()).default([]),

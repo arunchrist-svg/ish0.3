@@ -1,12 +1,13 @@
-/**
- * Fetch a seller's website and extract brand voice + scout targeting via LLM.
- * Used during onboarding and Settings → Email to customise Writer and Scout.
- */
-
 import { callLLM } from "@/lib/llm";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import type { BrandConfig, WebsiteBrandInsights } from "@/lib/email/config";
 import { SCOUT_DEPARTMENTS, SCOUT_INDUSTRIES, SCOUT_SENIORITY } from "@/lib/scouting-data";
+import {
+  inferPlatformIntent,
+  scoutDefaultsForIntent,
+  verticalPackIdForIntent,
+  type PlatformIntent,
+} from "@/lib/brand/platform-intent";
 
 const PAGE_PATHS = ["/", "/about", "/about-us", "/products", "/product", "/services", "/solutions"];
 
@@ -115,6 +116,8 @@ export async function analyzeSellerWebsite(params: {
   orgName?: string;
   tenantId?: string;
   workspaceId?: string;
+  /** Explicit client intent from onboarding / Settings; otherwise inferred from the site. */
+  platformIntent?: PlatformIntent;
 }): Promise<AnalyzeSellerWebsiteResult> {
   const websiteUrl = normalizeWebsiteUrl(params.websiteUrl);
   if (!websiteUrl) {
@@ -134,6 +137,7 @@ export async function analyzeSellerWebsite(params: {
 
 Company name hint: ${params.orgName?.trim() || "(unknown)"}
 Website: ${websiteUrl}
+${params.platformIntent ? `Stated platform use: ${params.platformIntent}` : ""}
 
 Website content:
 """
@@ -146,7 +150,7 @@ Return ONLY valid JSON:
   "vertical": "short snake_case vertical e.g. sweets_gifting, appliances, saas, manufacturing, consulting",
   "productSummary": "2-4 sentences: what they sell, who buys, key offers/pricing if stated. Concrete, no fluff.",
   "toneNotes": "1-2 sentences: how outreach email should sound for this brand (vocabulary, formality, angles to use/avoid)",
-  "buyerPersonas": ["role titles who typically buy, e.g. HR Director"],
+  "buyerPersonas": ["role titles who typically buy, e.g. VP Sales or HR Director"],
   "valueProposition": "one sentence core value for buyers",
   "differentiators": ["up to 3 concrete differentiators from the site"],
   "scoutIndustries": ["industries of IDEAL BUYER companies, ONLY from: ${industryList}"],
@@ -158,20 +162,21 @@ Rules:
 - scoutIndustries = who they SELL TO (buyer industries), not the seller's own industry unless B2B peer sales.
 - Prefer 1-4 scoutIndustries, 1-3 departments, 1-3 seniority levels.
 - productSummary and toneNotes must be grounded in the website text.
+- Match buyer personas and scout roles to how this company actually sells (SaaS → sales/leadership buyers; gifting → HR/procurement).
 - Never invent competitor brands or fake stats.`;
 
   const raw = await callLLM({
     tier: "quality",
     system: "You output only valid JSON. No markdown fences, no commentary.",
     prompt,
-    maxTokens: 900,
+    maxTokens: 2048,
     trace:
       params.tenantId && params.workspaceId
         ? {
             tenantId: params.tenantId,
             workspaceId: params.workspaceId,
             agent: "brand_website_analyze",
-            promptVersion: "seller-website-v1",
+            promptVersion: "seller-website-v2-intent",
           }
         : undefined,
   });
@@ -180,7 +185,18 @@ Rules:
   try {
     parsed = parseJsonObjectFromLLM(raw);
   } catch {
-    throw new Error("Website analysis failed to return structured data. Try again.");
+    // Retry once with a shorter extract if the first response was truncated or malformed
+    try {
+      const retryRaw = await callLLM({
+        tier: "fast",
+        system: "You output only valid JSON. No markdown fences, no commentary.",
+        prompt: `${prompt}\n\nKeep every string short. Return a compact JSON object only.`,
+        maxTokens: 1200,
+      });
+      parsed = parseJsonObjectFromLLM(retryRaw);
+    } catch {
+      throw new Error("Website analysis failed to return structured data. Try again.");
+    }
   }
 
   const brandName =
@@ -199,12 +215,24 @@ Rules:
   const differentiators = stringList(parsed.differentiators, 3);
 
   const scoutIndustries = pickFromCatalog(parsed.scoutIndustries, SCOUT_INDUSTRIES, INDUSTRY_SET, 4);
-  const scoutDepartments = pickFromCatalog(parsed.scoutDepartments, SCOUT_DEPARTMENTS, DEPARTMENT_SET, 3);
-  const scoutSeniority = pickFromCatalog(parsed.scoutSeniority, SCOUT_SENIORITY, SENIORITY_SET, 3);
+  let scoutDepartments = pickFromCatalog(parsed.scoutDepartments, SCOUT_DEPARTMENTS, DEPARTMENT_SET, 3);
+  let scoutSeniority = pickFromCatalog(parsed.scoutSeniority, SCOUT_SENIORITY, SENIORITY_SET, 3);
 
   if (!productSummary) {
     throw new Error("Website analysis could not determine what you sell. Add a product summary manually.");
   }
+
+  const platformIntent =
+    params.platformIntent ??
+    inferPlatformIntent({
+      vertical,
+      productSummary,
+      buyerPersonas,
+    });
+  const intentDefaults = scoutDefaultsForIntent(platformIntent);
+  const resolvedPersonas = buyerPersonas.length ? buyerPersonas : intentDefaults.buyerPersonas;
+  if (!scoutDepartments.length) scoutDepartments = intentDefaults.scoutDepartments;
+  if (!scoutSeniority.length) scoutSeniority = intentDefaults.scoutSeniority;
 
   const insights: WebsiteBrandInsights = {
     analyzedAt: new Date().toISOString(),
@@ -214,12 +242,12 @@ Rules:
     toneNotes:
       toneNotes ||
       "Friendly but professional. Plain and direct. Match the brand language from the website. Not salesy.",
-    buyerPersonas: buyerPersonas.length ? buyerPersonas : ["HR Manager", "Procurement Manager"],
+    buyerPersonas: resolvedPersonas,
     valueProposition,
     differentiators,
     scoutIndustries,
-    scoutDepartments: scoutDepartments.length ? scoutDepartments : ["HR", "Procurement"],
-    scoutSeniority: scoutSeniority.length ? scoutSeniority : ["Director", "Manager"],
+    scoutDepartments,
+    scoutSeniority,
   };
 
   const brandPatch: Partial<BrandConfig> = {
@@ -229,6 +257,8 @@ Rules:
     productSummary: insights.productSummary,
     buyerPersonas: insights.buyerPersonas,
     toneNotes: insights.toneNotes,
+    platformIntent,
+    verticalPackId: verticalPackIdForIntent(platformIntent),
     websiteUrl,
     websiteInsights: insights,
   };
@@ -240,19 +270,33 @@ Rules:
 export function mergeWebsiteInsightsIntoBrand(
   existing: BrandConfig | undefined,
   result: AnalyzeSellerWebsiteResult,
-  options?: { forceCustomSlug?: boolean },
+  options?: { forceCustomSlug?: boolean; platformIntent?: PlatformIntent },
 ): BrandConfig {
+  const inferred = inferPlatformIntent({
+    vertical: result.insights.vertical,
+    productSummary: result.insights.productSummary,
+    buyerPersonas: result.insights.buyerPersonas,
+  });
+  const platformIntent =
+    options?.platformIntent ??
+    result.brandPatch.platformIntent ??
+    // Prefer freshly inferred intent from this website over a stale workspace default
+    (options?.forceCustomSlug ? inferred : existing?.platformIntent) ??
+    existing?.platformIntent ??
+    inferred;
+  const verticalPackId = verticalPackIdForIntent(platformIntent);
   const baseSlug = options?.forceCustomSlug ? "custom" : existing?.brandSlug ?? "custom";
-  // Website analysis always writes concrete product/tone; keep preset slug only if user chose ish/prestige
-  // and did not force custom. For custom (or forced), use patch fully.
+
   if (baseSlug === "custom" || options?.forceCustomSlug) {
     return {
       brandSlug: "custom",
       brandName: result.brandPatch.brandName ?? existing?.brandName ?? "Your Company",
       vertical: result.brandPatch.vertical ?? "general",
       productSummary: result.brandPatch.productSummary ?? "",
-      buyerPersonas: result.brandPatch.buyerPersonas ?? ["HR Manager"],
+      buyerPersonas: result.brandPatch.buyerPersonas ?? scoutDefaultsForIntent(platformIntent).buyerPersonas,
       toneNotes: result.brandPatch.toneNotes,
+      platformIntent,
+      verticalPackId,
       websiteUrl: result.websiteUrl,
       websiteInsights: result.insights,
     };
@@ -265,6 +309,8 @@ export function mergeWebsiteInsightsIntoBrand(
     buyerPersonas: result.insights.buyerPersonas.length
       ? result.insights.buyerPersonas
       : existing!.buyerPersonas,
+    platformIntent,
+    verticalPackId: existing!.verticalPackId ?? verticalPackId,
     websiteUrl: result.websiteUrl,
     websiteInsights: result.insights,
   };

@@ -9,7 +9,7 @@ import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause, expandCitySearchTerms } from "./city-search";
-import { parseCompaniesFromDirectoryResults } from "./directory-parser";
+import { isPlausibleCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { searchPeopleViaTavily } from "./people-search";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, tavilySearch } from "./tavily-client";
@@ -68,17 +68,17 @@ function parseLLMCompanies(
 ): ScoutCompanyResult[] {
   const parsed = parseJsonArrayFromLLM(raw);
   return parsed
-    .filter((c) => typeof c.name === "string" && c.name.trim())
+    .filter((c) => typeof c.name === "string" && isPlausibleCompanyName(c.name.trim()))
     .slice(0, limit)
     .map((c) => ({
-    name: c.name as string,
+    name: (c.name as string).trim(),
     website: (c.website as string | null) ?? undefined,
     domain: c.website ? extractDomain(c.website as string) : undefined,
     industry: (c.industry as string | null) ?? undefined,
     city: (c.city as string | null) ?? undefined,
     employees: (c.employees as string | null) ?? undefined,
     intelNotes: buildIntelNotes(c),
-    giftScore: estimateGiftScore(c),
+    fitScore: estimateFitScore(c),
     dataSource: "india_directories",
   }));
 }
@@ -102,28 +102,30 @@ export async function indiaDirectoriesSearchCompanies(params: {
     throw new Error("TAVILY_API_KEY not set");
   }
 
-  const allResults: { title: string; url: string; content: string }[] = [];
   const fetchSeed = params.fetchSeed ?? 0;
   const queries = buildQueries(params.cities, params.industries, fetchSeed);
-
   const queryBatch = queries.slice(0, 2);
-  let quotaExceeded = false;
-  let lastError: Error | null = null;
+  const perQueryLimit = optimizedMaxResults(Math.ceil(limit / 3));
 
-  for (const q of queryBatch) {
-    try {
-      const res = await tavilySearch(q, optimizedMaxResults(Math.ceil(limit / 3)));
-      allResults.push(...res);
-      if (allResults.length >= limit) break;
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      console.error("[india-directories] Tavily search failed:", lastError.message);
-      if (isTavilyQuotaError(lastError.message)) {
-        quotaExceeded = true;
-        break;
+  let quotaExceeded = false;
+  const searchErrors: Error[] = [];
+
+  const batches = await Promise.all(
+    queryBatch.map(async (q) => {
+      try {
+        return await tavilySearch(q, perQueryLimit);
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        searchErrors.push(err);
+        console.error("[india-directories] Tavily search failed:", err.message);
+        if (isTavilyQuotaError(err.message)) quotaExceeded = true;
+        return [] as { title: string; url: string; content: string }[];
       }
-    }
-  }
+    }),
+  );
+
+  const allResults = batches.flat();
+  const lastError = searchErrors[searchErrors.length - 1] ?? null;
 
   if (!allResults.length) {
     if (quotaExceeded || (lastError && isTavilyQuotaError(lastError.message))) {
@@ -133,6 +135,12 @@ export async function indiaDirectoriesSearchCompanies(params: {
       `No directory listings found for ${cityStr}. Try another city or broader industry filters.`,
     );
     return [];
+  }
+
+  // Heuristic first: skip quality LLM when directory parsing already yields enough names.
+  const heuristic = parseCompaniesFromDirectoryResults(allResults, params.cities, limit);
+  if (heuristic.length >= Math.min(limit, 5)) {
+    return heuristic.slice(0, limit);
   }
 
   const threshold = aiConfidenceThreshold();
@@ -145,15 +153,19 @@ export async function indiaDirectoriesSearchCompanies(params: {
 
     try {
       const raw = await callLLM({
-        tier: "quality",
-        system: `You extract structured B2B company data for corporate gifting lead generation from Indian business directory listings.
+        tier: "fast",
+        system: `You extract structured B2B company data for SaaS sales prospecting from Indian business directory listings.
 Output ONLY a valid JSON array. No markdown fences. No explanation.
 Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }
-Only include REAL named Indian companies with ≥50 employees or clearly corporate. Do NOT invent companies.
+Only include REAL named Indian companies. Do NOT invent companies.
+Never use job-post titles, document blurbs, report titles, or UI text as company names.
+If a listing is a hiring page for Acme, return "Acme" only.
 Minimum confidence score: ${threshold}.`,
         prompt: `Extract companies from these directory results.
 Target: ${indStr} industry companies in ${cityStr}, India.
-Minimum confidence: company must be named, local, and plausibly corporate.
+Include real businesses of any size that match the industry and city.
+Skip job boards, articles, and address lists that are not companies.
+Do not score or filter for corporate gifting.
 
 ${context}
 
@@ -162,24 +174,7 @@ Return up to ${limit} companies.`,
       });
 
       try {
-        let llmResults = parseLLMCompanies(raw, limit);
-        if (!llmResults.length) {
-          const retryRaw = await callLLM({
-            tier: "quality",
-            system: `You extract structured B2B company data for corporate gifting lead generation from Indian business directory listings.
-Output ONLY a valid JSON array. No markdown fences. No explanation.
-Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }
-Only include REAL named Indian companies. Do NOT invent companies.`,
-            prompt: `Extract companies from these directory results.
-Target: ${indStr} industry companies in ${cityStr}, India.
-
-${context}
-
-Return up to ${limit} companies.`,
-            maxTokens: 4096,
-          });
-          llmResults = parseLLMCompanies(retryRaw, limit);
-        }
+        const llmResults = parseLLMCompanies(raw, limit);
         if (llmResults.length) return llmResults;
         meta?.warnings.push("AI extraction returned no companies — using directory parsing fallback.");
       } catch {
@@ -194,13 +189,12 @@ Return up to ${limit} companies.`,
     meta?.warnings.push("LLM API key not set — using directory parsing fallback.");
   }
 
-  const fallback = parseCompaniesFromDirectoryResults(allResults, params.cities, limit);
-  if (!fallback.length) {
+  if (!heuristic.length) {
     meta?.warnings.push(
       "Directory pages were found but no company names could be parsed. Try different cities or industries.",
     );
   }
-  return fallback;
+  return heuristic;
 }
 
 export async function indiaDirectoriesSearchPeople(params: {
@@ -236,7 +230,7 @@ function isKeyDM(title?: string | null): boolean {
   );
 }
 
-function estimateGiftScore(c: Record<string, unknown>): number {
+function estimateFitScore(c: Record<string, unknown>): number {
   let score = 58;
   const emp = c.employees as string | null;
   if (emp) {

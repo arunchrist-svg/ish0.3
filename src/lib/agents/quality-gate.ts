@@ -20,7 +20,7 @@ export async function evaluateOutreachDraft(params: {
   contact: { name: string; firstName?: string | null; title?: string | null };
   account: { name: string; industry?: string | null; city?: string | null; employees?: string | null; intelNotes?: string | null };
   deliverabilityOptions?: DeliverabilityOptions;
-  giftingHook?: string | null;
+  outreachHook?: string | null;
   sequencePosition?: number;
 }): Promise<{
   delivScore: number;
@@ -53,7 +53,7 @@ export async function evaluateOutreachDraft(params: {
       employees: params.account.employees ?? undefined,
     },
     deliverabilityOptions: delivOpts,
-    giftingHook: params.giftingHook ?? undefined,
+    outreachHook: params.outreachHook ?? undefined,
     intelNotes: params.account.intelNotes ?? undefined,
   });
 

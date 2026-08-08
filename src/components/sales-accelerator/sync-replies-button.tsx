@@ -59,7 +59,7 @@ export function SyncRepliesButton({ leadId, leadName, onSynced, className, compa
       disabled={syncing}
       title="Check Gmail inbox for new replies from outreached leads"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-ish-border bg-white font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-all hover:border-ish-ink/20 disabled:opacity-60",
+        "inline-flex items-center gap-1.5 rounded-full border border-brand-border bg-white font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-all hover:border-brand-ink/20 disabled:opacity-60",
         compact ? "h-7 px-3 text-[11px]" : "rounded-[14px] px-4 py-2.5 text-[12px]",
         className,
       )}

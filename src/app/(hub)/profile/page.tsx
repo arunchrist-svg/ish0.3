@@ -48,7 +48,7 @@ export default function ProfilePage() {
       largeTitle
       className="lg:bg-transparent"
     >
-      <div className="settings-ambient mx-auto w-full max-w-2xl ish-page-padding py-6 lg:px-6 lg:py-8 animate-ish-page-in">
+      <div className="settings-ambient mx-auto w-full max-w-2xl ish-page-padding py-6 lg:px-6 lg:py-8 animate-brand-page-in">
         <div className="hidden lg:block">
           <SettingsHero
             icon={User}
@@ -59,15 +59,15 @@ export default function ProfilePage() {
 
         <SettingsGroup title="Identity">
           <SettingsRow className="gap-4 !py-5">
-            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-ish-yellow-soft shadow-[var(--shadow-ish-sm)]">
-              <User className="size-7 text-ish-ink" />
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow-soft shadow-[var(--shadow-brand-sm)]">
+              <User className="size-7 text-brand-ink" />
             </div>
             <div className="min-w-0">
-              <p className="text-[16px] font-semibold text-ish-ink">{userName || "Account"}</p>
-              <p className="text-[13px] text-ish-ink-soft">{orgName || "Your organization"} · Sales Hub</p>
-              {userEmail ? <p className="mt-0.5 text-[12px] text-ish-ink-faint">{userEmail}</p> : null}
+              <p className="text-[16px] font-semibold text-brand-ink">{userName || "Account"}</p>
+              <p className="text-[13px] text-brand-ink-soft">{orgName || "Your organization"} · Sales Hub</p>
+              {userEmail ? <p className="mt-0.5 text-[12px] text-brand-ink-faint">{userEmail}</p> : null}
               {isSuperadmin ? (
-                <a href="/admin" className="mt-2 inline-block text-[12px] font-semibold text-ish-stratus-blue hover:underline">
+                <a href="/admin" className="mt-2 inline-block text-[12px] font-semibold text-brand-stratus-blue hover:underline">
                   Platform Admin →
                 </a>
               ) : null}
@@ -78,10 +78,10 @@ export default function ProfilePage() {
               <SettingsGroupDivider />
               <SettingsRow className="justify-between">
                 <div className="flex items-center gap-2">
-                  <Coins className="size-4 text-ish-stratus-yellow" />
-                  <span className="text-[13px] text-ish-ink-soft">Credits remaining</span>
+                  <Coins className="size-4 text-brand-stratus-yellow" />
+                  <span className="text-[13px] text-brand-ink-soft">Credits remaining</span>
                 </div>
-                <span className="text-[14px] font-semibold text-ish-ink">{credits.toLocaleString()}</span>
+                <span className="text-[14px] font-semibold text-brand-ink">{credits.toLocaleString()}</span>
               </SettingsRow>
             </>
           )}
@@ -89,19 +89,19 @@ export default function ProfilePage() {
 
         <SettingsGroup title="Session">
           <SettingsRow className="justify-between">
-            <span className="text-[13px] text-ish-ink-soft">Auth method</span>
-            <span className="text-[13px] font-medium text-ish-ink">PIN</span>
+            <span className="text-[13px] text-brand-ink-soft">Auth method</span>
+            <span className="text-[13px] font-medium text-brand-ink">PIN</span>
           </SettingsRow>
           <SettingsGroupDivider />
           <SettingsRow className="justify-between">
-            <span className="text-[13px] text-ish-ink-soft">Session duration</span>
-            <span className="text-[13px] font-medium text-ish-ink">7 days</span>
+            <span className="text-[13px] text-brand-ink-soft">Session duration</span>
+            <span className="text-[13px] font-medium text-brand-ink">7 days</span>
           </SettingsRow>
           <SettingsGroupDivider />
           <SettingsRow className="justify-between">
-            <span className="text-[13px] text-ish-ink-soft">Status</span>
-            <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-ish-ink">
-              <span className="size-1.5 rounded-full bg-ish-stratus-blue shadow-[0_0_6px_rgba(131,162,219,0.6)]" />
+            <span className="text-[13px] text-brand-ink-soft">Status</span>
+            <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-brand-ink">
+              <span className="size-1.5 rounded-full bg-brand-stratus-blue shadow-[0_0_6px_rgba(131,162,219,0.6)]" />
               Active
             </span>
           </SettingsRow>
@@ -110,10 +110,10 @@ export default function ProfilePage() {
         <SettingsGroup title="Access">
           <SettingsRow className="justify-between">
             <div className="flex items-center gap-2">
-              <Shield className="size-4 text-ish-stratus-blue" />
-              <span className="text-[13px] text-ish-ink-soft">Role</span>
+              <Shield className="size-4 text-brand-stratus-blue" />
+              <span className="text-[13px] text-brand-ink-soft">Role</span>
             </div>
-            <span className="rounded-full bg-ish-black px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-[var(--shadow-ish-sm)]">
+            <span className="rounded-full bg-brand-black px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)]">
               Owner
             </span>
           </SettingsRow>
@@ -121,7 +121,7 @@ export default function ProfilePage() {
 
         <SettingsGroup title="Sign Out" footer="You will be taken back to the login screen.">
           <div className="px-4 py-4">
-            <p className="mb-4 text-[13px] text-ish-ink-soft">
+            <p className="mb-4 text-[13px] text-brand-ink-soft">
               Your session PIN will be required to sign back in.
             </p>
             <button
@@ -129,8 +129,8 @@ export default function ProfilePage() {
               onClick={handleLogout}
               disabled={loggingOut}
               className={cn(
-                "flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-all",
-                loggingOut ? "cursor-not-allowed bg-ish-stratus-salmon/60" : "bg-ish-stratus-salmon hover:opacity-90",
+                "flex items-center gap-2 rounded-full px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-all",
+                loggingOut ? "cursor-not-allowed bg-brand-stratus-salmon/60" : "bg-brand-stratus-salmon hover:opacity-90",
               )}
             >
               {loggingOut ? <Loader2 className="size-4 animate-spin" /> : <LogOut className="size-4" />}

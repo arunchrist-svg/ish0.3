@@ -50,12 +50,12 @@ export function SenderHealthMeter({ className }: Props) {
 
   const color =
     severity === "ok"
-      ? "text-ish-stratus-blue"
+      ? "text-brand-stratus-blue"
       : severity === "warn"
-        ? "text-ish-stratus-yellow"
+        ? "text-brand-stratus-yellow"
         : severity === "critical"
-          ? "text-ish-stratus-salmon"
-          : "text-ish-ink-faint";
+          ? "text-brand-stratus-salmon"
+          : "text-brand-ink-faint";
 
   const auth = health?.domainAuth;
 
@@ -64,7 +64,7 @@ export function SenderHealthMeter({ className }: Props) {
       <TooltipTrigger>
         <div
           className={cn(
-            "inline-flex shrink-0 cursor-help items-center gap-1.5 rounded-full border border-ish-stratus-blue/30 bg-white/90 px-2.5 py-1 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm transition-colors hover:border-ish-stratus-blue/45",
+            "inline-flex shrink-0 cursor-help items-center gap-1.5 rounded-full border border-brand-stratus-blue/30 bg-white/90 px-2.5 py-1 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm transition-colors hover:border-brand-stratus-blue/45",
             className,
           )}
         >
@@ -74,24 +74,24 @@ export function SenderHealthMeter({ className }: Props) {
       </TooltipTrigger>
       <TooltipContent
         side="bottom"
-        className="flex max-w-[260px] flex-col items-start gap-1 rounded-xl border border-ish-stratus-blue/25 bg-white/95 px-3 py-2.5 text-[11px] leading-relaxed text-ish-ink shadow-[var(--shadow-ish)] backdrop-blur-md [&_[class*='rotate-45']]:border-ish-stratus-blue/25 [&_[class*='rotate-45']]:bg-white [&_[class*='rotate-45']]:fill-white"
+        className="flex max-w-[260px] flex-col items-start gap-1 rounded-xl border border-brand-stratus-blue/25 bg-white/95 px-3 py-2.5 text-[11px] leading-relaxed text-brand-ink shadow-[var(--shadow-brand)] backdrop-blur-md [&_[class*='rotate-45']]:border-brand-stratus-blue/25 [&_[class*='rotate-45']]:bg-white [&_[class*='rotate-45']]:fill-white"
       >
-        <p className="font-semibold text-ish-ink">Sender authentication</p>
+        <p className="font-semibold text-brand-ink">Sender authentication</p>
         {health && auth ? (
           <>
-            <p className="text-ish-ink-soft">{auth.label}</p>
+            <p className="text-brand-ink-soft">{auth.label}</p>
             {auth.status !== "unsupported" ? (
-              <p className="text-ish-ink-soft">
+              <p className="text-brand-ink-soft">
                 SPF {auth.checks.spf.valid ? "✓" : "✗"} · DMARC {auth.checks.dmarc.valid ? "✓" : "✗"}
                 {auth.checks.dmarc.policy ? ` (p=${auth.checks.dmarc.policy})` : ""} · DKIM{" "}
                 {auth.checks.dkim.valid ? `✓ (${auth.checks.dkim.selector})` : "?"}
               </p>
             ) : null}
-            <p className="text-ish-ink-soft">
+            <p className="text-brand-ink-soft">
               Sends last 24h: {health.sendsLast24h}/{health.dailyCap}
             </p>
             {health.issues.length > 0 ? (
-              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-ish-ink-soft">
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-brand-ink-soft">
                 {health.issues.map((i) => (
                   <li key={i.id}>{i.label}</li>
                 ))}
@@ -99,7 +99,7 @@ export function SenderHealthMeter({ className }: Props) {
             ) : null}
           </>
         ) : (
-          <p className="text-ish-ink-soft">Could not load sender health.</p>
+          <p className="text-brand-ink-soft">Could not load sender health.</p>
         )}
       </TooltipContent>
     </Tooltip>

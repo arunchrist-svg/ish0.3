@@ -15,7 +15,7 @@ export function SlidingHighlight({ rect, ready, className }: SlidingHighlightPro
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute top-0 left-0 z-0 rounded-[10px] bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]",
+        "pointer-events-none absolute top-0 left-0 z-0 rounded-[10px] bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]",
         "will-change-[transform,width,height]",
         "transition-[transform,width,height,opacity] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
         ready ? "opacity-100" : "opacity-0",

@@ -32,7 +32,7 @@ import {
   type GiftIntelResultRow,
   type GiftIntelSweepResult,
 } from "@/lib/api-client";
-import type { SourceTier } from "@/lib/gift-intel/types";
+import type { SourceTier } from "@/lib/brand-intel/types";
 import { SCOUT_CITY_GROUPS, type ScoutCity } from "@/lib/scouting-data";
 
 const TIER_OPTIONS: {
@@ -90,7 +90,7 @@ function statusMeta(row: GiftIntelResultRow) {
   if (row.mergeStatus === "pending_confirm") {
     return { label: "Needs confirm", className: "border-amber-200/80 bg-amber-50/90 text-amber-800" };
   }
-  return { label: "No match", className: "border-ish-border/60 bg-white/60 text-ish-ink-soft" };
+  return { label: "No match", className: "border-brand-border/60 bg-white/60 text-brand-ink-soft" };
 }
 
 export function BrandIntelligenceDashboard() {
@@ -235,7 +235,7 @@ export function BrandIntelligenceDashboard() {
               disabled={isExtracting || !selectedCompetitors.length}
               className={cn(
                 "flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
-                "bg-ish-yellow-gradient text-ish-black shadow-ish-yellow-sm",
+                "bg-brand-yellow-gradient text-brand-black shadow-brand-yellow-sm",
               )}
             >
               {isExtracting ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
@@ -245,17 +245,17 @@ export function BrandIntelligenceDashboard() {
         ) : undefined
       }
     >
-      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
+      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]">
-              <Radar className="size-5 text-ish-ink" strokeWidth={2.25} />
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
+              <Radar className="size-5 text-brand-ink" strokeWidth={2.25} />
             </div>
             <div className="min-w-0">
               <p className={cn(text.metaLabel, "mb-0.5 uppercase tracking-[0.14em]")}>Brand Intelligence</p>
-              <h1 className="text-[20px] font-extrabold tracking-tight text-ish-ink">Corporate Gift Tracker</h1>
-              <p className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-ish-ink-soft">
+              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Corporate Gift Tracker</h1>
+              <p className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-brand-ink-soft">
                 Discover which companies distributed your target brand as employee gifts across social,
                 news, and workplace sources.
               </p>
@@ -279,38 +279,38 @@ export function BrandIntelligenceDashboard() {
         <div className="mx-auto flex max-w-[1280px] flex-col gap-3 lg:gap-5">
           <PanelCard
             tone="white"
-            className="relative overflow-hidden border border-ish-border/50 bg-white/80 p-0 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm"
+            className="relative overflow-hidden border border-brand-border/50 bg-white/80 p-0 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm"
           >
             <div className="settings-hero-stripe h-[3px] w-full rounded-none" aria-hidden />
             <div className="p-3 lg:p-5">
               <div className="mb-4 flex items-center gap-2">
-                <Gift className="size-4 text-ish-stratus-blue" />
+                <Gift className="size-4 text-brand-stratus-blue" />
                 <h2 className={text.cardTitle}>Sweep parameters</h2>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_2fr]">
                 <div className="flex flex-col gap-1.5">
                   <span className={text.label}>Product category</span>
-                  <div className="flex min-h-[44px] items-center rounded-xl border border-ish-border/60 bg-ish-yellow-soft/60 px-3.5 text-[13px] font-semibold text-ish-ink lg:rounded-2xl lg:h-[42px]">
-                    {configLoading ? "Loading…" : giftIntelConfig?.productCategory ?? "Sweets"}
+                  <div className="flex min-h-[44px] items-center rounded-xl border border-brand-border/60 bg-brand-yellow-soft/60 px-3.5 text-[13px] font-semibold text-brand-ink lg:rounded-2xl lg:h-[42px]">
+                    {configLoading ? "Loading…" : giftIntelConfig?.productCategory || "Not configured"}
                   </div>
-                  <span className="text-[10.5px] text-ish-ink-faint">Set in Settings → Enrichment</span>
+                  <span className="text-[10.5px] text-brand-ink-faint">Set in Settings → Enrichment</span>
                 </div>
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className={text.label}>Competitor brands</span>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={selectAllCompetitors} className="text-[10.5px] font-semibold text-ish-stratus-blue hover:underline">All</button>
-                      <button type="button" onClick={clearCompetitors} className="text-[10.5px] font-semibold text-ish-ink-soft hover:underline">Clear</button>
-                      <Link href="/settings?tab=enrichment" className="text-[10.5px] font-semibold text-ish-stratus-blue hover:underline">Settings</Link>
+                      <button type="button" onClick={selectAllCompetitors} className="text-[10.5px] font-semibold text-brand-stratus-blue hover:underline">All</button>
+                      <button type="button" onClick={clearCompetitors} className="text-[10.5px] font-semibold text-brand-ink-soft hover:underline">Clear</button>
+                      <Link href="/settings?tab=enrichment" className="text-[10.5px] font-semibold text-brand-stratus-blue hover:underline">Settings</Link>
                     </div>
                   </div>
                   {configLoading ? (
-                    <div className="text-[12px] text-ish-ink-soft">Loading competitors…</div>
+                    <div className="text-[12px] text-brand-ink-soft">Loading competitors…</div>
                   ) : !giftIntelConfig?.competitorBrands.length ? (
-                    <div className="rounded-2xl border border-dashed border-ish-border/70 bg-white/50 px-3 py-4 text-[12px] text-ish-ink-soft">
+                    <div className="rounded-2xl border border-dashed border-brand-border/70 bg-white/50 px-3 py-4 text-[12px] text-brand-ink-soft">
                       No competitors configured.{" "}
-                      <Link href="/settings?tab=enrichment" className="font-semibold text-ish-stratus-blue hover:underline">
+                      <Link href="/settings?tab=enrichment" className="font-semibold text-brand-stratus-blue hover:underline">
                         Add brands in Settings → Enrichment
                       </Link>
                     </div>
@@ -327,8 +327,8 @@ export function BrandIntelligenceDashboard() {
                               "rounded-xl border text-left text-[12px] font-semibold transition-all active:scale-[0.98]",
                               isMobile ? "min-h-[44px] px-3 py-2.5" : "rounded-full px-3.5 py-2",
                               active
-                                ? "border-[rgba(var(--ish-stratus-blue-rgb),0.4)] bg-[rgba(var(--ish-stratus-blue-rgb),0.12)] text-ish-ink shadow-[var(--shadow-ish-sm)]"
-                                : "border-ish-border/60 bg-white/70 text-ish-ink-soft hover:border-ish-border hover:text-ish-ink",
+                                ? "border-[rgba(var(--brand-stratus-blue-rgb),0.4)] bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] text-brand-ink shadow-[var(--shadow-brand-sm)]"
+                                : "border-brand-border/60 bg-white/70 text-brand-ink-soft hover:border-brand-border hover:text-brand-ink",
                             )}
                           >
                             <span className="line-clamp-2">{brand}</span>
@@ -337,7 +337,7 @@ export function BrandIntelligenceDashboard() {
                       })}
                     </div>
                   )}
-                  <span className="text-[10.5px] text-ish-ink-faint">Select one or more competitors per sweep</span>
+                  <span className="text-[10.5px] text-brand-ink-faint">Select one or more competitors per sweep</span>
                 </div>
               </div>
 
@@ -345,11 +345,11 @@ export function BrandIntelligenceDashboard() {
               <div className="mt-4 lg:mt-5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <MapPin className="size-4 text-ish-stratus-blue" />
+                    <MapPin className="size-4 text-brand-stratus-blue" />
                     <span className={text.label}>Gifting company city</span>
                   </div>
                   {selectedCities.length > 0 ? (
-                    <button type="button" onClick={clearCities} className="text-[11px] font-semibold text-ish-stratus-blue">Clear</button>
+                    <button type="button" onClick={clearCities} className="text-[11px] font-semibold text-brand-stratus-blue">Clear</button>
                   ) : null}
                 </div>
                 {isMobile ? (
@@ -357,23 +357,23 @@ export function BrandIntelligenceDashboard() {
                     <button
                       type="button"
                       onClick={() => setCitySheetOpen(true)}
-                      className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-ish-border/60 bg-white/80 px-3.5 py-2.5 text-left active:scale-[0.99]"
+                      className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-brand-border/60 bg-white/80 px-3.5 py-2.5 text-left active:scale-[0.99]"
                     >
-                      <span className="text-[13px] font-semibold text-ish-ink">
+                      <span className="text-[13px] font-semibold text-brand-ink">
                         {selectedCities.length === 0
                           ? "All cities"
                           : selectedCities.length === 1
                             ? selectedCities[0]
                             : `${selectedCities.length} cities selected`}
                       </span>
-                      <ChevronDown className="size-4 text-ish-ink-faint" />
+                      <ChevronDown className="size-4 text-brand-ink-faint" />
                     </button>
                     <BottomSheet open={citySheetOpen} onClose={() => setCitySheetOpen(false)} title="Select cities" contentClassName="px-0 py-0">
                       <div className="px-3 pb-4">
-                        <p className="mb-3 text-[12px] text-ish-ink-soft">Optional. Leave empty for all cities.</p>
+                        <p className="mb-3 text-[12px] text-brand-ink-soft">Optional. Leave empty for all cities.</p>
                         {SCOUT_CITY_GROUPS.map((group) => (
                           <div key={group.label} className="mb-3">
-                            <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-widest text-ish-ink-faint">{group.label}</p>
+                            <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">{group.label}</p>
                             <div className="grid grid-cols-2 gap-2">
                               {group.cities.map((city) => {
                                 const active = selectedCities.includes(city);
@@ -385,12 +385,12 @@ export function BrandIntelligenceDashboard() {
                                     className={cn(
                                       "flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-semibold transition-all active:scale-[0.98]",
                                       active
-                                        ? "border-ish-stratus-blue/40 bg-ish-stratus-blue/10 text-ish-ink"
-                                        : "border-ish-border/60 bg-white text-ish-ink-soft",
+                                        ? "border-brand-stratus-blue/40 bg-brand-stratus-blue/10 text-brand-ink"
+                                        : "border-brand-border/60 bg-white text-brand-ink-soft",
                                     )}
                                   >
                                     <span className="truncate">{city}</span>
-                                    {active ? <Check className="size-3.5 shrink-0 text-ish-stratus-blue" /> : null}
+                                    {active ? <Check className="size-3.5 shrink-0 text-brand-stratus-blue" /> : null}
                                   </button>
                                 );
                               })}
@@ -400,7 +400,7 @@ export function BrandIntelligenceDashboard() {
                         <button
                           type="button"
                           onClick={() => setCitySheetOpen(false)}
-                          className="mt-2 flex h-11 w-full items-center justify-center rounded-2xl bg-ish-black text-[14px] font-bold text-white"
+                          className="mt-2 flex h-11 w-full items-center justify-center rounded-2xl bg-brand-black text-[14px] font-bold text-white"
                         >
                           Done
                         </button>
@@ -409,7 +409,7 @@ export function BrandIntelligenceDashboard() {
                   </>
                 ) : (
                   <>
-                    <p className="mb-2 text-[10.5px] text-ish-ink-faint">
+                    <p className="mb-2 text-[10.5px] text-brand-ink-faint">
                       Optional. Leave empty for all cities, or select one or more.
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -423,8 +423,8 @@ export function BrandIntelligenceDashboard() {
                             className={cn(
                               "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all",
                               active
-                                ? "border-[rgba(var(--ish-stratus-blue-rgb),0.4)] bg-[rgba(var(--ish-stratus-blue-rgb),0.12)] text-ish-ink"
-                                : "border-ish-border/60 bg-white/70 text-ish-ink-soft hover:text-ish-ink",
+                                ? "border-[rgba(var(--brand-stratus-blue-rgb),0.4)] bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] text-brand-ink"
+                                : "border-brand-border/60 bg-white/70 text-brand-ink-soft hover:text-brand-ink",
                             )}
                           >
                             {city}
@@ -450,25 +450,25 @@ export function BrandIntelligenceDashboard() {
                           "group flex flex-col rounded-xl border text-left transition-all duration-200 active:scale-[0.98]",
                           isMobile ? "min-h-[56px] px-2.5 py-2" : "min-w-[120px] sm:min-w-[148px] rounded-2xl px-3.5 py-2.5",
                           active
-                            ? "border-[rgba(var(--ish-stratus-blue-rgb),0.35)] bg-[rgba(var(--ish-stratus-blue-rgb),0.08)] shadow-[var(--shadow-ish-sm)]"
-                            : "border-ish-border/60 bg-white/50 hover:border-ish-border hover:bg-white/80",
+                            ? "border-[rgba(var(--brand-stratus-blue-rgb),0.35)] bg-[rgba(var(--brand-stratus-blue-rgb),0.08)] shadow-[var(--shadow-brand-sm)]"
+                            : "border-brand-border/60 bg-white/50 hover:border-brand-border hover:bg-white/80",
                         )}
                       >
                         <span className="flex items-center gap-2">
                           <span
                             className={cn(
                               "flex size-7 shrink-0 items-center justify-center rounded-lg transition-colors",
-                              active ? "bg-ish-yellow text-ish-ink" : "bg-ish-border/40 text-ish-ink-soft",
+                              active ? "bg-brand-yellow text-brand-ink" : "bg-brand-border/40 text-brand-ink-soft",
                             )}
                           >
                             <Icon className="size-3.5" />
                           </span>
-                          <span className={cn("text-[12px] font-bold leading-tight", active ? "text-ish-ink" : "text-ish-ink-soft")}>
+                          <span className={cn("text-[12px] font-bold leading-tight", active ? "text-brand-ink" : "text-brand-ink-soft")}>
                             {isMobile ? short : label}
                           </span>
                         </span>
                         {!isMobile ? (
-                          <span className="mt-1 pl-9 text-[10.5px] leading-snug text-ish-ink-faint">{description}</span>
+                          <span className="mt-1 pl-9 text-[10.5px] leading-snug text-brand-ink-faint">{description}</span>
                         ) : null}
                       </button>
                     );
@@ -477,7 +477,7 @@ export function BrandIntelligenceDashboard() {
               </div>
 
               {isMobile ? (
-                <p className="mt-3 text-center text-[11px] text-ish-ink-faint">
+                <p className="mt-3 text-center text-[11px] text-brand-ink-faint">
                   {selectedCompetitors.length} brand{selectedCompetitors.length === 1 ? "" : "s"}
                   {" · "}
                   {selectedCities.length === 0 ? "All cities" : `${selectedCities.length} cit${selectedCities.length === 1 ? "y" : "ies"}`}
@@ -486,14 +486,14 @@ export function BrandIntelligenceDashboard() {
                 </p>
               ) : null}
 
-              <div className={cn("mt-4 flex flex-wrap items-center gap-3 border-t border-ish-border/40 pt-4 lg:mt-5 lg:pt-5", isMobile && "hidden")}>
+              <div className={cn("mt-4 flex flex-wrap items-center gap-3 border-t border-brand-border/40 pt-4 lg:mt-5 lg:pt-5", isMobile && "hidden")}>
                 <button
                   type="button"
                   onClick={handleSweep}
                   disabled={isExtracting}
                   className={cn(
-                    "inline-flex h-10 items-center gap-2 rounded-full px-5 text-[13px] font-bold text-ish-ink shadow-[var(--shadow-ish-yellow-sm)] transition-all",
-                    "bg-ish-yellow-gradient hover:brightness-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60",
+                    "inline-flex h-10 items-center gap-2 rounded-full px-5 text-[13px] font-bold text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] transition-all",
+                    "bg-brand-yellow-gradient hover:brightness-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60",
                   )}
                 >
                   {isExtracting ? (
@@ -531,20 +531,20 @@ export function BrandIntelligenceDashboard() {
 
           <PanelCard
             tone="white"
-            className="overflow-hidden border border-ish-border/50 bg-white/75 p-0 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm"
+            className="overflow-hidden border border-brand-border/50 bg-white/75 p-0 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm"
           >
-            <div className="flex flex-col gap-3 border-b border-ish-border/50 px-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5 lg:py-4">
+            <div className="flex flex-col gap-3 border-b border-brand-border/50 px-3 py-3 lg:flex-row lg:items-center lg:justify-between lg:px-5 lg:py-4">
               <div>
                 <h2 className={text.cardTitle}>Extracted intelligence</h2>
                 <p className={text.caption}>Verified corporate gifting events from public sources</p>
               </div>
               <div className="relative w-full lg:max-w-[280px]">
-                <Filter className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
+                <Filter className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
                 <input
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder="Filter company, product, occasion"
-                  className="w-full rounded-full border border-ish-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-ish-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)] focus:bg-white"
+                  className="w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
                 />
               </div>
             </div>
@@ -561,7 +561,7 @@ export function BrandIntelligenceDashboard() {
               <div className="overflow-x-auto -mx-1 px-1 lg:mx-0 lg:px-0">
                 <table className="min-w-full text-left">
                   <thead>
-                    <tr className="border-b border-ish-border/40 bg-ish-border/15 text-[10.5px] font-bold uppercase tracking-[0.08em] text-ish-ink-faint">
+                    <tr className="border-b border-brand-border/40 bg-brand-border/15 text-[10.5px] font-bold uppercase tracking-[0.08em] text-brand-ink-faint">
                       <th className="px-5 py-3">Giving company</th>
                       <th className="px-5 py-3">City</th>
                       <th className="px-5 py-3">Brand</th>
@@ -582,40 +582,40 @@ export function BrandIntelligenceDashboard() {
                       return (
                         <tr
                           key={row.id}
-                          className="border-b border-ish-border/30 transition-colors last:border-0 hover:bg-[rgba(var(--ish-stratus-blue-rgb),0.04)]"
+                          className="border-b border-brand-border/30 transition-colors last:border-0 hover:bg-[rgba(var(--brand-stratus-blue-rgb),0.04)]"
                         >
                           <td className="px-5 py-4">
-                            <div className="text-[13px] font-bold text-ish-ink">
+                            <div className="text-[13px] font-bold text-brand-ink">
                               {row.extraction_data?.giving_company ?? "—"}
                             </div>
                             {row.matchedAccountName && (
-                              <div className="mt-0.5 text-[10.5px] text-ish-ink-faint">
+                              <div className="mt-0.5 text-[10.5px] text-brand-ink-faint">
                                 Matched: {row.matchedAccountName}
                               </div>
                             )}
                           </td>
-                          <td className="px-5 py-4 text-[12.5px] text-ish-ink-soft">
+                          <td className="px-5 py-4 text-[12.5px] text-brand-ink-soft">
                             {row.extraction_data?.giving_company_city ?? "—"}
                           </td>
-                          <td className="px-5 py-4 text-[12.5px] text-ish-ink-soft">
+                          <td className="px-5 py-4 text-[12.5px] text-brand-ink-soft">
                             {row.extraction_data?.brand_identified ?? "—"}
                           </td>
-                          <td className="px-5 py-4 text-[12.5px] text-ish-ink-soft">
+                          <td className="px-5 py-4 text-[12.5px] text-brand-ink-soft">
                             {row.extraction_data?.specific_product_details ??
                               row.extraction_data?.brand_identified ??
                               "—"}
                           </td>
-                          <td className="px-5 py-4 text-[12.5px] text-ish-ink-soft">
+                          <td className="px-5 py-4 text-[12.5px] text-brand-ink-soft">
                             {row.extraction_data?.occasion_or_context ?? "—"}
                           </td>
                           <td className="px-5 py-4">
-                            <span className="inline-flex items-center gap-1 text-[12px] tabular-nums text-ish-ink-soft">
-                              <Calendar className="size-3 text-ish-ink-faint" />
+                            <span className="inline-flex items-center gap-1 text-[12px] tabular-nums text-brand-ink-soft">
+                              <Calendar className="size-3 text-brand-ink-faint" />
                               {row.extraction_data?.timeframe ?? "—"}
                             </span>
                           </td>
                           <td className="px-5 py-4">
-                            <span className="inline-flex items-center gap-1 rounded-full border border-ish-border/60 bg-white/70 px-2.5 py-1 text-[10.5px] font-semibold text-ish-ink-soft">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-brand-border/60 bg-white/70 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft">
                               {tier?.short ?? "—"}
                             </span>
                           </td>
@@ -644,13 +644,13 @@ export function BrandIntelligenceDashboard() {
                                   href={row.source_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-ish-stratus-blue hover:underline"
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-stratus-blue hover:underline"
                                 >
                                   View source <ExternalLink className="size-3" />
                                 </a>
                               )}
                               {row.matchedAccountId && (
-                                <Link href="/directory" className="text-[11px] text-ish-ink-soft hover:underline">
+                                <Link href="/directory" className="text-[11px] text-brand-ink-soft hover:underline">
                                   Open account
                                 </Link>
                               )}
@@ -658,13 +658,13 @@ export function BrandIntelligenceDashboard() {
                                 <button
                                   type="button"
                                   onClick={() => handleConfirm(row, row.matchedAccountId!)}
-                                  className="text-left text-[11px] font-bold text-ish-ink hover:underline"
+                                  className="text-left text-[11px] font-bold text-brand-ink hover:underline"
                                 >
                                   Confirm & update
                                 </button>
                               )}
                               {row.evidence_rationale && (
-                                <p className="text-[10.5px] leading-relaxed text-ish-ink-faint line-clamp-3">
+                                <p className="text-[10.5px] leading-relaxed text-brand-ink-faint line-clamp-3">
                                   {row.evidence_rationale}
                                 </p>
                               )}
@@ -679,7 +679,7 @@ export function BrandIntelligenceDashboard() {
             )}
 
             {pendingConfirmations.length > 0 && (
-              <div className="border-t border-ish-border/40 bg-amber-50/50 px-5 py-3 text-[11.5px] text-amber-900">
+              <div className="border-t border-brand-border/40 bg-amber-50/50 px-5 py-3 text-[11.5px] text-amber-900">
                 {pendingConfirmations.length} result(s) need manual confirmation before updating accounts.
               </div>
             )}
@@ -704,13 +704,13 @@ function IntelResultCard({
   const confidence = Math.round((row.confidence_score ?? 0) * 100);
 
   return (
-    <div className="rounded-2xl border border-ish-border/50 bg-white p-3 shadow-[var(--shadow-ish-sm)]">
+    <div className="rounded-2xl border border-brand-border/50 bg-white p-3 shadow-[var(--shadow-brand-sm)]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[14px] font-bold text-ish-ink">
+          <div className="truncate text-[14px] font-bold text-brand-ink">
             {row.extraction_data?.giving_company ?? "—"}
           </div>
-          <div className="mt-0.5 truncate text-[12px] text-ish-ink-soft">
+          <div className="mt-0.5 truncate text-[12px] text-brand-ink-soft">
             {[row.extraction_data?.giving_company_city, row.extraction_data?.brand_identified].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
@@ -718,17 +718,17 @@ function IntelResultCard({
           {status.label}
         </span>
       </div>
-      <div className="mt-2.5 space-y-1 text-[12px] text-ish-ink-soft">
+      <div className="mt-2.5 space-y-1 text-[12px] text-brand-ink-soft">
         <p className="line-clamp-2">
-          <span className="font-semibold text-ish-ink">Product:</span>{" "}
+          <span className="font-semibold text-brand-ink">Product:</span>{" "}
           {row.extraction_data?.specific_product_details ?? row.extraction_data?.brand_identified ?? "—"}
         </p>
         <p className="line-clamp-1">
-          <span className="font-semibold text-ish-ink">Occasion:</span> {row.extraction_data?.occasion_or_context ?? "—"}
+          <span className="font-semibold text-brand-ink">Occasion:</span> {row.extraction_data?.occasion_or_context ?? "—"}
         </p>
       </div>
-      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-ish-border/35 pt-2">
-        <span className="rounded-full border border-ish-border/60 bg-ish-canvas px-2 py-0.5 text-[10px] font-semibold text-ish-ink-soft">
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-brand-border/35 pt-2">
+        <span className="rounded-full border border-brand-border/60 bg-brand-canvas px-2 py-0.5 text-[10px] font-semibold text-brand-ink-soft">
           {tier?.short ?? "—"} · {confidence}%
         </span>
         {row.source_url ? (
@@ -736,7 +736,7 @@ function IntelResultCard({
             href={row.source_url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-semibold text-ish-stratus-blue"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-stratus-blue"
           >
             Source <ExternalLink className="size-3" />
           </a>
@@ -746,7 +746,7 @@ function IntelResultCard({
         <button
           type="button"
           onClick={() => onConfirm(row, row.matchedAccountId!)}
-          className="mt-2.5 w-full rounded-xl bg-ish-black py-2 text-[12px] font-bold text-white active:scale-[0.98]"
+          className="mt-2.5 w-full rounded-xl bg-brand-black py-2 text-[12px] font-bold text-white active:scale-[0.98]"
         >
           Confirm & update
         </button>
@@ -761,12 +761,12 @@ function StatPill({ label, value, accent }: { label: string; value: number; acce
       className={cn(
         "rounded-full border px-3 py-1.5 text-[11px] font-semibold tabular-nums",
         accent
-          ? "border-[rgba(var(--ish-stratus-blue-rgb),0.35)] bg-[rgba(var(--ish-stratus-blue-rgb),0.1)] text-ish-ink"
-          : "border-ish-border/60 bg-white/70 text-ish-ink-soft",
+          ? "border-[rgba(var(--brand-stratus-blue-rgb),0.35)] bg-[rgba(var(--brand-stratus-blue-rgb),0.1)] text-brand-ink"
+          : "border-brand-border/60 bg-white/70 text-brand-ink-soft",
       )}
     >
       {label}
-      <span className="ml-1.5 font-extrabold text-ish-ink">{value}</span>
+      <span className="ml-1.5 font-extrabold text-brand-ink">{value}</span>
     </span>
   );
 }
@@ -774,10 +774,10 @@ function StatPill({ label, value, accent }: { label: string; value: number; acce
 function ConfidenceBar({ value }: { value: number }) {
   return (
     <div className="flex min-w-[88px] flex-col gap-1">
-      <span className="text-[11px] font-bold tabular-nums text-ish-ink">{value}%</span>
-      <div className="h-1.5 overflow-hidden rounded-full bg-ish-border/50">
+      <span className="text-[11px] font-bold tabular-nums text-brand-ink">{value}%</span>
+      <div className="h-1.5 overflow-hidden rounded-full bg-brand-border/50">
         <div
-          className="h-full rounded-full bg-ish-yellow-gradient transition-all"
+          className="h-full rounded-full bg-brand-yellow-gradient transition-all"
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
@@ -788,21 +788,21 @@ function ConfidenceBar({ value }: { value: number }) {
 function EmptyState({ isExtracting, hasSweep }: { isExtracting: boolean; hasSweep: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
-      <div className="flex size-14 items-center justify-center rounded-[20px] bg-ish-yellow-soft">
+      <div className="flex size-14 items-center justify-center rounded-[20px] bg-brand-yellow-soft">
         {isExtracting ? (
-          <Loader2 className="size-6 animate-spin text-ish-ink-soft" />
+          <Loader2 className="size-6 animate-spin text-brand-ink-soft" />
         ) : (
-          <Radar className="size-6 text-ish-ink-soft" />
+          <Radar className="size-6 text-brand-ink-soft" />
         )}
       </div>
-      <div className="text-[15px] font-bold text-ish-ink">
+      <div className="text-[15px] font-bold text-brand-ink">
         {isExtracting
           ? "Running intelligence sweep…"
           : hasSweep
             ? "No matches for this filter"
             : "Ready to discover corporate buyers"}
       </div>
-      <p className="max-w-md text-[12.5px] leading-relaxed text-ish-ink-soft">
+      <p className="max-w-md text-[12.5px] leading-relaxed text-brand-ink-soft">
         {isExtracting
           ? "Parsing social posts, news articles, and workplace signals for employer gifting evidence."
           : hasSweep

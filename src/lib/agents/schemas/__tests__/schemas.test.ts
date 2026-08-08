@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseWriterOutput } from "@/lib/agents/schemas/writer-output";
 import { parseResearcherOutput } from "@/lib/agents/schemas/researcher-output";
-import { parseGiftIntelExtractions } from "@/lib/agents/schemas/gift-intel-output";
+import { parseGiftIntelExtractions } from "@/lib/agents/schemas/brand-intel-output";
 
 describe("agent output schemas", () => {
   it("parseWriterOutput accepts valid JSON object", () => {
@@ -23,7 +23,7 @@ describe("agent output schemas", () => {
 
   it("parseResearcherOutput accepts valid brief", () => {
     const raw = JSON.stringify({
-      giftingHook: "Diwali hampers for 500+ employees",
+      outreachHook: "Diwali hampers for 500+ employees",
       estimatedOrderValue: "₹2–8 lakhs",
       decisionChain: ["Raj Kumar"],
       outreachHooks: ["Diwali season"],
@@ -31,7 +31,7 @@ describe("agent output schemas", () => {
     });
     const { data, valid } = parseResearcherOutput(raw);
     expect(valid).toBe(true);
-    expect(data?.giftingHook).toContain("Diwali");
+    expect(data?.outreachHook).toContain("Diwali");
   });
 
   it("parseGiftIntelExtractions filters invalid rows", () => {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 import { getCreditBalance } from "@/lib/billing/credits";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { getSmtpStatus, getResendStatus } from "@/lib/email/config";
 import { getPermissionFlags } from "@/lib/auth/permissions";
 import { db, tenants, users } from "@/db";
 import { eq } from "drizzle-orm";
@@ -39,6 +40,11 @@ export async function GET() {
         }
       : null;
 
+    const smtpStatus = getSmtpStatus(emailConfig);
+    const resendStatus = getResendStatus();
+    const emailConfigured =
+      emailConfig.provider === "smtp" ? smtpStatus.configured : resendStatus.configured;
+
     return NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name },
       tenant: {
@@ -57,6 +63,7 @@ export async function GET() {
       mustChangePassword: ctx.mustChangePassword,
       permissions,
       sendMode: emailConfig.sendMode,
+      emailConfigured,
       credits,
       scoutBrandDefaults,
     });

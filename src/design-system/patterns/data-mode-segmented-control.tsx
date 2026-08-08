@@ -20,19 +20,19 @@ export function DataModeSegmentedControl({ value, onChange, className }: DataMod
     <div
       ref={containerRef}
       className={cn(
-        "relative inline-flex items-center gap-1 rounded-xl border border-ish-border/70 bg-white/60 p-1 shadow-[var(--shadow-ish-sm)] backdrop-blur-sm",
+        "relative inline-flex items-center gap-1 rounded-xl border border-brand-border/70 bg-white/60 p-1 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm",
         className,
       )}
     >
       <SlidingHighlight
         rect={rect}
         ready={ready}
-        className="rounded-lg bg-ish-black shadow-[var(--shadow-ish-sm)]"
+        className="rounded-lg bg-brand-black shadow-[var(--shadow-brand-sm)]"
       />
       <Database
         className={cn(
           "relative z-10 ml-1.5 size-3.5 shrink-0 transition-colors duration-300",
-          "text-ish-ink-soft",
+          "text-brand-ink-soft",
         )}
         aria-hidden
       />
@@ -49,7 +49,7 @@ export function DataModeSegmentedControl({ value, onChange, className }: DataMod
               "relative z-10 rounded-lg px-3 py-1.5 text-[11px] font-semibold",
               "transition-[color,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
               "active:scale-[0.97]",
-              active ? "text-white" : "text-ish-ink-soft hover:text-ish-ink",
+              active ? "text-white" : "text-brand-ink-soft hover:text-brand-ink",
             )}
           >
             {mode.label}

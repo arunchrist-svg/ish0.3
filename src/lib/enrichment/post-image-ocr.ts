@@ -2,7 +2,7 @@ import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
 import { ensureGeminiApiKeyForOcr, geminiModelId } from "@/lib/llm/gemini-env";
 import { mapWithConcurrency } from "@/lib/async";
-import type { RawGiftIntelPost } from "@/lib/gift-intel/types";
+import type { RawGiftIntelPost } from "@/lib/brand-intel/types";
 
 const OCR_CONCURRENCY = 3;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { getIndustryByLabel, type IndustryCatalogEntry } from "@/lib/gift-intel/industry-catalog";
+import { getIndustryByLabel, type IndustryCatalogEntry } from "@/lib/brand-intel/industry-catalog";
 import { CompetitorBrandsEditor } from "@/components/brand-intelligence/competitor-brands-editor";
 import { ProductCategoryPicker } from "@/components/brand-intelligence/product-category-picker";
 import { SuggestedCompetitorsPicker } from "@/components/brand-intelligence/suggested-competitors-picker";
@@ -48,8 +48,8 @@ export function BrandIntelligenceSetup({
   return (
     <div className="space-y-8">
       <div>
-        <label className="mb-1.5 block text-[13px] font-semibold text-ish-ink">Product category</label>
-        <p className="mb-2 text-[11.5px] text-ish-ink-soft">{categoryDesc}</p>
+        <label className="mb-1.5 block text-[13px] font-semibold text-brand-ink">Product category</label>
+        <p className="mb-2 text-[11.5px] text-brand-ink-soft">{categoryDesc}</p>
         <ProductCategoryPicker
           value={productCategory}
           onChange={onProductCategoryChange}
@@ -67,8 +67,8 @@ export function BrandIntelligenceSetup({
       ) : null}
 
       <div>
-        <label className="mb-1.5 block text-[13px] font-semibold text-ish-ink">Competitor brands</label>
-        <p className="mb-2 text-[11.5px] text-ish-ink-soft">{competitorsDesc}</p>
+        <label className="mb-1.5 block text-[13px] font-semibold text-brand-ink">Competitor brands</label>
+        <p className="mb-2 text-[11.5px] text-brand-ink-soft">{competitorsDesc}</p>
         <CompetitorBrandsEditor
           brands={competitorBrands}
           onChange={onCompetitorBrandsChange}

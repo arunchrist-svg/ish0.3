@@ -14,9 +14,9 @@ type Props = {
 };
 
 function emailStatusDot(status: string) {
-  if (status === "verified") return "bg-ish-green";
+  if (status === "verified") return "bg-brand-green";
   if (status === "unverified") return "bg-[#e8a000]";
-  return "bg-ish-ink-faint";
+  return "bg-brand-ink-faint";
 }
 
 export function BoardLeadCard({ lead, index, accent }: Props) {
@@ -39,18 +39,18 @@ export function BoardLeadCard({ lead, index, accent }: Props) {
       <div className="p-3.5">
         <div className="mb-2.5 flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13.5px] font-bold leading-tight text-ish-ink">{lead.name}</div>
-            <div className="mt-0.5 truncate text-[11.5px] text-ish-ink-soft">{lead.company}</div>
+            <div className="truncate text-[13.5px] font-bold leading-tight text-brand-ink">{lead.name}</div>
+            <div className="mt-0.5 truncate text-[11.5px] text-brand-ink-soft">{lead.company}</div>
           </div>
           <ScoreBadge score={lead.score ?? 0} />
         </div>
 
-        <div className="mb-2.5 flex items-center gap-1 text-[10.5px] text-ish-ink-faint">
+        <div className="mb-2.5 flex items-center gap-1 text-[10.5px] text-brand-ink-faint">
           <MapPin className="size-3 shrink-0" />
           <span className="truncate">{lead.city}</span>
         </div>
 
-        <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ish-green">
+        <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-brand-green">
           <Sparkles className="size-3 shrink-0" />
           <span className="truncate">{lead.action}</span>
         </div>
@@ -61,7 +61,7 @@ export function BoardLeadCard({ lead, index, accent }: Props) {
               className={cn("size-2 shrink-0 rounded-full", emailStatusDot(lead.emailStatus))}
               title={lead.emailStatus}
             />
-            <span className="text-[10px] font-medium capitalize text-ish-ink-faint">{lead.emailStatus}</span>
+            <span className="text-[10px] font-medium capitalize text-brand-ink-faint">{lead.emailStatus}</span>
           </div>
           <IshAvatar name={lead.name} index={index} size={26} />
         </div>

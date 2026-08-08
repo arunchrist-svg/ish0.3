@@ -30,7 +30,7 @@ export async function generateReplyPlan(params: {
   replyContent: string;
   intent: ReplyIntentResult;
   replyCtaInstruction: string;
-  giftingHook?: string | null;
+  outreachHook?: string | null;
   tenantId: string;
   workspaceId: string;
   leadId: string;
@@ -39,7 +39,7 @@ export async function generateReplyPlan(params: {
 
 Prospect: ${params.contactFirstName} at ${params.companyName}
 Intent: ${params.intent.intent}${params.intent.agreedTo ? ` (agreed: ${params.intent.agreedTo})` : ""}
-Gifting context: ${params.giftingHook ?? "corporate gifting"}
+Outreach context: ${params.outreachHook ?? "corporate outreach"}
 Required next CTA: ${params.replyCtaInstruction}
 
 Their reply:

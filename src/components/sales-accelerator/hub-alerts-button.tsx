@@ -20,7 +20,7 @@ export function HubAlertsButton({ className }: { className?: string }) {
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "relative flex size-10 items-center lg:hidden justify-center rounded-full bg-amber-50 text-amber-700 shadow-ish-sm ring-1 ring-amber-200/80 active:scale-95",
+          "relative flex size-10 items-center lg:hidden justify-center rounded-full bg-amber-50 text-amber-700 shadow-brand-sm ring-1 ring-amber-200/80 active:scale-95",
           className,
         )}
         aria-label={`${alerts.length} workspace alert${alerts.length === 1 ? "" : "s"}`}

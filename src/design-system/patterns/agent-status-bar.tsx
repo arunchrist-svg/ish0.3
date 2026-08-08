@@ -23,7 +23,7 @@ function labelForAgent(agent: string): string {
   if (agent === "researcher-lite") return "Research";
   if (agent === "writer") return "Writer";
   if (agent === "scout") return "Scout";
-  if (agent === "gift-intel") return "Gift Intel";
+  if (agent === "gift-intel" || agent === "brand-intel") return "Brand Intelligence";
   if (agent === "sequencer") return "Sequencer";
   return agent;
 }
@@ -35,15 +35,15 @@ export function AgentStatusBar({ runs, className }: AgentStatusBarProps) {
   const running = visible.filter((r) => r.status === "running");
 
   return (
-    <div className={cn("ish-agent-status-bar shrink-0 border-b border-ish-border/50 bg-white/90 px-4 py-2 backdrop-blur-md lg:px-6", className)}>
+    <div className={cn("ish-agent-status-bar shrink-0 border-b border-brand-border/50 bg-white/90 px-4 py-2 backdrop-blur-md lg:px-6", className)}>
       <div className="flex items-center gap-2 overflow-x-auto">
-        <Sparkles className="size-4 shrink-0 text-ish-stratus-blue" />
+        <Sparkles className="size-4 shrink-0 text-brand-stratus-blue" />
         {running.length > 0 ? (
-          <span className="shrink-0 text-[11px] font-semibold text-ish-ink-soft">
+          <span className="shrink-0 text-[11px] font-semibold text-brand-ink-soft">
             {running.length} agent{running.length === 1 ? "" : "s"} running
           </span>
         ) : (
-          <span className="shrink-0 text-[11px] font-semibold text-ish-green">Agents finished</span>
+          <span className="shrink-0 text-[11px] font-semibold text-brand-green">Agents finished</span>
         )}
         {visible.slice(0, 4).map((run) => {
           const href = run.leadId ? `/leads?lead=${run.leadId}` : undefined;
@@ -51,7 +51,7 @@ export function AgentStatusBar({ runs, className }: AgentStatusBarProps) {
             <span
               className={cn(
                 "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold",
-                run.status === "running" ? "bg-ish-yellow-soft text-ish-ink" : run.status === "failed" ? "bg-ish-pink-soft text-ish-ink" : "bg-ish-green-soft text-ish-ink",
+                run.status === "running" ? "bg-brand-yellow-soft text-brand-ink" : run.status === "failed" ? "bg-brand-pink-soft text-brand-ink" : "bg-brand-green-soft text-brand-ink",
               )}
             >
               {run.status === "running" ? (

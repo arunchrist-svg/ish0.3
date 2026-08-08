@@ -4,8 +4,8 @@ import {
   getEnabledSources,
   passesPreFilter,
   uniqueDefaultTiers,
-} from "@/lib/gift-intel/sources";
-import type { RawGiftIntelPost, SourceTier } from "@/lib/gift-intel/types";
+} from "@/lib/brand-intel/sources";
+import type { RawGiftIntelPost, SourceTier } from "@/lib/brand-intel/types";
 
 const MAX_UNIQUE_HITS = 50;
 const EARLY_STOP_T1 = 15;

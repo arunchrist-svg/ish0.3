@@ -85,7 +85,7 @@ export function LinkedInIntegration() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-ish-ink-faint">
+      <div className="flex items-center justify-center py-12 text-brand-ink-faint">
         <Loader2 className="mr-2 size-4 animate-spin" /> Loading integration status…
       </div>
     );
@@ -97,7 +97,7 @@ export function LinkedInIntegration() {
     <>
       {!status?.configured && (
         <SettingsGroup title="LinkedIn OAuth">
-          <p className="px-4 py-4 text-[13px] leading-relaxed text-ish-ink-soft">
+          <p className="px-4 py-4 text-[13px] leading-relaxed text-brand-ink-soft">
             LinkedIn sign-in is not enabled yet. You can still import a Connections.csv export below once your account is linked by your workspace admin.
           </p>
         </SettingsGroup>
@@ -112,15 +112,15 @@ export function LinkedInIntegration() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={member.linkedInPicture} alt="" className="size-12 shrink-0 rounded-full" />
           ) : (
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-ish-canvas text-[18px] font-bold text-ish-ink-faint">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand-canvas text-[18px] font-bold text-brand-ink-faint">
               in
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-medium text-ish-ink">{member?.name ?? "No account linked"}</p>
-            <p className="text-[13px] text-ish-ink-soft">{member?.email ?? "Connect to identify your rep profile"}</p>
+            <p className="text-[15px] font-medium text-brand-ink">{member?.name ?? "No account linked"}</p>
+            <p className="text-[13px] text-brand-ink-soft">{member?.email ?? "Connect to identify your rep profile"}</p>
             {member && (
-              <p className="mt-1 text-[12px] text-ish-ink-faint">
+              <p className="mt-1 text-[12px] text-brand-ink-faint">
                 {member.connectionCount} connections
                 {member.lastImportAt
                   ? ` · last import ${new Date(member.lastImportAt).toLocaleDateString()}`
@@ -157,8 +157,8 @@ export function LinkedInIntegration() {
           onClick={() => window.open("https://www.linkedin.com/help/linkedin/answer/a566336", "_blank")}
           className="justify-between"
         >
-          <span className="text-[15px] font-medium text-ish-stratus-blue">Export instructions</span>
-          <ExternalLink className="size-4 text-ish-ink-faint" />
+          <span className="text-[15px] font-medium text-brand-stratus-blue">Export instructions</span>
+          <ExternalLink className="size-4 text-brand-ink-faint" />
         </SettingsRow>
 
         <SettingsGroupDivider />
@@ -182,8 +182,8 @@ export function LinkedInIntegration() {
             className={cn(
               "flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold transition-all",
               member && !uploading
-                ? "bg-ish-black text-white hover:opacity-90"
-                : "cursor-not-allowed bg-ish-canvas text-ish-ink-faint",
+                ? "bg-brand-black text-white hover:opacity-90"
+                : "cursor-not-allowed bg-brand-canvas text-brand-ink-faint",
             )}
           >
             {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -194,7 +194,7 @@ export function LinkedInIntegration() {
         {member?.connectionCount ? (
           <>
             <SettingsGroupDivider />
-            <p className="flex items-center gap-2 px-4 py-3 text-[13px] text-ish-stratus-blue">
+            <p className="flex items-center gap-2 px-4 py-3 text-[13px] text-brand-stratus-blue">
               <Check className="size-4" /> {member.connectionCount} connections loaded for matching
             </p>
           </>
@@ -207,9 +207,9 @@ export function LinkedInIntegration() {
             <div key={m.id}>
               {i > 0 ? <SettingsGroupDivider /> : null}
               <div className="px-4 py-3">
-                <p className="text-[15px] font-medium text-ish-ink">{m.name}</p>
+                <p className="text-[15px] font-medium text-brand-ink">{m.name}</p>
                 {m.lastImportAt && (
-                  <p className="text-[12px] text-ish-ink-faint">
+                  <p className="text-[12px] text-brand-ink-faint">
                     Imported {new Date(m.lastImportAt).toLocaleDateString()}
                   </p>
                 )}

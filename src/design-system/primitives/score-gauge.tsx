@@ -60,7 +60,7 @@ export function ScoreGauge({
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
         <span
-          className="font-extrabold leading-none text-ish-ink"
+          className="font-extrabold leading-none text-brand-ink"
           style={{ fontSize }}
         >
           {score}
@@ -73,7 +73,7 @@ export function ScoreGauge({
 
   return (
     <div
-      className="flex shrink-0 items-center justify-center rounded-full bg-ish-green-soft/50 p-1"
+      className="flex shrink-0 items-center justify-center rounded-full bg-brand-green-soft/50 p-1"
       style={{ width: dim + 8, height: dim + 8 }}
     >
       {gauge}

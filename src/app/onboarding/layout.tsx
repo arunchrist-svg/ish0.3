@@ -14,5 +14,5 @@ export default async function OnboardingLayout({ children }: { children: React.R
     throw e;
   }
 
-  return <div className="min-h-screen bg-ish-canvas">{children}</div>;
+  return <div className="min-h-screen bg-brand-canvas">{children}</div>;
 }

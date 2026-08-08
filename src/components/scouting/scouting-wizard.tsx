@@ -29,7 +29,7 @@ export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Prop
   }
 
   return (
-    <div className="border-b border-ish-border bg-white px-6 py-2.5">
+    <div className="border-b border-brand-border bg-white px-6 py-2.5">
       <div className="flex items-start justify-center gap-0">
         {STEPS.map((step, idx) => {
           const isCompleted = step.id < currentStep;
@@ -46,9 +46,9 @@ export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Prop
                 <div
                   className={cn(
                     "flex size-10 items-center justify-center rounded-full transition-all duration-300",
-                    isCompleted && "bg-ish-green shadow-[0_2px_8px_rgba(63,190,130,0.35)]",
-                    isCurrent && "bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]",
-                    isPending && "bg-ish-border",
+                    isCompleted && "bg-brand-green shadow-[0_2px_8px_rgba(63,190,130,0.35)]",
+                    isCurrent && "bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]",
+                    isPending && "bg-brand-border",
                   )}
                 >
                   {isCompleted ? (
@@ -57,7 +57,7 @@ export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Prop
                     <Icon
                       className={cn(
                         "size-[18px] transition-colors",
-                        isCurrent ? "text-ish-ink" : "text-ish-ink-faint",
+                        isCurrent ? "text-brand-ink" : "text-brand-ink-faint",
                       )}
                     />
                   )}
@@ -68,13 +68,13 @@ export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Prop
                   <span
                     className={cn(
                       "text-[11.5px] font-semibold leading-tight",
-                      isCurrent ? "text-ish-ink" : isCompleted ? "text-ish-ink-soft" : "text-ish-ink-faint",
+                      isCurrent ? "text-brand-ink" : isCompleted ? "text-brand-ink-soft" : "text-brand-ink-faint",
                     )}
                   >
                     {step.label}
                   </span>
                   {sub ? (
-                    <span className="text-[10px] font-medium text-ish-ink-faint">{sub}</span>
+                    <span className="text-[10px] font-medium text-brand-ink-faint">{sub}</span>
                   ) : (
                     <span className="text-[10px] text-transparent select-none">—</span>
                   )}
@@ -83,10 +83,10 @@ export function ScoutingWizard({ currentStep, companiesCount, leadsCount }: Prop
 
               {/* Connector line between steps */}
               {idx < STEPS.length - 1 && (
-                <div className="relative mx-1 mt-5 h-0.5 w-16 overflow-hidden rounded-full bg-ish-border sm:w-20">
+                <div className="relative mx-1 mt-5 h-0.5 w-16 overflow-hidden rounded-full bg-brand-border sm:w-20">
                   <div
                     className={cn(
-                      "absolute inset-y-0 left-0 rounded-full bg-ish-green transition-all duration-500",
+                      "absolute inset-y-0 left-0 rounded-full bg-brand-green transition-all duration-500",
                     )}
                     style={{ width: step.id < currentStep ? "100%" : "0%" }}
                   />

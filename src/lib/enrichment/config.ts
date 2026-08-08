@@ -1,5 +1,5 @@
 // Enrichment configuration — loaded from env at runtime, overridable via Settings UI
-import { resolveGiftIntelConfig } from "@/lib/gift-intel/config";
+import { resolveGiftIntelConfig } from "@/lib/brand-intel/config";
 
 export type SearchProvider = "india_directories" | "google_places" | "tavily_ai" | "apollo";
 export type EnrichProvider = "website_email" | "apollo" | "hunter" | "none";
@@ -15,8 +15,12 @@ export type EnrichmentConfig = {
   scoutLeadsLimit: number;
   apolloApiKey?: string;
   hunterApiKey?: string;
+  /** @deprecated Prefer brandIntel* */
   giftIntelProductCategory?: string;
+  /** @deprecated Prefer brandIntel* */
   giftIntelCompetitorBrands?: string[];
+  brandIntelProductCategory?: string;
+  brandIntelCompetitorBrands?: string[];
 };
 
 export const SCOUT_VOLUME_PRESETS = {
@@ -164,7 +168,9 @@ export function resolveEnrichmentConfig(
     dataMode: mode,
     searchProvider: resolveSearchProvider(mode, configuredSearch),
     enrichProvider: resolveEnrichProvider(mode, configuredEnrich),
-    giftIntelProductCategory: giftIntel.productCategory,
-    giftIntelCompetitorBrands: giftIntel.competitorBrands,
+    giftIntelProductCategory: giftIntel.productCategory || undefined,
+    giftIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
+    brandIntelProductCategory: giftIntel.productCategory || undefined,
+    brandIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
   };
 }

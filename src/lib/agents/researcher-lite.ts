@@ -33,12 +33,7 @@ export async function runResearcherLite(leadId: string): Promise<void> {
   const confidenceTier =
     confidenceScore >= 75 ? "high" : confidenceScore >= 50 ? "medium" : "low";
 
-  const productHint = brand.productSummary?.trim()
-    || (brand.brandSlug === "prestige"
-      ? "kitchen appliances and employee reward bundles"
-      : brand.brandSlug === "ish"
-        ? "premium mithai and dry fruit hampers"
-        : `products from ${brand.brandName}`);
+  const productHint = brand.productSummary?.trim() || `products from ${brand.brandName}`;
 
   const websiteBlock = brand.websiteInsights
     ? `
@@ -48,7 +43,7 @@ Buyer personas: ${brand.websiteInsights.buyerPersonas.join(", ")}
 `
     : "";
 
-  const prompt = `You are a B2B gifting intelligence analyst. Write a structured brief for this corporate outreach lead.
+  const prompt = `You are a B2B sales intelligence analyst. Write a structured brief for this corporate outreach lead.
 
 Seller brand: ${brand.brandName} (${brand.vertical})
 Seller product: ${brand.productSummary || productHint}
@@ -57,19 +52,19 @@ Company: ${account.name}
 City: ${account.city ?? "India"}
 Industry: ${account.industry ?? "Corporate"}
 Employees: ${account.employees ?? "Unknown"}
-Budget: ${account.giftBudget ?? "Unknown"}
+Budget: ${account.budgetBand ?? "Unknown"}
 Intel: ${account.intelNotes ?? "No intel available"}
 
 Contact: ${contact.name}, ${contact.title ?? "Unknown title"}
 Confidence tier: ${confidenceTier}
 
 Rules:
-- Gifting hook and outreach hooks must match the seller brand/product above.
-- Never invent sweets, mithai, or hampers unless the seller brand is sweets/gifting.
+- Outreach hooks must match the seller brand/product above.
+- Never invent products, categories, or seasonal angles the seller does not sell.
 
 Output ONLY valid JSON with this shape:
 {
-  "giftingHook": "one sentence specific to this company/contact and seller product",
+  "outreachHook": "one sentence specific to this company/contact and seller product",
   "estimatedOrderValue": "₹X–Y lakhs",
   "decisionChain": ["Name/Title", ...],
   "outreachHooks": ["hook 1", "hook 2"],
@@ -93,22 +88,17 @@ Output ONLY valid JSON with this shape:
     },
   });
 
-  const fallbackHooks =
-    brand.brandSlug === "prestige"
-      ? ["Employee reward season", "Appliance bundles"]
-      : brand.brandSlug === "ish"
-        ? ["Diwali season", "Premium mithai"]
-        : ["Corporate rewards", brand.brandName];
+  const fallbackHooks = ["Corporate opportunity", brand.brandName];
 
   const { data: validated, valid } = parseResearcherOutput(raw);
   const parsed = validated ?? {
-    giftingHook: `${account.name} corporate opportunity for ${contact.title ?? "HR/Admin"} team with ${brand.brandName}`,
+    outreachHook: `${account.name} corporate opportunity for ${contact.title ?? "HR/Admin"} team with ${brand.brandName}`,
     estimatedOrderValue: "₹2–8 lakhs",
     decisionChain: [contact.name],
     outreachHooks: fallbackHooks,
     scoreFactors: [
-      { label: "Purchase timeframe is", bold: brand.brandSlug === "ish" ? "Diwali season" : "Upcoming reward cycle" },
-      { label: "Estimated budget is", bold: account.giftBudget ?? "unknown" },
+      { label: "Purchase timeframe is", bold: "Upcoming buying cycle" },
+      { label: "Estimated budget is", bold: account.budgetBand ?? "unknown" },
     ],
   };
   if (!valid) {
@@ -119,7 +109,7 @@ Output ONLY valid JSON with this shape:
     leadId,
     confidenceTier,
     confidenceScore,
-    giftingHook: parsed.giftingHook,
+    outreachHook: parsed.outreachHook,
     estimatedOrderValue: parsed.estimatedOrderValue,
     decisionChain: parsed.decisionChain ?? [],
     outreachHooks: parsed.outreachHooks ?? [],

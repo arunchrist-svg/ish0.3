@@ -11,7 +11,7 @@ export async function sendSystemEmail(params: {
     return;
   }
 
-  const from = process.env.SYSTEM_EMAIL_FROM ?? "ISH Sales <onboarding@resend.dev>";
+  const from = process.env.SYSTEM_EMAIL_FROM ?? "Nebula <onboarding@resend.dev>";
   const resend = new Resend(key);
   const { error } = await resend.emails.send({
     from,

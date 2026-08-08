@@ -97,7 +97,7 @@ export async function runReplyWriter(leadId: string): Promise<ReplyWriterResult>
     replyContent,
     intent: replyIntent,
     replyCtaInstruction,
-    giftingHook: research?.giftingHook,
+    outreachHook: research?.outreachHook,
     tenantId: lead.tenantId,
     workspaceId: lead.workspaceId,
     leadId,
@@ -119,7 +119,7 @@ Output ONLY valid JSON:
 
 Prospect: ${contactFirstName}, ${contact.title ?? "HR/Admin"} at ${account.name}
 Industry: ${account.industry ?? "Corporate"}, City: ${account.city ?? "India"}
-Gifting hook: ${research?.giftingHook ?? "Diwali season gifting"}
+Outreach hook: ${research?.outreachHook ?? "Corporate outreach"}
 
 Our original email:
 """
@@ -160,7 +160,7 @@ Instructions:
       enrichmentSource: contact.enrichmentSource,
     },
     contact: { firstName: contactFirstName, title: contact.title },
-    giftingHook: research?.giftingHook,
+    outreachHook: research?.outreachHook,
   };
 
   const rubricParams = {
@@ -172,13 +172,13 @@ Instructions:
       employees: account.employees,
     },
     deliverabilityOptions: delivOpts,
-    giftingHook: research?.giftingHook,
+    outreachHook: research?.outreachHook,
     intelNotes: account.intelNotes,
   };
 
   const threadRoot =
     (lead as typeof leads.$inferSelect & { threadRootSubject?: string | null }).threadRootSubject ??
-    (originalContext.subjectA ? stripReplyPrefix(originalContext.subjectA) : `Diwali gifting for ${account.name}`);
+    (originalContext.subjectA ? stripReplyPrefix(originalContext.subjectA) : `Outreach for ${account.name}`);
 
   let emailBody = "";
   let subjectA = normalizeReplySubject(threadRoot);
@@ -207,7 +207,7 @@ Instructions:
       parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
     } catch {
       parsed = {
-        subjectA: `Re: Diwali gifting for ${account.name}`,
+        subjectA: `Re: Outreach for ${account.name}`,
         subjectB: `Re: ${contactFirstName} reply`,
         emailBody: raw.slice(0, 600),
         outreachGoal: "Continue conversation and book next step",

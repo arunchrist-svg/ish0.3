@@ -13,6 +13,8 @@ export async function POST(req: Request) {
     const {
       cities,
       industries,
+      seniority,
+      departments,
       dataMode = (process.env.DEFAULT_DATA_MODE ?? "free") as DataMode,
       companyLimit,
       maxCompaniesToProcess,
@@ -23,6 +25,8 @@ export async function POST(req: Request) {
       workspaceId: ctx.workspaceId,
       cities,
       industries,
+      seniority,
+      departments,
       dataMode,
       companyLimit,
       maxCompaniesToProcess,

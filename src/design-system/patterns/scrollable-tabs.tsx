@@ -49,8 +49,8 @@ export function ScrollableTabs({
                   ? "min-h-[36px] gap-1 rounded-xl px-3 py-1.5 text-[13px]"
                   : "min-h-[44px] gap-1.5 rounded-2xl px-4 py-2 text-[14px]",
                 active
-                  ? "bg-ish-stratus-blue text-white shadow-ish-sm"
-                  : "bg-white text-ish-ink-soft shadow-ish-sm",
+                  ? "bg-brand-stratus-blue text-white shadow-brand-sm"
+                  : "bg-white text-brand-ink-soft shadow-brand-sm",
               )}
             >
               {tab}
@@ -58,14 +58,14 @@ export function ScrollableTabs({
                 <span
                   className={cn(
                     "tabular-nums",
-                    active ? "text-white/85" : "text-ish-ink-soft/70",
+                    active ? "text-white/85" : "text-brand-ink-soft/70",
                   )}
                 >
                   ({count})
                 </span>
               ) : null}
               {!showCount && badges?.[tab] ? (
-                <span className="size-2 rounded-full bg-ish-stratus-yellow" aria-label="Action needed" />
+                <span className="size-2 rounded-full bg-brand-stratus-yellow" aria-label="Action needed" />
               ) : null}
             </button>
           );

@@ -12,11 +12,21 @@ const CIN_PATTERN = /\bU\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6}\b/i;
 const LISTING_JUNK =
   /^(top|popular|corporate companies|leading businesses|professional services|name|page \d|find business|near |in |the hudson$)/i;
 const GENERIC_JUNK =
-  /^(star office|softinu|sandyrtr|embassy icon|newtimes group|vdrone|cuem \(head office\))$/i;
+  /^(star office|softinu|sandyrtr|embassy icon|newtimes group|vdrone|cuem \(head office\)|careers?|jobs?|hiring|about|home|contact|blog|news|press)$/i;
+
+/** Page titles / snippets that are clearly not company names. */
+const NON_COMPANY_NAME =
+  /\b(is hiring|are hiring|we'?re hiring|now hiring|view \d+\s*jobs|jobs? at |careers? at |this document|list of compan|company addresses|in \d{4}\b|hiring for|open roles|job openings?|apply now|read more|click here)\b/i;
+
+const SENTENCE_STARTERS =
+  /^(this|these|that|those|here|there|it|we|our|the following|a list|an overview|welcome|about|how to|what is|why |when |where )\b/i;
+
+const COMPANY_SUFFIX =
+  /\b(ltd|limited|pvt|private|llp|inc|corp|corporation|plc|gmbh|llc|co\.?|company|group|technologies|technology|systems|solutions|labs?|software|networks?|ventures?)\b/i;
 
 function inferIndustryFromTitle(title: string): string | undefined {
   const t = title.toLowerCase();
-  if (t.includes(" for it")) return "IT";
+  if (t.includes(" for it") || t.includes("technology") || t.includes(" software")) return "IT";
   if (t.includes("pharma") || t.includes("health")) return "Pharma";
   if (t.includes("manufactur")) return "Manufacturing";
   if (t.includes("retail") || t.includes("store")) return "Retail";
@@ -83,15 +93,25 @@ function inferCityFromHit(hit: DirectoryHit, cities: string[]): string | undefin
   return fromUrl ?? inferCityFromText(`${hit.content} ${hit.url}`, cities);
 }
 
-function cleanCompanyName(raw: string): string | null {
+/**
+ * Reject job posts, document blurbs, and other non-company strings that
+ * directory / Tavily heuristics often treat as names.
+ */
+export function isPlausibleCompanyName(raw: string): boolean {
+  return cleanCompanyName(raw) !== null;
+}
+
+export function cleanCompanyName(raw: string): string | null {
   const name = raw
     .replace(/\(\s*corporate office\s*\)/gi, "(Corporate Office)")
     .replace(/\(\s*head office\s*\)/gi, "(Head Office)")
     .replace(/\(\s*regional office\s*\)/gi, "(Regional Office)")
+    .replace(/[#!*|]+/g, " ")
     .replace(/\s+/g, " ")
+    .replace(/\.{2,}$/g, "")
     .trim();
 
-  if (name.length < 4 || name.length > 90) return null;
+  if (name.length < 2 || name.length > 70) return null;
   if (name.startsWith("#")) return null;
   if (LISTING_JUNK.test(name)) return null;
   if (GENERIC_JUNK.test(name)) return null;
@@ -101,13 +121,65 @@ function cleanCompanyName(raw: string): string | null {
   if (TIME_JUNK.test(name)) return null;
   if (CIN_PATTERN.test(name)) return null;
   if (/^\d{4,}/.test(name)) return null;
-  if (/justdial|indiamart|zauba|tradeindia|sulekha/i.test(name)) return null;
+  if (/justdial|indiamart|zauba|tradeindia|sulekha|linkedin|glassdoor|indeed/i.test(name)) return null;
   if (/^[\d\s·•,.-]+$/.test(name)) return null;
-  if (/^(bangalore|bengaluru|hosur|mysore|india)$/i.test(name)) return null;
+  if (/^(bangalore|bengaluru|hosur|mysore|mysuru|india|chennai|mumbai|hyderabad|pune|delhi)$/i.test(name)) {
+    return null;
+  }
   if (/offers placement consultants/i.test(name)) return null;
-  if (/gift dealers?|gift hampers?|gift box dealers?|gift shop/i.test(name)) return null;
   if (/;\s*U\d/.test(name)) return null;
+
+  if (NON_COMPANY_NAME.test(name)) return null;
+  if (SENTENCE_STARTERS.test(name)) return null;
+  if (/\?$/.test(name)) return null;
+  if (/^\d+\s+(jobs?|companies|results?)\b/i.test(name)) return null;
+  if (/^(view|browse|see|find|search|explore|discover)\b/i.test(name)) return null;
+
+  // Full sentences / multi-clause blurbs
+  if ((name.match(/\./g) ?? []).length >= 1 && name.split(/\s+/).length > 4) return null;
+  if (/,.*,/.test(name) && !COMPANY_SUFFIX.test(name)) return null;
+
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length > 6 && !COMPANY_SUFFIX.test(name)) return null;
+  if (words.length >= 4 && !COMPANY_SUFFIX.test(name) && !/^[A-Z0-9]/.test(name)) return null;
+
+  // "India in 2026", "Tech in 2025" style report titles
+  if (/^[A-Za-z\s]+ in 20\d{2}$/i.test(name)) return null;
+
+  // Mostly lowercase prose (company names are usually Title Case / brand-like)
+  const letters = name.replace(/[^A-Za-z]/g, "");
+  if (letters.length >= 12) {
+    const lower = (letters.match(/[a-z]/g) ?? []).length;
+    if (lower / letters.length > 0.85 && words.length >= 4) return null;
+  }
+
   return name;
+}
+
+/** Brand-like token: Capitalized / alphanumeric, no sentence punctuation. */
+const BRAND_TOKEN = "[A-Z0-9][A-Za-z0-9&']*(?:[.&][A-Za-z0-9&']+)?";
+const BRAND_NAME = `(${BRAND_TOKEN}(?:\\s+${BRAND_TOKEN}){0,4})`;
+
+/** Pull a real company name out of job-board / article titles when possible. */
+function extractCompanyFromTitle(title: string): string | null {
+  const patterns = [
+    new RegExp(`\\b${BRAND_NAME}\\s+is\\s+hiring\\b`, "i"),
+    new RegExp(`\\b(?:jobs?|careers?)\\s+at\\s+${BRAND_NAME}\\b`, "i"),
+    new RegExp(`#+\\s*${BRAND_NAME}\\s*$`),
+    new RegExp(`^${BRAND_NAME}\\s*[-|–—:]\\s*(?:careers?|jobs?|hiring|linkedin)`, "i"),
+  ];
+
+  for (const pattern of patterns) {
+    const match = title.match(pattern);
+    if (match?.[1]) {
+      const cleaned = cleanCompanyName(match[1]);
+      if (cleaned) return cleaned;
+    }
+  }
+
+  // Bare title that already looks like a company (e.g. "SingleStore", "Forward Networks")
+  const head = title.split(/\s*[|–—]\s*/)[0]?.trim() ?? "";
+  return cleanCompanyName(head);
 }
 
 const CATEGORY_PAGE =
@@ -163,10 +235,34 @@ export function parseCompaniesFromDirectoryResults(
   const out: ScoutCompanyResult[] = [];
   const seen = new Set<string>();
 
+  const push = (
+    raw: string,
+    industry: string | undefined,
+    city: string | undefined,
+    host: string,
+  ) => {
+    const name = cleanCompanyName(raw);
+    if (!name) return;
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    out.push({
+      name,
+      city: inferCityFromSegment(raw, cities) ?? city,
+      industry,
+      intelNotes: `Directory listing (${host}) — verify before outreach`,
+      fitScore: 62,
+      dataSource: "india_directories_heuristic",
+    });
+  };
+
   for (const hit of hits) {
     const fromUrl = extractFromJustDialUrl(hit.url);
+    const fromTitle = extractCompanyFromTitle(hit.title);
     const candidates = [
       ...(fromUrl ? [fromUrl] : []),
+      ...(fromTitle ? [fromTitle] : []),
       ...extractFromContent(hit.content),
     ];
     const industry = inferIndustryFromTitle(hit.title);
@@ -179,23 +275,7 @@ export function parseCompaniesFromDirectoryResults(
     }
 
     for (const raw of candidates) {
-      const name = cleanCompanyName(raw);
-      if (!name) continue;
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-
-      const companyCity = inferCityFromSegment(raw, cities) ?? city;
-
-      out.push({
-        name,
-        city: companyCity,
-        industry,
-        intelNotes: `Directory listing (${host}) — verify before outreach`,
-        giftScore: 62,
-        dataSource: "india_directories_heuristic",
-      });
-
+      push(raw, industry, city, host);
       if (out.length >= limit) return out;
     }
   }

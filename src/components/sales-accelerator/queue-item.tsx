@@ -22,28 +22,28 @@ export function QueueItemCard({ item, index, active, onClick }: Props) {
       className={cn(
         "ish-queue-card mb-2 w-full cursor-pointer rounded-[18px] p-4 text-left transition-all duration-150",
         active
-          ? "ish-queue-card-active bg-ish-yellow-gradient"
-          : "bg-white shadow-[var(--shadow-ish-sm)] hover:brightness-[0.98]",
+          ? "ish-queue-card-active bg-brand-yellow-gradient"
+          : "bg-white shadow-[var(--shadow-brand-sm)] hover:brightness-[0.98]",
       )}
     >
       <div className="mb-3.5 flex items-start justify-between">
         <div className="flex gap-3">
           <IshAvatar name={item.name} index={index} size={42} />
           <div>
-            <div className="text-[14.5px] font-bold text-ish-ink">{item.name}</div>
-            <div className="mt-0.5 text-xs text-ish-ink-soft">{item.action}</div>
+            <div className="text-[14.5px] font-bold text-brand-ink">{item.name}</div>
+            <div className="mt-0.5 text-xs text-brand-ink-soft">{item.action}</div>
           </div>
         </div>
         <div className="flex size-[30px] items-center justify-center rounded-full bg-white/60">
-          <Icon className="size-3.5 text-ish-ink-soft" />
+          <Icon className="size-3.5 text-brand-ink-soft" />
         </div>
       </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-ish-ink-soft">
+          <span className="rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-brand-ink-soft">
             {item.type}
           </span>
-          <span className="text-[11px] text-ish-ink-faint">{item.date}</span>
+          <span className="text-[11px] text-brand-ink-faint">{item.date}</span>
         </div>
         <ScoreBadge score={item.score} />
       </div>

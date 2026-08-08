@@ -146,7 +146,7 @@ function inferIndustry(types?: string[]): string | undefined {
   return undefined;
 }
 
-function estimateGiftScore(place: PlacesResult): number {
+function estimateFitScore(place: PlacesResult): number {
   let score = 55;
   const count = place.user_ratings_total ?? 0;
   if (count > 500) score += 20;
@@ -176,7 +176,7 @@ function toScoutResult(place: PlacesResult): ScoutCompanyResult {
     industry: inferIndustry(place.types),
     city: cityExtracted,
     employees: undefined,
-    giftScore: estimateGiftScore(place),
+    fitScore: estimateFitScore(place),
     intelNotes: [
       place.formatted_phone_number && `Phone: ${place.formatted_phone_number}`,
       place.rating && `Google Rating: ${place.rating} (${place.user_ratings_total ?? 0} reviews)`,

@@ -12,9 +12,9 @@ type SettingsSelectRowProps = {
 };
 
 const BADGE_COLORS: Record<string, string> = {
-  Free: "text-ish-stratus-blue",
-  "Free tier": "text-ish-stratus-blue",
-  Paid: "text-ish-ink-soft",
+  Free: "text-brand-stratus-blue",
+  "Free tier": "text-brand-stratus-blue",
+  Paid: "text-brand-ink-soft",
 };
 
 export function SettingsSelectRow({
@@ -31,14 +31,14 @@ export function SettingsSelectRow({
       <SettingsRow onClick={onSelect} className="justify-between">
         <div className="min-w-0 flex-1 pr-3">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-medium text-ish-ink">{label}</span>
+            <span className="text-[15px] font-medium text-brand-ink">{label}</span>
             {badge ? (
-              <span className={cn("text-[11px] font-semibold", BADGE_COLORS[badge] ?? "text-ish-ink-faint")}>
+              <span className={cn("text-[11px] font-semibold", BADGE_COLORS[badge] ?? "text-brand-ink-faint")}>
                 {badge}
               </span>
             ) : null}
           </div>
-          {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-ish-ink-soft">{desc}</p> : null}
+          {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">{desc}</p> : null}
         </div>
         <SettingsSelectedIndicator selected={selected} />
       </SettingsRow>

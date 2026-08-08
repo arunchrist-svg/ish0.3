@@ -113,7 +113,7 @@ export function TeamTab() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <Loader2 className="size-6 animate-spin text-ish-ink-soft" />
+        <Loader2 className="size-6 animate-spin text-brand-ink-soft" />
       </div>
     );
   }
@@ -121,24 +121,24 @@ export function TeamTab() {
   return (
     <div className="pb-8">
       <div className="mb-4 flex gap-2 px-1">
-        <button type="button" onClick={() => setMode("create")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "create" ? "bg-ish-black text-white" : "bg-ish-app text-ish-ink-soft")}>Create user</button>
-        <button type="button" onClick={() => setMode("invite")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "invite" ? "bg-ish-black text-white" : "bg-ish-app text-ish-ink-soft")}>Invite link</button>
+        <button type="button" onClick={() => setMode("create")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "create" ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft")}>Create user</button>
+        <button type="button" onClick={() => setMode("invite")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "invite" ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft")}>Invite link</button>
       </div>
 
       <SettingsGroup title={mode === "create" ? "Create User" : "Invite Teammate"} footer={mode === "create" ? "Share the temporary password with the user. They must change it on first login." : "Copy the link and send it. They sign up and join your workspace."}>
         <form onSubmit={mode === "create" ? handleCreate : handleInvite} className="px-4 py-4">
-          <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-ish-ink">
-            <UserPlus className="size-4 text-ish-stratus-blue" /> {mode === "create" ? "Direct create" : "Invite by email"}
+          <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-brand-ink">
+            <UserPlus className="size-4 text-brand-stratus-blue" /> {mode === "create" ? "Direct create" : "Invite by email"}
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             {mode === "create" ? (
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className="flex-1 min-w-[140px] rounded-xl border border-ish-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-ish-stratus-blue/50" />
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className="flex-1 min-w-[140px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
             ) : null}
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required className="flex-1 min-w-[180px] rounded-xl border border-ish-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-ish-stratus-blue/50" />
-            <select value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])} className="rounded-xl border border-ish-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required className="flex-1 min-w-[180px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
+            <select value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])} className="rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none">
               {ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
             </select>
-            <button type="submit" disabled={submitting} className={cn("rounded-full bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white", submitting && "opacity-60")}>
+            <button type="submit" disabled={submitting} className={cn("rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white", submitting && "opacity-60")}>
               {submitting ? "Working…" : mode === "create" ? "Create" : "Invite"}
             </button>
           </div>
@@ -149,10 +149,10 @@ export function TeamTab() {
             </div>
           ) : null}
           {lastInviteUrl ? (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-ish-app/80 px-3 py-2.5 text-[11px]">
-              <Mail className="size-4 shrink-0 text-ish-stratus-blue" />
-              <span className="flex-1 truncate font-mono text-ish-ink-soft">{lastInviteUrl}</span>
-              <button type="button" onClick={() => { void navigator.clipboard.writeText(lastInviteUrl); toast.success("Copied"); }} className="flex shrink-0 items-center gap-1 font-semibold text-ish-ink hover:underline"><Copy className="size-3.5" /> Copy</button>
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-brand-app/80 px-3 py-2.5 text-[11px]">
+              <Mail className="size-4 shrink-0 text-brand-stratus-blue" />
+              <span className="flex-1 truncate font-mono text-brand-ink-soft">{lastInviteUrl}</span>
+              <button type="button" onClick={() => { void navigator.clipboard.writeText(lastInviteUrl); toast.success("Copied"); }} className="flex shrink-0 items-center gap-1 font-semibold text-brand-ink hover:underline"><Copy className="size-3.5" /> Copy</button>
             </div>
           ) : null}
         </form>
@@ -164,8 +164,8 @@ export function TeamTab() {
             {i > 0 && <SettingsGroupDivider />}
             <SettingsRow className="justify-between gap-3">
               <div>
-                <p className="text-[14px] font-medium text-ish-ink">{m.name}</p>
-                <p className="text-[12px] text-ish-ink-soft">{m.email}</p>
+                <p className="text-[14px] font-medium text-brand-ink">{m.name}</p>
+                <p className="text-[12px] text-brand-ink-soft">{m.email}</p>
               </div>
               <div className="flex items-center gap-2">
                 {m.role !== "owner" ? (
@@ -176,7 +176,7 @@ export function TeamTab() {
                     <button type="button" onClick={() => removeMember(m.id)} className="text-[11px] text-red-600 hover:underline">Remove</button>
                   </>
                 ) : (
-                  <span className="rounded-full bg-ish-stratus-blue/15 px-2.5 py-0.5 text-[11px] font-semibold capitalize text-ish-ink">owner</span>
+                  <span className="rounded-full bg-brand-stratus-blue/15 px-2.5 py-0.5 text-[11px] font-semibold capitalize text-brand-ink">owner</span>
                 )}
               </div>
             </SettingsRow>
@@ -190,9 +190,9 @@ export function TeamTab() {
             <div key={inv.id}>
               {i > 0 && <SettingsGroupDivider />}
               <SettingsRow className="justify-between">
-                <span className="text-[14px] font-medium text-ish-ink">{inv.email}</span>
+                <span className="text-[14px] font-medium text-brand-ink">{inv.email}</span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] capitalize text-ish-ink-faint">{inv.role}</span>
+                  <span className="text-[11px] capitalize text-brand-ink-faint">{inv.role}</span>
                   <button type="button" onClick={() => revokeInvite(inv.id)} className="text-[11px] text-red-600 hover:underline">Revoke</button>
                 </div>
               </SettingsRow>

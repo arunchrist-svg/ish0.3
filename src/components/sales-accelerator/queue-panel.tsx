@@ -36,9 +36,9 @@ function matchesQuery(item: LeadQueueItem, query: string): boolean {
 }
 
 function emailStatusDot(status: string) {
-  if (status === "verified") return "bg-ish-green";
+  if (status === "verified") return "bg-brand-green";
   if (status === "unverified") return "bg-[#e8a000]";
-  return "bg-ish-ink-faint";
+  return "bg-brand-ink-faint";
 }
 
 function CompactLeadCard({
@@ -82,13 +82,13 @@ function CompactLeadCard({
         </span>
       </div>
       <div className="mt-2.5 min-w-0 flex-1">
-        <div className="line-clamp-2 text-[14px] font-semibold leading-snug text-ish-ink">{item.name}</div>
+        <div className="line-clamp-2 text-[14px] font-semibold leading-snug text-brand-ink">{item.name}</div>
         {subtitle ? (
-          <p className="mt-0.5 truncate text-[11px] font-medium text-ish-ink-soft">{subtitle}</p>
+          <p className="mt-0.5 truncate text-[11px] font-medium text-brand-ink-soft">{subtitle}</p>
         ) : null}
       </div>
-      <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-ish-border/35 pt-2">
-        <span className="min-w-0 truncate rounded-full bg-ish-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ish-ink-soft">
+      <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-brand-border/35 pt-2">
+        <span className="min-w-0 truncate rounded-full bg-brand-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-ink-soft">
           {statusToDisplayLabel(item.status)}
         </span>
         <div className="flex items-center gap-1.5">
@@ -96,7 +96,7 @@ function CompactLeadCard({
             className={cn("size-2 shrink-0 rounded-full ring-2 ring-white", emailStatusDot(item.emailStatus))}
             title={item.emailStatus}
           />
-          {active ? <Check className="size-3.5 text-ish-stratus-blue" strokeWidth={2.5} /> : null}
+          {active ? <Check className="size-3.5 text-brand-stratus-blue" strokeWidth={2.5} /> : null}
         </div>
       </div>
     </button>
@@ -123,16 +123,16 @@ function QueueCard({
         "transition-[transform,box-shadow,background-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
         "hover:translate-y-[-1px] active:scale-[0.99]",
         active
-          ? "ish-queue-card-active bg-ish-yellow-gradient"
-          : "bg-white shadow-[var(--shadow-ish-sm)] hover:shadow-[var(--shadow-ish)]",
+          ? "ish-queue-card-active bg-brand-yellow-gradient"
+          : "bg-white shadow-[var(--shadow-brand-sm)] hover:shadow-[var(--shadow-brand)]",
       )}
     >
       <div className="mb-3.5 flex items-start justify-between gap-2">
         <div className="flex min-w-0 gap-3">
           <IshAvatar name={item.name} index={index} size={42} />
           <div className="min-w-0">
-            <div className="truncate text-[14.5px] font-bold text-ish-ink">{item.name}</div>
-            <div className="mt-0.5 truncate text-xs text-ish-ink-soft">{item.action}</div>
+            <div className="truncate text-[14.5px] font-bold text-brand-ink">{item.name}</div>
+            <div className="mt-0.5 truncate text-xs text-brand-ink-soft">{item.action}</div>
           </div>
         </div>
         <div
@@ -142,15 +142,15 @@ function QueueCard({
             active && "scale-110",
           )}
         >
-          <Mail className="size-3.5 text-ish-ink-soft" />
+          <Mail className="size-3.5 text-brand-ink-soft" />
         </div>
       </div>
       <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-ish-ink-soft">
+          <span className="shrink-0 rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-brand-ink-soft">
             {statusToDisplayLabel(item.status)}
           </span>
-          <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-ish-ink-faint">
+          <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-brand-ink-faint">
             <span className={cn("size-1.5 shrink-0 rounded-full", emailStatusDot(item.emailStatus))} />
             {item.emailStatus}
           </span>
@@ -190,11 +190,11 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
   if (isMobile) {
     return (
       <div className="ish-leads-page flex h-full w-full min-w-0 flex-col">
-        <div className="sticky top-0 z-20 border-b border-ish-border/40 bg-white/80 px-4 pb-2.5 pt-[max(env(safe-area-inset-top),10px)] backdrop-blur-xl">
+        <div className="sticky top-0 z-20 border-b border-brand-border/40 bg-white/80 px-4 pb-2.5 pt-[max(env(safe-area-inset-top),10px)] backdrop-blur-xl">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h1 className={text.pageTitle}>Leads</h1>
-              <p className="text-[12px] text-ish-ink-soft">
+              <p className="text-[12px] text-brand-ink-soft">
                 {filteredLeads.length} lead{filteredLeads.length === 1 ? "" : "s"}
                 {searchQuery ? ` · "${searchQuery}"` : ""}
               </p>
@@ -203,17 +203,17 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
               <button
                 type="button"
                 onClick={() => void handleRefresh()}
-                className="flex size-10 items-center justify-center rounded-full bg-white text-ish-ink shadow-ish-sm ring-1 ring-ish-border/40 active:scale-95"
+                className="flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95"
                 aria-label="Refresh leads"
               >
-                <RefreshCw className={cn("size-4 text-ish-stratus-blue", refreshing && "animate-spin")} />
+                <RefreshCw className={cn("size-4 text-brand-stratus-blue", refreshing && "animate-spin")} />
               </button>
               <Link
                 href="/leads/board"
-                className="flex size-10 items-center justify-center rounded-full bg-white text-ish-ink shadow-ish-sm ring-1 ring-ish-border/40 active:scale-95"
+                className="flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95"
                 aria-label="Board view"
               >
-                <Calendar className="size-4 text-ish-stratus-blue" />
+                <Calendar className="size-4 text-brand-stratus-blue" />
               </Link>
             </div>
           </div>
@@ -229,7 +229,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
 
         <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto ish-page-padding py-4">
           {filteredLeads.length === 0 ? (
-            <div className="mt-12 text-center text-[13px] text-ish-ink-soft">
+            <div className="mt-12 text-center text-[13px] text-brand-ink-soft">
               {searchQuery ? `No leads match "${searchQuery}"` : "No leads yet"}
             </div>
           ) : (
@@ -253,7 +253,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
   return (
     <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xl font-bold text-ish-ink">My Leads</span>
+        <span className="text-xl font-bold text-brand-ink">My Leads</span>
         <div className="flex gap-1.5">
           {canWrite && onAddLead ? (
             <CircleButton size={30} onClick={onAddLead} aria-label="Add lead">
@@ -284,22 +284,22 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
 
       {searchOpen ? (
         <div className="relative mb-3 mt-2">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search name, company…"
             className={cn(
-              "w-full rounded-xl border border-ish-border/60 bg-white py-2 pl-9 pr-8 text-[13px] text-ish-ink",
-              "placeholder:text-ish-ink-faint focus:border-ish-stratus-blue/40 focus:outline-none focus:ring-2 focus:ring-ish-stratus-blue/12",
+              "w-full rounded-xl border border-brand-border/60 bg-white py-2 pl-9 pr-8 text-[13px] text-brand-ink",
+              "placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/12",
             )}
           />
           {searchQuery ? (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-ish-ink-faint hover:bg-ish-canvas hover:text-ish-ink"
+              className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-brand-ink-faint hover:bg-brand-canvas hover:text-brand-ink"
               aria-label="Clear search"
             >
               <X className="size-3" />
@@ -310,14 +310,14 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
 
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none px-3 py-1">
         {filteredLeads.length === 0 ? (
-          <div className="mt-8 px-2 text-center text-[12px] text-ish-ink-faint">
+          <div className="mt-8 px-2 text-center text-[12px] text-brand-ink-faint">
             {searchQuery ? `No leads match "${searchQuery}"` : "No leads"}
           </div>
         ) : (
           <>
             {today.length > 0 ? (
               <>
-                <div className="mb-2.5 mt-4 text-xs font-semibold text-ish-ink-faint">RECENT</div>
+                <div className="mb-2.5 mt-4 text-xs font-semibold text-brand-ink-faint">RECENT</div>
                 {today.map((item, i) => (
                   <QueueCard
                     key={item.id}
@@ -333,9 +333,9 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
             {older.length > 0 ? (
               <>
                 <div className="my-4 flex items-center gap-2.5">
-                  <Separator className="flex-1 bg-ish-border" />
-                  <span className="text-[11.5px] font-semibold text-ish-ink-faint">EARLIER</span>
-                  <Separator className="flex-1 bg-ish-border" />
+                  <Separator className="flex-1 bg-brand-border" />
+                  <span className="text-[11.5px] font-semibold text-brand-ink-faint">EARLIER</span>
+                  <Separator className="flex-1 bg-brand-border" />
                 </div>
                 {older.map((item, i) => (
                   <QueueCard

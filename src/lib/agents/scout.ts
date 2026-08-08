@@ -7,6 +7,9 @@ import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-s
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { SCOUT_CITIES } from "@/lib/scouting-data";
 import type { DataMode } from "@/lib/enrichment/types";
+import { mapWithConcurrency } from "@/lib/async";
+import { db, accounts } from "@/db";
+import { eq } from "drizzle-orm";
 
 export type ScoutBatchParams = {
   tenantId: string;
@@ -32,6 +35,8 @@ export type ScoutBatchResult = {
     seniority: string[];
   };
 };
+
+const AGENT_COMPANY_CONCURRENCY = 4;
 
 export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
   const runId = randomUUID();
@@ -96,7 +101,19 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
   errors.push(...discovery.errors, ...discovery.warnings);
   const toProcess = discovery.companies.slice(0, maxCompanies);
 
-  for (const company of toProcess) {
+  let tenantAccounts: (typeof accounts.$inferSelect)[] = [];
+  try {
+    tenantAccounts = await db
+      .select()
+      .from(accounts)
+      .where(eq(accounts.tenantId, params.tenantId));
+  } catch (e) {
+    console.warn("[scout] tenant accounts preload failed:", e);
+  }
+
+  const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
+
+  await mapWithConcurrency(toProcess, AGENT_COMPANY_CONCURRENCY, async (company) => {
     try {
       const { people, resolvedDomain, resolvedWebsite } = await discoverPeople({
         tenantId: params.tenantId,
@@ -108,15 +125,16 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
         limit: getScoutLeadsLimit(),
         seniority: seniority.length ? seniority : undefined,
         departments: departments.length ? departments : undefined,
+        cities,
+        tenantAccounts,
       });
 
       const candidates = people.filter((p) => p.name?.trim());
       if (!candidates.length) {
         leadsSkipped += 1;
-        continue;
+        return;
       }
 
-      const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
       const result = await saveScoutLeads({
         people: candidates.slice(0, getScoutLeadsLimit()),
         company: {
@@ -137,7 +155,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(`${company.name}: ${msg}`);
     }
-  }
+  });
 
   await logAudit({
     tenantId: params.tenantId,

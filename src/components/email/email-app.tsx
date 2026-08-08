@@ -43,11 +43,11 @@ const QUEUE_TABS: {
   icon: React.ElementType;
   accent?: string;
 }[] = [
-  { id: "needs_review", label: "Needs Review", icon: FileText, accent: "text-ish-ink" },
-  { id: "active", label: "Active", icon: Send, accent: "text-ish-stratus-blue" },
+  { id: "needs_review", label: "Needs Review", icon: FileText, accent: "text-brand-ink" },
+  { id: "active", label: "Active", icon: Send, accent: "text-brand-stratus-blue" },
   { id: "hot", label: "Hot", icon: Flame, accent: "text-orange-500" },
-  { id: "replies", label: "Replies", icon: MessageSquare, accent: "text-ish-green" },
-  { id: "done", label: "Done", icon: CheckCircle2, accent: "text-ish-ink-soft" },
+  { id: "replies", label: "Replies", icon: MessageSquare, accent: "text-brand-green" },
+  { id: "done", label: "Done", icon: CheckCircle2, accent: "text-brand-ink-soft" },
 ];
 
 const VALID_TABS = new Set<QueueTab>(QUEUE_TABS.map((t) => t.id));
@@ -76,12 +76,12 @@ const EMPTY_BY_TAB: Record<QueueTab, { title: string; body: string }> = {
 };
 
 const AVATAR_COLORS = [
-  "bg-ish-avatar-1",
-  "bg-ish-avatar-2",
-  "bg-ish-avatar-3",
-  "bg-ish-avatar-4",
-  "bg-ish-avatar-5",
-  "bg-ish-avatar-6",
+  "bg-brand-avatar-1",
+  "bg-brand-avatar-2",
+  "bg-brand-avatar-3",
+  "bg-brand-avatar-4",
+  "bg-brand-avatar-5",
+  "bg-brand-avatar-6",
 ];
 
 function parseQueueTab(raw: string | null): QueueTab {
@@ -175,10 +175,10 @@ function KpiTile({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "flex flex-col gap-3 rounded-[20px] p-5 text-left shadow-[var(--shadow-ish-sm)] transition-all duration-200",
+        "flex flex-col gap-3 rounded-[20px] p-5 text-left shadow-[var(--shadow-brand-sm)] transition-all duration-200",
         cardClass,
-        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-[var(--shadow-ish)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ish-stratus-blue/30",
-        active && "ring-2 ring-ish-black/80 ring-offset-2 ring-offset-[var(--ish-canvas)]",
+        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-[var(--shadow-brand)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/30",
+        active && "ring-2 ring-brand-black/80 ring-offset-2 ring-offset-[var(--ish-canvas)]",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -188,7 +188,7 @@ function KpiTile({
         </div>
       </div>
       <div>
-        <div className={cn("text-[30px] font-extrabold leading-none tabular-nums", valueClass ?? "text-ish-ink")}>
+        <div className={cn("text-[30px] font-extrabold leading-none tabular-nums", valueClass ?? "text-brand-ink")}>
           {value}
         </div>
         {sub && <div className="mt-1.5 text-[11px] font-medium opacity-65">{sub}</div>}
@@ -233,39 +233,39 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
               className={cn(
                 "flex h-6 min-w-[44px] items-center justify-center rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
                 done
-                  ? "bg-ish-black text-white"
+                  ? "bg-brand-black text-white"
                   : active
-                    ? "bg-ish-yellow text-ish-ink ring-2 ring-ish-yellow/50"
-                    : "bg-ish-canvas text-ish-ink-faint",
+                    ? "bg-brand-yellow text-brand-ink ring-2 ring-brand-yellow/50"
+                    : "bg-brand-canvas text-brand-ink-faint",
               )}
             >
               {step.short}
             </div>
             {i < sequenceSteps.length - 1 && (
-              <div className={cn("h-px w-2", done ? "bg-ish-black/30" : "bg-ish-border")} />
+              <div className={cn("h-px w-2", done ? "bg-brand-black/30" : "bg-brand-border")} />
             )}
           </div>
         );
       })}
       {replySteps.length > 0 && (
         <>
-          <div className="mx-0.5 h-px w-2 bg-ish-border" />
+          <div className="mx-0.5 h-px w-2 bg-brand-border" />
           {replySteps.map((step, i) => (
             <div key={step.id} className="flex items-center gap-1">
               <div
                 className={cn(
                   "flex h-6 min-w-[40px] items-center justify-center rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
                   step.done
-                    ? "bg-ish-green text-white"
+                    ? "bg-brand-green text-white"
                     : step.active
-                      ? "bg-ish-yellow text-ish-ink ring-2 ring-ish-yellow/50"
-                      : "bg-ish-canvas text-ish-ink-faint",
+                      ? "bg-brand-yellow text-brand-ink ring-2 ring-brand-yellow/50"
+                      : "bg-brand-canvas text-brand-ink-faint",
                 )}
               >
                 {step.label}
               </div>
               {i < replySteps.length - 1 && (
-                <div className={cn("h-px w-2", step.done ? "bg-ish-green/40" : "bg-ish-border")} />
+                <div className={cn("h-px w-2", step.done ? "bg-brand-green/40" : "bg-brand-border")} />
               )}
             </div>
           ))}
@@ -289,26 +289,26 @@ function NextActionCard({
 
   return (
     <div
-      className="mt-3 rounded-[14px] border border-ish-yellow/35 bg-gradient-to-br from-ish-yellow-soft/80 to-white p-3.5 shadow-[var(--shadow-ish-sm)]"
+      className="mt-3 rounded-[14px] border border-brand-yellow/35 bg-gradient-to-br from-brand-yellow-soft/80 to-white p-3.5 shadow-[var(--shadow-brand-sm)]"
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => e.stopPropagation()}
     >
       <div className="flex items-start gap-2.5">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-ish-yellow text-ish-ink">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-brand-yellow text-brand-ink">
           <Zap className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-bold text-ish-ink">{action.title}</p>
-          <p className="mt-1 text-[11px] leading-relaxed text-ish-ink-soft">{action.description}</p>
+          <p className="text-[12px] font-bold text-brand-ink">{action.title}</p>
+          <p className="mt-1 text-[11px] leading-relaxed text-brand-ink-soft">{action.description}</p>
           {row.inboundSnippet && (
-            <p className="mt-2 line-clamp-2 rounded-[10px] bg-white/80 px-2.5 py-2 text-[11px] italic text-ish-ink-soft ring-1 ring-ish-border/50">
+            <p className="mt-2 line-clamp-2 rounded-[10px] bg-white/80 px-2.5 py-2 text-[11px] italic text-brand-ink-soft ring-1 ring-brand-border/50">
               &ldquo;{row.inboundSnippet}&rdquo;
             </p>
           )}
           <button
             type="button"
             onClick={() => onNavigate(row.leadId)}
-            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-ish-black px-3.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-ish-black/90"
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-black px-3.5 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-brand-black/90"
           >
             {action.cta}
             <ChevronRight className="size-3" />
@@ -324,7 +324,7 @@ function NextActionCard({
 function StatusPill({ row }: { row: LeadEmailRow }) {
   if (row.queueStatus === "needs_review") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ish-yellow-soft px-2.5 py-1 text-[10px] font-bold text-ish-ink ring-1 ring-ish-yellow/40">
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-yellow-soft px-2.5 py-1 text-[10px] font-bold text-brand-ink ring-1 ring-brand-yellow/40">
         <FileText className="size-3" /> Review Email 1
       </span>
     );
@@ -338,35 +338,35 @@ function StatusPill({ row }: { row: LeadEmailRow }) {
   }
   if (row.queueStatus === "replies") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ish-green-soft px-2.5 py-1 text-[10px] font-bold text-ish-green ring-1 ring-ish-green/20">
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-soft px-2.5 py-1 text-[10px] font-bold text-brand-green ring-1 ring-brand-green/20">
         <MessageSquare className="size-3" /> Sequence paused
       </span>
     );
   }
   if (row.threadStage === "reply_sent") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ish-green-soft px-2.5 py-1 text-[10px] font-bold text-ish-green ring-1 ring-ish-green/20">
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-soft px-2.5 py-1 text-[10px] font-bold text-brand-green ring-1 ring-brand-green/20">
         <MessageSquare className="size-3" /> Reply sent
       </span>
     );
   }
   if (row.sequenceState === "paused") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ish-pink-soft/50 px-2.5 py-1 text-[10px] font-bold text-ish-stratus-salmon ring-1 ring-ish-stratus-salmon/25">
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft/50 px-2.5 py-1 text-[10px] font-bold text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/25">
         <Pause className="size-3" /> Paused
       </span>
     );
   }
   if (row.threadStage === "awaiting_reply") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ish-canvas px-2.5 py-1 text-[10px] font-bold text-ish-ink-soft ring-1 ring-ish-border">
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-canvas px-2.5 py-1 text-[10px] font-bold text-brand-ink-soft ring-1 ring-brand-border">
         <Clock className="size-3" /> Awaiting reply
       </span>
     );
   }
   if (row.queueStatus === "done") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-ish-canvas px-2.5 py-1 text-[10px] font-bold text-ish-ink-faint">
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-canvas px-2.5 py-1 text-[10px] font-bold text-brand-ink-faint">
         <CheckCircle2 className="size-3" /> Complete
       </span>
     );
@@ -378,8 +378,8 @@ function StatusPill({ row }: { row: LeadEmailRow }) {
         className={cn(
           "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold",
           isToday
-            ? "bg-ish-pink-soft text-ish-stratus-salmon ring-1 ring-ish-stratus-salmon/25"
-            : "bg-ish-canvas text-ish-ink-soft ring-1 ring-ish-border",
+            ? "bg-brand-pink-soft text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/25"
+            : "bg-brand-canvas text-brand-ink-soft ring-1 ring-brand-border",
         )}
       >
         <Clock className="size-3" />
@@ -416,12 +416,12 @@ function LeadCard({
           onNavigate(row.leadId);
         }
       }}
-      className="group w-full cursor-pointer rounded-[18px] border border-ish-border/60 bg-white p-4 text-left shadow-[var(--shadow-ish-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-ish-stratus-blue/25 hover:shadow-[var(--shadow-ish)] active:scale-[0.995]"
+      className="group w-full cursor-pointer rounded-[18px] border border-brand-border/60 bg-white p-4 text-left shadow-[var(--shadow-brand-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-stratus-blue/25 hover:shadow-[var(--shadow-brand)] active:scale-[0.995]"
     >
       <div className="flex items-start gap-3.5">
         <div
           className={cn(
-            "flex size-11 shrink-0 items-center justify-center rounded-2xl text-[12px] font-extrabold text-ish-ink shadow-[var(--shadow-ish-sm)]",
+            "flex size-11 shrink-0 items-center justify-center rounded-2xl text-[12px] font-extrabold text-brand-ink shadow-[var(--shadow-brand-sm)]",
             avatarColor(row.contactName),
           )}
         >
@@ -430,19 +430,19 @@ function LeadCard({
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[14px] font-bold text-ish-ink">{row.contactName}</span>
-            <span className="text-ish-ink-faint">·</span>
-            <span className="truncate text-[12px] font-medium text-ish-ink-soft">{row.companyName}</span>
+            <span className="text-[14px] font-bold text-brand-ink">{row.contactName}</span>
+            <span className="text-brand-ink-faint">·</span>
+            <span className="truncate text-[12px] font-medium text-brand-ink-soft">{row.companyName}</span>
           </div>
-          {location && <p className="mt-0.5 truncate text-[11px] text-ish-ink-faint">{location}</p>}
+          {location && <p className="mt-0.5 truncate text-[11px] text-brand-ink-faint">{location}</p>}
 
           {tab === "needs_review" && (row.draftSubject || row.draftPreview) && (
-            <div className="mt-2.5 rounded-[12px] border border-ish-border/50 bg-ish-canvas/40 px-3 py-2.5">
+            <div className="mt-2.5 rounded-[12px] border border-brand-border/50 bg-brand-canvas/40 px-3 py-2.5">
               {row.draftSubject && (
-                <p className="truncate text-[11px] font-semibold text-ish-ink">{row.draftSubject}</p>
+                <p className="truncate text-[11px] font-semibold text-brand-ink">{row.draftSubject}</p>
               )}
               {row.draftPreview && (
-                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-ish-ink-soft">{row.draftPreview}</p>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-brand-ink-soft">{row.draftPreview}</p>
               )}
             </div>
           )}
@@ -455,7 +455,7 @@ function LeadCard({
           {tab === "replies" && <NextActionCard row={row} onNavigate={onNavigate} />}
         </div>
 
-        <ChevronRight className="mt-1 size-4 shrink-0 text-ish-ink-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-ish-ink" />
+        <ChevronRight className="mt-1 size-4 shrink-0 text-brand-ink-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand-ink" />
       </div>
     </div>
   );
@@ -470,11 +470,11 @@ function TabEmptyState({ tab }: { tab: QueueTab }) {
 
   return (
     <PanelCard className="flex flex-col items-center justify-center py-16 text-center">
-      <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-ish-yellow-soft">
-        <Icon className="size-6 text-ish-ink-soft" />
+      <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand-yellow-soft">
+        <Icon className="size-6 text-brand-ink-soft" />
       </div>
-      <p className="text-[15px] font-bold text-ish-ink">{copy.title}</p>
-      <p className="mt-1 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">{copy.body}</p>
+      <p className="text-[15px] font-bold text-brand-ink">{copy.title}</p>
+      <p className="mt-1 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">{copy.body}</p>
     </PanelCard>
   );
 }
@@ -484,14 +484,14 @@ function TabEmptyState({ tab }: { tab: QueueTab }) {
 function LoadingSkeleton() {
   return (
     <div className="animate-pulse space-y-6">
-      <div className="h-36 rounded-[22px] bg-ish-border/60" />
+      <div className="h-36 rounded-[22px] bg-brand-border/60" />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
         {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-28 rounded-[20px] bg-ish-border/60" />
+          <div key={i} className="h-28 rounded-[20px] bg-brand-border/60" />
         ))}
       </div>
-      <div className="h-12 rounded-full bg-ish-border/60" />
-      <div className="h-64 rounded-[20px] bg-ish-border/60" />
+      <div className="h-12 rounded-full bg-brand-border/60" />
+      <div className="h-64 rounded-[20px] bg-brand-border/60" />
     </div>
   );
 }
@@ -604,8 +604,8 @@ export function EmailApp() {
         value: tabCount(data, "needs_review"),
         sub: "Email 1 drafts",
         icon: FileText,
-        cardClass: "bg-ish-yellow-soft",
-        iconClass: "bg-ish-yellow text-ish-ink",
+        cardClass: "bg-brand-yellow-soft",
+        iconClass: "bg-brand-yellow text-brand-ink",
       },
       {
         tab: "active" as QueueTab,
@@ -614,7 +614,7 @@ export function EmailApp() {
         sub: `${data.stats.dueToday} due today`,
         icon: Send,
         cardClass: "bg-white",
-        iconClass: "bg-ish-stratus-blue/20 text-ish-black",
+        iconClass: "bg-brand-stratus-blue/20 text-brand-black",
       },
       {
         tab: "hot" as QueueTab,
@@ -632,8 +632,8 @@ export function EmailApp() {
         value: tabCount(data, "replies"),
         sub: "Sequence paused",
         icon: MessageSquare,
-        cardClass: "bg-ish-green-soft",
-        iconClass: "bg-ish-green text-white",
+        cardClass: "bg-brand-green-soft",
+        iconClass: "bg-brand-green text-white",
       },
       {
         tab: "done" as QueueTab,
@@ -641,8 +641,8 @@ export function EmailApp() {
         value: tabCount(data, "done"),
         sub: "Finished threads",
         icon: CheckCircle2,
-        cardClass: "bg-ish-canvas",
-        iconClass: "bg-white text-ish-ink-soft shadow-[var(--shadow-ish-sm)]",
+        cardClass: "bg-brand-canvas",
+        iconClass: "bg-white text-brand-ink-soft shadow-[var(--shadow-brand-sm)]",
       },
     ];
   }, [data, openRate]);
@@ -664,7 +664,7 @@ export function EmailApp() {
 
   return (
     <div className="settings-ambient min-h-0 min-w-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10 animate-ish-page-in">
+      <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10 animate-brand-page-in">
         <SettingsHero
           icon={ListChecks}
           title="Outreach Queue"
@@ -682,10 +682,10 @@ export function EmailApp() {
                   onClick={() => void handleToggleSending()}
                   disabled={togglingSend}
                   className={cn(
-                    "inline-flex items-center gap-2 rounded-[14px] border px-4 py-2.5 text-[12px] font-semibold shadow-[var(--shadow-ish-sm)] transition-all disabled:opacity-60",
+                    "inline-flex items-center gap-2 rounded-[14px] border px-4 py-2.5 text-[12px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all disabled:opacity-60",
                     data.outreachPaused
-                      ? "border-ish-green/40 bg-ish-green/10 text-ish-green hover:bg-ish-green/15"
-                      : "border-ish-stratus-salmon/40 bg-ish-pink-soft/50 text-ish-stratus-salmon hover:bg-ish-pink-soft",
+                      ? "border-brand-green/40 bg-brand-green/10 text-brand-green hover:bg-brand-green/15"
+                      : "border-brand-stratus-salmon/40 bg-brand-pink-soft/50 text-brand-stratus-salmon hover:bg-brand-pink-soft",
                   )}
                 >
                   {data.outreachPaused ? (
@@ -706,7 +706,7 @@ export function EmailApp() {
                 onClick={() => void load()}
                 disabled={loading}
                 title="Refresh queue"
-                className="inline-flex items-center gap-2 rounded-[14px] bg-ish-black px-4 py-2.5 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-black/90 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-[14px] bg-brand-black px-4 py-2.5 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-black/90 disabled:opacity-60"
               >
                 <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
                 Refresh
@@ -716,9 +716,9 @@ export function EmailApp() {
         />
 
         {data?.outreachPaused && (
-          <div className="mb-6 rounded-[16px] border border-ish-stratus-salmon/35 bg-ish-pink-soft/45 px-4 py-3.5">
-            <p className="text-[13px] font-semibold text-ish-ink">Outreach sending is paused</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-ish-ink-soft">
+          <div className="mb-6 rounded-[16px] border border-brand-stratus-salmon/35 bg-brand-pink-soft/45 px-4 py-3.5">
+            <p className="text-[13px] font-semibold text-brand-ink">Outreach sending is paused</p>
+            <p className="mt-1 text-[12px] leading-relaxed text-brand-ink-soft">
               No Email 1 sends or automated follow-ups will go out. Scheduled emails stay queued until you click Start sending.
             </p>
           </div>
@@ -757,8 +757,8 @@ export function EmailApp() {
                       className={cn(
                         "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-all",
                         activeTab === id
-                          ? "bg-ish-black text-white shadow-[var(--shadow-ish-sm)]"
-                          : "border border-ish-border bg-white text-ish-ink-soft hover:border-ish-ink/20 hover:text-ish-ink",
+                          ? "bg-brand-black text-white shadow-[var(--shadow-brand-sm)]"
+                          : "border border-brand-border bg-white text-brand-ink-soft hover:border-brand-ink/20 hover:text-brand-ink",
                       )}
                     >
                       <Icon className={cn("size-3", activeTab === id ? "text-white" : accent)} />
@@ -766,7 +766,7 @@ export function EmailApp() {
                       <span
                         className={cn(
                           "ml-0.5 min-w-[18px] rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums",
-                          activeTab === id ? "bg-white/20 text-white" : "bg-ish-canvas text-ish-ink-soft",
+                          activeTab === id ? "bg-white/20 text-white" : "bg-brand-canvas text-brand-ink-soft",
                         )}
                       >
                         {count}
@@ -777,13 +777,13 @@ export function EmailApp() {
               </div>
 
               <div className="relative min-w-[200px] flex-1 sm:w-[260px] sm:flex-none">
-                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
+                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
                 <input
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search contact or company…"
-                  className="w-full rounded-full border border-ish-border bg-white py-2 pl-9 pr-3 text-[12px] text-ish-ink outline-none shadow-[var(--shadow-ish-sm)] placeholder:text-ish-ink-faint focus:border-ish-stratus-blue/40 focus:ring-2 focus:ring-ish-stratus-blue/10"
+                  className="w-full rounded-full border border-brand-border bg-white py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none shadow-[var(--shadow-brand-sm)] placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/10"
                 />
               </div>
             </div>
@@ -792,9 +792,9 @@ export function EmailApp() {
               {visibleRows.length === 0 ? (
                 search.trim() ? (
                   <PanelCard className="flex flex-col items-center justify-center py-14 text-center">
-                    <Mail className="mb-2 size-8 text-ish-ink-faint" />
-                    <p className={cn(text.body, "font-semibold text-ish-ink")}>No matches in this tab</p>
-                    <p className="mt-1 text-[12px] text-ish-ink-soft">Try a different name or clear search.</p>
+                    <Mail className="mb-2 size-8 text-brand-ink-faint" />
+                    <p className={cn(text.body, "font-semibold text-brand-ink")}>No matches in this tab</p>
+                    <p className="mt-1 text-[12px] text-brand-ink-soft">Try a different name or clear search.</p>
                   </PanelCard>
                 ) : (
                   <TabEmptyState tab={activeTab} />
@@ -814,11 +814,11 @@ export function EmailApp() {
           </>
         ) : (
           <PanelCard className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-[14px] font-semibold text-ish-ink">Could not load outreach queue</p>
+            <p className="text-[14px] font-semibold text-brand-ink">Could not load outreach queue</p>
             <button
               type="button"
               onClick={() => void load()}
-              className="mt-3 rounded-full bg-ish-black px-4 py-2 text-[12px] font-semibold text-white"
+              className="mt-3 rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white"
             >
               Try again
             </button>

@@ -117,12 +117,12 @@ export function DirectoryApp() {
 
   return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-4 border-b border-ish-border bg-white px-5 py-2.5">
+          <div className="flex items-center gap-4 border-b border-brand-border bg-white px-5 py-2.5">
             <div className="shrink-0">
-              <span className="text-[14px] font-bold text-ish-ink">Scout Directory</span>
+              <span className="text-[14px] font-bold text-brand-ink">Scout Directory</span>
             </div>
 
-            <div className="mx-1 h-5 w-px shrink-0 bg-ish-border" aria-hidden />
+            <div className="mx-1 h-5 w-px shrink-0 bg-brand-border" aria-hidden />
 
             <SegmentedTabs
               value={tab}
@@ -134,45 +134,45 @@ export function DirectoryApp() {
             />
 
             <div className="relative w-[220px] shrink-0">
-              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={tab === "companies" ? "Search companies…" : "Search contacts…"}
-                className="w-full rounded-full border border-ish-border bg-ish-app py-1.5 pl-9 pr-3 text-[12px] text-ish-ink outline-none focus:border-ish-ink-soft"
+                className="w-full rounded-full border border-brand-border bg-brand-app py-1.5 pl-9 pr-3 text-[12px] text-brand-ink outline-none focus:border-brand-ink-soft"
               />
             </div>
 
-            <div className="ml-auto shrink-0 text-[11.5px] font-semibold text-ish-ink-faint">
+            <div className="ml-auto shrink-0 text-[11.5px] font-semibold text-brand-ink-faint">
               {companies.length} companies · {contacts.length} contacts
             </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-transparent">
             {loading ? (
-              <div className="flex h-full items-center justify-center text-[13px] text-ish-ink-faint">
+              <div className="flex h-full items-center justify-center text-[13px] text-brand-ink-faint">
                 <span className="mr-2 animate-spin">⟳</span> Loading directory…
               </div>
             ) : companies.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <div className="text-4xl">📇</div>
-                <div className="text-[14px] font-semibold text-ish-ink">No scout leads yet</div>
-                <p className="max-w-sm text-[12px] text-ish-ink-soft">
+                <div className="text-[14px] font-semibold text-brand-ink">No scout leads yet</div>
+                <p className="max-w-sm text-[12px] text-brand-ink-soft">
                   Save contacts from the Scouting wizard and they will appear here as companies and lead contacts.
                 </p>
                 <Link
                   href="/scouting"
-                  className="mt-2 rounded-xl bg-ish-black px-4 py-2 text-[12px] font-bold text-white shadow-[var(--shadow-ish)]"
+                  className="mt-2 rounded-xl bg-brand-black px-4 py-2 text-[12px] font-bold text-white shadow-[var(--shadow-brand)]"
                 >
                   Go to Scouting
                 </Link>
               </div>
             ) : tab === "companies" ? (
-              <div key="companies" className={cn("flex min-h-0 h-full animate-ish-tab-in", isMobileLayout && selectedCompany && "relative")}>
+              <div key="companies" className={cn("flex min-h-0 h-full animate-brand-tab-in", isMobileLayout && selectedCompany && "relative")}>
                 <div className="min-w-0 flex-1 overflow-y-auto">
                   {companyCards.length === 0 ? (
-                    <p className="py-10 text-center text-[13px] text-ish-ink-faint">No companies match your search.</p>
+                    <p className="py-10 text-center text-[13px] text-brand-ink-faint">No companies match your search.</p>
                   ) : (
                     <CompaniesGrid
                       companies={companyCards}
@@ -185,7 +185,7 @@ export function DirectoryApp() {
                   )}
                 </div>
 
-                <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto border-l border-ish-border bg-white lg:relative lg:inset-auto lg:z-auto lg:w-[360px] lg:shrink-0">
+                <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto border-l border-brand-border bg-white lg:relative lg:inset-auto lg:z-auto lg:w-[360px] lg:shrink-0">
                   {selectedCompany ? (
                     <>
                       {isMobileLayout ? (
@@ -194,7 +194,7 @@ export function DirectoryApp() {
                       <CompanyOverviewPanel
                         name={selectedCompany.name}
                         city={selectedCompany.city}
-                        giftScore={selectedCompany.giftScore}
+                        fitScore={selectedCompany.fitScore}
                         domain={selectedCompany.domain}
                         website={selectedCompany.website}
                         industry={selectedCompany.industry}
@@ -206,15 +206,15 @@ export function DirectoryApp() {
                           employees: selectedCompany.employees !== "—" ? selectedCompany.employees : undefined,
                           domain: selectedCompany.domain,
                           website: selectedCompany.website,
-                          giftScore: selectedCompany.giftScore,
+                          fitScore: selectedCompany.fitScore,
                           accountId: selectedCompany.id,
                           decisionMakerHint: selectedCompanyDecisionMaker,
                         }}
                         decisionMakerLeadId={selectedCompanyDecisionMakerLeadId}
                       />
                       {selectedCompanyPeople.length > 0 ? (
-                        <div className="border-t border-ish-border p-4">
-                          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-ish-ink-faint">
+                        <div className="border-t border-brand-border p-4">
+                          <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-brand-ink-faint">
                             Lead Contacts ({selectedCompany.contacts.length})
                           </div>
                           <PeopleList
@@ -227,20 +227,20 @@ export function DirectoryApp() {
                           />
                         </div>
                       ) : (
-                        <p className="border-t border-ish-border p-5 text-[13px] text-ish-ink-faint">
+                        <p className="border-t border-brand-border p-5 text-[13px] text-brand-ink-faint">
                           No lead contacts for this company.
                         </p>
                       )}
                     </>
                   ) : (
-                    <p className="p-5 text-[13px] text-ish-ink-faint">Select a company to view its lead contacts.</p>
+                    <p className="p-5 text-[13px] text-brand-ink-faint">Select a company to view its lead contacts.</p>
                   )}
                 </div>
               </div>
             ) : (
-              <div key="contacts" className="animate-ish-tab-in">
+              <div key="contacts" className="animate-brand-tab-in">
                 {contactPeople.length === 0 ? (
-                  <p className="py-10 text-center text-[13px] text-ish-ink-faint">No contacts match your search.</p>
+                  <p className="py-10 text-center text-[13px] text-brand-ink-faint">No contacts match your search.</p>
                 ) : (
                   <LeadsGrid
                     people={contactPeople}

@@ -32,12 +32,12 @@ function tierBadge(tier?: string, confidence?: number) {
           : "Missing";
   const tone =
     tier === "good"
-      ? "bg-ish-green-soft text-ish-green"
+      ? "bg-brand-green-soft text-brand-green"
       : tier === "generic"
-        ? "bg-ish-yellow-soft text-ish-ink-soft"
+        ? "bg-brand-yellow-soft text-brand-ink-soft"
         : tier === "low"
           ? "bg-orange-50 text-orange-700"
-          : "bg-ish-border/60 text-ish-ink-faint";
+          : "bg-brand-border/60 text-brand-ink-faint";
   return (
     <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold lg:px-2 lg:text-[10px]", tone)}>
       {label}
@@ -47,10 +47,10 @@ function tierBadge(tier?: string, confidence?: number) {
 }
 
 function emailStatusTone(status: string) {
-  if (status === "verified") return "text-ish-green";
+  if (status === "verified") return "text-brand-green";
   if (status === "unverified") return "text-[#e8a000]";
-  if (status === "generic") return "text-ish-ink-soft";
-  return "text-ish-ink-faint";
+  if (status === "generic") return "text-brand-ink-soft";
+  return "text-brand-ink-faint";
 }
 
 
@@ -60,10 +60,10 @@ function testStatusBadge(status?: string) {
   if (!label) return null;
   const tone =
     status === "sent"
-      ? "bg-ish-green-soft text-ish-green"
+      ? "bg-brand-green-soft text-brand-green"
       : status === "rejected"
         ? "bg-red-50 text-red-700"
-        : "bg-ish-yellow-soft text-[#e8a000]";
+        : "bg-brand-yellow-soft text-[#e8a000]";
   return (
     <span className={cn("rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", tone)}>
       {label}
@@ -87,15 +87,15 @@ function EmailRow({
       <div className="flex items-center justify-between gap-1.5 lg:items-start lg:gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1 lg:gap-1.5">
-            <span className="truncate text-[12px] font-medium text-ish-ink lg:text-[13px]">{entry.email}</span>
+            <span className="truncate text-[12px] font-medium text-brand-ink lg:text-[13px]">{entry.email}</span>
             {isPrimary ? (
-              <span className="rounded-full bg-ish-black/8 px-1 py-px text-[8px] font-semibold uppercase tracking-wide text-ish-ink-soft lg:px-1.5 lg:py-0.5 lg:text-[9px]">
+              <span className="rounded-full bg-brand-black/8 px-1 py-px text-[8px] font-semibold uppercase tracking-wide text-brand-ink-soft lg:px-1.5 lg:py-0.5 lg:text-[9px]">
                 Primary
               </span>
             ) : null}
             {testStatusBadge(entry.testStatus)}
             {entry.pattern ? (
-              <span className="hidden rounded-full bg-ish-black/6 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ish-ink-soft sm:inline">
+              <span className="hidden rounded-full bg-brand-black/6 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-brand-ink-soft sm:inline">
                 {entry.pattern}
               </span>
             ) : null}
@@ -122,7 +122,7 @@ function EmailRow({
                 title="Refetch email (free)"
                 disabled={refetching}
                 onClick={() => void onRefetch("free")}
-                className="flex size-6 items-center justify-center rounded-full bg-white/70 text-ish-ink-soft transition hover:bg-white hover:text-ish-ink disabled:opacity-50 lg:size-7"
+                className="flex size-6 items-center justify-center rounded-full bg-white/70 text-brand-ink-soft transition hover:bg-white hover:text-brand-ink disabled:opacity-50 lg:size-7"
               >
                 {refetching ? <Loader2 className="size-2.5 animate-spin lg:size-3" /> : <Search className="size-2.5 lg:size-3" />}
               </button>
@@ -131,13 +131,13 @@ function EmailRow({
                 title="Refetch email (paid)"
                 disabled={refetching}
                 onClick={() => void onRefetch("paid")}
-                className="flex size-6 items-center justify-center rounded-full bg-white/70 text-ish-ink-soft transition hover:bg-white hover:text-ish-ink disabled:opacity-50 lg:size-7"
+                className="flex size-6 items-center justify-center rounded-full bg-white/70 text-brand-ink-soft transition hover:bg-white hover:text-brand-ink disabled:opacity-50 lg:size-7"
               >
                 <Sparkles className="size-2.5 lg:size-3" />
               </button>
             </>
           ) : (
-            <Mail className="size-3 text-ish-ink-faint lg:size-3.5" />
+            <Mail className="size-3 text-brand-ink-faint lg:size-3.5" />
           )}
         </div>
       </div>
@@ -198,7 +198,7 @@ export function ContactCard({
         {tierBadge(confidenceTier, emailConfidence)}
       </div>
       {enrichmentSource ? (
-        <p className="mb-2 text-[10px] text-ish-ink-faint lg:mb-3 lg:text-[10.5px]">Source: {enrichmentSource.replace(/_/g, " ")}</p>
+        <p className="mb-2 text-[10px] text-brand-ink-faint lg:mb-3 lg:text-[10.5px]">Source: {enrichmentSource.replace(/_/g, " ")}</p>
       ) : null}
       <div className="grid grid-cols-2 gap-x-3 lg:grid-cols-1 lg:gap-x-0">
         <FieldRow
@@ -228,7 +228,7 @@ export function ContactCard({
               type="button"
               title="Suggest emails from name and domain"
               onClick={() => setSuggestOpen(true)}
-              className="flex items-center gap-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-ish-ink-soft transition hover:bg-white hover:text-ish-ink lg:gap-1 lg:px-2 lg:py-1 lg:text-[10px]"
+              className="flex items-center gap-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-brand-ink-soft transition hover:bg-white hover:text-brand-ink lg:gap-1 lg:px-2 lg:py-1 lg:text-[10px]"
             >
               <Wand2 className="size-2.5 lg:size-3" />
               Suggest
@@ -246,12 +246,12 @@ export function ContactCard({
             />
           ))
         ) : (
-          <div className="text-[13px] text-ish-ink">—</div>
+          <div className="text-[13px] text-brand-ink">—</div>
         )}
       </div>
       {paidDialogOpen ? (
-        <div className="mb-4 rounded-xl border border-ish-border/60 bg-white/70 p-3">
-          <p className="text-[12px] text-ish-ink-soft">
+        <div className="mb-4 rounded-xl border border-brand-border/60 bg-white/70 p-3">
+          <p className="text-[12px] text-brand-ink-soft">
             Run paid enrichment to search Apollo/Hunter for more or better emails for this contact.
           </p>
           <div className="mt-3 flex justify-end gap-2">
@@ -265,7 +265,7 @@ export function ContactCard({
             </Button>
             <Button
               size="sm"
-              className="h-auto rounded-xl bg-ish-black px-3 py-1.5 text-[11px] text-white"
+              className="h-auto rounded-xl bg-brand-black px-3 py-1.5 text-[11px] text-white"
               disabled={refetching}
               onClick={() => void confirmPaidRefetch()}
             >

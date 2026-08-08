@@ -68,9 +68,9 @@ type LlmUsage = {
 };
 
 function barTone(percent: number, allExhausted: boolean): string {
-  if (allExhausted || percent >= 90) return "bg-ish-stratus-salmon";
-  if (percent >= 70) return "bg-ish-yellow";
-  return "bg-ish-stratus-blue";
+  if (allExhausted || percent >= 90) return "bg-brand-stratus-salmon";
+  if (percent >= 70) return "bg-brand-yellow";
+  return "bg-brand-stratus-blue";
 }
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
@@ -78,10 +78,10 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-        ok ? "bg-ish-stratus-blue/15 text-ish-ink" : "bg-red-50 text-red-600",
+        ok ? "bg-brand-stratus-blue/15 text-brand-ink" : "bg-red-50 text-red-600",
       )}
     >
-      <span className={cn("size-1.5 rounded-full", ok ? "bg-ish-stratus-blue" : "bg-red-400")} />
+      <span className={cn("size-1.5 rounded-full", ok ? "bg-brand-stratus-blue" : "bg-red-400")} />
       {label}
     </span>
   );
@@ -89,7 +89,7 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 
 function ActiveBadge() {
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-ish-black px-2 py-0.5 text-[10px] font-semibold text-white">
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand-black px-2 py-0.5 text-[10px] font-semibold text-white">
       <span className="size-1.5 rounded-full bg-white/70" />
       Active provider
     </span>
@@ -98,7 +98,7 @@ function ActiveBadge() {
 
 function UsageBar({ percent, exhausted }: { percent: number; exhausted: boolean }) {
   return (
-    <div className="mt-2 h-2 overflow-hidden rounded-full bg-ish-border/60">
+    <div className="mt-2 h-2 overflow-hidden rounded-full bg-brand-border/60">
       <div
         className={cn("h-full rounded-full transition-all duration-500", barTone(percent, exhausted))}
         style={{ width: `${Math.max(percent, percent > 0 ? 2 : 0)}%` }}
@@ -144,7 +144,7 @@ export function AiUsageTab() {
         <button
           type="button"
           onClick={handleRefresh}
-          className="flex items-center gap-1.5 rounded-full border border-ish-border bg-white/80 px-3 py-2 text-[12px] font-medium text-ish-ink-soft backdrop-blur-sm transition-all hover:border-ish-ink-faint hover:text-ish-ink"
+          className="flex items-center gap-1.5 rounded-full border border-brand-border bg-white/80 px-3 py-2 text-[12px] font-medium text-brand-ink-soft backdrop-blur-sm transition-all hover:border-brand-ink-faint hover:text-brand-ink"
         >
           <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           Refresh
@@ -167,31 +167,31 @@ export function AiUsageTab() {
             href="https://app.tavily.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
           >
             Dashboard <ExternalLink className="size-3" />
           </a>
         </SettingsRow>
 
         {!tavily ? (
-          <p className="px-4 py-3 text-[13px] text-ish-ink-faint">Loading…</p>
+          <p className="px-4 py-3 text-[13px] text-brand-ink-faint">Loading…</p>
         ) : !tavily.configured ? (
-          <p className="px-4 py-3 text-[13px] text-ish-ink-faint">
-            Add <code className="rounded bg-ish-app px-1 py-0.5 font-mono text-[11px]">TAVILY_API_KEY</code> to{" "}
-            <code className="rounded bg-ish-app px-1 py-0.5 font-mono text-[11px]">.env.local</code> to enable Tavily.
+          <p className="px-4 py-3 text-[13px] text-brand-ink-faint">
+            Add <code className="rounded bg-brand-app px-1 py-0.5 font-mono text-[11px]">TAVILY_API_KEY</code> to{" "}
+            <code className="rounded bg-brand-app px-1 py-0.5 font-mono text-[11px]">.env.local</code> to enable Tavily.
           </p>
         ) : (
           <>
             <SettingsGroupDivider />
             <div className="px-4 py-3">
               <div className="flex items-center justify-between text-[13px]">
-                <span className="font-medium text-ish-ink">Total credits</span>
-                <span className={cn("font-semibold", tavily.allKeysExhausted ? "text-red-600" : "text-ish-ink")}>
+                <span className="font-medium text-brand-ink">Total credits</span>
+                <span className={cn("font-semibold", tavily.allKeysExhausted ? "text-red-600" : "text-brand-ink")}>
                   {tavily.totalUsed} / {tavily.totalLimit} used
                 </span>
               </div>
               <UsageBar percent={tavily.percentUsed} exhausted={tavily.allKeysExhausted} />
-              <div className="mt-1.5 flex items-center justify-between text-[11px] text-ish-ink-faint">
+              <div className="mt-1.5 flex items-center justify-between text-[11px] text-brand-ink-faint">
                 <span>
                   {tavily.totalRemaining} remaining · session calls: {tavily.sessionUsed}
                 </span>
@@ -211,9 +211,9 @@ export function AiUsageTab() {
                   <div className="px-4 py-3">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[13px] font-medium text-ish-ink">{k.label}</span>
+                        <span className="text-[13px] font-medium text-brand-ink">{k.label}</span>
                         {k.active && (
-                          <span className="rounded-full bg-ish-stratus-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-ish-ink">
+                          <span className="rounded-full bg-brand-stratus-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-brand-ink">
                             active
                           </span>
                         )}
@@ -223,12 +223,12 @@ export function AiUsageTab() {
                           </span>
                         )}
                         {k.plan && (
-                          <span className="rounded-full bg-ish-app px-1.5 py-0.5 text-[10px] text-ish-ink-faint">
+                          <span className="rounded-full bg-brand-app px-1.5 py-0.5 text-[10px] text-brand-ink-faint">
                             {k.plan}
                           </span>
                         )}
                       </div>
-                      <span className="text-[11px] text-ish-ink-soft">
+                      <span className="text-[11px] text-brand-ink-soft">
                         {k.fetchError ? (
                           <span className="text-red-500" title={k.fetchError}>
                             {/rate.?limit|excessive requests/i.test(k.fetchError)
@@ -239,7 +239,7 @@ export function AiUsageTab() {
                           <>
                             {k.used}/{k.limit}
                             {k.sessionUsed > 0 && (
-                              <span className="text-ish-ink-faint"> (+{k.sessionUsed} session)</span>
+                              <span className="text-brand-ink-faint"> (+{k.sessionUsed} session)</span>
                             )}
                           </>
                         )}
@@ -280,14 +280,14 @@ export function AiUsageTab() {
                 <StatusBadge ok={llm.gemini.configured} label={llm.gemini.configured ? "Key configured" : "Key missing"} />
               </>
             ) : (
-              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
             )}
           </div>
           <a
             href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
           >
             Console <ExternalLink className="size-3" />
           </a>
@@ -298,30 +298,30 @@ export function AiUsageTab() {
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Quality tier (flash)</p>
-                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Quality tier (flash)</p>
+                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.gemini.flashModel}
               </code>
             </div>
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Fast tier (flash-lite)</p>
-                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Fast tier (flash-lite)</p>
+                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.gemini.flashLiteModel}
               </code>
             </div>
             {!llm.gemini.configured && (
               <>
                 <SettingsGroupDivider />
-                <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
-                  Set <code className="rounded bg-ish-app px-1 font-mono">GEMINI_API_KEY</code> or{" "}
-                  <code className="rounded bg-ish-app px-1 font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in{" "}
-                  <code className="rounded bg-ish-app px-1 font-mono">.env.local</code>.
+                <p className="px-4 py-3 text-[12px] text-brand-ink-faint">
+                  Set <code className="rounded bg-brand-app px-1 font-mono">GEMINI_API_KEY</code> or{" "}
+                  <code className="rounded bg-brand-app px-1 font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in{" "}
+                  <code className="rounded bg-brand-app px-1 font-mono">.env.local</code>.
                 </p>
               </>
             )}
@@ -341,14 +341,14 @@ export function AiUsageTab() {
                 <StatusBadge ok={llm.anthropic.configured} label={llm.anthropic.configured ? "Key configured" : "Key missing"} />
               </>
             ) : (
-              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
             )}
           </div>
           <a
             href="https://console.anthropic.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
           >
             Console <ExternalLink className="size-3" />
           </a>
@@ -359,20 +359,20 @@ export function AiUsageTab() {
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Fast tier (haiku)</p>
-                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Fast tier (haiku)</p>
+                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.anthropic.haikuModel}
               </code>
             </div>
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Quality tier (sonnet)</p>
-                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Quality tier (sonnet)</p>
+                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.anthropic.sonnetModel}
               </code>
             </div>
@@ -381,10 +381,10 @@ export function AiUsageTab() {
                 <SettingsGroupDivider />
                 <div className="flex items-center justify-between px-4 py-3">
                   <div>
-                    <p className="text-[13px] font-medium text-ish-ink">Max output tokens</p>
-                    <p className="text-[11px] text-ish-ink-faint">ANTHROPIC_MAX_OUTPUT_TOKENS</p>
+                    <p className="text-[13px] font-medium text-brand-ink">Max output tokens</p>
+                    <p className="text-[11px] text-brand-ink-faint">ANTHROPIC_MAX_OUTPUT_TOKENS</p>
                   </div>
-                  <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+                  <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                     {llm.anthropic.maxOutputTokens}
                   </code>
                 </div>
@@ -393,9 +393,9 @@ export function AiUsageTab() {
             {!llm.anthropic.configured && (
               <>
                 <SettingsGroupDivider />
-                <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
-                  Set <code className="rounded bg-ish-app px-1 font-mono">ANTHROPIC_API_KEY</code> in{" "}
-                  <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to configure Claude.
+                <p className="px-4 py-3 text-[12px] text-brand-ink-faint">
+                  Set <code className="rounded bg-brand-app px-1 font-mono">ANTHROPIC_API_KEY</code> in{" "}
+                  <code className="rounded bg-brand-app px-1 font-mono">.env.local</code> to configure Claude.
                 </p>
               </>
             )}
@@ -415,14 +415,14 @@ export function AiUsageTab() {
                 <StatusBadge ok={llm.openrouter.configured} label={llm.openrouter.configured ? "Key configured" : "Key missing"} />
               </>
             ) : (
-              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
             )}
           </div>
           <a
             href="https://openrouter.ai/keys"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
           >
             Dashboard <ExternalLink className="size-3" />
           </a>
@@ -433,29 +433,29 @@ export function AiUsageTab() {
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Fast tier</p>
-                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Fast tier</p>
+                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.openrouter.fastModel}
               </code>
             </div>
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Quality tier</p>
-                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Quality tier</p>
+                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.openrouter.qualityModel}
               </code>
             </div>
             {!llm.openrouter.configured && (
               <>
                 <SettingsGroupDivider />
-                <p className="px-4 py-3 text-[12px] text-ish-ink-faint">
-                  Set <code className="rounded bg-ish-app px-1 font-mono">OPENROUTER_API_KEY</code> in{" "}
-                  <code className="rounded bg-ish-app px-1 font-mono">.env.local</code> to configure OpenRouter.
+                <p className="px-4 py-3 text-[12px] text-brand-ink-faint">
+                  Set <code className="rounded bg-brand-app px-1 font-mono">OPENROUTER_API_KEY</code> in{" "}
+                  <code className="rounded bg-brand-app px-1 font-mono">.env.local</code> to configure OpenRouter.
                 </p>
               </>
             )}
@@ -475,14 +475,14 @@ export function AiUsageTab() {
                 <StatusBadge ok={llm.omlx.configured} label={llm.omlx.configured ? "Server configured" : "Not configured"} />
               </>
             ) : (
-              <span className="text-[13px] text-ish-ink-faint">Loading…</span>
+              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
             )}
           </div>
           <a
             href={llm?.omlx.baseUrl.replace(/\/v1\/?$/, "/admin") ?? "http://127.0.0.1:5200/admin"}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-ish-stratus-blue hover:underline"
+            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
           >
             Admin <ExternalLink className="size-3" />
           </a>
@@ -493,30 +493,30 @@ export function AiUsageTab() {
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Base URL</p>
-                <p className="text-[11px] text-ish-ink-faint">OMLX_BASE_URL</p>
+                <p className="text-[13px] font-medium text-brand-ink">Base URL</p>
+                <p className="text-[11px] text-brand-ink-faint">OMLX_BASE_URL</p>
               </div>
-              <code className="max-w-[55%] truncate rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="max-w-[55%] truncate rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.omlx.baseUrl}
               </code>
             </div>
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Fast tier</p>
-                <p className="text-[11px] text-ish-ink-faint">Quick classification tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Fast tier</p>
+                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.omlx.fastModel}
               </code>
             </div>
             <SettingsGroupDivider />
             <div className="flex items-center justify-between px-4 py-3">
               <div>
-                <p className="text-[13px] font-medium text-ish-ink">Quality tier</p>
-                <p className="text-[11px] text-ish-ink-faint">Structured extraction tasks</p>
+                <p className="text-[13px] font-medium text-brand-ink">Quality tier</p>
+                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
               </div>
-              <code className="rounded-lg bg-ish-app px-2 py-1 font-mono text-[11px] text-ish-ink">
+              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.omlx.qualityModel}
               </code>
             </div>

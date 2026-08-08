@@ -168,7 +168,7 @@ export function scoreContentQuality(
     contact: options?.contact ?? (firstName ? { firstName } : undefined),
     fromName: options?.fromName,
     emailStyle: options?.emailStyle,
-    giftingHook: options?.giftingHook,
+    outreachHook: options?.outreachHook,
     recentSubjects: options?.recentSubjects,
   });
 

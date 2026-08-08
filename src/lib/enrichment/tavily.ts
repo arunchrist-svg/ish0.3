@@ -1,9 +1,8 @@
 import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
-import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause } from "./city-search";
-import { parseCompaniesFromDirectoryResults } from "./directory-parser";
+import { isPlausibleCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { searchPeopleViaTavily } from "./people-search";
 import type { DirectorySearchMeta } from "./india-directories";
@@ -22,13 +21,22 @@ export async function tavilySearchCompanies(params: {
     ? `${params.nameQuery} company India`
     : `${indStr} companies ${cityStr} India`;
   const meta = params.meta;
+  const limit = params.limit ?? 10;
 
   if (!hasTavilyKey()) throw new Error("TAVILY_API_KEY not set");
 
-  const results = await tavilySearch(query, params.limit ?? 10);
+  const results = await tavilySearch(query, limit);
   if (!results.length) {
     meta?.warnings.push(`No web results found for ${cityStr}.`);
     return [];
+  }
+
+  const heuristic = parseCompaniesFromDirectoryResults(results, params.cities, limit).map((c) => ({
+    ...c,
+    dataSource: "tavily+llm" as const,
+  }));
+  if (heuristic.length >= Math.min(limit, 5)) {
+    return heuristic.slice(0, limit);
   }
 
   if (hasLLMKey()) {
@@ -37,38 +45,43 @@ export async function tavilySearchCompanies(params: {
       .join("\n\n");
 
     try {
-      const system = `You extract structured company data for B2B corporate gifting lead generation.
+      const system = `You extract structured company data for B2B SaaS sales prospecting.
 Output ONLY a valid JSON array. No markdown fences. No explanation.
 Each item: { "name": string, "domain": string | null, "industry": string, "city": string, "employees": string | null, "intelNotes": string | null }
-Only include real companies from the listings. Do NOT invent companies.`;
+Only include REAL registered company / brand names (e.g. "Infosys", "SingleStore", "Bosch India").
+Never use job-post titles, document blurbs, report titles, or UI text as company names
+(e.g. reject "Samsara is Hiring", "View 295 Jobs", "This document contains...", "India in 2026").
+If a result is a hiring page for Acme, return "Acme" only. Do NOT invent companies.
+Do not score or filter for corporate gifting.`;
       const prompt = `Extract companies from these search results.
 Target: ${indStr} companies in ${cityStr}, India.
 Prefer established businesses; include manufacturers and corporate offices when listed.
+Skip any result that is not clearly a company name.
 
 ${context}
 
-Return up to ${params.limit ?? 10} companies.`;
+Return up to ${limit} companies.`;
 
-      let raw = await callLLM({ tier: "quality", system, prompt, maxTokens: 2048 });
+      const raw = await callLLM({ tier: "fast", system, prompt, maxTokens: 2048 });
       let parsed: Record<string, unknown>[] = [];
       try {
         parsed = parseJsonArrayFromLLM(raw);
       } catch {
-        raw = await callLLM({ tier: "quality", system, prompt, maxTokens: 4096 });
-        parsed = parseJsonArrayFromLLM(raw);
+        meta?.warnings.push("AI response could not be parsed — using web parsing fallback.");
+        return heuristic;
       }
 
       const mapped = parsed
-        .filter((c) => typeof c.name === "string" && c.name.trim())
-        .slice(0, params.limit ?? 10)
+        .filter((c) => typeof c.name === "string" && isPlausibleCompanyName(c.name.trim()))
+        .slice(0, limit)
         .map((c) => ({
-          name: c.name as string,
+          name: (c.name as string).trim(),
           domain: (c.domain as string | null) ?? undefined,
           industry: (c.industry as string | null) ?? undefined,
           city: (c.city as string | null) ?? undefined,
           employees: (c.employees as string | null) ?? undefined,
           intelNotes: (c.intelNotes as string | null) ?? undefined,
-          giftScore: 65,
+          fitScore: 65,
           dataSource: "tavily+llm",
         }));
       if (mapped.length) return mapped;
@@ -81,10 +94,7 @@ Return up to ${params.limit ?? 10} companies.`;
     meta?.warnings.push("LLM API key not set — using web parsing fallback.");
   }
 
-  return parseCompaniesFromDirectoryResults(results, params.cities, params.limit ?? 10).map((c) => ({
-    ...c,
-    dataSource: "tavily+llm",
-  }));
+  return heuristic;
 }
 
 export async function tavilySearchPeople(params: {
@@ -99,10 +109,4 @@ export async function tavilySearchPeople(params: {
     limit: params.limit,
     dataSource: "tavily+llm",
   });
-}
-
-function isKeyDM(title?: string): boolean {
-  if (!title) return false;
-  const t = title.toLowerCase();
-  return ["hr", "admin", "procurement", "chief", "director", "head", "vp"].some((k) => t.includes(k));
 }

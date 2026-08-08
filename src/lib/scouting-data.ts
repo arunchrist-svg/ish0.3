@@ -11,8 +11,8 @@ export type Company = {
   employees: string;
   revenue: string;
   founded: number;
-  giftScore: number;
-  giftBudget: string;
+  fitScore: number;
+  budgetBand: string;
   pastGifting: { year: string; occasion: string; items: string; perPerson: string }[];
   intelligenceNotes: string;
   overview?: CompanyOverview;
@@ -122,7 +122,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c1", logo: "🔧", domain: "bosch.com", name: "Bosch India", type: "Manufacturing", city: "Hosur",
     industry: "Manufacturing", employees: "8,500", revenue: "₹12,400 Cr", founded: 1951,
-    giftScore: 91, giftBudget: "₹8–12L / year",
+    fitScore: 91, budgetBand: "₹8–12L / year",
     pastGifting: [
       { year: "2023", occasion: "Diwali", items: "Dry Fruits + Silver Coin", perPerson: "₹1,200" },
       { year: "2024", occasion: "Holi", items: "Sweets + Puja Kit", perPerson: "₹850" },
@@ -132,7 +132,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c2", logo: "🏢", domain: "infosys.com", name: "Infosys Mysore", type: "IT Services", city: "Mysore",
     industry: "IT", employees: "14,200", revenue: "₹1,46,767 Cr", founded: 1981,
-    giftScore: 88, giftBudget: "₹15–25L / year",
+    fitScore: 88, budgetBand: "₹15–25L / year",
     pastGifting: [
       { year: "2023", occasion: "Diwali", items: "Gourmet Hamper", perPerson: "₹2,000" },
       { year: "2024", occasion: "Founders Day", items: "Branded Kit + Sweets", perPerson: "₹1,500" },
@@ -142,7 +142,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c3", logo: "🚗", domain: "toyotabharat.com", name: "Toyota Kirloskar", type: "Automobile", city: "Bangalore",
     industry: "Manufacturing", employees: "6,300", revenue: "₹21,000 Cr", founded: 1997,
-    giftScore: 76, giftBudget: "₹5–8L / year",
+    fitScore: 76, budgetBand: "₹5–8L / year",
     pastGifting: [
       { year: "2024", occasion: "New Year", items: "Planner + Sweets Box", perPerson: "₹600" },
     ],
@@ -151,7 +151,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c4", logo: "🏗️", domain: "prestigeconstructions.com", name: "Prestige Group", type: "Real Estate", city: "Bangalore",
     industry: "Real Estate", employees: "3,200", revenue: "₹8,900 Cr", founded: 1986,
-    giftScore: 83, giftBudget: "₹6–10L / year",
+    fitScore: 83, budgetBand: "₹6–10L / year",
     pastGifting: [
       { year: "2023", occasion: "Diwali", items: "Luxury Sweets Box", perPerson: "₹1,800" },
       { year: "2024", occasion: "Ugadi", items: "Traditional Hamper", perPerson: "₹900" },
@@ -161,7 +161,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c5", logo: "⌚", domain: "titan.co.in", name: "Titan Company", type: "Consumer Goods", city: "Hosur",
     industry: "Manufacturing", employees: "7,100", revenue: "₹40,000 Cr", founded: 1984,
-    giftScore: 64, giftBudget: "₹4–6L / year",
+    fitScore: 64, budgetBand: "₹4–6L / year",
     pastGifting: [
       { year: "2024", occasion: "Diwali", items: "Sweets + Diary", perPerson: "₹700" },
     ],
@@ -170,7 +170,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c6", logo: "💊", domain: "biocon.com", name: "Biocon Limited", type: "Pharma", city: "Bangalore",
     industry: "Pharma", employees: "11,500", revenue: "₹9,750 Cr", founded: 1978,
-    giftScore: 79, giftBudget: "₹7–11L / year",
+    fitScore: 79, budgetBand: "₹7–11L / year",
     pastGifting: [
       { year: "2023", occasion: "Diwali", items: "Health Hamper", perPerson: "₹1,100" },
       { year: "2024", occasion: "Womens Day", items: "Wellness Kit", perPerson: "₹800" },
@@ -180,7 +180,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c7", logo: "🛍️", domain: "relianceretail.com", name: "Reliance Retail", type: "Retail", city: "Bangalore",
     industry: "Retail", employees: "22,000", revenue: "₹2,60,364 Cr", founded: 2006,
-    giftScore: 72, giftBudget: "₹12–20L / year",
+    fitScore: 72, budgetBand: "₹12–20L / year",
     pastGifting: [
       { year: "2024", occasion: "Diwali", items: "Assorted Sweets", perPerson: "₹500" },
     ],
@@ -189,7 +189,7 @@ export const COMPANIES: Company[] = [
   {
     id: "c8", logo: "🏭", domain: "abb.com", name: "ABB India", type: "Industrial Tech", city: "Bangalore",
     industry: "Manufacturing", employees: "5,800", revenue: "₹7,200 Cr", founded: 1949,
-    giftScore: 85, giftBudget: "₹5–9L / year",
+    fitScore: 85, budgetBand: "₹5–9L / year",
     pastGifting: [
       { year: "2023", occasion: "Diwali", items: "Premium Dry Fruits", perPerson: "₹1,400" },
       { year: "2024", occasion: "Safety Day", items: "Sweets + Company Merch", perPerson: "₹950" },

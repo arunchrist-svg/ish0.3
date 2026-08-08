@@ -15,10 +15,10 @@ type Props = {
   onSubmit: (values: LeadFormInput) => Promise<void>;
 };
 
-const labelClass = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ish-ink";
+const labelClass = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-brand-ink";
 const fieldClass = cn(
-  "ish-modal-field w-full rounded-[14px] border border-ish-border/70 px-3.5 py-2.5 text-[13px] font-medium text-ish-ink",
-  "placeholder:text-ish-ink-faint outline-none shadow-[var(--shadow-ish-sm)] focus:border-ish-stratus-blue/40 focus:ring-2 focus:ring-ish-stratus-blue/12",
+  "ish-modal-field w-full rounded-[14px] border border-brand-border/70 px-3.5 py-2.5 text-[13px] font-medium text-brand-ink",
+  "placeholder:text-brand-ink-faint outline-none shadow-[var(--shadow-brand-sm)] focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/12",
 );
 
 export function LeadFormModal({ open, mode, initial, onClose, onSubmit }: Props) {
@@ -86,10 +86,10 @@ export function LeadFormModal({ open, mode, initial, onClose, onSubmit }: Props)
 
   return (
     <AppModal open={open} onClose={onClose} panelClassName="max-h-[90vh] overflow-y-auto">
-      <h3 className="text-[16px] font-bold text-ish-ink">
+      <h3 className="text-[16px] font-bold text-brand-ink">
         {mode === "create" ? "Add lead" : "Edit lead"}
       </h3>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-ish-ink-soft">
+      <p className="mt-1.5 text-[13px] leading-relaxed text-brand-ink-soft">
         {mode === "create"
           ? "Create a lead manually with contact and company details."
           : "Update contact and company details for this lead."}
@@ -142,12 +142,12 @@ export function LeadFormModal({ open, mode, initial, onClose, onSubmit }: Props)
 
         {error ? <p className="text-[12px] font-medium text-red-600">{error}</p> : null}
 
-        <div className="flex justify-end gap-2 border-t border-ish-border/60 pt-4">
+        <div className="flex justify-end gap-2 border-t border-brand-border/60 pt-4">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="ish-modal-cancel h-auto rounded-[14px] border border-ish-border px-4 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] hover:border-ish-stratus-blue/30 hover:bg-ish-canvas"
+            className="ish-modal-cancel h-auto rounded-[14px] border border-brand-border px-4 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] hover:border-brand-stratus-blue/30 hover:bg-brand-canvas"
             onClick={onClose}
             disabled={submitting}
           >
@@ -158,7 +158,7 @@ export function LeadFormModal({ open, mode, initial, onClose, onSubmit }: Props)
             variant="ghost"
             size="sm"
             disabled={submitting}
-            className="h-auto rounded-[14px] bg-ish-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] hover:bg-ish-black/90 disabled:opacity-40"
+            className="h-auto rounded-[14px] bg-brand-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] hover:bg-brand-black/90 disabled:opacity-40"
           >
             {submitting ? (
               <span className="inline-flex items-center gap-2">

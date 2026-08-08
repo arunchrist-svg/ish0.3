@@ -107,7 +107,7 @@ export function LeadCard({
               type="button"
               data-card-action
               onClick={handleDetailsClick}
-              className="flex size-7 items-center justify-center rounded-full bg-white/90 text-ish-ink-soft shadow-sm ring-1 ring-ish-border/50 active:scale-95"
+              className="flex size-7 items-center justify-center rounded-full bg-white/90 text-brand-ink-soft shadow-sm ring-1 ring-brand-border/50 active:scale-95"
               aria-label={`View ${person.name}`}
             >
               <ChevronRight className="size-3.5" />
@@ -116,20 +116,20 @@ export function LeadCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1">
-            <span className="line-clamp-2 text-[13px] font-semibold leading-snug text-ish-ink">{person.name}</span>
+            <span className="line-clamp-2 text-[13px] font-semibold leading-snug text-brand-ink">{person.name}</span>
             {person.isKeyDecisionMaker ? (
-              <span className="mt-0.5 shrink-0 rounded bg-ish-black px-1 py-0.5 text-[8px] font-bold text-white">KEY</span>
+              <span className="mt-0.5 shrink-0 rounded bg-brand-black px-1 py-0.5 text-[8px] font-bold text-white">KEY</span>
             ) : null}
           </div>
-          <p className="mt-0.5 line-clamp-1 text-[10px] font-medium text-ish-ink-soft">{person.title}</p>
-          {company ? <p className="mt-0.5 line-clamp-1 text-[10px] text-ish-ink-faint">{company.name}</p> : null}
+          <p className="mt-0.5 line-clamp-1 text-[10px] font-medium text-brand-ink-soft">{person.title}</p>
+          {company ? <p className="mt-0.5 line-clamp-1 text-[10px] text-brand-ink-faint">{company.name}</p> : null}
           <div className="mt-1.5 flex flex-wrap gap-1">
-            <span className="rounded-full bg-ish-canvas px-1.5 py-0.5 text-[9px] font-medium text-ish-ink-soft">{person.department}</span>
-            <span className="rounded-full bg-ish-canvas px-1.5 py-0.5 text-[9px] font-medium text-ish-ink-soft">{person.seniority}</span>
+            <span className="rounded-full bg-brand-canvas px-1.5 py-0.5 text-[9px] font-medium text-brand-ink-soft">{person.department}</span>
+            <span className="rounded-full bg-brand-canvas px-1.5 py-0.5 text-[9px] font-medium text-brand-ink-soft">{person.seniority}</span>
           </div>
         </div>
         {alreadyAdded ? (
-          <div className="mt-2.5 rounded-xl border border-ish-border/60 bg-ish-canvas py-2 text-center text-[10px] font-semibold text-ish-ink-faint">
+          <div className="mt-2.5 rounded-xl border border-brand-border/60 bg-brand-canvas py-2 text-center text-[10px] font-semibold text-brand-ink-faint">
             Already added
           </div>
         ) : selectable ? (
@@ -137,8 +137,8 @@ export function LeadCard({
             className={cn(
               "mt-2.5 flex items-center justify-center gap-1.5 rounded-xl border py-2 text-[11px] font-semibold transition-colors",
               isSelected
-                ? "border-ish-stratus-blue/35 bg-ish-stratus-blue/10 text-ish-stratus-blue"
-                : "border-ish-border/60 bg-white/70 text-ish-ink-soft",
+                ? "border-brand-stratus-blue/35 bg-brand-stratus-blue/10 text-brand-stratus-blue"
+                : "border-brand-border/60 bg-white/70 text-brand-ink-soft",
             )}
           >
             {isSelected ? (
@@ -173,7 +173,7 @@ export function LeadCard({
       {isSelected && selectable && !alreadyAdded && (
         <span
           aria-hidden
-          className="absolute right-3 top-3 z-10 flex size-6 items-center justify-center rounded-full bg-white/80 text-ish-ink shadow-sm"
+          className="absolute right-3 top-3 z-10 flex size-6 items-center justify-center rounded-full bg-white/80 text-brand-ink shadow-sm"
         >
           <Check className="size-3.5" strokeWidth={2.5} />
         </span>
@@ -201,52 +201,52 @@ export function LeadCard({
             </div>
             {signalsCount > 0 && (
               <div className="flex items-center gap-1">
-                <Zap className="size-3 text-ish-green" />
-                <span className="text-[11px] font-semibold text-ish-ink-soft">{signalsCount}</span>
+                <Zap className="size-3 text-brand-green" />
+                <span className="text-[11px] font-semibold text-brand-ink-soft">{signalsCount}</span>
               </div>
             )}
           </div>
         </div>
 
         <div className="mb-1 flex items-center gap-1.5">
-          <span className="text-[15px] font-bold leading-tight text-ish-ink line-clamp-1">{person.name}</span>
+          <span className="text-[15px] font-bold leading-tight text-brand-ink line-clamp-1">{person.name}</span>
           {person.isKeyDecisionMaker && (
-            <span className="shrink-0 rounded-[5px] bg-ish-black px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
+            <span className="shrink-0 rounded-[5px] bg-brand-black px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
               KEY
             </span>
           )}
         </div>
 
-        <div className="mb-0.5 text-[12px] font-medium leading-snug text-ish-ink-soft line-clamp-1">
+        <div className="mb-0.5 text-[12px] font-medium leading-snug text-brand-ink-soft line-clamp-1">
           {person.title}
         </div>
 
         {company && (
-          <div className="mb-3 text-[11px] text-ish-ink-faint line-clamp-1">{company.name}</div>
+          <div className="mb-3 text-[11px] text-brand-ink-faint line-clamp-1">{company.name}</div>
         )}
 
         <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-full bg-ish-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-ish-ink-soft">
+          <span className="rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
             {person.department}
           </span>
-          <span className="rounded-full bg-ish-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-ish-ink-soft">
+          <span className="rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
             {person.seniority}
           </span>
           {alreadyAdded && (
-            <span className="rounded-full bg-ish-border px-2.5 py-0.5 text-[10px] font-semibold text-ish-ink-faint">
+            <span className="rounded-full bg-brand-border px-2.5 py-0.5 text-[10px] font-semibold text-brand-ink-faint">
               Already added
             </span>
           )}
         </div>
       </div>
 
-      <div className="mx-4 h-px bg-ish-border/60" />
+      <div className="mx-4 h-px bg-brand-border/60" />
 
       {directoryLeadId ? (
         <div className="px-4 py-3" data-card-action>
           <Link
             href={`/?lead=${directoryLeadId}`}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-ish-canvas py-2 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-ish-border active:scale-[0.98]"
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-canvas py-2 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-brand-border active:scale-[0.98]"
           >
             Open lead
             <ExternalLink className="size-3.5" />
@@ -264,8 +264,8 @@ export function LeadCard({
               className={cn(
                 "ish-scout-select-cta flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-semibold transition-all active:scale-[0.98]",
                 isSelected
-                  ? "text-ish-ink"
-                  : "border border-ish-border/80 bg-white/60 text-ish-ink-soft hover:border-ish-ink-soft hover:text-ish-ink",
+                  ? "text-brand-ink"
+                  : "border border-brand-border/80 bg-white/60 text-brand-ink-soft hover:border-brand-ink-soft hover:text-brand-ink",
               )}
             >
               {isSelected ? (
@@ -286,9 +286,9 @@ export function LeadCard({
                 e.stopPropagation();
                 onContact();
               }}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-ish-canvas py-2 text-[12px] font-semibold text-ish-ink transition-all hover:bg-ish-border active:scale-[0.98]"
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-canvas py-2 text-[12px] font-semibold text-brand-ink transition-all hover:bg-brand-border active:scale-[0.98]"
             >
-              <MessageCircle className="size-3.5 text-ish-ink-soft" />
+              <MessageCircle className="size-3.5 text-brand-ink-soft" />
               Get in touch
             </button>
             <button
@@ -298,7 +298,7 @@ export function LeadCard({
                 e.stopPropagation();
                 onBookmark();
               }}
-              className="flex size-9 items-center justify-center rounded-xl border border-ish-border/70 bg-white text-ish-ink-faint transition-all hover:border-ish-ink-soft hover:text-ish-ink active:scale-95"
+              className="flex size-9 items-center justify-center rounded-xl border border-brand-border/70 bg-white text-brand-ink-faint transition-all hover:border-brand-ink-soft hover:text-brand-ink active:scale-95"
               aria-label="Save"
             >
               <Bookmark className="size-3.5" />

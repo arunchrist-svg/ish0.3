@@ -64,7 +64,7 @@ export async function sendScheduledFollowUp(params: {
     : null;
   if (!generatedOutreach) throw new Error("No outreach draft linked to schedule");
 
-  const subject = generatedOutreach.subjectA ?? `Re: Diwali gifting for ${account.name}`;
+  const subject = generatedOutreach.subjectA ?? `Re: Outreach for ${account.name}`;
   const body = generatedOutreach.emailBody ?? "";
 
   const quality = await evaluateOutreachDraft({
@@ -72,7 +72,7 @@ export async function sendScheduledFollowUp(params: {
     emailBody: body,
     contact: { name: contact.name, firstName: contact.firstName, title: contact.title },
     account,
-    giftingHook: research?.giftingHook,
+    outreachHook: research?.outreachHook,
     sequencePosition: generatedOutreach.sequencePosition ?? 2,
   });
 
@@ -102,7 +102,7 @@ export async function sendScheduledFollowUp(params: {
     referencesChain: thread.referencesChain,
   });
 
-  const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@ish.local";
+  const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@localhost";
   const rfcMessageId = generateRfcMessageId(fromAddress);
 
   const result = await sendEmail({

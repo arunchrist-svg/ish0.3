@@ -16,8 +16,8 @@ export function CircleButton({ children, size = 36, active, className, onClick }
       size="icon"
       onClick={onClick}
       className={cn(
-        "shrink-0 rounded-full shadow-[var(--shadow-ish-sm)] hover:brightness-[0.97]",
-        active ? "bg-ish-black text-white hover:bg-ish-black/90" : "bg-white text-ish-ink-soft hover:bg-white",
+        "shrink-0 rounded-full shadow-[var(--shadow-brand-sm)] hover:brightness-[0.97]",
+        active ? "bg-brand-black text-white hover:bg-brand-black/90" : "bg-white text-brand-ink-soft hover:bg-white",
         className,
       )}
       style={{ width: size, height: size }}

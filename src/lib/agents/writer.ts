@@ -66,8 +66,9 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const rules = retrieveRelevantRules({
     industry: account.industry ?? undefined,
     city: account.city ?? undefined,
-    season: brandConfig.brandSlug === "ish" ? "diwali" : undefined,
+    season: undefined,
     brandSlug: brandConfig.brandSlug,
+    verticalPackId: brandConfig.verticalPackId,
     campaignMode,
     productSummary: brandConfig.productSummary,
     campaignNotes: emailConfig.campaignNotes,
@@ -81,7 +82,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   });
 
   const confidenceTier = research?.confidenceTier ?? "low";
-  const giftingHook = research?.giftingHook ?? "";
+  const outreachHook = research?.outreachHook ?? "";
   const isFollowUp = !!options?.followUpMode;
 
   if (!isFollowUp) {
@@ -98,6 +99,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     contactFirstName,
     account.name,
     brandConfig.productSummary,
+    brandConfig.verticalPackId,
   );
 
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);
@@ -158,7 +160,7 @@ Note: never mention employee count, headcount, revenue, or other numeric company
 Brand: ${brandConfig.brandName} (${brandConfig.vertical})
 Campaign: ${campaignMode}
 Confidence tier: ${confidenceTier}
-Hook: ${giftingHook || brandConfig.productSummary}
+Hook: ${outreachHook || brandConfig.productSummary}
 Intel: ${account.intelNotes ?? "none"}`;
 
   const userPrompt = isFollowUp
@@ -205,7 +207,7 @@ Sign off with "${senderFirstName}"`;
       enrichmentSource: contact.enrichmentSource,
     },
     contact: { firstName: contactFirstName, title: contact.title },
-    giftingHook,
+    outreachHook,
     recentSubjects,
   };
   const maxRevisions = isFollowUp ? 1 : MAX_REVISIONS;
@@ -223,7 +225,7 @@ Sign off with "${senderFirstName}"`;
               contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
               account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
               deliverabilityOptions: delivOpts,
-              giftingHook,
+              outreachHook,
               intelNotes: account.intelNotes,
             }))}`,
       maxTokens: isFollowUp ? 512 : 1024,
@@ -234,15 +236,15 @@ Sign off with "${senderFirstName}"`;
       console.warn("[writer] LLM output failed schema validation for lead", leadId);
     }
     const parsedWithFallback = {
-      subjectA: parsed.subjectA ?? `Diwali gifting for ${account.name}`,
-      subjectB: parsed.subjectB ?? `Diwali note for ${contactFirstName}`,
+      subjectA: parsed.subjectA ?? `Outreach for ${account.name}`,
+      subjectB: parsed.subjectB ?? `Note for ${contactFirstName}`,
       emailBody: parsed.emailBody ?? raw.slice(0, 600),
       outreachGoal: parsed.outreachGoal ?? template.label,
       templateVariant: parsed.templateVariant,
     };
 
     emailBody = normalizeEmailBody(parsedWithFallback.emailBody ?? "");
-    subjectA = parsedWithFallback.subjectA ?? `Diwali gifting for ${account.name}`;
+    subjectA = parsedWithFallback.subjectA ?? `Outreach for ${account.name}`;
     subjectB = parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`;
     templateVariant = options?.followUpMode ?? template.id;
     outreachGoal = parsedWithFallback.outreachGoal ?? template.label;
@@ -257,7 +259,7 @@ Sign off with "${senderFirstName}"`;
       contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
       account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
       deliverabilityOptions: delivOpts,
-      giftingHook,
+      outreachHook,
       intelNotes: account.intelNotes,
     });
     const rubricTotal = scoreRubricTotal(rubric);

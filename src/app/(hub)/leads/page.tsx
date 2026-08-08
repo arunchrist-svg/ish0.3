@@ -3,7 +3,7 @@ import { SalesAcceleratorApp } from "@/components/sales-accelerator/sales-accele
 
 export default function LeadsPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-ish-ink-faint">Loading…</div>}>
+    <Suspense fallback={<div className="p-8 text-brand-ink-faint">Loading…</div>}>
       <SalesAcceleratorApp />
     </Suspense>
   );

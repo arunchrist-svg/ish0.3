@@ -18,6 +18,9 @@ const DIRECTORY_DOMAINS = [
   "wikipedia.org",
   "google.com",
   "apollo.io",
+  "github.com",
+  "gitlab.com",
+  "bitbucket.org",
 ];
 
 export function normalizeDomain(domain?: string | null): string | undefined {

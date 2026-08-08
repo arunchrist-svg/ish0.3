@@ -28,17 +28,17 @@ export class ResearchNotReadyError extends Error {
 }
 
 export function getResearchQualityGaps(research: {
-  giftingHook?: string | null;
+  outreachHook?: string | null;
   decisionChain?: string[] | null;
 } | null | undefined): string[] {
   const gaps: string[] = [];
-  if (!research?.giftingHook?.trim()) gaps.push("giftingHook");
+  if (!research?.outreachHook?.trim()) gaps.push("outreachHook");
   if (!research?.decisionChain?.length) gaps.push("decisionChain");
   return gaps;
 }
 
 export function assertResearchReadyForWriter(
-  research: { giftingHook?: string | null; decisionChain?: string[] | null } | null | undefined,
+  research: { outreachHook?: string | null; decisionChain?: string[] | null } | null | undefined,
 ): void {
   const gaps = getResearchQualityGaps(research);
   if (gaps.length) throw new ResearchNotReadyError(gaps);
@@ -54,27 +54,16 @@ export function formatWriterPlanForPrompt(plan: WriterPlan): string {
 function brandAwareFallbackPlan(
   brand: BrandConfig,
   accountName: string,
-  giftingHook?: string | null,
+  outreachHook?: string | null,
 ): ParsedWriterPlan {
   const product =
     brand.productSummary?.trim() ||
-    (brand.brandSlug === "prestige"
-      ? "Kitchen appliance bundles for corporate rewards with volume pricing and warranty support."
-      : brand.brandSlug === "ish"
-        ? "Premium corporate mithai and hamper options for teams."
-        : `Corporate rewards and gifting options from ${brand.brandName}.`);
-
-  const cta =
-    brand.brandSlug === "prestige"
-      ? "Open to a quick note on a few appliance bundle formats?"
-      : brand.brandSlug === "ish"
-        ? "Open to a quick note on a few hamper formats?"
-        : "Open to a quick note on a few options for your team?";
+    `Corporate outreach options from ${brand.brandName}.`;
 
   return {
-    hook: giftingHook?.trim() || `Corporate gifting angle for ${accountName}`,
+    hook: outreachHook?.trim() || `Outreach angle for ${accountName}`,
     valueProp: product.split(".")[0].trim() + ".",
-    cta,
+    cta: "Open to a quick note on a few options for your team?",
   };
 }
 
@@ -105,11 +94,11 @@ ${brand.websiteInsights?.differentiators?.length ? `Differentiators: ${brand.web
 Company: ${account.name}
 Contact: ${contact.name}, ${contact.title ?? "Unknown"}
 Industry: ${account.industry ?? "Corporate"}
-Gifting hook: ${research?.giftingHook ?? "General corporate gifting"}
+Outreach hook: ${research?.outreachHook ?? "General corporate outreach"}
 Intel: ${account.intelNotes ?? "none"}
 
 Rules:
-- Value prop must match the brand product above. Never invent sweets/mithai if the brand sells something else.
+- Value prop must match the brand product above. Never invent products the brand does not sell.
 - Never use em dashes.
 
 Output ONLY JSON:
@@ -140,7 +129,7 @@ Output ONLY JSON:
     if (!parsed.success) throw parsed.error;
     plan = parsed.data;
   } catch {
-    plan = brandAwareFallbackPlan(brand, account.name, research?.giftingHook);
+    plan = brandAwareFallbackPlan(brand, account.name, research?.outreachHook);
   }
 
   const writerPlan: WriterPlan = {

@@ -40,12 +40,12 @@ function BarStepper({
               onClick={() => onNodeSelect?.(node.id)}
               className={cn(
                 "flex h-7 items-center gap-1 rounded-full px-2.5 text-[9px] font-bold uppercase tracking-wide transition-colors",
-                isDone && "border border-ish-stratus-blue/25 bg-ish-green-soft text-ish-stratus-blue",
-                node.state === "current" && "bg-ish-yellow-soft text-ish-ink ring-2 ring-ish-stratus-yellow/55",
-                node.state === "scheduled" && "border border-dashed border-ish-stratus-blue/35 bg-white text-ish-stratus-blue",
-                node.state === "paused" && "border border-dashed border-ish-stratus-salmon/35 bg-ish-pink-soft/30 text-ish-stratus-salmon",
-                node.state === "upcoming" && "bg-ish-canvas/80 text-ish-ink-faint",
-                selected && "ring-2 ring-ish-black/15",
+                isDone && "border border-brand-stratus-blue/25 bg-brand-green-soft text-brand-stratus-blue",
+                node.state === "current" && "bg-brand-yellow-soft text-brand-ink ring-2 ring-brand-stratus-yellow/55",
+                node.state === "scheduled" && "border border-dashed border-brand-stratus-blue/35 bg-white text-brand-stratus-blue",
+                node.state === "paused" && "border border-dashed border-brand-stratus-salmon/35 bg-brand-pink-soft/30 text-brand-stratus-salmon",
+                node.state === "upcoming" && "bg-brand-canvas/80 text-brand-ink-faint",
+                selected && "ring-2 ring-brand-black/15",
               )}
             >
               {isDone && <Check className="size-3 shrink-0" strokeWidth={2.5} />}
@@ -64,14 +64,14 @@ function BarStepper({
                       onDraftReply?.();
                     }
                   }}
-                  className="ml-0.5 rounded-full bg-ish-black px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal text-white hover:bg-ish-black/90"
+                  className="ml-0.5 rounded-full bg-brand-black px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal text-white hover:bg-brand-black/90"
                 >
                   {draftReplyLoading ? "…" : "AI reply"}
                 </span>
               )}
             </button>
             {i < nodes.length - 1 && (
-              <div className={cn("h-px w-3 rounded-full", isDone ? "bg-ish-stratus-blue/35" : "bg-ish-border")} />
+              <div className={cn("h-px w-3 rounded-full", isDone ? "bg-brand-stratus-blue/35" : "bg-brand-border")} />
             )}
           </div>
         );
@@ -84,15 +84,15 @@ function NodeDetailPanel({ node }: { node: BarNode }) {
   if (node.kind === "draft" || node.kind === "reply_draft") return null;
 
   return (
-    <div className="bg-ish-canvas/40 px-3 py-3 lg:mt-3 lg:rounded-[16px] lg:border lg:border-ish-border/60 lg:bg-ish-canvas/30 lg:px-4 lg:py-3">
-      {node.subject && <p className="text-[13px] font-semibold text-ish-ink">{node.subject}</p>}
+    <div className="bg-brand-canvas/40 px-3 py-3 lg:mt-3 lg:rounded-[16px] lg:border lg:border-brand-border/60 lg:bg-brand-canvas/30 lg:px-4 lg:py-3">
+      {node.subject && <p className="text-[13px] font-semibold text-brand-ink">{node.subject}</p>}
       {(node.body || node.snippet) && (
-        <p className="mt-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-ish-ink-soft">
+        <p className="mt-2.5 whitespace-pre-wrap text-[13px] leading-relaxed text-brand-ink-soft">
           {node.body ?? node.snippet}
         </p>
       )}
       {node.at && (
-        <p className="mt-3 text-[10px] text-ish-ink-faint">
+        <p className="mt-3 text-[10px] text-brand-ink-faint">
           {new Date(node.at).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         </p>
       )}
@@ -127,21 +127,21 @@ export function OutreachJourneyPanel({
 
   return (
     <div className="mb-3 lg:mb-4">
-      <div className="border-b border-ish-border/60 bg-white lg:ish-record-card lg:overflow-hidden lg:rounded-[20px] lg:border lg:shadow-[var(--shadow-ish-sm)]">
+      <div className="border-b border-brand-border/60 bg-white lg:ish-record-card lg:overflow-hidden lg:rounded-[20px] lg:border lg:shadow-[var(--shadow-brand-sm)]">
         <div className="flex min-w-0 items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] lg:gap-3 lg:px-4 lg:py-2.5 [&::-webkit-scrollbar]:hidden">
           <div className="flex shrink-0 items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-full bg-ish-green-soft">
-              <Mail className="size-3.5 text-ish-stratus-blue" />
+            <div className="flex size-7 items-center justify-center rounded-full bg-brand-green-soft">
+              <Mail className="size-3.5 text-brand-stratus-blue" />
             </div>
             <div className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-              <span className="text-[13px] font-bold leading-none text-ish-ink">Outreach Queue</span>
-              <span className="text-[10px] text-ish-ink-faint">· {statusSubtitle}</span>
+              <span className="text-[13px] font-bold leading-none text-brand-ink">Outreach Queue</span>
+              <span className="text-[10px] text-brand-ink-faint">· {statusSubtitle}</span>
             </div>
           </div>
 
           {showBar ? (
             <>
-              <div className="hidden h-5 w-px shrink-0 bg-ish-border/70 sm:block" aria-hidden />
+              <div className="hidden h-5 w-px shrink-0 bg-brand-border/70 sm:block" aria-hidden />
               <div className="shrink-0">
                 <BarStepper
                   nodes={thread.barNodes}
@@ -162,7 +162,7 @@ export function OutreachJourneyPanel({
         </div>
 
         {selectedNode && (selectedNode.kind === "sent" || selectedNode.kind === "inbound" || selectedNode.kind === "scheduled") ? (
-          <div className="border-t border-ish-border/50 px-3 py-3 lg:px-4 lg:py-3">
+          <div className="border-t border-brand-border/50 px-3 py-3 lg:px-4 lg:py-3">
             <NodeDetailPanel node={selectedNode} />
           </div>
         ) : null}

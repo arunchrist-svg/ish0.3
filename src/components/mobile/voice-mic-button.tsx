@@ -37,7 +37,7 @@ export function VoiceMicButton({ onTranscript, disabled, className, size = "md" 
       className={cn(
         "flex shrink-0 items-center justify-center rounded-full transition-all active:scale-95 disabled:opacity-40",
         dim,
-        listening ? "bg-ish-stratus-salmon text-white animate-pulse" : "bg-ish-canvas text-ish-ink",
+        listening ? "bg-brand-stratus-salmon text-white animate-pulse" : "bg-brand-canvas text-brand-ink",
         className,
       )}
       aria-label={listening ? "Stop listening" : "Start voice input"}

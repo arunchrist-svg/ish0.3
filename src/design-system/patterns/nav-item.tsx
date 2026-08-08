@@ -12,7 +12,7 @@ export function NavItem({ icon: Icon, label, active }: NavItemProps) {
     <div
       className={cn(
         "mb-0.5 flex items-center gap-3 rounded-[10px] px-2 py-2",
-        active ? "bg-ish-yellow" : "",
+        active ? "bg-brand-yellow" : "",
         active ? text.navItemActive : text.navItem,
       )}
     >

@@ -1,97 +1,97 @@
-/* ISH Design System — core tokens */
+/* Nebula Design System — core tokens */
 @theme inline {
-  --color-ish-outer: #000000;
-  --color-ish-app: #ffffff;
-  --color-ish-canvas: #f4f4f6;
-  --color-ish-ink: #1a1a1f;
-  --color-ish-ink-soft: #6b6975;
-  --color-ish-ink-faint: #a8a6b0;
-  --color-ish-border: #e7e6ea;
-  --color-ish-yellow: #ffce87;
-  --color-ish-yellow-soft: #fff4e0;
-  --color-ish-pink: #fad9d0;
-  --color-ish-pink-soft: #fceeea;
-  --color-ish-green: #3fbe82;
-  --color-ish-green-soft: #e0f7ec;
-  --color-ish-black: #293042;
-  --color-ish-avatar-1: #f2c9a0;
-  --color-ish-avatar-2: #f2a8a8;
-  --color-ish-avatar-3: #a8c9f2;
-  --color-ish-avatar-4: #c9a8f2;
-  --color-ish-avatar-5: #a8f2c9;
-  --color-ish-avatar-6: #f2dca8;
-  --color-ish-stratus-blue: #83a2db;
-  --color-ish-stratus-salmon: #fd8e8c;
-  --color-ish-stratus-yellow: #ffce87;
+  --color-brand-outer: #000000;
+  --color-brand-app: #ffffff;
+  --color-brand-canvas: #f4f4f6;
+  --color-brand-ink: #1a1a1f;
+  --color-brand-ink-soft: #6b6975;
+  --color-brand-ink-faint: #a8a6b0;
+  --color-brand-border: #e7e6ea;
+  --color-brand-yellow: #ffce87;
+  --color-brand-yellow-soft: #fff4e0;
+  --color-brand-pink: #fad9d0;
+  --color-brand-pink-soft: #fceeea;
+  --color-brand-green: #3fbe82;
+  --color-brand-green-soft: #e0f7ec;
+  --color-brand-black: #293042;
+  --color-brand-avatar-1: #f2c9a0;
+  --color-brand-avatar-2: #f2a8a8;
+  --color-brand-avatar-3: #a8c9f2;
+  --color-brand-avatar-4: #c9a8f2;
+  --color-brand-avatar-5: #a8f2c9;
+  --color-brand-avatar-6: #f2dca8;
+  --color-brand-stratus-blue: #83a2db;
+  --color-brand-stratus-salmon: #fd8e8c;
+  --color-brand-stratus-yellow: #ffce87;
   --color-score-high: #3fbe82;
   --color-score-mid: #e8a000;
   --color-score-low: #e57373;
-  --shadow-ish-sm: 0 1px 2px rgba(20, 20, 30, 0.05);
-  --shadow-ish: 0 2px 8px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
-  --shadow-ish-float: 0 24px 60px rgba(20, 16, 30, 0.22);
-  --shadow-ish-yellow: 0 0 16px rgba(255, 206, 135, 0.28), 0 4px 18px rgba(255, 206, 135, 0.32);
-  --shadow-ish-yellow-sm: 0 4px 14px rgba(255, 206, 135, 0.30);
+  --shadow-brand-sm: 0 1px 2px rgba(20, 20, 30, 0.05);
+  --shadow-brand: 0 2px 8px rgba(20, 20, 30, 0.06), 0 8px 24px rgba(20, 20, 30, 0.05);
+  --shadow-brand-float: 0 24px 60px rgba(20, 16, 30, 0.22);
+  --shadow-brand-yellow: 0 0 16px rgba(255, 206, 135, 0.28), 0 4px 18px rgba(255, 206, 135, 0.32);
+  --shadow-brand-yellow-sm: 0 4px 14px rgba(255, 206, 135, 0.30);
 }
 
 :root {
-  --ish-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #ffe4b8 50%, #fcd9c4 100%);
+  --brand-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #ffe4b8 50%, #fcd9c4 100%);
 }
 
 .dark {
-  --color-ish-outer: #000000;
-  --color-ish-app: #16161a;
-  --color-ish-canvas: #222228;
-  --color-ish-ink: #f0f0f2;
-  --color-ish-ink-soft: #a8a6b0;
-  --color-ish-ink-faint: #6b6975;
-  --color-ish-border: #3a3940;
-  --color-ish-yellow-soft: #3d3a1a;
-  --color-ish-pink-soft: #3d2e2a;
-  --color-ish-green-soft: #1a3d2e;
-  --ish-yellow-gradient: linear-gradient(135deg, #c4c248 0%, #b8a060 50%, #a88070 100%);
+  --color-brand-outer: #000000;
+  --color-brand-app: #16161a;
+  --color-brand-canvas: #222228;
+  --color-brand-ink: #f0f0f2;
+  --color-brand-ink-soft: #a8a6b0;
+  --color-brand-ink-faint: #6b6975;
+  --color-brand-border: #3a3940;
+  --color-brand-yellow-soft: #3d3a1a;
+  --color-brand-pink-soft: #3d2e2a;
+  --color-brand-green-soft: #1a3d2e;
+  --brand-yellow-gradient: linear-gradient(135deg, #c4c248 0%, #b8a060 50%, #a88070 100%);
 }
 
 .stratus {
   /* ── Stratus DS palette (see tokens/stratus.ts) ─────────────────────── */
-  --ish-stratus-blue: #83a2db;
-  --ish-stratus-salmon: #fd8e8c;
-  --ish-stratus-yellow: #ffce87;
-  --ish-stratus-blue-rgb: 131, 162, 219;
-  --ish-stratus-salmon-rgb: 253, 142, 140;
-  --ish-stratus-yellow-rgb: 255, 206, 135;
-  --color-ish-outer: #0d0d0d;
-  --color-ish-app: #fdfdfd;
-  --color-ish-canvas: #f6f7fa;
-  --color-ish-ink: #0d0d0d;
-  --color-ish-ink-soft: #4a5568;
-  --color-ish-ink-faint: #8a96a8;
-  --color-ish-border: rgba(var(--ish-stratus-blue-rgb), 0.26);
-  --color-ish-yellow: var(--ish-stratus-yellow);
-  --color-ish-yellow-soft: #fff4e0;
-  --color-ish-pink: var(--ish-stratus-salmon);
-  --color-ish-pink-soft: #fdf0f0;
-  --color-ish-green: var(--ish-stratus-blue);
-  --color-ish-green-soft: #e8f0fb;
-  --color-score-high: var(--ish-stratus-blue);
-  --color-score-mid: var(--ish-stratus-yellow);
-  --color-score-low: var(--ish-stratus-salmon);
-  --color-ish-black: #293042;
-  --shadow-ish-sm: 0 1px 3px rgba(var(--ish-stratus-blue-rgb), 0.06), 0 1px 2px rgba(var(--ish-stratus-blue-rgb), 0.035);
-  --shadow-ish: 0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.08), 0 1px 4px rgba(var(--ish-stratus-blue-rgb), 0.045);
-  --shadow-ish-float: 0 24px 60px rgba(108, 138, 198, 0.16);
-  --ish-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #fdb99a 55%, var(--ish-stratus-salmon) 100%);
-  --shadow-ish-yellow: 0 0 18px rgba(var(--ish-stratus-yellow-rgb), 0.30), 0 4px 20px rgba(var(--ish-stratus-yellow-rgb), 0.38);
-  --shadow-ish-yellow-sm: 0 4px 14px rgba(var(--ish-stratus-yellow-rgb), 0.32);
-  --ish-stratus-gradient: linear-gradient(135deg, var(--ish-stratus-blue) 0%, var(--ish-stratus-salmon) 50%, var(--ish-stratus-yellow) 100%);
+  --brand-stratus-blue: #83a2db;
+  --brand-stratus-salmon: #fd8e8c;
+  --brand-stratus-yellow: #ffce87;
+  --brand-stratus-blue-rgb: 131, 162, 219;
+  --brand-stratus-salmon-rgb: 253, 142, 140;
+  --brand-stratus-yellow-rgb: 255, 206, 135;
+  --color-brand-outer: #0d0d0d;
+  --color-brand-app: #fdfdfd;
+  --color-brand-canvas: #f6f7fa;
+  --color-brand-ink: #0d0d0d;
+  --color-brand-ink-soft: #4a5568;
+  --color-brand-ink-faint: #8a96a8;
+  --color-brand-border: rgba(var(--brand-stratus-blue-rgb), 0.26);
+  --color-brand-yellow: var(--brand-stratus-yellow);
+  --color-brand-yellow-soft: #fff4e0;
+  --color-brand-pink: var(--brand-stratus-salmon);
+  --color-brand-pink-soft: #fdf0f0;
+  --color-brand-green: var(--brand-stratus-blue);
+  --color-brand-green-soft: #e8f0fb;
+  --color-score-high: var(--brand-stratus-blue);
+  --color-score-mid: var(--brand-stratus-yellow);
+  --color-score-low: var(--brand-stratus-salmon);
+  --color-brand-black: #293042;
+  --shadow-brand-sm: 0 1px 3px rgba(var(--brand-stratus-blue-rgb), 0.06), 0 1px 2px rgba(var(--brand-stratus-blue-rgb), 0.035);
+  --shadow-brand: 0 4px 16px rgba(var(--brand-stratus-blue-rgb), 0.08), 0 1px 4px rgba(var(--brand-stratus-blue-rgb), 0.045);
+  --shadow-brand-float: 0 24px 60px rgba(108, 138, 198, 0.16);
+  --brand-yellow-gradient: linear-gradient(135deg, #ffce87 0%, #fdb99a 55%, var(--brand-stratus-salmon) 100%);
+  --shadow-brand-yellow: 0 0 18px rgba(var(--brand-stratus-yellow-rgb), 0.30), 0 4px 20px rgba(var(--brand-stratus-yellow-rgb), 0.38);
+  --shadow-brand-yellow-sm: 0 4px 14px rgba(var(--brand-stratus-yellow-rgb), 0.32);
+  --brand-stratus-gradient: linear-gradient(135deg, var(--brand-stratus-blue) 0%, var(--brand-stratus-salmon) 50%, var(--brand-stratus-yellow) 100%);
 }
 
 
-@keyframes ish-page-in {
+@keyframes brand-page-in {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
 }
 
-@keyframes ish-tab-in {
+@keyframes brand-tab-in {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
@@ -131,14 +131,14 @@
 }
 
 .animate-d365-in { animation: d365-in 0.2s ease-out; }
-.animate-ish-page-in { animation: ish-page-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.animate-ish-tab-in { animation: ish-tab-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.animate-ish-radar { animation: ish-radar 2.4s ease-out infinite; }
-.animate-ish-float { animation: ish-float 2.2s ease-in-out infinite; }
-.animate-ish-orbit { animation: ish-orbit 3s linear infinite; }
-.animate-ish-dot { animation: ish-dot 1.2s ease-in-out infinite; }
-.animate-ish-shimmer-bar { animation: ish-shimmer-bar 1.8s ease-in-out infinite; }
-.bg-ish-yellow-gradient { background: var(--ish-yellow-gradient); }
+.animate-brand-page-in { animation: brand-page-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-brand-tab-in { animation: brand-tab-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-brand-radar { animation: ish-radar 2.4s ease-out infinite; }
+.animate-brand-float { animation: ish-float 2.2s ease-in-out infinite; }
+.animate-brand-orbit { animation: ish-orbit 3s linear infinite; }
+.animate-brand-dot { animation: ish-dot 1.2s ease-in-out infinite; }
+.animate-brand-shimmer-bar { animation: ish-shimmer-bar 1.8s ease-in-out infinite; }
+.bg-brand-yellow-gradient { background: var(--brand-yellow-gradient); }
 
 .ish-glass-sidebar {
   background: linear-gradient(
@@ -206,7 +206,7 @@
 /* ── Stratus: harmonise PanelCard tone backgrounds ──────────────────────── */
 /* All three remap to the same frosted-glass base with barely-there DS tints  */
 
-.stratus .bg-ish-pink-soft {
+.stratus .bg-brand-pink-soft {
   background:
     radial-gradient(ellipse 85% 75% at 0% 0%, rgba(253, 160, 160, 0.08) 0%, transparent 68%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(255, 250, 249, 0.78) 100%) !important;
@@ -215,7 +215,7 @@
   box-shadow: inset 0 0 0 1px rgba(253, 160, 160, 0.14) !important;
 }
 
-.stratus .bg-ish-yellow-soft {
+.stratus .bg-brand-yellow-soft {
   background:
     radial-gradient(ellipse 85% 75% at 0% 0%, rgba(131, 162, 219, 0.10) 0%, transparent 68%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(249, 250, 253, 0.78) 100%) !important;
@@ -224,18 +224,18 @@
   box-shadow: inset 0 0 0 1px rgba(131, 162, 219, 0.18) !important;
 }
 
-.stratus .bg-ish-green-soft {
+.stratus .bg-brand-green-soft {
   background:
-    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 68%),
+    radial-gradient(ellipse 85% 75% at 0% 0%, rgba(var(--brand-stratus-blue-rgb), 0.10) 0%, transparent 68%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.84) 0%, rgba(249, 250, 253, 0.78) 100%) !important;
   backdrop-filter: blur(14px) saturate(148%);
   -webkit-backdrop-filter: blur(14px) saturate(148%);
-  box-shadow: inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.18) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.18) !important;
 }
 
 
 /* Lead record — single card; hero gradient clipped by parent radius */
-.ish-record-card > .bg-ish-yellow-gradient {
+.ish-record-card > .bg-brand-yellow-gradient {
   border-radius: 0;
 }
 
@@ -245,18 +245,18 @@
   -webkit-backdrop-filter: blur(18px) saturate(160%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.85),
-    0 2px 16px rgba(var(--ish-stratus-blue-rgb), 0.08) !important;
+    0 2px 16px rgba(var(--brand-stratus-blue-rgb), 0.08) !important;
 }
 
-.stratus .ish-record-card > .bg-ish-yellow-gradient {
+.stratus .ish-record-card > .bg-brand-yellow-gradient {
   background: linear-gradient(150deg, #fafafa 0%, #f6f6f6 55%, #f3f3f3 100%) !important;
-  border-bottom: 1px solid rgba(var(--ish-stratus-blue-rgb), 0.10);
+  border-bottom: 1px solid rgba(var(--brand-stratus-blue-rgb), 0.10);
 }
 
 /* Record header banner — neutral glass wash */
-.stratus .bg-ish-yellow-gradient {
+.stratus .bg-brand-yellow-gradient {
   background: linear-gradient(150deg, #fafafa 0%, #f6f6f6 55%, #f3f3f3 100%) !important;
-  border-bottom: 1px solid rgba(var(--ish-stratus-yellow-rgb), 0.55);
+  border-bottom: 1px solid rgba(var(--brand-stratus-yellow-rgb), 0.55);
 }
 
 /* Scouting grid main area — lift from bg-white/40 to light glass */
@@ -315,9 +315,9 @@
   -webkit-backdrop-filter: none !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.96),
-    0 24px 60px rgba(var(--ish-stratus-blue-rgb), 0.16),
+    0 24px 60px rgba(var(--brand-stratus-blue-rgb), 0.16),
     0 8px 24px rgba(20, 20, 30, 0.08) !important;
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.24) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.24) !important;
 }
 
 .stratus .ish-modal-field,
@@ -326,16 +326,16 @@
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.08),
-    0 1px 3px rgba(var(--ish-stratus-blue-rgb), 0.06) !important;
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.28) !important;
+    inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.08),
+    0 1px 3px rgba(var(--brand-stratus-blue-rgb), 0.06) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.28) !important;
 }
 
 .stratus .ish-modal-field:focus {
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.55) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.55) !important;
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.12),
-    0 0 0 3px rgba(var(--ish-stratus-blue-rgb), 0.14) !important;
+    inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.12),
+    0 0 0 3px rgba(var(--brand-stratus-blue-rgb), 0.14) !important;
 }
 
 .stratus button.ish-modal-cancel {
@@ -343,14 +343,14 @@
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.1),
-    0 1px 3px rgba(var(--ish-stratus-blue-rgb), 0.06) !important;
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.28) !important;
+    inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.1),
+    0 1px 3px rgba(var(--brand-stratus-blue-rgb), 0.06) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.28) !important;
 }
 
 .stratus button.ish-modal-cancel:hover {
-  background: var(--color-ish-canvas) !important;
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.4) !important;
+  background: var(--color-brand-canvas) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.4) !important;
 }
 
 /* All bg-white surfaces — frosted glass baseline */
@@ -377,49 +377,49 @@
 
 /* Queue sidebar — selected lead card (all-around shadow, no clip) */
 .ish-queue-card-active {
-  box-shadow: var(--shadow-ish-yellow);
+  box-shadow: var(--shadow-brand-yellow);
 }
 
 .stratus .ish-glass-sidebar button.ish-queue-card-active {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%) !important;
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border-bottom: none !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.40),
-    0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.35),
-    0 0 22px rgba(var(--ish-stratus-yellow-rgb), 0.28),
-    0 0 12px rgba(var(--ish-stratus-yellow-rgb), 0.18),
-    0 8px 28px rgba(var(--ish-stratus-blue-rgb), 0.12),
+    inset 0 0 0 2px rgba(var(--brand-stratus-yellow-rgb), 0.40),
+    0 0 0 1px rgba(var(--brand-stratus-yellow-rgb), 0.35),
+    0 0 22px rgba(var(--brand-stratus-yellow-rgb), 0.28),
+    0 0 12px rgba(var(--brand-stratus-yellow-rgb), 0.18),
+    0 8px 28px rgba(var(--brand-stratus-blue-rgb), 0.12),
     0 2px 8px rgba(0, 0, 0, 0.05) !important;
 }
 
 /* Prevent stratus gray wash from overriding selected queue cards */
-.stratus .ish-glass-sidebar button.ish-queue-card-active.bg-ish-yellow-gradient {
+.stratus .ish-glass-sidebar button.ish-queue-card-active.bg-brand-yellow-gradient {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%) !important;
 }
 
 /* Active SlidingHighlight in queue sidebar — neutral glass bloom */
-.stratus .ish-glass-sidebar span.bg-ish-yellow-gradient {
+.stratus .ish-glass-sidebar span.bg-brand-yellow-gradient {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%) !important;
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   border-bottom: none !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.40),
-    0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.35),
-    0 8px 28px rgba(var(--ish-stratus-blue-rgb), 0.12),
+    inset 0 0 0 2px rgba(var(--brand-stratus-yellow-rgb), 0.40),
+    0 0 0 1px rgba(var(--brand-stratus-yellow-rgb), 0.35),
+    0 8px 28px rgba(var(--brand-stratus-blue-rgb), 0.12),
     0 2px 8px rgba(0, 0, 0, 0.05) !important;
 }
 
@@ -435,7 +435,7 @@
 }
 
 /* Remap green selection ring → stratus blue for consistency */
-.stratus .ring-ish-green {
+.stratus .ring-brand-green {
   --tw-ring-color: rgba(131, 162, 219, 0.70);
 }
 
@@ -450,12 +450,12 @@
 }
 
 /* Active nav pill — #FFCE87 glass gradient */
-.stratus .ish-glass-sidebar span.bg-ish-yellow {
+.stratus .ish-glass-sidebar span.bg-brand-yellow {
   background:
-    radial-gradient(ellipse 110% 90% at 10% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 58%),
+    radial-gradient(ellipse 110% 90% at 10% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 58%),
     linear-gradient(
       135deg,
-      rgba(var(--ish-stratus-yellow-rgb), 0.88) 0%,
+      rgba(var(--brand-stratus-yellow-rgb), 0.88) 0%,
       rgba(255, 228, 185, 0.72) 52%,
       rgba(255, 245, 225, 0.62) 100%
     ) !important;
@@ -464,7 +464,7 @@
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.72),
     inset 0 1px 0 rgba(255, 255, 255, 0.50),
-    0 2px 14px rgba(var(--ish-stratus-yellow-rgb), 0.35),
+    0 2px 14px rgba(var(--brand-stratus-yellow-rgb), 0.35),
     0 1px 4px rgba(255, 170, 80, 0.14) !important;
 }
 
@@ -474,69 +474,69 @@
 }
 
 /* Section dividers (collapsed collapsed mode) — match Stratus border        */
-.stratus .border-t.border-ish-border\/70,
-.stratus .border-t.border-ish-border {
+.stratus .border-t.border-brand-border\/70,
+.stratus .border-t.border-brand-border {
   border-top-color: rgba(131, 162, 219, 0.18) !important;
 }
 
 /* TopBar bottom border — Stratus blue tint                                 */
-.stratus .border-b.border-ish-border {
+.stratus .border-b.border-brand-border {
   border-bottom-color: rgba(131, 162, 219, 0.18) !important;
 }
 
 /* ── Stratus: remap all green → DS palette ──────────────────────────────── */
 
 /* Success / verified text & icons → Stratus blue */
-.stratus .text-ish-green {
-  color: var(--ish-stratus-blue) !important;
+.stratus .text-brand-green {
+  color: var(--brand-stratus-blue) !important;
 }
 
 /* Indicator fills (checkmarks, dots, progress) → Stratus blue */
-.stratus .bg-ish-green:not(.text-white) {
-  background-color: var(--ish-stratus-blue) !important;
+.stratus .bg-brand-green:not(.text-white) {
+  background-color: var(--brand-stratus-blue) !important;
 }
 
 /* Green primary CTAs (Fetch Leads, Add Leads, etc.) → navy button */
-.stratus .bg-ish-green.text-white {
-  background-color: var(--color-ish-black) !important;
-  box-shadow: var(--shadow-ish) !important;
+.stratus .bg-brand-green.text-white {
+  background-color: var(--color-brand-black) !important;
+  box-shadow: var(--shadow-brand) !important;
 }
 
-.stratus .hover\:bg-ish-green\/90:hover {
-  background-color: color-mix(in srgb, var(--color-ish-black) 90%, transparent) !important;
+.stratus .hover\:bg-brand-green\/90:hover {
+  background-color: color-mix(in srgb, var(--color-brand-black) 90%, transparent) !important;
 }
 
 /* Green tint overlays → blue glass */
-.stratus .bg-ish-green\/10 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.10) !important; }
-.stratus .bg-ish-green\/15 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.15) !important; }
-.stratus .bg-ish-green\/20 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.20) !important; }
-.stratus .bg-ish-green\/25 { background-color: rgba(var(--ish-stratus-blue-rgb), 0.25) !important; }
-.stratus .border-ish-green\/20 { border-color: rgba(var(--ish-stratus-blue-rgb), 0.20) !important; }
+.stratus .bg-brand-green\/10 { background-color: rgba(var(--brand-stratus-blue-rgb), 0.10) !important; }
+.stratus .bg-brand-green\/15 { background-color: rgba(var(--brand-stratus-blue-rgb), 0.15) !important; }
+.stratus .bg-brand-green\/20 { background-color: rgba(var(--brand-stratus-blue-rgb), 0.20) !important; }
+.stratus .bg-brand-green\/25 { background-color: rgba(var(--brand-stratus-blue-rgb), 0.25) !important; }
+.stratus .border-brand-green\/20 { border-color: rgba(var(--brand-stratus-blue-rgb), 0.20) !important; }
 
 /* Hardcoded green glow shadows → Stratus blue */
 .stratus .shadow-\[0_2px_8px_rgba\(63\,190\,130\,0\.35\)\] {
-  box-shadow: 0 2px 8px rgba(var(--ish-stratus-blue-rgb), 0.35) !important;
+  box-shadow: 0 2px 8px rgba(var(--brand-stratus-blue-rgb), 0.35) !important;
 }
 .stratus .shadow-\[0_2px_6px_rgba\(63\,190\,130\,0\.30\)\] {
-  box-shadow: 0 2px 6px rgba(var(--ish-stratus-blue-rgb), 0.30) !important;
+  box-shadow: 0 2px 6px rgba(var(--brand-stratus-blue-rgb), 0.30) !important;
 }
 .stratus .shadow-\[0_0_6px_rgba\(63\,190\,130\,0\.6\)\] {
-  box-shadow: 0 0 6px rgba(var(--ish-stratus-blue-rgb), 0.45) !important;
+  box-shadow: 0 0 6px rgba(var(--brand-stratus-blue-rgb), 0.45) !important;
 }
 
 /* ── Stratus: Settings screen ───────────────────────────────────────────── */
 .stratus .settings-nav-rail a:hover,
 .stratus .settings-nav-rail button:hover {
-  background: rgba(var(--ish-stratus-blue-rgb), 0.10) !important;
+  background: rgba(var(--brand-stratus-blue-rgb), 0.10) !important;
   border-radius: 10px;
 }
 
-.stratus .settings-nav-rail span.bg-ish-yellow {
+.stratus .settings-nav-rail span.bg-brand-yellow {
   background:
-    radial-gradient(ellipse 110% 90% at 10% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 58%),
+    radial-gradient(ellipse 110% 90% at 10% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 58%),
     linear-gradient(
       135deg,
-      rgba(var(--ish-stratus-yellow-rgb), 0.88) 0%,
+      rgba(var(--brand-stratus-yellow-rgb), 0.88) 0%,
       rgba(255, 228, 185, 0.72) 52%,
       rgba(255, 245, 225, 0.62) 100%
     ) !important;
@@ -545,44 +545,44 @@
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.72),
     inset 0 1px 0 rgba(255, 255, 255, 0.50),
-    0 2px 14px rgba(var(--ish-stratus-yellow-rgb), 0.35),
+    0 2px 14px rgba(var(--brand-stratus-yellow-rgb), 0.35),
     0 1px 4px rgba(255, 170, 80, 0.14) !important;
 }
 
 
 .stratus .settings-group {
   background: rgba(255, 255, 255, 0.72) !important;
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.14) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.14) !important;
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.65),
-    0 1px 4px rgba(var(--ish-stratus-blue-rgb), 0.08) !important;
+    0 1px 4px rgba(var(--brand-stratus-blue-rgb), 0.08) !important;
 }
 
 .stratus .settings-content > header {
-  border-bottom-color: rgba(var(--ish-stratus-blue-rgb), 0.18) !important;
+  border-bottom-color: rgba(var(--brand-stratus-blue-rgb), 0.18) !important;
 }
 
 /* ── Scout grid cards — selected state (matches queue active card) ───────── */
 
 .ish-scout-card-selected {
-  background: var(--ish-yellow-gradient);
-  box-shadow: var(--shadow-ish-yellow);
+  background: var(--brand-yellow-gradient);
+  box-shadow: var(--shadow-brand-yellow);
 }
 
 .stratus .ish-scout-card-selected {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.08) 0%, transparent 50%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%) !important;
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.40),
-    0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.35),
-    0 8px 28px rgba(var(--ish-stratus-blue-rgb), 0.12),
+    inset 0 0 0 2px rgba(var(--brand-stratus-yellow-rgb), 0.40),
+    0 0 0 1px rgba(var(--brand-stratus-yellow-rgb), 0.35),
+    0 8px 28px rgba(var(--brand-stratus-blue-rgb), 0.12),
     0 2px 8px rgba(0, 0, 0, 0.05) !important;
 }
 
@@ -593,26 +593,26 @@
 
 .ish-scout-select-cta[data-selected="true"] {
   background: rgba(255, 255, 255, 0.55);
-  color: var(--color-ish-ink);
+  color: var(--color-brand-ink);
   font-weight: 600;
 }
 
 .stratus .ish-scout-select-cta[data-selected="true"] {
   background: rgba(255, 255, 255, 0.62) !important;
-  box-shadow: inset 0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.45) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-stratus-yellow-rgb), 0.45) !important;
 }
 
 /* ── Settings: ambient canvas + hero banner ─────────────────────────────── */
 .settings-ambient {
   background:
-    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(var(--ish-stratus-blue-rgb, 131, 162, 219), 0.08) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(var(--ish-stratus-yellow-rgb, 255, 206, 135), 0.06) 0%, transparent 50%),
-    var(--color-ish-canvas, #f4f4f6);
+    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(var(--brand-stratus-blue-rgb, 131, 162, 219), 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(var(--brand-stratus-yellow-rgb, 255, 206, 135), 0.06) 0%, transparent 50%),
+    var(--color-brand-canvas, #f4f4f6);
 }
 
 .settings-nav-stripe,
 .settings-hero-stripe {
-  background: var(--ish-stratus-gradient, linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%));
+  background: var(--brand-stratus-gradient, linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%));
   opacity: 0.85;
 }
 
@@ -622,37 +622,37 @@
 
 .stratus .settings-hero {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.10) 0%, transparent 50%),
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.10) 0%, transparent 50%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%) !important;
   backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.18) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.18) !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.35),
-    0 8px 28px rgba(var(--ish-stratus-blue-rgb), 0.10),
-    var(--shadow-ish-yellow-sm) !important;
+    inset 0 0 0 2px rgba(var(--brand-stratus-yellow-rgb), 0.35),
+    0 8px 28px rgba(var(--brand-stratus-blue-rgb), 0.10),
+    var(--shadow-brand-yellow-sm) !important;
 }
 
 .stratus .settings-group:hover {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.65),
-    0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.10) !important;
+    0 4px 16px rgba(var(--brand-stratus-blue-rgb), 0.10) !important;
 }
 
 .stratus .settings-ambient {
   background:
-    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(var(--ish-stratus-blue-rgb), 0.12) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(var(--ish-stratus-yellow-rgb), 0.04) 0%, transparent 60%),
-    var(--color-ish-canvas) !important;
+    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(var(--brand-stratus-blue-rgb), 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 0% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 40% at 50% 50%, rgba(var(--brand-stratus-yellow-rgb), 0.04) 0%, transparent 60%),
+    var(--color-brand-canvas) !important;
 }
 
 /* ── Pinned page ─────────────────────────────────────────────────────────── */
 
 .ish-pinned-page {
-  background: var(--color-ish-canvas);
+  background: var(--color-brand-canvas);
 }
 
 .ish-pinned-hero {
@@ -662,7 +662,7 @@
 }
 
 .ish-pinned-hero-stripe {
-  background: var(--ish-stratus-gradient, linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%));
+  background: var(--brand-stratus-gradient, linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%));
   opacity: 0.9;
 }
 
@@ -710,85 +710,85 @@
 
 .stratus .ish-pinned-hero {
   background:
-    radial-gradient(ellipse 100% 80% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 60% at 100% 100%, rgba(var(--ish-stratus-blue-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 80% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 60% at 100% 100%, rgba(var(--brand-stratus-blue-rgb), 0.08) 0%, transparent 50%),
     rgba(255, 255, 255, 0.78) !important;
   backdrop-filter: blur(20px) saturate(170%);
   -webkit-backdrop-filter: blur(20px) saturate(170%);
-  border-bottom-color: rgba(var(--ish-stratus-blue-rgb), 0.14) !important;
+  border-bottom-color: rgba(var(--brand-stratus-blue-rgb), 0.14) !important;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .stratus .ish-pinned-lead-card {
   background:
-    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.50) 0%, transparent 58%),
-    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--ish-stratus-salmon-rgb), 0.07) 0%, transparent 52%),
+    radial-gradient(ellipse 120% 140% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.50) 0%, transparent 58%),
+    radial-gradient(ellipse 90% 110% at 100% 100%, rgba(var(--brand-stratus-salmon-rgb), 0.07) 0%, transparent 52%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.94) 100%) !important;
   backdrop-filter: blur(20px) saturate(175%);
   -webkit-backdrop-filter: blur(20px) saturate(175%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
-    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.28),
-    0 4px 20px rgba(var(--ish-stratus-blue-rgb), 0.08),
-    0 1px 4px rgba(var(--ish-stratus-yellow-rgb), 0.10) !important;
+    inset 0 0 0 2px rgba(var(--brand-stratus-yellow-rgb), 0.28),
+    0 4px 20px rgba(var(--brand-stratus-blue-rgb), 0.08),
+    0 1px 4px rgba(var(--brand-stratus-yellow-rgb), 0.10) !important;
 }
 
 .stratus .ish-pinned-lead-card:hover {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 2px rgba(var(--ish-stratus-yellow-rgb), 0.42),
-    0 8px 28px rgba(var(--ish-stratus-blue-rgb), 0.12),
-    0 2px 8px rgba(var(--ish-stratus-yellow-rgb), 0.14) !important;
+    inset 0 0 0 2px rgba(var(--brand-stratus-yellow-rgb), 0.42),
+    0 8px 28px rgba(var(--brand-stratus-blue-rgb), 0.12),
+    0 2px 8px rgba(var(--brand-stratus-yellow-rgb), 0.14) !important;
 }
 
 .stratus .ish-pinned-lead-card-accent {
-  background: var(--ish-stratus-gradient);
+  background: var(--brand-stratus-gradient);
   opacity: 1;
 }
 
 .stratus .ish-pinned-company-card {
   background:
-    radial-gradient(ellipse 100% 90% at 100% 0%, rgba(var(--ish-stratus-blue-rgb), 0.12) 0%, transparent 55%),
+    radial-gradient(ellipse 100% 90% at 100% 0%, rgba(var(--brand-stratus-blue-rgb), 0.12) 0%, transparent 55%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.96) 0%, rgba(249, 250, 253, 0.92) 100%) !important;
   backdrop-filter: blur(18px) saturate(165%);
   -webkit-backdrop-filter: blur(18px) saturate(165%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.88),
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-blue-rgb), 0.16),
-    0 4px 18px rgba(var(--ish-stratus-blue-rgb), 0.07) !important;
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-blue-rgb), 0.16),
+    0 4px 18px rgba(var(--brand-stratus-blue-rgb), 0.07) !important;
 }
 
 .stratus .ish-pinned-company-card:hover {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-blue-rgb), 0.24),
-    0 8px 24px rgba(var(--ish-stratus-blue-rgb), 0.11) !important;
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-blue-rgb), 0.24),
+    0 8px 24px rgba(var(--brand-stratus-blue-rgb), 0.11) !important;
 }
 
 .stratus .ish-pinned-cta {
   background: rgba(255, 255, 255, 0.82) !important;
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.12),
-    0 1px 3px rgba(var(--ish-stratus-blue-rgb), 0.06) !important;
+    inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.12),
+    0 1px 3px rgba(var(--brand-stratus-blue-rgb), 0.06) !important;
 }
 
 .stratus .ish-pinned-cta:hover {
   background: rgba(255, 255, 255, 0.98) !important;
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.18),
-    0 3px 10px rgba(var(--ish-stratus-blue-rgb), 0.10) !important;
+    inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.18),
+    0 3px 10px rgba(var(--brand-stratus-blue-rgb), 0.10) !important;
 }
 
 .stratus .ish-pinned-empty {
   background:
-    radial-gradient(ellipse 70% 55% at 50% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.18) 0%, transparent 58%),
-    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(var(--ish-stratus-blue-rgb), 0.08) 0%, transparent 50%);
+    radial-gradient(ellipse 70% 55% at 50% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.18) 0%, transparent 58%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(var(--brand-stratus-blue-rgb), 0.08) 0%, transparent 50%);
 }
 
 /* ── Lead board page ─────────────────────────────────────────────────────── */
 
 .ish-board-page {
-  background: var(--color-ish-canvas);
+  background: var(--color-brand-canvas);
 }
 
 .ish-board-hero {
@@ -798,7 +798,7 @@
 }
 
 .ish-board-hero-stripe {
-  background: var(--ish-stratus-gradient, linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%));
+  background: var(--brand-stratus-gradient, linear-gradient(135deg, #83a2db 0%, #fd8e8c 50%, #ffce87 100%));
   opacity: 0.9;
 }
 
@@ -851,50 +851,50 @@
 
 .stratus .ish-board-hero {
   background:
-    radial-gradient(ellipse 100% 80% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 60% at 100% 100%, rgba(var(--ish-stratus-blue-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 80% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 60% at 100% 100%, rgba(var(--brand-stratus-blue-rgb), 0.08) 0%, transparent 50%),
     rgba(255, 255, 255, 0.78) !important;
   backdrop-filter: blur(20px) saturate(170%);
   -webkit-backdrop-filter: blur(20px) saturate(170%);
-  border-bottom-color: rgba(var(--ish-stratus-blue-rgb), 0.14) !important;
+  border-bottom-color: rgba(var(--brand-stratus-blue-rgb), 0.14) !important;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .stratus .ish-board-column {
   background:
-    radial-gradient(ellipse 100% 80% at 50% 0%, rgba(var(--ish-stratus-blue-rgb), 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 100% 80% at 50% 0%, rgba(var(--brand-stratus-blue-rgb), 0.06) 0%, transparent 60%),
     rgba(255, 255, 255, 0.55) !important;
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
-  border-color: rgba(var(--ish-stratus-blue-rgb), 0.14) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.14) !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.75),
-    0 2px 12px rgba(var(--ish-stratus-blue-rgb), 0.05);
+    0 2px 12px rgba(var(--brand-stratus-blue-rgb), 0.05);
 }
 
 .stratus .ish-board-lead-card {
   background:
-    radial-gradient(ellipse 110% 120% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.35) 0%, transparent 58%),
+    radial-gradient(ellipse 110% 120% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.35) 0%, transparent 58%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.94) 100%) !important;
   backdrop-filter: blur(18px) saturate(170%);
   -webkit-backdrop-filter: blur(18px) saturate(170%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-yellow-rgb), 0.2),
-    0 3px 14px rgba(var(--ish-stratus-blue-rgb), 0.07) !important;
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-yellow-rgb), 0.2),
+    0 3px 14px rgba(var(--brand-stratus-blue-rgb), 0.07) !important;
 }
 
 .stratus .ish-board-lead-card:hover {
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-yellow-rgb), 0.35),
-    0 8px 22px rgba(var(--ish-stratus-blue-rgb), 0.11) !important;
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-yellow-rgb), 0.35),
+    0 8px 22px rgba(var(--brand-stratus-blue-rgb), 0.11) !important;
 }
 
 .stratus .ish-board-empty {
   background:
-    radial-gradient(ellipse 70% 55% at 50% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.18) 0%, transparent 58%),
-    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(var(--ish-stratus-blue-rgb), 0.08) 0%, transparent 50%);
+    radial-gradient(ellipse 70% 55% at 50% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.18) 0%, transparent 58%),
+    radial-gradient(ellipse 50% 40% at 80% 80%, rgba(var(--brand-stratus-blue-rgb), 0.08) 0%, transparent 50%);
 }
 
 /* ── Mobile shell utilities ─────────────────────────────────────────────── */
@@ -921,14 +921,14 @@
   to { transform: translateX(0); opacity: 1; }
 }
 
-@keyframes ish-page-in-mobile {
+@keyframes brand-page-in-mobile {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 1023px) {
-  .animate-ish-page-in {
-    animation: ish-page-in-mobile 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  .animate-brand-page-in {
+    animation: brand-page-in-mobile 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .ish-ambient-canvas {
@@ -964,7 +964,7 @@
   overflow: hidden;
   border-radius: 16px;
   background: white;
-  box-shadow: var(--shadow-ish-sm);
+  box-shadow: var(--shadow-brand-sm);
 }
 
 .ish-list-row {
@@ -1029,18 +1029,18 @@
 
 .ish-inbox-page {
   background:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(var(--ish-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 50%),
-    var(--color-ish-canvas);
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(var(--brand-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(var(--brand-stratus-blue-rgb), 0.10) 0%, transparent 50%),
+    var(--color-brand-canvas);
 }
 
 /* ── Scout page (Stratus glass) ──────────────────────────────────────────── */
 
 .ish-scout-page {
   background:
-    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(var(--ish-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 50%),
-    var(--color-ish-canvas);
+    radial-gradient(ellipse 120% 80% at 50% -20%, rgba(var(--brand-stratus-yellow-rgb), 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 80% 50% at 100% 0%, rgba(var(--brand-stratus-blue-rgb), 0.10) 0%, transparent 50%),
+    var(--color-brand-canvas);
 }
 
 
@@ -1048,14 +1048,14 @@
   overflow: hidden;
   border-radius: 20px;
   background:
-    radial-gradient(ellipse 110% 90% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.12) 0%, transparent 52%),
+    radial-gradient(ellipse 110% 90% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.12) 0%, transparent 52%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 251, 254, 0.94) 100%);
   backdrop-filter: blur(20px) saturate(170%);
   -webkit-backdrop-filter: blur(20px) saturate(170%);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-blue-rgb), 0.12),
-    0 4px 22px rgba(var(--ish-stratus-blue-rgb), 0.09);
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-blue-rgb), 0.12),
+    0 4px 22px rgba(var(--brand-stratus-blue-rgb), 0.09);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -1069,22 +1069,22 @@
 }
 
 .ish-inbox-accent-review {
-  background: linear-gradient(90deg, var(--ish-stratus-blue) 0%, var(--ish-stratus-yellow) 55%, var(--ish-stratus-salmon) 100%);
+  background: linear-gradient(90deg, var(--brand-stratus-blue) 0%, var(--brand-stratus-yellow) 55%, var(--brand-stratus-salmon) 100%);
 }
 
 .ish-inbox-accent-reply {
-  background: linear-gradient(90deg, var(--ish-stratus-salmon) 0%, rgba(var(--ish-stratus-salmon-rgb), 0.45) 100%);
+  background: linear-gradient(90deg, var(--brand-stratus-salmon) 0%, rgba(var(--brand-stratus-salmon-rgb), 0.45) 100%);
 }
 
 .ish-inbox-accent-followup {
-  background: linear-gradient(90deg, var(--ish-stratus-blue) 0%, rgba(var(--ish-stratus-blue-rgb), 0.4) 100%);
+  background: linear-gradient(90deg, var(--brand-stratus-blue) 0%, rgba(var(--brand-stratus-blue-rgb), 0.4) 100%);
 }
 
 .ish-inbox-preview {
   border-radius: 14px;
-  border: 1px solid rgba(var(--ish-stratus-blue-rgb), 0.16);
+  border: 1px solid rgba(var(--brand-stratus-blue-rgb), 0.16);
   background:
-    radial-gradient(ellipse 90% 70% at 0% 0%, rgba(var(--ish-stratus-blue-rgb), 0.07) 0%, transparent 65%),
+    radial-gradient(ellipse 90% 70% at 0% 0%, rgba(var(--brand-stratus-blue-rgb), 0.07) 0%, transparent 65%),
     rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1092,40 +1092,40 @@
 
 .ish-inbox-btn-approve {
   background: rgba(255, 255, 255, 0.9);
-  border: 1.5px solid rgba(var(--ish-stratus-blue-rgb), 0.35);
-  color: var(--color-ish-ink);
-  box-shadow: 0 2px 10px rgba(var(--ish-stratus-blue-rgb), 0.08);
+  border: 1.5px solid rgba(var(--brand-stratus-blue-rgb), 0.35);
+  color: var(--color-brand-ink);
+  box-shadow: 0 2px 10px rgba(var(--brand-stratus-blue-rgb), 0.08);
 }
 
 .ish-inbox-btn-send {
-  background: var(--ish-yellow-gradient);
-  color: var(--color-ish-black);
-  box-shadow: var(--shadow-ish-yellow-sm);
-  border: 1px solid rgba(var(--ish-stratus-yellow-rgb), 0.45);
+  background: var(--brand-yellow-gradient);
+  color: var(--color-brand-black);
+  box-shadow: var(--shadow-brand-yellow-sm);
+  border: 1px solid rgba(var(--brand-stratus-yellow-rgb), 0.45);
 }
 
 .ish-inbox-btn-reply {
-  background: linear-gradient(135deg, var(--ish-stratus-blue) 0%, #6b8fd4 100%);
+  background: linear-gradient(135deg, var(--brand-stratus-blue) 0%, #6b8fd4 100%);
   color: white;
-  box-shadow: 0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.28);
+  box-shadow: 0 4px 16px rgba(var(--brand-stratus-blue-rgb), 0.28);
 }
 
 .stratus .ish-inbox-card {
   background:
-    radial-gradient(ellipse 110% 120% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.22) 0%, transparent 58%),
+    radial-gradient(ellipse 110% 120% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.22) 0%, transparent 58%),
     linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.94) 100%) !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.92),
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-yellow-rgb), 0.18),
-    0 6px 24px rgba(var(--ish-stratus-blue-rgb), 0.10) !important;
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-yellow-rgb), 0.18),
+    0 6px 24px rgba(var(--brand-stratus-blue-rgb), 0.10) !important;
 }
 
 /* ── Leads compact list (mobile) ─────────────────────────────────────────── */
 
 .ish-leads-page {
   background:
-    radial-gradient(ellipse 100% 60% at 50% -10%, rgba(var(--ish-stratus-blue-rgb), 0.10) 0%, transparent 55%),
-    var(--color-ish-canvas);
+    radial-gradient(ellipse 100% 60% at 50% -10%, rgba(var(--brand-stratus-blue-rgb), 0.10) 0%, transparent 55%),
+    var(--color-brand-canvas);
 }
 
 .ish-leads-row {
@@ -1139,17 +1139,17 @@
 }
 
 .ish-leads-row:active {
-  background: rgba(var(--ish-stratus-blue-rgb), 0.06);
+  background: rgba(var(--brand-stratus-blue-rgb), 0.06);
 }
 
 .ish-leads-row-active {
   background:
-    linear-gradient(90deg, rgba(var(--ish-stratus-yellow-rgb), 0.18) 0%, rgba(255, 255, 255, 0.95) 28%);
-  box-shadow: inset 3px 0 0 var(--ish-stratus-blue);
+    linear-gradient(90deg, rgba(var(--brand-stratus-yellow-rgb), 0.18) 0%, rgba(255, 255, 255, 0.95) 28%);
+  box-shadow: inset 3px 0 0 var(--brand-stratus-blue);
 }
 
 .ish-leads-row + .ish-leads-row {
-  border-top: 1px solid rgba(var(--ish-stratus-blue-rgb), 0.08);
+  border-top: 1px solid rgba(var(--brand-stratus-blue-rgb), 0.08);
 }
 
 
@@ -1158,23 +1158,23 @@
   background: rgba(255, 255, 255, 0.96);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.95),
-    0 2px 10px rgba(var(--ish-stratus-blue-rgb), 0.06);
+    0 2px 10px rgba(var(--brand-stratus-blue-rgb), 0.06);
 }
 
 .ish-leads-card-active {
   background:
-    linear-gradient(145deg, rgba(var(--ish-stratus-yellow-rgb), 0.22) 0%, rgba(255, 255, 255, 0.98) 42%);
+    linear-gradient(145deg, rgba(var(--brand-stratus-yellow-rgb), 0.22) 0%, rgba(255, 255, 255, 0.98) 42%);
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.35),
-    inset 3px 0 0 var(--ish-stratus-blue),
-    0 4px 16px rgba(var(--ish-stratus-blue-rgb), 0.10);
+    inset 0 0 0 1px rgba(var(--brand-stratus-yellow-rgb), 0.35),
+    inset 3px 0 0 var(--brand-stratus-blue),
+    0 4px 16px rgba(var(--brand-stratus-blue-rgb), 0.10);
 }
 
 .stratus .ish-leads-card-active {
   box-shadow:
-    inset 0 0 0 1px rgba(var(--ish-stratus-yellow-rgb), 0.4),
-    inset 3px 0 0 var(--ish-stratus-blue),
-    0 6px 20px rgba(var(--ish-stratus-blue-rgb), 0.12);
+    inset 0 0 0 1px rgba(var(--brand-stratus-yellow-rgb), 0.4),
+    inset 3px 0 0 var(--brand-stratus-blue),
+    0 6px 20px rgba(var(--brand-stratus-blue-rgb), 0.12);
 }
 
 .ish-leads-group {
@@ -1183,7 +1183,7 @@
   background: rgba(255, 255, 255, 0.94);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-    0 4px 18px rgba(var(--ish-stratus-blue-rgb), 0.07);
+    0 4px 18px rgba(var(--brand-stratus-blue-rgb), 0.07);
 }
 
 /* ── Lead switcher rail (mobile detail) ─────────────────────────────────── */
@@ -1198,20 +1198,20 @@
 
 .ish-lead-switcher-chip {
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: inset 0 0 0 1px rgba(var(--ish-stratus-blue-rgb), 0.14);
+  box-shadow: inset 0 0 0 1px rgba(var(--brand-stratus-blue-rgb), 0.14);
 }
 
 .ish-lead-switcher-chip-active {
   background:
-    radial-gradient(ellipse 120% 100% at 0% 0%, rgba(var(--ish-stratus-yellow-rgb), 0.35) 0%, transparent 55%),
+    radial-gradient(ellipse 120% 100% at 0% 0%, rgba(var(--brand-stratus-yellow-rgb), 0.35) 0%, transparent 55%),
     rgba(255, 255, 255, 0.98);
   box-shadow:
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-blue-rgb), 0.45),
-    0 2px 10px rgba(var(--ish-stratus-blue-rgb), 0.12);
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-blue-rgb), 0.45),
+    0 2px 10px rgba(var(--brand-stratus-blue-rgb), 0.12);
 }
 
 .stratus .ish-lead-switcher-chip-active {
   box-shadow:
-    inset 0 0 0 1.5px rgba(var(--ish-stratus-yellow-rgb), 0.5),
-    0 3px 14px rgba(var(--ish-stratus-blue-rgb), 0.14);
+    inset 0 0 0 1.5px rgba(var(--brand-stratus-yellow-rgb), 0.5),
+    0 3px 14px rgba(var(--brand-stratus-blue-rgb), 0.14);
 }

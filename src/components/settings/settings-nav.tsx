@@ -23,7 +23,7 @@ export function SettingsNav({ value, onChange, items }: SettingsNavProps) {
   return (
     <aside className="settings-nav-rail ish-glass-sidebar hidden h-full w-[200px] shrink-0 flex-col border-r border-white/50 p-[22px_16px] lg:flex">
       <div className="settings-nav-stripe mb-4 h-1 w-full rounded-full" aria-hidden />
-      <span className="mb-5 text-lg font-bold tracking-tight text-ish-ink">Settings</span>
+      <span className="mb-5 text-lg font-bold tracking-tight text-brand-ink">Settings</span>
       <nav ref={containerRef} className="relative flex flex-col">
         <SlidingHighlight rect={rect} ready={ready} />
         {items.map((item) => {
@@ -46,7 +46,7 @@ export function SettingsNav({ value, onChange, items }: SettingsNavProps) {
               <Icon
                 className={cn(
                   "size-4 shrink-0 transition-[transform,color] duration-[420ms]",
-                  active ? "scale-110 text-ish-ink" : "text-ish-ink-soft",
+                  active ? "scale-110 text-brand-ink" : "text-brand-ink-soft",
                 )}
               />
               <span className={cn("text-[13.5px]", active ? "font-semibold" : "font-medium")}>{item.label}</span>

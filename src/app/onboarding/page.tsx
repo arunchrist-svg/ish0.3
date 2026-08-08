@@ -9,6 +9,7 @@ import { Button, text } from "@/design-system";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
 import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly, getPlanBySlug } from "@/lib/billing/plan-catalog";
 import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
+import { PLATFORM_INTENT_OPTIONS, type PlatformIntent } from "@/lib/brand/platform-intent";
 
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
@@ -28,6 +29,7 @@ export default function OnboardingPage() {
   const [productCategory, setProductCategory] = useState("");
   const [competitorBrands, setCompetitorBrands] = useState<string[]>([]);
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [platformIntent, setPlatformIntent] = useState<PlatformIntent>("b2b_saas");
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [websiteStatus, setWebsiteStatus] = useState("");
 
@@ -45,7 +47,7 @@ export default function OnboardingPage() {
       }
       if (meRes.ok) {
         const data = await meRes.json();
-        if (data.tenant?.name && data.tenant.name !== "India Sweet House") {
+        if (data.tenant?.name) {
           setOrgName(data.tenant.name);
         }
       }
@@ -121,6 +123,7 @@ export default function OnboardingPage() {
     const data = await submitStep({
       step: 3,
       websiteUrl: websiteUrl.trim() || undefined,
+      platformIntent,
       enrichmentConfig: {
         giftIntelProductCategory: category,
         giftIntelCompetitorBrands: competitorBrands,
@@ -153,7 +156,7 @@ export default function OnboardingPage() {
     <div className="mx-auto max-w-3xl px-6 py-12">
       <div className="mb-10">
         <h1 className={cn("mb-2", text.display)}>Set up your workspace</h1>
-        <p className="text-sm text-ish-ink-soft">
+        <p className="text-sm text-brand-ink-soft">
           Complete these steps before accessing your sales hub. Add your website during Brand setup so Writer and Scout match how you sell; refine later in Settings.
         </p>
       </div>
@@ -164,7 +167,7 @@ export default function OnboardingPage() {
             key={s.id}
             className={cn(
               "flex min-w-[100px] flex-col items-center gap-1 rounded-xl px-3 py-2 text-center text-xs",
-              step === s.id ? "bg-ish-black text-white" : step > s.id ? "bg-ish-black/10 text-ish-ink" : "bg-white text-ish-ink-faint",
+              step === s.id ? "bg-brand-black text-white" : step > s.id ? "bg-brand-black/10 text-brand-ink" : "bg-white text-brand-ink-faint",
             )}
           >
             <s.icon className="size-4" />
@@ -178,7 +181,7 @@ export default function OnboardingPage() {
       ) : null}
 
       {step === 1 && (
-        <form onSubmit={handleOrgSubmit} className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
+        <form onSubmit={handleOrgSubmit} className="space-y-6 rounded-2xl border border-brand-border bg-white p-8">
           <h2 className="text-lg font-semibold">Your organization</h2>
           <div>
             <label className="mb-2 block text-sm font-medium">Company name</label>
@@ -186,7 +189,7 @@ export default function OnboardingPage() {
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
               required
-              className="w-full rounded-xl border border-ish-border px-4 py-3"
+              className="w-full rounded-xl border border-brand-border px-4 py-3"
               placeholder="Acme Corp"
             />
           </div>
@@ -197,10 +200,10 @@ export default function OnboardingPage() {
       )}
 
       {step === 2 && (
-        <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
+        <div className="space-y-6 rounded-2xl border border-brand-border bg-white p-8">
           <div>
             <h2 className="text-lg font-semibold">Choose a plan</h2>
-            <p className="mt-1 text-sm text-ish-ink-soft">
+            <p className="mt-1 text-sm text-brand-ink-soft">
               All plans include one shared credit pool for your workspace. Credits cover scouting accounts, AI email writing, and live sends.
             </p>
           </div>
@@ -212,16 +215,16 @@ export default function OnboardingPage() {
                 onClick={() => setPlanSlug(p.slug)}
                 className={cn(
                   "rounded-xl border p-4 text-left transition",
-                  planSlug === p.slug ? "border-ish-black ring-2 ring-ish-black/10" : "border-ish-border hover:border-ish-black/30",
+                  planSlug === p.slug ? "border-brand-black ring-2 ring-brand-black/10" : "border-brand-border hover:border-brand-black/30",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="font-semibold">{p.name}</div>
-                    <p className="mt-1 text-xs text-ish-ink-soft">{p.tagline}</p>
+                    <p className="mt-1 text-xs text-brand-ink-soft">{p.tagline}</p>
                   </div>
                   {p.highlight ? (
-                    <span className="rounded-full bg-ish-black px-2 py-0.5 text-[10px] font-semibold text-white">
+                    <span className="rounded-full bg-brand-black px-2 py-0.5 text-[10px] font-semibold text-white">
                       Popular
                     </span>
                   ) : null}
@@ -235,7 +238,7 @@ export default function OnboardingPage() {
             ))}
           </div>
           {getPlanBySlug(planSlug) ? (
-            <p className="text-xs text-ish-ink-faint">
+            <p className="text-xs text-brand-ink-faint">
               Selected: {getPlanBySlug(planSlug)?.name}. Capacity numbers assume you use the full monthly credit pool on one activity type.
             </p>
           ) : null}
@@ -251,27 +254,51 @@ export default function OnboardingPage() {
       )}
 
       {step === 3 && (
-        <form onSubmit={handlePrefsSubmit} className="space-y-8 rounded-2xl border border-ish-border bg-white p-8">
+        <form onSubmit={handlePrefsSubmit} className="space-y-8 rounded-2xl border border-brand-border bg-white p-8">
           <div>
-            <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-ish-ink-faint")}>
+            <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-brand-ink-faint")}>
               Brand Intelligence
             </p>
             <h2 className="text-lg font-semibold">Your website, category, and competitors</h2>
-            <p className="mt-1 text-sm text-ish-ink-soft">
-              We read your website to customise email writing and scout targeting. Category and competitors power Corporate Gift Tracker sweeps.
+            <p className="mt-1 text-sm text-brand-ink-soft">
+              Tell us how you will use the platform, then we read your website to customise email writing and scout targeting.
             </p>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-semibold text-ish-ink">Company website</label>
-            <p className="mb-2 text-[11.5px] text-ish-ink-soft">
+            <label className="mb-2 block text-[13px] font-semibold text-brand-ink">
+              What will you use Nebula for?
+            </label>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {PLATFORM_INTENT_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setPlatformIntent(option.value)}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition",
+                    platformIntent === option.value
+                      ? "border-brand-black ring-2 ring-brand-black/10"
+                      : "border-brand-border hover:border-brand-black/30",
+                  )}
+                >
+                  <div className="text-[13px] font-semibold text-brand-ink">{option.label}</div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-brand-ink-soft">{option.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[13px] font-semibold text-brand-ink">Company website</label>
+            <p className="mb-2 text-[11.5px] text-brand-ink-soft">
               Optional but recommended. Product summary, writing tone, and scout industries come from this page.
             </p>
             <input
               type="url"
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
-              className="w-full rounded-xl border border-ish-border px-4 py-3"
+              className="w-full rounded-xl border border-brand-border px-4 py-3"
               placeholder="https://yourcompany.com"
               autoComplete="url"
             />
@@ -285,7 +312,7 @@ export default function OnboardingPage() {
           />
 
           {websiteStatus ? (
-            <p className="rounded-xl bg-ish-app/80 px-4 py-3 text-[12px] text-ish-ink-soft">{websiteStatus}</p>
+            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
 
           <Button
@@ -308,9 +335,9 @@ export default function OnboardingPage() {
       )}
 
       {step === 4 && (
-        <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8">
+        <div className="space-y-6 rounded-2xl border border-brand-border bg-white p-8">
           <h2 className="text-lg font-semibold">Invite your team</h2>
-          <p className="text-sm text-ish-ink-soft">
+          <p className="text-sm text-brand-ink-soft">
             Invite teammates from Settings → Team after launch. Each user only sees your organization&apos;s data.
           </p>
           <Button type="button" onClick={handleTeamSkip} disabled={loading} className="w-full">Skip for now</Button>
@@ -318,29 +345,39 @@ export default function OnboardingPage() {
       )}
 
       {step === 5 && (
-        <div className="space-y-6 rounded-2xl border border-ish-border bg-white p-8 text-center">
-          <Rocket className="mx-auto size-12 text-ish-black" />
+        <div className="space-y-6 rounded-2xl border border-brand-border bg-white p-8 text-center">
+          <Rocket className="mx-auto size-12 text-brand-black" />
           <h2 className="text-lg font-semibold">You&apos;re ready to scout</h2>
-          <p className="text-sm text-ish-ink-soft">
-            Your workspace is ready. If you added a website, email drafts and scout filters already use it. Update competitors under{" "}
-            <Link href="/settings?tab=enrichment" className="font-medium text-ish-ink underline">
-              Settings → Enrichment
-            </Link>
-            {" "}or re-analyse your site under{" "}
-            <Link href="/settings?tab=email" className="font-medium text-ish-ink underline">
-              Settings → Email
-            </Link>
-            .
+          <p className="text-sm text-brand-ink-soft">
+            Your workspace is ready. If you added a website, email drafts and scout filters already use it.
           </p>
           {websiteStatus ? (
-            <p className="rounded-xl bg-ish-app/80 px-4 py-3 text-left text-[12px] text-ish-ink-soft">{websiteStatus}</p>
+            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-left text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
-          <div className="flex items-center justify-center gap-2 rounded-xl bg-ish-app/80 px-4 py-3 text-[12px] text-ish-ink-soft">
-            <Mail className="size-4 shrink-0" />
-            SMTP, Resend, send mode, and test sends live in Settings, not setup.
+          <div className="space-y-2 rounded-xl border border-brand-border bg-brand-app/80 px-4 py-3 text-left text-[12px] text-brand-ink-soft">
+            <div className="flex items-start gap-2">
+              <Mail className="mt-0.5 size-4 shrink-0" />
+              <div>
+                <p className="font-medium text-brand-ink">Next: connect your outbound email</p>
+                <p className="mt-0.5">
+                  After you enter the hub, open{" "}
+                  <Link href="/settings?tab=email" className="font-medium text-brand-ink underline">
+                    Settings → Email
+                  </Link>
+                  {" "}and add your own Gmail or Resend credentials. Nothing is pre-filled from another company.
+                </p>
+              </div>
+            </div>
+            <p>
+              Optional: update competitors under{" "}
+              <Link href="/settings?tab=enrichment" className="font-medium text-brand-ink underline">
+                Settings → Enrichment
+              </Link>
+              .
+            </p>
           </div>
           <Button type="button" onClick={handleComplete} disabled={loading} className="w-full">
-            {loading ? <Loader2 className="size-4 animate-spin" /> : "Enter Sales Hub"}
+            {loading ? <Loader2 className="size-4 animate-spin" /> : "Enter Nebula"}
           </Button>
         </div>
       )}

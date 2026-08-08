@@ -16,7 +16,7 @@ type GoldenEmail = {
   emailBody: string;
   contact: { name: string; firstName?: string; title?: string };
   account: { name: string; industry?: string; city?: string; employees?: string };
-  giftingHook?: string;
+  outreachHook?: string;
   minRubricTotal?: number;
   maxRubricTotal?: number;
   minDeliverability?: number;
@@ -39,7 +39,7 @@ describe("EVAL-001 golden email regression", () => {
       emailBody: sample.emailBody,
       contact: sample.contact,
       account: sample.account,
-      giftingHook: sample.giftingHook,
+      outreachHook: sample.outreachHook,
     });
     const rubricTotal = scoreRubricTotal(rubric);
 

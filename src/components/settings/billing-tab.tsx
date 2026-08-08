@@ -51,13 +51,13 @@ export function BillingTab() {
   if (loading) {
     return (
       <div className="flex justify-center py-24">
-        <Loader2 className="size-6 animate-spin text-ish-ink-soft" />
+        <Loader2 className="size-6 animate-spin text-brand-ink-soft" />
       </div>
     );
   }
 
   if (!data) {
-    return <p className="text-sm text-ish-ink-soft">Unable to load billing.</p>;
+    return <p className="text-sm text-brand-ink-soft">Unable to load billing.</p>;
   }
 
   return (
@@ -66,16 +66,16 @@ export function BillingTab() {
         <div className="px-4 py-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-lg font-semibold text-ish-ink">{data.plan?.name ?? "Trial"}</p>
-              <p className="text-sm text-ish-ink-soft">
+              <p className="text-lg font-semibold text-brand-ink">{data.plan?.name ?? "Trial"}</p>
+              <p className="text-sm text-brand-ink-soft">
                 {data.plan
                   ? `${formatPlanPriceMonthly(data.plan.priceCents)} · ${data.plan.includedCredits.toLocaleString("en-IN")} credits`
                   : "14-day trial"}
               </p>
             </div>
             <div className="text-right">
-              <p className="text-2xl font-bold text-ish-ink">{data.balance.toLocaleString("en-IN")}</p>
-              <p className="text-xs text-ish-ink-soft">credits remaining</p>
+              <p className="text-2xl font-bold text-brand-ink">{data.balance.toLocaleString("en-IN")}</p>
+              <p className="text-xs text-brand-ink-soft">credits remaining</p>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -97,7 +97,7 @@ export function BillingTab() {
               type="button"
               onClick={() => checkout(pack.slug)}
               disabled={busy !== null}
-              className="flex items-center justify-between rounded-xl border border-ish-border p-4 text-left hover:border-ish-black/30"
+              className="flex items-center justify-between rounded-xl border border-brand-border p-4 text-left hover:border-brand-black/30"
             >
               <span className="flex items-center gap-2 font-medium">
                 <Zap className="size-4 text-amber-500" />
@@ -111,10 +111,10 @@ export function BillingTab() {
 
       {data.usageLast30Days?.length > 0 && (
         <SettingsGroup title="Usage (last 30 days)">
-          <ul className="divide-y divide-ish-border px-4">
+          <ul className="divide-y divide-brand-border px-4">
             {data.usageLast30Days.map((row) => (
               <li key={row.action} className="flex justify-between py-3 text-sm">
-                <span className="text-ish-ink-soft">{row.action}</span>
+                <span className="text-brand-ink-soft">{row.action}</span>
                 <span className="font-medium">{row.total} credits</span>
               </li>
             ))}

@@ -87,7 +87,7 @@ export async function scoreRubric(params: {
   contact: { name: string; title?: string | null; firstName?: string | null };
   account: { name: string; industry?: string | null; city?: string | null; employees?: string | null };
   deliverabilityOptions?: DeliverabilityOptions;
-  giftingHook?: string | null;
+  outreachHook?: string | null;
   intelNotes?: string | null;
 }): Promise<RubricScores> {
   const { subjectA, emailBody, contact, account } = params;
@@ -108,7 +108,7 @@ export async function scoreRubric(params: {
         enrichmentSource: params.deliverabilityOptions?.account?.enrichmentSource,
       },
       contact: { firstName: contact.firstName ?? contact.name.split(" ")[0], title: contact.title },
-      giftingHook: params.giftingHook ?? params.deliverabilityOptions?.giftingHook,
+      outreachHook: params.outreachHook ?? params.deliverabilityOptions?.outreachHook,
     }),
   );
 
@@ -119,7 +119,7 @@ export async function scoreRubric(params: {
   if (firstName && lower.includes(firstName.toLowerCase())) personalization_depth += 3;
   if (lower.includes(account.name.toLowerCase())) personalization_depth += 2;
 
-  const hook = params.giftingHook ?? params.deliverabilityOptions?.giftingHook;
+  const hook = params.outreachHook ?? params.deliverabilityOptions?.outreachHook;
   const intel = params.intelNotes?.trim();
   if (account.industry && lower.includes(account.industry.toLowerCase())) personalization_depth += 4;
   if (account.city && lower.includes(account.city.toLowerCase())) personalization_depth += 3;

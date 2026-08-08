@@ -66,35 +66,35 @@ export function LeadsBoardApp() {
       contentClassName="flex flex-col !overflow-hidden"
     >
       <SearchBar value={search} onChange={setSearch} placeholder="Search leads" sticky className="lg:hidden" />
-      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
+      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-center gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]">
-              <Columns3 className="size-5 text-ish-ink" />
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
+              <Columns3 className="size-5 text-brand-ink" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-[20px] font-extrabold tracking-tight text-ish-ink">Lead Board</h1>
-              <p className="text-[12.5px] text-ish-ink-soft">Pipeline view by status</p>
+              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Lead Board</h1>
+              <p className="text-[12.5px] text-brand-ink-soft">Pipeline view by status</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative w-[220px] max-w-full">
-              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search leads…"
-                className="w-full rounded-full border border-ish-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-ish-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)] focus:bg-white"
+                className="w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
               />
             </div>
             <button
               type="button"
               onClick={() => load({ silent: true })}
               disabled={refreshing}
-              className="flex size-9 items-center justify-center rounded-full border border-ish-border/70 bg-white/70 text-ish-ink-soft transition-all hover:border-ish-ink/20 hover:text-ish-ink active:scale-95"
+              className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95"
               aria-label="Refresh"
             >
               <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
@@ -107,10 +107,10 @@ export function LeadsBoardApp() {
             {PIPELINE_STAGES.map((stage) => (
               <span
                 key={stage}
-                className="rounded-full border border-ish-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-ish-ink-soft"
+                className="rounded-full border border-brand-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft"
               >
                 {stage}
-                <span className="ml-1.5 tabular-nums text-ish-ink">{grouped[stage].length}</span>
+                <span className="ml-1.5 tabular-nums text-brand-ink">{grouped[stage].length}</span>
               </span>
             ))}
           </div>
@@ -124,9 +124,9 @@ export function LeadsBoardApp() {
           <EmptyState />
         ) : noResults ? (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
-            <Search className="size-8 text-ish-ink-faint" />
-            <div className="text-[14px] font-semibold text-ish-ink">No matches</div>
-            <p className="text-[12px] text-ish-ink-soft">Try a different search term</p>
+            <Search className="size-8 text-brand-ink-faint" />
+            <div className="text-[14px] font-semibold text-brand-ink">No matches</div>
+            <p className="text-[12px] text-brand-ink-soft">Try a different search term</p>
           </div>
         ) : (
           <div className="flex h-full gap-4 overflow-x-auto pb-2 scrollbar-none">
@@ -145,9 +145,9 @@ function BoardSkeleton() {
     <div className="flex h-full gap-4 overflow-x-auto pb-2">
       {PIPELINE_STAGES.map((stage) => (
         <div key={stage} className="flex w-[280px] shrink-0 flex-col gap-3">
-          <div className="h-6 w-32 animate-pulse rounded-lg bg-ish-border/50" />
-          <div className="h-[120px] animate-pulse rounded-[16px] bg-ish-border/40" />
-          <div className="h-[120px] animate-pulse rounded-[16px] bg-ish-border/35" />
+          <div className="h-6 w-32 animate-pulse rounded-lg bg-brand-border/50" />
+          <div className="h-[120px] animate-pulse rounded-[16px] bg-brand-border/40" />
+          <div className="h-[120px] animate-pulse rounded-[16px] bg-brand-border/35" />
         </div>
       ))}
     </div>
@@ -157,9 +157,9 @@ function BoardSkeleton() {
 function EmptyState() {
   return (
     <div className="ish-board-empty flex flex-col items-center justify-center gap-3 rounded-[24px] py-24 text-center">
-      <Columns3 className="size-10 text-ish-ink-faint" />
-      <div className="text-[15px] font-bold text-ish-ink">No leads yet</div>
-      <p className="max-w-sm text-[12.5px] text-ish-ink-soft">
+      <Columns3 className="size-10 text-brand-ink-faint" />
+      <div className="text-[15px] font-bold text-brand-ink">No leads yet</div>
+      <p className="max-w-sm text-[12.5px] text-brand-ink-soft">
         Scout prospects and save them to see leads appear across pipeline columns.
       </p>
     </div>

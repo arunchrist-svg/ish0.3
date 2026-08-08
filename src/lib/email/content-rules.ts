@@ -25,7 +25,7 @@ export type ContentRuleContext = {
   };
   fromName?: string;
   emailStyle?: EmailStyle;
-  giftingHook?: string | null;
+  outreachHook?: string | null;
   recentSubjects?: string[];
 };
 
@@ -63,7 +63,7 @@ function hasPersonalizationBeyondNameCompany(
   body: string,
   contactFirstName?: string | null,
   account?: ContentRuleContext["account"],
-  giftingHook?: string | null,
+  outreachHook?: string | null,
   contact?: ContentRuleContext["contact"],
 ): boolean {
   const opener = openingSection(body).toLowerCase();
@@ -71,7 +71,7 @@ function hasPersonalizationBeyondNameCompany(
     account?.industry,
     account?.city,
     contact?.title,
-    giftingHook,
+    outreachHook,
   ]
     .filter(Boolean)
     .map((s) => String(s).toLowerCase());
@@ -134,7 +134,7 @@ export function applyContentRules(
     const opener = openingSection(body);
     const templated =
       opener.toLowerCase().startsWith(`hi ${firstName.toLowerCase()}`) &&
-      !hasPersonalizationBeyondNameCompany(opener, firstName, account, ctx.giftingHook, contact);
+      !hasPersonalizationBeyondNameCompany(opener, firstName, account, ctx.outreachHook, contact);
     if (templated) {
       hits.push({
         id: "C",
@@ -225,7 +225,7 @@ export function applyContentRules(
   if (sequencePosition === 2) {
     const matchedFollowUp = followUpOnly.find((p) => lowerBody.includes(p));
     const hasNewValue =
-      Boolean(ctx.giftingHook && lowerBody.includes(ctx.giftingHook.toLowerCase().slice(0, 12))) ||
+      Boolean(ctx.outreachHook && lowerBody.includes(ctx.outreachHook.toLowerCase().slice(0, 12))) ||
       Boolean(account?.industry && lowerBody.includes(account.industry.toLowerCase())) ||
       /case study|proof|deadline|teams in|recently|last week|season/i.test(lowerBody);
     if (matchedFollowUp && !hasNewValue) {

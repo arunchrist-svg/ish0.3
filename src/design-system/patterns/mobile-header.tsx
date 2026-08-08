@@ -44,8 +44,8 @@ export function MobileHeader({
       <header
         ref={headerRef}
         className={cn(
-          "ish-mobile-header sticky top-0 z-30 shrink-0 border-b border-transparent bg-ish-canvas px-4 pb-3 pt-[max(env(safe-area-inset-top),12px)] lg:hidden",
-          scrolled && "ish-mobile-header-scrolled border-ish-border/50",
+          "ish-mobile-header sticky top-0 z-30 shrink-0 border-b border-transparent bg-brand-canvas px-4 pb-3 pt-[max(env(safe-area-inset-top),12px)] lg:hidden",
+          scrolled && "ish-mobile-header-scrolled border-brand-border/50",
           className,
         )}
       >
@@ -54,7 +54,7 @@ export function MobileHeader({
             <button
               type="button"
               onClick={onBack}
-              className="ish-touch-target flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-ish-ink shadow-ish-sm"
+              className="ish-touch-target flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm"
               aria-label="Go back"
             >
               <ChevronLeft className="size-5" />
@@ -79,7 +79,7 @@ export function MobileHeader({
     <header
       ref={headerRef}
       className={cn(
-        "ish-mobile-header sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-ish-border/50 bg-white/90 px-4 pb-3 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur-xl lg:hidden",
+        "ish-mobile-header sticky top-0 z-30 flex shrink-0 items-center gap-2 border-b border-brand-border/50 bg-white/90 px-4 pb-3 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur-xl lg:hidden",
         className,
       )}
     >
@@ -87,7 +87,7 @@ export function MobileHeader({
         <button
           type="button"
           onClick={onBack}
-          className="ish-touch-target flex size-10 shrink-0 items-center justify-center rounded-full bg-ish-canvas text-ish-ink"
+          className="ish-touch-target flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-canvas text-brand-ink"
           aria-label="Go back"
         >
           <ChevronLeft className="size-5" />

@@ -49,22 +49,22 @@ function ActionCard({
   secondaryDisabled?: boolean;
 }) {
   return (
-    <div className="mb-2.5 rounded-2xl bg-ish-yellow-gradient p-4 shadow-[var(--shadow-ish-yellow-sm)]">
+    <div className="mb-2.5 rounded-2xl bg-brand-yellow-gradient p-4 shadow-[var(--shadow-brand-yellow-sm)]">
       <div className="mb-2.5 flex gap-3">
-        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-ish-black text-sm text-white">
+        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-brand-black text-sm text-white">
           <Icon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-bold leading-snug text-ish-ink">{title}</div>
-          <div className="mt-0.5 text-[11px] text-ish-ink-soft">{step}</div>
+          <div className="text-[13.5px] font-bold leading-snug text-brand-ink">{title}</div>
+          <div className="mt-0.5 text-[11px] text-brand-ink-soft">{step}</div>
         </div>
       </div>
-      <div className="mb-3 text-[12.5px] leading-snug text-ish-ink">{desc}</div>
+      <div className="mb-3 text-[12.5px] leading-snug text-brand-ink">{desc}</div>
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
           disabled={primaryDisabled}
-          className="h-auto shrink-0 rounded-xl bg-ish-black px-3 py-2 text-[11px] font-semibold text-white hover:bg-ish-black/90"
+          className="h-auto shrink-0 rounded-xl bg-brand-black px-3 py-2 text-[11px] font-semibold text-white hover:bg-brand-black/90"
           onClick={onPrimary}
         >
           {primaryDisabled ? (
@@ -79,7 +79,7 @@ function ActionCard({
             size="sm"
             variant="ghost"
             disabled={secondaryDisabled}
-            className="h-auto shrink-0 rounded-xl bg-white/60 px-3 py-2 text-[11px] font-semibold text-ish-ink hover:bg-white/80"
+            className="h-auto shrink-0 rounded-xl bg-white/60 px-3 py-2 text-[11px] font-semibold text-brand-ink hover:bg-white/80"
             onClick={onSecondary}
           >
             <Sparkles className="size-3.5 shrink-0" />
@@ -107,32 +107,32 @@ function TaskCard({
     <div
       className={cn(
         "mb-2.5 rounded-2xl p-4",
-        task.active ? "bg-ish-yellow-gradient shadow-[var(--shadow-ish-yellow-sm)]" : "bg-white shadow-[var(--shadow-ish-sm)]",
+        task.active ? "bg-brand-yellow-gradient shadow-[var(--shadow-brand-yellow-sm)]" : "bg-white shadow-[var(--shadow-brand-sm)]",
       )}
     >
       <div className={cn("flex gap-3", task.active ? "mb-2.5" : "")}>
         <div
           className={cn(
             "flex size-[34px] shrink-0 items-center justify-center rounded-full text-sm",
-            task.active ? "bg-ish-black text-white" : "bg-[#f2f1f4] text-ish-ink-soft",
+            task.active ? "bg-brand-black text-white" : "bg-[#f2f1f4] text-brand-ink-soft",
           )}
         >
           <Icon className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[13.5px] font-bold leading-snug text-ish-ink">{task.title}</div>
-          <div className="mt-0.5 text-[11px] text-ish-ink-soft">{task.step}</div>
-          {!task.active && <div className="mt-1 text-[11.5px] text-ish-ink-faint">{task.desc}</div>}
+          <div className="text-[13.5px] font-bold leading-snug text-brand-ink">{task.title}</div>
+          <div className="mt-0.5 text-[11px] text-brand-ink-soft">{task.step}</div>
+          {!task.active && <div className="mt-1 text-[11.5px] text-brand-ink-faint">{task.desc}</div>}
         </div>
       </div>
       {task.active && (
         <>
-          <div className="mb-3 text-[12.5px] leading-snug text-ish-ink">{task.desc}</div>
+          <div className="mb-3 text-[12.5px] leading-snug text-brand-ink">{task.desc}</div>
           <div className="flex flex-wrap gap-2">
             {isMail ? (
               <Button
                 size="sm"
-                className="h-auto shrink-0 rounded-xl bg-ish-black px-3 py-2 text-[11px] font-semibold text-white hover:bg-ish-black/90"
+                className="h-auto shrink-0 rounded-xl bg-brand-black px-3 py-2 text-[11px] font-semibold text-white hover:bg-brand-black/90"
                 onClick={onOpenEmailTab}
               >
                 <Mail className="size-3.5 shrink-0" />
@@ -142,7 +142,7 @@ function TaskCard({
               <>
                 <Button
                   size="sm"
-                  className="h-auto shrink-0 rounded-xl bg-ish-black px-3 py-2 text-[11px] font-semibold text-white hover:bg-ish-black/90"
+                  className="h-auto shrink-0 rounded-xl bg-brand-black px-3 py-2 text-[11px] font-semibold text-white hover:bg-brand-black/90"
                   onClick={() => toast.success("Action started")}
                 >
                   <Package className="size-3.5 shrink-0" />
@@ -151,7 +151,7 @@ function TaskCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  className="h-auto shrink-0 rounded-xl bg-white/60 px-3 py-2 text-[11px] font-semibold text-ish-ink hover:bg-white/80"
+                  className="h-auto shrink-0 rounded-xl bg-white/60 px-3 py-2 text-[11px] font-semibold text-brand-ink hover:bg-white/80"
                   onClick={() => toast.success(task.primaryAction ?? "Marked complete")}
                 >
                   {task.primaryAction ?? "Mark Complete"}
@@ -249,7 +249,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
       />
 
       {showEnrich && enriching ? (
-        <div className="mb-2.5 rounded-2xl bg-ish-yellow-gradient shadow-[var(--shadow-ish-yellow-sm)]">
+        <div className="mb-2.5 rounded-2xl bg-brand-yellow-gradient shadow-[var(--shadow-brand-yellow-sm)]">
           <ActionLoader variant="enrich" contactName={lead.name} compact />
         </div>
       ) : showEnrich ? (
@@ -305,8 +305,8 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
       ))}
 
       <AppModal open={paidDialogOpen} onClose={() => setPaidDialogOpen(false)}>
-        <h3 className="text-[15px] font-bold text-ish-ink">Paid enrichment</h3>
-        <p className="mt-1 text-[13px] text-ish-ink-soft">
+        <h3 className="text-[15px] font-bold text-brand-ink">Paid enrichment</h3>
+        <p className="mt-1 text-[13px] text-brand-ink-soft">
           Uses Apollo and Hunter credits to find a direct email for {lead.name}. This spends paid API quota for this lead only.
         </p>
         <div className="mt-5 flex justify-end gap-2">
@@ -322,7 +322,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
             variant="ghost"
             size="sm"
             disabled={enriching}
-            className="h-auto rounded-[14px] bg-ish-black px-4 py-2 text-xs font-semibold text-white hover:bg-ish-black/90"
+            className="h-auto rounded-[14px] bg-brand-black px-4 py-2 text-xs font-semibold text-white hover:bg-brand-black/90"
             onClick={() => handleEnrich("paid")}
           >
             Run paid enrich

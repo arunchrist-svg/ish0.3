@@ -1,10 +1,8 @@
 import { db, accounts, contacts, leads, yieldFunnel, enrichmentRuns } from "@/db";
 import { verifyEmail } from "@/lib/enrichment/verify";
 import { normalizeLinkedInUrl } from "@/lib/utils";
-import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { logAudit } from "@/lib/audit";
 import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
-import { callLLM } from "@/lib/llm";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
 import { eq, and, desc } from "drizzle-orm";
 import {
@@ -39,9 +37,13 @@ const BUYING_TITLE_KEYWORDS = [
   "ceo",
   "chro",
   "cpo",
+  "cto",
+  "cmo",
   "people",
   "facilities",
   "office",
+  "sales",
+  "operations",
 ];
 
 function looksLikeDecisionMaker(person: ScoutPersonResult): boolean {
@@ -52,7 +54,7 @@ function looksLikeDecisionMaker(person: ScoutPersonResult): boolean {
 
 async function preFilterCheck(
   person: ScoutPersonResult,
-  company: ScoutCompanyResult,
+  _company: ScoutCompanyResult,
   leadSource?: string,
 ): Promise<{ pass: boolean; reason: string }> {
   if (leadSource === "scout_wizard") {
@@ -63,24 +65,12 @@ async function preFilterCheck(
     return { pass: true, reason: "decision-maker title match" };
   }
 
-  try {
-    const raw = await callLLM({
-      tier: "fast",
-      system: `You are a B2B lead relevance classifier for a corporate gifting company (India Sweet House).
-Output ONLY valid JSON: { "pass": boolean, "reason": string }
-Pass = true if the company appears to be a real, current Indian business and the person could plausibly influence employee gifting.
-Unknown employee count or a generic industry label (e.g. Corporate) alone is NOT a reason to reject.
-Pass = false only for: clearly foreign/non-Indian companies, obvious hobby/solo businesses, irrelevant personal profiles, or clearly hallucinated entries.`,
-      prompt: `Company: ${company.name}, City: ${company.city ?? "India"}, Industry: ${company.industry ?? "unknown"}, Employees: ${company.employees ?? "unknown"}
-Person: ${person.name}, Title: ${person.title ?? "unknown"}
-Is this a valid corporate gifting target?`,
-      maxTokens: 128,
-    });
-    const parsed = parseJsonObjectFromLLM(raw);
-    return { pass: !!parsed.pass, reason: (parsed.reason as string) ?? "" };
-  } catch {
-    return { pass: true, reason: "pre-filter skipped (llm error)" };
+  // SaaS scout: accept named contacts without a gifting-relevance LLM round-trip.
+  if (person.name?.trim()) {
+    return { pass: true, reason: "named contact" };
   }
+
+  return { pass: false, reason: "missing contact name" };
 }
 
 export type SaveLeadsResult = {
@@ -149,8 +139,8 @@ export async function saveScoutLeads(params: {
       city: resolvedCompany.city,
       employees: resolvedCompany.employees,
       logo: resolvedCompany.logo,
-      giftScore: resolvedCompany.giftScore,
-      giftBudget: resolvedCompany.giftBudget,
+      fitScore: resolvedCompany.fitScore,
+      budgetBand: resolvedCompany.budgetBand,
       revenue: resolvedCompany.revenue,
       pastGifting: resolvedCompany.pastGifting ?? [],
       intelNotes: resolvedCompany.intelNotes,
@@ -384,7 +374,7 @@ export async function saveScoutLeads(params: {
         score: person.matchScore,
         leadSource,
         researcherEligible: filter.pass,
-        tags: ["Lead", "Gifting Signal"],
+        tags: ["Lead", "Scout"],
       })
       .returning();
 

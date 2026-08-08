@@ -18,9 +18,9 @@ import { accounts, contacts } from "@/db/schema";
 import { resolveCompanyDomain } from "./resolve-company-domain";
 
 const BUYING_TITLES = [
-  "HR Director", "HR Manager", "HR Head", "Chief People Officer", "CPO",
-  "Admin Head", "Admin Director", "Administration Manager",
-  "Procurement Manager", "Procurement Head", "VP HR",
+  "Director", "Manager", "Head", "VP", "Vice President",
+  "Founder", "CEO", "CTO", "CMO", "COO",
+  "Sales Director", "Operations Head", "HR Director",
 ];
 
 export type DiscoveryResult = {
@@ -721,7 +721,7 @@ function dbToResult(a: typeof accounts.$inferSelect): ScoutCompanyResult {
     city: a.city ?? undefined,
     employees: a.employees ?? undefined,
     logo: a.logo ?? undefined,
-    giftScore: a.giftScore ?? undefined,
+    fitScore: a.fitScore ?? undefined,
     intelNotes: a.intelNotes ?? undefined,
     dataSource: "internal",
     externalId: a.id,

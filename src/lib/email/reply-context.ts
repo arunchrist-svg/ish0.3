@@ -40,7 +40,7 @@ export function pickOriginalEmailContext(params: {
     initialSchedule?.bodySnippet?.trim() ||
     email1Outreach?.emailBody?.trim() ||
     fallbackBody ||
-    "We reached out about Diwali corporate gifting.";
+    "We reached out about a potential partnership.";
 
   return {
     emailBody,

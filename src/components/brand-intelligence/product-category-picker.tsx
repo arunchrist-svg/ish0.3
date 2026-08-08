@@ -6,7 +6,7 @@ import {
   getIndustryByLabel,
   searchIndustries,
   type IndustryCatalogEntry,
-} from "@/lib/gift-intel/industry-catalog";
+} from "@/lib/brand-intel/industry-catalog";
 
 type Props = {
   value: string;
@@ -94,7 +94,7 @@ export function ProductCategoryPicker({
         aria-controls={listboxId}
         aria-autocomplete="list"
         required
-        className="w-full rounded-xl border border-ish-border px-4 py-3 text-[13px] outline-none focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)]"
+        className="w-full rounded-xl border border-brand-border px-4 py-3 text-[13px] outline-none focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)]"
         placeholder={placeholder}
       />
 
@@ -102,7 +102,7 @@ export function ProductCategoryPicker({
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-ish-border bg-white py-1 shadow-lg"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-brand-border bg-white py-1 shadow-lg"
         >
           {suggestions.map((entry, index) => (
             <li key={entry.id} role="presentation">
@@ -114,11 +114,11 @@ export function ProductCategoryPicker({
                 onClick={() => selectEntry(entry)}
                 className={cn(
                   "flex w-full flex-col items-start px-4 py-2.5 text-left transition",
-                  index === activeIndex ? "bg-ish-black/5" : "hover:bg-ish-canvas",
+                  index === activeIndex ? "bg-brand-black/5" : "hover:bg-brand-canvas",
                 )}
               >
-                <span className="text-[13px] font-medium text-ish-ink">{entry.label}</span>
-                <span className="text-[11px] text-ish-ink-soft">
+                <span className="text-[13px] font-medium text-brand-ink">{entry.label}</span>
+                <span className="text-[11px] text-brand-ink-soft">
                   {entry.suggestedCompetitors.slice(0, 3).join(", ")}
                   {entry.suggestedCompetitors.length > 3 ? "…" : ""}
                 </span>

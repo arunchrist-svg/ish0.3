@@ -31,12 +31,12 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <DemoBanner />
           <ReadOnlyBanner />
-          <div className="hidden items-center justify-end gap-2 border-b border-ish-border bg-white px-6 py-1.5 lg:flex">
+          <div className="hidden items-center justify-end gap-2 border-b border-brand-border bg-white px-6 py-1.5 lg:flex">
             <NotificationBell />
             <AgentStatusBar runs={agentRuns} className="flex-1" />
           </div>
           {hasActiveAgents ? (
-            <div className="border-b border-ish-border/60 bg-ish-stratus-blue/8 px-4 py-1.5 lg:hidden">
+            <div className="border-b border-brand-border/60 bg-brand-stratus-blue/8 px-4 py-1.5 lg:hidden">
               <AgentStatusBar runs={agentRuns} className="w-full" />
             </div>
           ) : null}

@@ -15,9 +15,9 @@ type Props = {
   onSaved: () => void;
 };
 
-const labelClass = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-ish-ink";
+const labelClass = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-brand-ink";
 const fieldClass = cn(
-  "ish-modal-field rounded-[14px] border border-ish-border/70 px-3.5 py-2.5 text-[13px] font-medium text-ish-ink shadow-[var(--shadow-ish-sm)]",
+  "ish-modal-field rounded-[14px] border border-brand-border/70 px-3.5 py-2.5 text-[13px] font-medium text-brand-ink shadow-[var(--shadow-brand-sm)]",
 );
 
 export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
@@ -92,14 +92,14 @@ export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
 
   return (
     <AppModal open={open} onClose={onClose} panelClassName="max-w-lg max-h-[90vh] overflow-y-auto">
-      <div className="text-[16px] font-bold text-ish-ink">Suggest emails</div>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-ish-ink-soft">
+      <div className="text-[16px] font-bold text-brand-ink">Suggest emails</div>
+      <p className="mt-1.5 text-[13px] leading-relaxed text-brand-ink-soft">
         Free step before paid enrichment. Pick one or more likely addresses. The first outreach send tests the primary email.
       </p>
 
       {loading ? (
-        <div className="flex items-center justify-center py-10 text-ish-ink-soft">
-          <Loader2 className="mr-2 size-4 animate-spin text-ish-stratus-blue" />
+        <div className="flex items-center justify-center py-10 text-brand-ink-soft">
+          <Loader2 className="mr-2 size-4 animate-spin text-brand-stratus-blue" />
           Generating patterns...
         </div>
       ) : (
@@ -118,12 +118,12 @@ export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
           </div>
 
           {!lastName && !lead.lastName ? (
-            <p className="mt-3 rounded-[14px] border border-ish-stratus-salmon/30 bg-ish-pink-soft/60 px-3.5 py-2.5 text-[12px] font-medium text-ish-ink">
+            <p className="mt-3 rounded-[14px] border border-brand-stratus-salmon/30 bg-brand-pink-soft/60 px-3.5 py-2.5 text-[12px] font-medium text-brand-ink">
               Last name is missing. Fewer patterns are available until the contact name is complete.
             </p>
           ) : null}
 
-          <div className="mt-4 max-h-[280px] overflow-y-auto ish-modal-surface rounded-[16px] border border-ish-border/70 shadow-[var(--shadow-ish-sm)]">
+          <div className="mt-4 max-h-[280px] overflow-y-auto ish-modal-surface rounded-[16px] border border-brand-border/70 shadow-[var(--shadow-brand-sm)]">
             {suggestions.map((item) => {
               const checked = selected.includes(item.email);
               const isPrimary = primaryEmail === item.email;
@@ -131,26 +131,26 @@ export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
                 <label
                   key={item.email}
                   className={cn(
-                    "flex cursor-pointer items-start gap-3 border-b border-ish-border/50 px-3.5 py-3.5 transition-colors last:border-b-0",
+                    "flex cursor-pointer items-start gap-3 border-b border-brand-border/50 px-3.5 py-3.5 transition-colors last:border-b-0",
                     checked
-                      ? "bg-ish-stratus-blue/8 ring-1 ring-inset ring-ish-stratus-blue/15"
-                      : "hover:bg-ish-canvas/60",
+                      ? "bg-brand-stratus-blue/8 ring-1 ring-inset ring-brand-stratus-blue/15"
+                      : "hover:bg-brand-canvas/60",
                   )}
                 >
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggleEmail(item.email)}
-                    className="mt-0.5 size-4 shrink-0 rounded border-ish-border accent-ish-stratus-blue"
+                    className="mt-0.5 size-4 shrink-0 rounded border-brand-border accent-brand-stratus-blue"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate text-[13px] font-semibold text-ish-ink">{item.email}</span>
-                      <span className="rounded-full bg-ish-stratus-blue/12 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ish-ink">
+                      <span className="truncate text-[13px] font-semibold text-brand-ink">{item.email}</span>
+                      <span className="rounded-full bg-brand-stratus-blue/12 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-ink">
                         {item.pattern}
                       </span>
                       {isPrimary && checked ? (
-                        <span className="rounded-full bg-ish-stratus-blue/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ish-stratus-blue">
+                        <span className="rounded-full bg-brand-stratus-blue/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-stratus-blue">
                           Primary
                         </span>
                       ) : null}
@@ -162,8 +162,8 @@ export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
                       className={cn(
                         "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors",
                         isPrimary
-                          ? "text-ish-ink-faint"
-                          : "text-ish-stratus-blue hover:bg-ish-stratus-blue/10",
+                          ? "text-brand-ink-faint"
+                          : "text-brand-stratus-blue hover:bg-brand-stratus-blue/10",
                       )}
                       disabled={isPrimary}
                       onClick={(e) => {
@@ -183,12 +183,12 @@ export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
 
       {error ? <p className="mt-3 text-[12px] font-medium text-red-600">{error}</p> : null}
 
-      <div className="mt-5 flex justify-end gap-2 border-t border-ish-border/60 pt-4">
+      <div className="mt-5 flex justify-end gap-2 border-t border-brand-border/60 pt-4">
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          className="ish-modal-cancel h-auto rounded-[14px] border border-ish-border px-4 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] hover:border-ish-stratus-blue/30 hover:bg-ish-canvas"
+          className="ish-modal-cancel h-auto rounded-[14px] border border-brand-border px-4 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] hover:border-brand-stratus-blue/30 hover:bg-brand-canvas"
           onClick={onClose}
           disabled={saving}
         >
@@ -199,7 +199,7 @@ export function EmailSuggestModal({ open, lead, onClose, onSaved }: Props) {
           size="sm"
           variant="ghost"
           disabled={saving || loading || !selected.length}
-          className="h-auto rounded-[14px] bg-ish-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-ish-sm)] hover:bg-ish-black/90 disabled:opacity-40"
+          className="h-auto rounded-[14px] bg-brand-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] hover:bg-brand-black/90 disabled:opacity-40"
           onClick={() => void handleSave()}
         >
           {saving ? (

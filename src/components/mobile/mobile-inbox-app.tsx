@@ -160,15 +160,15 @@ export function MobileInboxApp() {
         <button
           type="button"
           onClick={() => void load()}
-          className="flex size-10 items-center justify-center rounded-full bg-white/90 text-ish-ink shadow-ish ring-1 ring-ish-border/40 active:scale-95"
+          className="flex size-10 items-center justify-center rounded-full bg-white/90 text-brand-ink shadow-ish ring-1 ring-brand-border/40 active:scale-95"
           aria-label="Refresh inbox"
         >
-          <RefreshCw className={cn("size-4 text-ish-stratus-blue", loading && "animate-spin")} />
+          <RefreshCw className={cn("size-4 text-brand-stratus-blue", loading && "animate-spin")} />
         </button>
       }
       contentClassName="!pb-0 ish-inbox-page"
     >
-      <div className="border-b border-ish-border/40 bg-white/60 ish-page-padding py-2 backdrop-blur-xl">
+      <div className="border-b border-brand-border/40 bg-white/60 ish-page-padding py-2 backdrop-blur-xl">
         <ScrollableTabs
           tabs={tabLabels}
           value={activeLabel}
@@ -186,9 +186,9 @@ export function MobileInboxApp() {
           {loading && !data ? (
             <SkeletonList rows={4} />
           ) : rows.length === 0 ? (
-            <div className="rounded-[24px] border border-ish-border/50 bg-white/80 px-6 py-14 text-center shadow-ish backdrop-blur-xl">
-              <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-yellow-gradient shadow-ish-yellow-sm">
-                <Inbox className="size-7 text-ish-black" />
+            <div className="rounded-[24px] border border-brand-border/50 bg-white/80 px-6 py-14 text-center shadow-ish backdrop-blur-xl">
+              <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-brand-yellow-gradient shadow-brand-yellow-sm">
+                <Inbox className="size-7 text-brand-black" />
               </div>
               <EmptyState
                 title={tab === "needs_review" ? "Queue is clear" : "Inbox quiet"}
@@ -200,7 +200,7 @@ export function MobileInboxApp() {
                 action={
                   <Link
                     href="/scouting"
-                    className="inline-flex h-12 items-center rounded-2xl bg-ish-yellow-gradient px-6 text-[15px] font-bold text-ish-black shadow-ish-yellow-sm active:scale-[0.98]"
+                    className="inline-flex h-12 items-center rounded-2xl bg-brand-yellow-gradient px-6 text-[15px] font-bold text-brand-black shadow-brand-yellow-sm active:scale-[0.98]"
                   >
                     Start scouting
                   </Link>

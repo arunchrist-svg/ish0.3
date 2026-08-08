@@ -76,12 +76,12 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
 
   return (
     <>
-      <div className="flex flex-wrap gap-2 rounded-t-[22px] bg-ish-yellow-gradient px-[22px] py-4">
+      <div className="flex flex-wrap gap-2 rounded-t-[22px] bg-brand-yellow-gradient px-[22px] py-4">
         {showMarkReplied && (
           <Button
             variant="ghost"
             size="sm"
-            className="h-auto rounded-[18px] bg-ish-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-black/90"
+            className="h-auto rounded-[18px] bg-brand-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-black/90"
             onClick={handleMarkReplied}
           >
             <MessageSquare className="size-3.5" />
@@ -93,7 +93,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
           <Button
             variant="ghost"
             size="sm"
-            className="h-auto rounded-[18px] bg-ish-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-black/90"
+            className="h-auto rounded-[18px] bg-brand-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-black/90"
             disabled={submitting}
             onClick={() => handleManualAdvance("tasting_sent")}
           >
@@ -106,7 +106,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
           <Button
             variant="ghost"
             size="sm"
-            className="h-auto rounded-[18px] bg-ish-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-black/90"
+            className="h-auto rounded-[18px] bg-brand-black px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-black/90"
             disabled={submitting}
             onClick={() => handleManualAdvance("negotiate")}
           >
@@ -119,7 +119,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
           <Button
             variant="ghost"
             size="sm"
-            className="h-auto rounded-[18px] bg-ish-green px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-ish-green/90"
+            className="h-auto rounded-[18px] bg-brand-green px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-green/90"
             onClick={() => setCloseDialogOpen(true)}
           >
             <Trophy className="size-3.5" />
@@ -130,7 +130,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-auto rounded-[18px] bg-white/55 px-3.5 py-1.5 text-xs font-semibold text-ish-ink hover:bg-white/70"
+          className="h-auto rounded-[18px] bg-white/55 px-3.5 py-1.5 text-xs font-semibold text-brand-ink hover:bg-white/70"
           onClick={onAction}
         >
           <RefreshCw className="size-3.5" />
@@ -144,8 +144,8 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
           className={cn(
             "h-auto rounded-[18px] px-3.5 py-1.5 text-xs font-semibold",
             lead.isPinned
-              ? "bg-ish-yellow text-ish-ink hover:bg-ish-yellow/80"
-              : "bg-white/55 text-ish-ink hover:bg-white/70"
+              ? "bg-brand-yellow text-brand-ink hover:bg-brand-yellow/80"
+              : "bg-white/55 text-brand-ink hover:bg-white/70"
           )}
           onClick={handleTogglePin}
         >
@@ -156,24 +156,24 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
         <Button
           variant="ghost"
           size="sm"
-          className="h-auto rounded-[18px] bg-white/55 px-3.5 py-1.5 text-xs font-semibold text-ish-ink hover:bg-white/70"
+          className="h-auto rounded-[18px] bg-white/55 px-3.5 py-1.5 text-xs font-semibold text-brand-ink hover:bg-white/70"
         >
           <MoreHorizontal className="size-3.5" />
         </Button>
       </div>
 
       <AppModal open={closeDialogOpen} onClose={() => { setCloseDialogOpen(false); setDealAmount(""); }}>
-            <h3 className="text-[15px] font-bold text-ish-ink">Close Deal</h3>
-            <p className="mt-1 text-[13px] text-ish-ink-soft">Enter the final deal amount to mark this lead as closed.</p>
-            <label className="mt-4 block text-[12px] font-semibold text-ish-ink-soft">Deal amount (₹)</label>
+            <h3 className="text-[15px] font-bold text-brand-ink">Close Deal</h3>
+            <p className="mt-1 text-[13px] text-brand-ink-soft">Enter the final deal amount to mark this lead as closed.</p>
+            <label className="mt-4 block text-[12px] font-semibold text-brand-ink-soft">Deal amount (₹)</label>
             <input
               type="text"
               value={dealAmount}
               onChange={(e) => setDealAmount(e.target.value)}
               placeholder="e.g. 1800000 or ₹18,00,000"
               className={cn(
-                "mt-1.5 w-full rounded-[14px] border border-ish-border px-3.5 py-2.5 text-[13px] text-ish-ink",
-                "outline-none focus:border-ish-black",
+                "mt-1.5 w-full rounded-[14px] border border-brand-border px-3.5 py-2.5 text-[13px] text-brand-ink",
+                "outline-none focus:border-brand-black",
               )}
             />
             <div className="mt-5 flex justify-end gap-2">
@@ -192,7 +192,7 @@ export function RecordToolbar({ lead, onAction, onLeadUpdated }: Props) {
                 variant="ghost"
                 size="sm"
                 disabled={submitting || !dealAmount.trim()}
-                className="h-auto rounded-[14px] bg-ish-green px-4 py-2 text-xs font-semibold text-white hover:bg-ish-green/90"
+                className="h-auto rounded-[14px] bg-brand-green px-4 py-2 text-xs font-semibold text-white hover:bg-brand-green/90"
                 onClick={() => handleManualAdvance("closed", dealAmount)}
               >
                 Confirm Close

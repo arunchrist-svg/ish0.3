@@ -16,7 +16,7 @@ type Props = {
   domain?: string;
   website?: string;
   city?: string;
-  giftScore?: number;
+  fitScore?: number;
   industry?: string;
   overviewInput: CompanyOverviewInput | null;
   initialOverview?: CompanyOverview;
@@ -38,10 +38,10 @@ function OverviewRow({
 }) {
   return (
     <div className={cn("min-w-0 px-3.5 py-2.5", className)}>
-      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
         {label}
       </div>
-      <div className="break-words text-[13px] font-bold leading-snug text-ish-ink">{value}</div>
+      <div className="break-words text-[13px] font-bold leading-snug text-brand-ink">{value}</div>
     </div>
   );
 }
@@ -51,13 +51,13 @@ function DecisionMakerRow({ value, leadId }: { value: string; leadId?: string })
     <div className="flex min-w-0 items-start gap-2 px-3.5 py-2.5">
       <div className="min-w-0 flex-1">
         <div className="mb-0.5 flex items-center justify-between gap-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
             Decision Maker
           </div>
           {leadId ? (
             <Link
               href={`/?lead=${leadId}`}
-              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-ish-border/80 bg-white text-blue-600 transition-colors hover:bg-ish-app"
+              className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-brand-border/80 bg-white text-blue-600 transition-colors hover:bg-brand-app"
               title="Open lead"
               aria-label="Open lead profile"
             >
@@ -65,7 +65,7 @@ function DecisionMakerRow({ value, leadId }: { value: string; leadId?: string })
             </Link>
           ) : null}
         </div>
-        <div className="break-words text-[13px] font-bold leading-snug text-ish-ink">{value}</div>
+        <div className="break-words text-[13px] font-bold leading-snug text-brand-ink">{value}</div>
       </div>
     </div>
   );
@@ -91,7 +91,7 @@ function OverviewSkeleton({ wide, compact }: { wide?: boolean; compact?: boolean
     >
       <div
         className={cn(
-          "rounded-xl bg-ish-border/40",
+          "rounded-xl bg-brand-border/40",
           wide
             ? compact
               ? "col-span-2 h-20"
@@ -99,8 +99,8 @@ function OverviewSkeleton({ wide, compact }: { wide?: boolean; compact?: boolean
             : "col-span-2 h-[108px]",
         )}
       />
-      <div className={cn("h-20 rounded-xl bg-ish-border/30", wide ? "col-span-2" : "col-span-1")} />
-      <div className={cn("h-20 rounded-xl bg-ish-border/30", wide ? "col-span-2" : "col-span-1")} />
+      <div className={cn("h-20 rounded-xl bg-brand-border/30", wide ? "col-span-2" : "col-span-1")} />
+      <div className={cn("h-20 rounded-xl bg-brand-border/30", wide ? "col-span-2" : "col-span-1")} />
     </div>
   );
 }
@@ -131,7 +131,7 @@ export function CompanyOverviewPanel({
   const wide = layout === "wide";
   const compactPrimary = Boolean(footer);
   const showIntelligence = Boolean(o.intelligenceNotes?.trim()) && !footer;
-  const hasGiftBudget = Boolean(o.giftBudget?.trim());
+  const hasGiftBudget = Boolean(o.budgetBand?.trim() || o.giftBudget?.trim());
   const complianceSpan = wide
     ? hasGiftBudget
       ? "col-span-1"
@@ -157,7 +157,7 @@ export function CompanyOverviewPanel({
       tone="white"
       className={cn("flex h-full flex-col gap-4 overflow-y-auto rounded-none p-4", className)}
     >
-      <div className="flex items-start gap-3 border-b border-ish-border/60 pb-3">
+      <div className="flex items-start gap-3 border-b border-brand-border/60 pb-3">
         <CompanyLogo
           name={name}
           domain={domain ?? overviewInput?.domain}
@@ -167,9 +167,9 @@ export function CompanyOverviewPanel({
           rounded="rounded-2xl"
         />
         <div className="min-w-0 flex-1 pt-0.5">
-          <div className="break-words text-[17px] font-bold leading-tight text-ish-ink">{name}</div>
+          <div className="break-words text-[17px] font-bold leading-tight text-brand-ink">{name}</div>
           {city ? (
-            <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-ish-ink-soft">
+            <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-brand-ink-soft">
               <MapPin className="size-3 shrink-0" />
               <span>{city}</span>
             </div>
@@ -186,7 +186,7 @@ export function CompanyOverviewPanel({
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="inline-flex items-center gap-1 rounded-lg border border-ish-border/80 bg-ish-app px-2 py-1 text-[10px] font-semibold text-ish-ink-soft transition-colors hover:bg-white disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-lg border border-brand-border/80 bg-brand-app px-2 py-1 text-[10px] font-semibold text-brand-ink-soft transition-colors hover:bg-white disabled:opacity-50"
             title="Refresh overview"
           >
             <RefreshCw className={cn("size-3", loading && "animate-spin")} />
@@ -198,11 +198,11 @@ export function CompanyOverviewPanel({
       {loading ? (
         <OverviewSkeleton wide={wide} compact={compactPrimary} />
       ) : !hasLoaded && !overview ? (
-        <div className="rounded-xl border border-dashed border-ish-border/80 bg-ish-app/50 px-4 py-8 text-center">
-          <p className="text-[12px] font-medium text-ish-ink-soft">
+        <div className="rounded-xl border border-dashed border-brand-border/80 bg-brand-app/50 px-4 py-8 text-center">
+          <p className="text-[12px] font-medium text-brand-ink-soft">
             Click Refresh to load company overview
           </p>
-          <p className="mt-1 text-[11px] text-ish-ink-faint">
+          <p className="mt-1 text-[11px] text-brand-ink-faint">
             Enrichment runs on demand via web search and AI
           </p>
         </div>
@@ -225,11 +225,11 @@ export function CompanyOverviewPanel({
                 />
               ) : (
                 <>
-                  <div className="grid grid-cols-2 divide-x divide-ish-border/25">
+                  <div className="grid grid-cols-2 divide-x divide-brand-border/25">
                     <OverviewRow label="Sector" value={displayValue(o.sector ?? industry)} />
                     <OverviewRow label="Employees" value={displayValue(o.employees)} />
                   </div>
-                  <div className="border-t border-ish-border/25">
+                  <div className="border-t border-brand-border/25">
                     <DecisionMakerRow
                       value={displayValue(o.decisionMaker)}
                       leadId={decisionMakerLeadId}
@@ -253,10 +253,10 @@ export function CompanyOverviewPanel({
           {hasGiftBudget ? (
             <BentoCell className={wide ? "col-span-1" : "col-span-1"}>
               <PanelCard tone="green" className="flex h-full flex-col justify-center p-3.5">
-                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
-                  Est. Gift Budget
+                <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                  Est. Budget Band
                 </div>
-                <div className="text-[15px] font-bold leading-tight text-ish-ink">{o.giftBudget}</div>
+                <div className="text-[15px] font-bold leading-tight text-brand-ink">{o.budgetBand || o.giftBudget}</div>
               </PanelCard>
             </BentoCell>
           ) : null}
@@ -274,14 +274,14 @@ export function CompanyOverviewPanel({
           {milestones.length > 0 ? (
             <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
               <PanelCard tone="pink" className="h-full p-3.5">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
                   Recent Corporate Milestones
                 </div>
                 <ul className="grid gap-1.5 sm:grid-cols-2">
                   {milestones.map((m, i) => (
                     <li
                       key={i}
-                      className="flex gap-2 text-[12px] leading-relaxed text-ish-ink-soft before:mt-1.5 before:size-1 before:shrink-0 before:rounded-full before:bg-ish-pink"
+                      className="flex gap-2 text-[12px] leading-relaxed text-brand-ink-soft before:mt-1.5 before:size-1 before:shrink-0 before:rounded-full before:bg-brand-pink"
                     >
                       <span className="min-w-0 break-words">{m}</span>
                     </li>
@@ -299,18 +299,18 @@ export function CompanyOverviewPanel({
                   {pastGifting.map((g, i) => (
                     <PanelCard key={i} tone="pink" className="flex items-start gap-2.5 p-3">
                       {g.year ? (
-                        <span className="mt-0.5 shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-ish-ink-soft">
+                        <span className="mt-0.5 shrink-0 rounded-md bg-white/70 px-1.5 py-0.5 text-[10px] font-bold text-brand-ink-soft">
                           {g.year}
                         </span>
                       ) : null}
                       <div className="min-w-0 flex-1">
-                        <div className="break-words text-[12.5px] font-semibold text-ish-ink">
+                        <div className="break-words text-[12.5px] font-semibold text-brand-ink">
                           {g.occasion ?? "Gifting"}
                         </div>
-                        <div className="break-words text-[11px] text-ish-ink-soft">{g.items ?? "—"}</div>
+                        <div className="break-words text-[11px] text-brand-ink-soft">{g.items ?? "—"}</div>
                       </div>
                       {g.perPerson ? (
-                        <span className="shrink-0 text-[11.5px] font-bold text-ish-ink">{g.perPerson}</span>
+                        <span className="shrink-0 text-[11.5px] font-bold text-brand-ink">{g.perPerson}</span>
                       ) : null}
                     </PanelCard>
                   ))}
@@ -322,11 +322,11 @@ export function CompanyOverviewPanel({
           {showIntelligence ? (
             <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
               <PanelCard tone="yellow" className="p-3.5">
-                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
                   <Lightbulb className="size-3.5 shrink-0" />
                   Intelligence
                 </div>
-                <p className="break-words text-[12px] italic leading-relaxed text-ish-ink-soft">
+                <p className="break-words text-[12px] italic leading-relaxed text-brand-ink-soft">
                   {o.intelligenceNotes}
                 </p>
               </PanelCard>
@@ -344,7 +344,7 @@ export function CompanyOverviewPanel({
       {error ? <p className="text-[11px] text-red-600">{error}</p> : null}
 
       {enrichedAt ? (
-        <p className="mt-auto border-t border-ish-border/50 pt-3 text-[10px] text-ish-ink-faint">
+        <p className="mt-auto border-t border-brand-border/50 pt-3 text-[10px] text-brand-ink-faint">
           {cached ? "Cached overview" : "Enriched"} · {new Date(enrichedAt).toLocaleString("en-IN")}
         </p>
       ) : null}

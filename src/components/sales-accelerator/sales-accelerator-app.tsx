@@ -254,16 +254,16 @@ export function SalesAcceleratorApp() {
   if (!listLoading && leads.length === 0) {
     return (
       <>
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center text-[13px] text-ish-ink-faint">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center text-[13px] text-brand-ink-faint">
           <div className="text-4xl">🎯</div>
           <div>
-            <div className="font-semibold text-ish-ink">No leads yet</div>
+            <div className="font-semibold text-brand-ink">No leads yet</div>
             <div className="mt-1">Scout companies, or add a lead manually.</div>
           </div>
           {canWritePipeline ? (
             <Button
               variant="ghost"
-              className="h-auto rounded-2xl bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-ish-black/90"
+              className="h-auto rounded-2xl bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-black/90"
               onClick={openCreateLead}
             >
               Add lead
@@ -283,10 +283,10 @@ export function SalesAcceleratorApp() {
 
   const listPane = listLoading && leads.length === 0 ? (
     <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
-      <div className="mb-4 h-7 w-28 animate-pulse rounded-lg bg-ish-app" />
+      <div className="mb-4 h-7 w-28 animate-pulse rounded-lg bg-brand-app" />
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-[72px] animate-pulse rounded-[18px] bg-ish-app" />
+          <div key={i} className="h-[72px] animate-pulse rounded-[18px] bg-brand-app" />
         ))}
       </div>
     </div>
@@ -305,7 +305,7 @@ export function SalesAcceleratorApp() {
   );
 
   const detailPane = activeLeadId ? (
-    <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-ish-page-in">
+    <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-brand-page-in">
       <div className="shrink-0 lg:hidden">
           <LeadSwitcherRail
             leads={filteredLeads}
@@ -323,11 +323,11 @@ export function SalesAcceleratorApp() {
       />
     </div>
   ) : listLoading ? (
-    <div className="flex flex-1 items-center justify-center text-[13px] text-ish-ink-faint">
+    <div className="flex flex-1 items-center justify-center text-[13px] text-brand-ink-faint">
       <span className="mr-2 animate-spin">⟳</span> Loading leads…
     </div>
   ) : (
-    <div className="hidden flex-1 items-center justify-center text-[13px] text-ish-ink-faint lg:flex">
+    <div className="hidden flex-1 items-center justify-center text-[13px] text-brand-ink-faint lg:flex">
       Select a lead
     </div>
   );
@@ -345,7 +345,7 @@ export function SalesAcceleratorApp() {
         <button
           type="button"
           onClick={openCreateLead}
-          className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-4 z-30 flex size-14 items-center justify-center rounded-2xl bg-ish-stratus-blue text-white shadow-ish lg:hidden active:scale-95"
+          className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-4 z-30 flex size-14 items-center justify-center rounded-2xl bg-brand-stratus-blue text-white shadow-ish lg:hidden active:scale-95"
           aria-label="Add lead"
         >
           <Plus className="size-6" />

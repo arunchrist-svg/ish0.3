@@ -42,20 +42,20 @@ function DrawerRow({
       }}
       className={cn(
         "ish-list-row ish-touch-target",
-        active && "bg-ish-stratus-blue/10",
+        active && "bg-brand-stratus-blue/10",
       )}
     >
       <span
         className={cn(
           "flex size-9 shrink-0 items-center justify-center rounded-xl",
-          active ? "bg-ish-stratus-blue text-white" : "bg-ish-canvas text-ish-ink-soft",
+          active ? "bg-brand-stratus-blue text-white" : "bg-brand-canvas text-brand-ink-soft",
         )}
       >
         <Icon className="size-[18px]" />
       </span>
       <span className={cn("flex-1", active ? text.navItemActive : text.navItem)}>{item.label}</span>
       {item.badge != null && item.badge > 0 ? (
-        <span className="rounded-full bg-ish-stratus-salmon px-2 py-0.5 text-[10px] font-bold text-white">
+        <span className="rounded-full bg-brand-stratus-salmon px-2 py-0.5 text-[10px] font-bold text-white">
           {item.badge}
         </span>
       ) : null}
@@ -74,13 +74,13 @@ export function MobileNavDrawer({ open, pathname, isSuperadmin = false, onClose 
         aria-label="Close menu"
         onClick={onClose}
       />
-      <div className="ish-mobile-drawer absolute inset-y-0 right-0 flex w-[min(340px,92vw)] flex-col bg-ish-canvas shadow-2xl">
+      <div className="ish-mobile-drawer absolute inset-y-0 right-0 flex w-[min(340px,92vw)] flex-col bg-brand-canvas shadow-2xl">
         <div className="flex items-center justify-between ish-page-padding pb-4 pt-[max(env(safe-area-inset-top),16px)]">
-          <span className="text-[18px] font-extrabold tracking-tight text-ish-ink">{PRODUCT_NAME}</span>
+          <span className="text-[18px] font-extrabold tracking-tight text-brand-ink">{PRODUCT_NAME}</span>
           <button
             type="button"
             onClick={onClose}
-            className="ish-touch-target flex size-10 items-center justify-center rounded-full bg-white text-ish-ink shadow-ish-sm"
+            className="ish-touch-target flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm"
             aria-label="Close menu"
           >
             <X className="size-5" />

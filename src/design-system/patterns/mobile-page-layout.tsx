@@ -32,7 +32,7 @@ export function MobilePageLayout({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden bg-ish-canvas", className)}>
+    <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden bg-brand-canvas", className)}>
       <MobileHeader
         title={title}
         subtitle={subtitle}

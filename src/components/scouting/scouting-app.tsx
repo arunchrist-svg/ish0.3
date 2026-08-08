@@ -156,8 +156,8 @@ function toCompanyShape(c: ScoutCompanyResult, index = 0) {
     employees: c.employees ?? "—",
     revenue: c.revenue ?? "—",
     founded: 0,
-    giftScore: c.giftScore ?? 60,
-    giftBudget: c.giftBudget ?? "—",
+    fitScore: c.fitScore ?? 60,
+    budgetBand: c.budgetBand ?? "—",
     pastGifting: (c.pastGifting ?? []) as { year: string; occasion: string; items: string; perPerson: string }[],
     intelligenceNotes: c.intelNotes ?? "",
     _raw: c,
@@ -250,11 +250,11 @@ function RolePickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className="mx-4 w-full max-w-md rounded-2xl border border-ish-border bg-white shadow-[var(--shadow-ish-float)]">
+      <div className="mx-4 w-full max-w-md rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-float)]">
         {/* Header */}
-        <div className="border-b border-ish-border px-6 py-4">
-          <p className="text-[15px] font-bold text-ish-ink">Who are you looking for?</p>
-          <p className="mt-0.5 text-[12px] text-ish-ink-soft">
+        <div className="border-b border-brand-border px-6 py-4">
+          <p className="text-[15px] font-bold text-brand-ink">Who are you looking for?</p>
+          <p className="mt-0.5 text-[12px] text-brand-ink-soft">
             Select role filters to target the right decision-makers.
           </p>
         </div>
@@ -263,7 +263,7 @@ function RolePickerModal({
         <div className="flex flex-col gap-5 px-6 py-5">
           {/* Seniority */}
           <div>
-            <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+            <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
               Seniority
             </p>
             <div className="flex flex-wrap gap-2">
@@ -277,8 +277,8 @@ function RolePickerModal({
                     className={cn(
                       "rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all duration-150",
                       active
-                        ? "bg-ish-ink text-white shadow-[var(--shadow-ish)]"
-                        : "bg-ish-app text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
+                        ? "bg-brand-ink text-white shadow-[var(--shadow-brand)]"
+                        : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
                     )}
                   >
                     {s}
@@ -290,7 +290,7 @@ function RolePickerModal({
 
           {/* Department */}
           <div>
-            <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-ish-ink-faint">
+            <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
               Department
             </p>
             <div className="flex flex-wrap gap-2">
@@ -304,8 +304,8 @@ function RolePickerModal({
                     className={cn(
                       "rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all duration-150",
                       active
-                        ? "bg-ish-yellow text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
-                        : "bg-ish-app text-ish-ink-soft hover:bg-ish-border hover:text-ish-ink",
+                        ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+                        : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
                     )}
                   >
                     {d}
@@ -317,11 +317,11 @@ function RolePickerModal({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-ish-border px-6 py-4">
+        <div className="flex items-center justify-between border-t border-brand-border px-6 py-4">
           <button
             type="button"
             onClick={onSkip}
-            className="text-[12px] font-semibold text-ish-ink-faint hover:text-ish-ink"
+            className="text-[12px] font-semibold text-brand-ink-faint hover:text-brand-ink"
           >
             Skip — find all roles
           </button>
@@ -332,8 +332,8 @@ function RolePickerModal({
             className={cn(
               "flex items-center gap-1.5 rounded-xl px-5 py-2 text-[12.5px] font-bold transition-all duration-150",
               hasSelection
-                ? "bg-ish-green text-white shadow-[var(--shadow-ish)] hover:opacity-90"
-                : "cursor-not-allowed bg-ish-app text-ish-ink-faint",
+                ? "bg-brand-green text-white shadow-[var(--shadow-brand)] hover:opacity-90"
+                : "cursor-not-allowed bg-brand-app text-brand-ink-faint",
             )}
           >
             Find Decision-Makers →
@@ -356,9 +356,9 @@ function ScoutCompaniesEmpty({
 }) {
   if (!hasFetched) {
     return (
-      <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
-        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-yellow-gradient shadow-ish-yellow-sm">
-          <Compass className="size-7 text-ish-black" />
+      <div className="mx-4 mt-6 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
+        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-brand-yellow-gradient shadow-brand-yellow-sm">
+          <Compass className="size-7 text-brand-black" />
         </div>
         <EmptyState
           title={scoutMode === "search" ? "Search by company name" : "Ready to scout"}
@@ -374,8 +374,8 @@ function ScoutCompaniesEmpty({
   }
 
   return (
-    <div className="mx-4 mt-6 rounded-[24px] border border-ish-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
-      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-canvas text-ish-ink-soft">
+    <div className="mx-4 mt-6 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
+      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-brand-canvas text-brand-ink-soft">
         <MapPin className="size-7" />
       </div>
       <EmptyState
@@ -401,8 +401,8 @@ function ScoutPeopleEmpty({
   detail: string;
 }) {
   return (
-    <div className="mx-4 mt-4 rounded-[24px] border border-ish-border/50 bg-white px-6 py-12 text-center shadow-ish">
-      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-ish-canvas text-ish-ink-soft">
+    <div className="mx-4 mt-4 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish">
+      <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-brand-canvas text-brand-ink-soft">
         <Users className="size-7" />
       </div>
       <EmptyState title={headline} description={detail} className="py-0" />
@@ -1044,9 +1044,12 @@ export function ScoutingApp() {
 
       setSaveProgress({ done: 0, total: byCompany.size });
 
-      for (const [companyId, persons] of byCompany) {
+      await mapWithConcurrency([...byCompany.entries()], 3, async ([companyId, persons]) => {
         const company = companies.find((c) => c.id === companyId);
-        if (!company) continue;
+        if (!company) {
+          setSaveProgress((prev) => ({ ...prev, done: prev.done + 1 }));
+          return;
+        }
         const result = await scoutSave({
           people: persons.map((p) => p._raw),
           company: company._raw,
@@ -1055,7 +1058,7 @@ export function ScoutingApp() {
         totalSaved += result.saved.length;
         allSkipped.push(...result.skipped);
         setSaveProgress((prev) => ({ ...prev, done: prev.done + 1 }));
-      }
+      });
 
       if (totalSaved > 0) {
         toast.success(`${totalSaved} lead${totalSaved > 1 ? "s" : ""} saved — check Leads queue`);
@@ -1173,7 +1176,7 @@ export function ScoutingApp() {
         hints={[
           cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
           industries.length ? `Filtering ${industries.join(", ")}` : "Matching all industries",
-          "Ranking by gift potential",
+          "Ranking by fit for outreach",
         ]}
       />
     ) : companies.length === 0 && !filterPanelOpen ? (
@@ -1188,12 +1191,12 @@ export function ScoutingApp() {
           </div>
         ) : null}
         {isMobileLayout && scoutCompaniesLimit <= 1 && companies.length > 0 ? (
-          <div className="mx-3 mt-2 rounded-xl border border-ish-stratus-blue/20 bg-ish-canvas/80 px-3 py-2 text-[12px] leading-snug text-ish-ink-soft">
-            1 company per scout batch. Tap <span className="font-semibold text-ish-ink">Load more</span> in the menu, or raise the limit in Settings.
+          <div className="mx-3 mt-2 rounded-xl border border-brand-stratus-blue/20 bg-brand-canvas/80 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft">
+            1 company per scout batch. Tap <span className="font-semibold text-brand-ink">Load more</span> in the menu, or raise the limit in Settings.
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-3 px-4 py-2 lg:px-5">
-          <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+          <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">
             {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
             {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
             {" · "}{cities.join(", ")}
@@ -1203,7 +1206,7 @@ export function ScoutingApp() {
           <button
             type="button"
             onClick={allCompaniesSelected ? deselectAllCompanies : selectAllCompanies}
-            className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
+            className="shrink-0 rounded-full border border-brand-border bg-white px-3 py-1 text-[11px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-app"
           >
             {allCompaniesSelected ? "Deselect all" : "Select all"}
           </button>
@@ -1222,7 +1225,7 @@ export function ScoutingApp() {
               type="button"
               onClick={handleLoadMore}
               disabled={loadingMore}
-              className="rounded-xl border border-ish-border bg-white px-5 py-2 text-[12px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] hover:bg-ish-app disabled:opacity-50"
+              className="rounded-xl border border-brand-border bg-white px-5 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] hover:bg-brand-app disabled:opacity-50"
             >
               {loadingMore ? "Loading…" : "Load More Companies"}
             </button>
@@ -1235,12 +1238,12 @@ export function ScoutingApp() {
       <button
         type="button"
         onClick={handleBackToCompanies}
-        className="mb-2 ml-3 flex items-center gap-1.5 text-[12px] font-semibold text-ish-ink-soft hover:text-ish-ink"
+        className="mb-2 ml-3 flex items-center gap-1.5 text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
       >
         ← Back to Companies
       </button>
       <div className="mb-2 flex items-center justify-between gap-3 px-3">
-        <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+        <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">
           {people.length} Decision-Makers · {selectedCompanyIds.size}{" "}
           {selectedCompanyIds.size === 1 ? "Company" : "Companies"}
           {selectedPersonIds.size > 0 ? ` · ${selectedPersonIds.size} selected` : ""}
@@ -1249,7 +1252,7 @@ export function ScoutingApp() {
           <button
             type="button"
             onClick={allPeopleSelected ? deselectAllPeople : selectAllPeople}
-            className="shrink-0 rounded-full border border-ish-border bg-white px-3 py-1 text-[11px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app"
+            className="shrink-0 rounded-full border border-brand-border bg-white px-3 py-1 text-[11px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-app"
           >
             {allPeopleSelected ? "Deselect all" : "Select all"}
           </button>
@@ -1377,10 +1380,10 @@ export function ScoutingApp() {
             <button
               type="button"
               onClick={() => setOverflowOpen(true)}
-              className="flex size-10 items-center justify-center rounded-full bg-white/90 text-ish-ink shadow-ish ring-1 ring-ish-border/40 active:scale-95"
+              className="flex size-10 items-center justify-center rounded-full bg-white/90 text-brand-ink shadow-ish ring-1 ring-brand-border/40 active:scale-95"
               aria-label="More actions"
             >
-              <MoreVertical className="size-4 text-ish-stratus-blue" />
+              <MoreVertical className="size-4 text-brand-stratus-blue" />
             </button>
           }
           footer={
@@ -1392,10 +1395,10 @@ export function ScoutingApp() {
                 className={cn(
                   "flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
                   mobilePrimaryColor === "yellow" && !mobilePrimaryDisabled &&
-                    "bg-ish-yellow-gradient text-ish-black shadow-ish-yellow-sm",
+                    "bg-brand-yellow-gradient text-brand-black shadow-brand-yellow-sm",
                   mobilePrimaryColor === "green" && !mobilePrimaryDisabled &&
-                    "bg-ish-green text-white shadow-[var(--shadow-ish)]",
-                  mobilePrimaryDisabled && "bg-ish-canvas text-ish-ink-faint",
+                    "bg-brand-green text-white shadow-[var(--shadow-brand)]",
+                  mobilePrimaryDisabled && "bg-brand-canvas text-brand-ink-faint",
                 )}
               >
                 {mobilePrimaryColor === "yellow" && !mobilePrimaryDisabled ? <Compass className="size-4" /> : null}
@@ -1422,9 +1425,9 @@ export function ScoutingApp() {
                 handleScoutModeChange(scoutMode === "autopilot" ? "search" : "autopilot");
                 setOverflowOpen(false);
               }}
-              className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99]"
+              className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99]"
             >
-              <Search className="size-4 text-ish-stratus-blue" />
+              <Search className="size-4 text-brand-stratus-blue" />
               Switch to {scoutMode === "autopilot" ? "Search mode" : "Autopilot"}
             </button>
             {scoutMode === "autopilot" && view === "companies" ? (
@@ -1433,7 +1436,7 @@ export function ScoutingApp() {
                   type="button"
                   onClick={() => { handleRefresh(); setOverflowOpen(false); }}
                   disabled={loadingCompanies || cities.length === 0}
-                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99] disabled:opacity-50"
+                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99] disabled:opacity-50"
                 >
                   Refresh results
                 </button>
@@ -1441,7 +1444,7 @@ export function ScoutingApp() {
                   type="button"
                   onClick={() => { handleLoadMore(); setOverflowOpen(false); }}
                   disabled={loadingMore || !hasMore}
-                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99] disabled:opacity-50"
+                  className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99] disabled:opacity-50"
                 >
                   {loadingMore ? "Loading more…" : "Load more companies"}
                 </button>
@@ -1452,9 +1455,9 @@ export function ScoutingApp() {
                 type="button"
                 onClick={() => { handleScoutMore(); setOverflowOpen(false); }}
                 disabled={loadingMore}
-                className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-ish-border/60 bg-white px-4 text-left text-[14px] font-semibold text-ish-ink active:scale-[0.99] disabled:opacity-50"
+                className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99] disabled:opacity-50"
               >
-                <Compass className="size-4 text-ish-stratus-blue" />
+                <Compass className="size-4 text-brand-stratus-blue" />
                 {loadingMore ? "Scouting more…" : "Scout more companies"}
               </button>
             ) : null}
@@ -1471,13 +1474,13 @@ export function ScoutingApp() {
         <ScoutingToolbar {...toolbarProps} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">{companiesResults}</div>
-          <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-ish-border bg-white lg:block">
+          <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-brand-border bg-white lg:block">
             {view === "companies" && primaryCompany ? (
               <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
             ) : view === "people" && primaryPerson ? (
               <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
             ) : (
-              <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-ish-ink-faint">
+              <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-brand-ink-faint">
                 {view === "companies"
                   ? "Click a company tile to see details"
                   : "Click a lead card to see their profile"}

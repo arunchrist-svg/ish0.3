@@ -26,7 +26,7 @@ function StrengthDots({ strength = 1 }: { strength?: number }) {
       {[1, 2, 3, 4].map((n) => (
         <span
           key={n}
-          className={`size-1 rounded-full ${n <= strength ? "bg-ish-green" : "bg-ish-green/25"}`}
+          className={`size-1 rounded-full ${n <= strength ? "bg-brand-green" : "bg-brand-green/25"}`}
         />
       ))}
     </span>
@@ -38,13 +38,13 @@ export function BottomCards({ record, onOpenAnalytics }: Props) {
     <>
       <PanelCard tone="pink">
         <SectionHeader title="Gifting Intelligence" size="card" className="mb-3" />
-        <div className="text-[12.5px] leading-relaxed text-ish-ink-soft">
+        <div className="text-[12.5px] leading-relaxed text-brand-ink-soft">
           {record.giftingIntelligence || "No intelligence gathered yet. Researcher will populate this."}
         </div>
       </PanelCard>
       <PanelCard tone="yellow">
         <SectionHeader title="Timeline" size="card" className="mb-3" />
-        <div className="text-xs text-ish-ink-soft">No activity logged yet — sequence starts on first contact.</div>
+        <div className="text-xs text-brand-ink-soft">No activity logged yet — sequence starts on first contact.</div>
       </PanelCard>
       <PanelCard tone="green">
         <SectionHeader
@@ -59,10 +59,10 @@ export function BottomCards({ record, onOpenAnalytics }: Props) {
         />
         {record.network.length === 0 ? (
           <div className="space-y-2">
-            <div className="text-[12px] text-ish-ink-faint">No network data yet.</div>
+            <div className="text-[12px] text-brand-ink-faint">No network data yet.</div>
             <Link
               href="/settings?tab=integrations"
-              className="inline-block text-[12px] font-semibold text-ish-green underline-offset-2 hover:underline"
+              className="inline-block text-[12px] font-semibold text-brand-green underline-offset-2 hover:underline"
             >
               Connect LinkedIn &amp; import connections
             </Link>
@@ -72,12 +72,12 @@ export function BottomCards({ record, onOpenAnalytics }: Props) {
             <div key={`${person.name}-${i}`} className="mb-2.5 flex items-center gap-2.5">
               <IshAvatar name={person.name} index={i + 1} size={34} />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-bold text-ish-ink">{person.name}</div>
-                <div className="truncate text-[11px] text-ish-ink-faint">
+                <div className="truncate text-[13px] font-bold text-brand-ink">{person.name}</div>
+                <div className="truncate text-[11px] text-brand-ink-faint">
                   {person.relationship ?? person.email ?? "—"}
                 </div>
                 {person.connectorName && person.connectorName !== "CRM" && (
-                  <div className="truncate text-[10px] text-ish-ink-faint">via {person.connectorName}</div>
+                  <div className="truncate text-[10px] text-brand-ink-faint">via {person.connectorName}</div>
                 )}
               </div>
               <StrengthDots strength={person.strength} />

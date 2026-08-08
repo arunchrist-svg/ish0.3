@@ -14,7 +14,7 @@ const RECORD = {
   leadSource:"LinkedIn",
   rating:"Warm",
   status:"New",
-  owner:"ISH Cluster Mgr",
+  owner:"Account Owner",
   tags:["Lead","Gifting Signal"],
   contact: {
     topic:"500 Diwali Gift Boxes — Pure Ghee Mithai",

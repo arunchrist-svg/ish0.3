@@ -13,8 +13,11 @@ export type CompanyOverview = {
   corporateMilestones?: string[];
   complianceRequirements?: string;
   pastGiftingBrands?: PastGiftingBrand[];
+  /** Preferred field name after white-label rename. */
+  budgetBand?: string;
+  /** @deprecated Prefer budgetBand. Kept for LLM JSON / cached overviews. */
   giftBudget?: string;
-  giftScore?: number;
+  fitScore?: number;
   intelligenceNotes?: string;
   confidence?: "high" | "medium" | "low";
   source?: string;
@@ -27,8 +30,10 @@ export type CompanyOverviewInput = {
   domain?: string;
   website?: string;
   employees?: string;
+  budgetBand?: string;
+  /** @deprecated Prefer budgetBand */
   giftBudget?: string;
-  giftScore?: number;
+  fitScore?: number;
   intelligenceNotes?: string;
   accountId?: string;
   force?: boolean;
@@ -50,4 +55,8 @@ export function emptyOverview(): CompanyOverview {
 export function displayValue(value?: string | number | null): string {
   if (value === undefined || value === null || value === "") return "—";
   return String(value);
+}
+
+export function resolveBudgetBand(o?: Pick<CompanyOverview, "budgetBand" | "giftBudget"> | null): string | undefined {
+  return o?.budgetBand?.trim() || o?.giftBudget?.trim() || undefined;
 }

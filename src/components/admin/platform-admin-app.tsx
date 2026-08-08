@@ -22,7 +22,7 @@ type TenantRow = {
 };
 
 const inputClass =
-  "w-full rounded-xl border border-ish-border/60 bg-white/80 px-4 py-2.5 text-[13px] shadow-[var(--shadow-ish-sm)] outline-none transition-all focus:border-ish-stratus-blue/50 focus:ring-2 focus:ring-ish-stratus-blue/20";
+  "w-full rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] shadow-[var(--shadow-brand-sm)] outline-none transition-all focus:border-brand-stratus-blue/50 focus:ring-2 focus:ring-brand-stratus-blue/20";
 
 export function PlatformAdminApp() {
   const [tenants, setTenants] = useState<TenantRow[]>([]);
@@ -112,7 +112,7 @@ export function PlatformAdminApp() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-ish-canvas">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-brand-canvas">
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 md:px-10">
         <div className="mx-auto max-w-3xl">
           <SettingsHero
@@ -123,7 +123,7 @@ export function PlatformAdminApp() {
               <Button
                 type="button"
                 onClick={() => setShowCreate((v) => !v)}
-                className="rounded-full bg-ish-black px-4 py-2 text-[13px] font-semibold text-white"
+                className="rounded-full bg-brand-black px-4 py-2 text-[13px] font-semibold text-white"
               >
                 <Plus className="mr-1.5 inline size-4" />
                 New company
@@ -134,8 +134,8 @@ export function PlatformAdminApp() {
           {lastInviteUrl ? (
             <SettingsGroup title="Owner invite link" footer="Copy and send this link to the account holder. They will set their password and complete onboarding.">
               <div className="flex items-center gap-2 px-4 py-3.5">
-                <span className="flex-1 truncate font-mono text-[12px] text-ish-ink-soft">{lastInviteUrl}</span>
-                <button type="button" onClick={() => copyInvite(lastInviteUrl)} className="flex shrink-0 items-center gap-1 text-[12px] font-semibold text-ish-ink hover:underline">
+                <span className="flex-1 truncate font-mono text-[12px] text-brand-ink-soft">{lastInviteUrl}</span>
+                <button type="button" onClick={() => copyInvite(lastInviteUrl)} className="flex shrink-0 items-center gap-1 text-[12px] font-semibold text-brand-ink hover:underline">
                   <Copy className="size-3.5" /> Copy
                 </button>
               </div>
@@ -154,10 +154,10 @@ export function PlatformAdminApp() {
                   <option value="scale">Scale</option>
                 </select>
                 <div className="flex gap-2 pt-1">
-                  <Button type="submit" disabled={creating} className="rounded-full bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white">
+                  <Button type="submit" disabled={creating} className="rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white">
                     {creating ? "Creating…" : "Create organization"}
                   </Button>
-                  <button type="button" onClick={() => setShowCreate(false)} className="rounded-full px-4 py-2.5 text-[13px] font-medium text-ish-ink-soft hover:text-ish-ink">
+                  <button type="button" onClick={() => setShowCreate(false)} className="rounded-full px-4 py-2.5 text-[13px] font-medium text-brand-ink-soft hover:text-brand-ink">
                     Cancel
                   </button>
                 </div>
@@ -170,30 +170,30 @@ export function PlatformAdminApp() {
             footer="Each row is a customer company (tenant). Use Owner invite when a company has no active owner yet."
           >
             <div className="flex items-center justify-end px-4 pt-3">
-              <button type="button" onClick={() => void loadTenants()} className="flex items-center gap-1.5 text-[12px] font-medium text-ish-ink-soft hover:text-ish-ink">
+              <button type="button" onClick={() => void loadTenants()} className="flex items-center gap-1.5 text-[12px] font-medium text-brand-ink-soft hover:text-brand-ink">
                 <RefreshCw className={cn("size-3.5", loading && "animate-spin")} /> Refresh
               </button>
             </div>
 
             {loading ? (
               <div className="flex items-center justify-center py-16">
-                <Loader2 className="size-6 animate-spin text-ish-ink-soft" />
+                <Loader2 className="size-6 animate-spin text-brand-ink-soft" />
               </div>
             ) : tenants.length === 0 ? (
-              <p className="px-4 py-10 text-center text-[13px] text-ish-ink-faint">No organizations yet. Create your first company above.</p>
+              <p className="px-4 py-10 text-center text-[13px] text-brand-ink-faint">No organizations yet. Create your first company above.</p>
             ) : (
               tenants.map((t, i) => (
                 <div key={t.id}>
                   {i > 0 && <SettingsGroupDivider />}
                   <SettingsRow className="flex-col items-stretch gap-3 sm:flex-row sm:items-center">
                     <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-ish-stratus-blue/10">
-                        <Building2 className="size-4 text-ish-stratus-blue" />
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-stratus-blue/10">
+                        <Building2 className="size-4 text-brand-stratus-blue" />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-[14px] font-semibold text-ish-ink">{t.name}</p>
-                        <p className="font-mono text-[11px] text-ish-ink-soft">{t.slug}</p>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-ish-ink-faint">
+                        <p className="truncate text-[14px] font-semibold text-brand-ink">{t.name}</p>
+                        <p className="font-mono text-[11px] text-brand-ink-soft">{t.slug}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-brand-ink-faint">
                           <span className="capitalize">{t.plan}</span>
                           <span>·</span>
                           <span className="inline-flex items-center gap-1"><Users className="size-3" />{t.memberCount}</span>
@@ -218,7 +218,7 @@ export function PlatformAdminApp() {
                       </div>
                       <div className="flex w-full gap-2 sm:w-auto">
                         <input
-                          className="min-w-0 flex-1 rounded-lg border border-ish-border/60 px-2.5 py-1.5 text-[11px] sm:w-40"
+                          className="min-w-0 flex-1 rounded-lg border border-brand-border/60 px-2.5 py-1.5 text-[11px] sm:w-40"
                           placeholder="Owner email"
                           value={bootstrapEmail[t.id] ?? ""}
                           onChange={(e) => setBootstrapEmail((prev) => ({ ...prev, [t.id]: e.target.value }))}
@@ -226,7 +226,7 @@ export function PlatformAdminApp() {
                         <button
                           type="button"
                           onClick={() => void bootstrapOwner(t.id)}
-                          className="shrink-0 rounded-full bg-ish-app px-3 py-1.5 text-[11px] font-semibold text-ish-ink hover:bg-ish-border/40"
+                          className="shrink-0 rounded-full bg-brand-app px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-brand-border/40"
                         >
                           Owner invite
                         </button>
@@ -242,12 +242,12 @@ export function PlatformAdminApp() {
             <SettingsRow as="div">
               <div className="flex w-full items-center justify-between gap-3">
                 <div>
-                  <p className="text-[14px] font-medium text-ish-ink">View key status</p>
-                  <p className="text-[12px] text-ish-ink-soft">LLM, enrichment, email, and Stripe configuration</p>
+                  <p className="text-[14px] font-medium text-brand-ink">View key status</p>
+                  <p className="text-[12px] text-brand-ink-soft">LLM, enrichment, email, and Stripe configuration</p>
                 </div>
                 <Link
                   href="/settings?tab=ai-usage"
-                  className="inline-flex items-center gap-1 rounded-full bg-ish-black px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-90"
+                  className="inline-flex items-center gap-1 rounded-full bg-brand-black px-3 py-1.5 text-[11px] font-semibold text-white hover:opacity-90"
                 >
                   Open <ExternalLink className="size-3" />
                 </Link>

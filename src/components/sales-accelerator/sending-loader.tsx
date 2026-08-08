@@ -50,42 +50,42 @@ export function SendingLoader({ contactName, contactEmail, className }: Props) {
       aria-label={message}
     >
       <div className="relative mb-6 flex size-[72px] items-center justify-center">
-        <span className="absolute inset-0 rounded-full border border-ish-stratus-blue/35 animate-ish-radar" />
-        <span className="absolute inset-1 rounded-full border border-ish-green/25 animate-ish-radar [animation-delay:0.6s]" />
-        <span className="absolute inset-2 rounded-full border border-ish-yellow/30 animate-ish-radar [animation-delay:1.2s]" />
+        <span className="absolute inset-0 rounded-full border border-brand-stratus-blue/35 animate-brand-radar" />
+        <span className="absolute inset-1 rounded-full border border-brand-green/25 animate-brand-radar [animation-delay:0.6s]" />
+        <span className="absolute inset-2 rounded-full border border-brand-yellow/30 animate-brand-radar [animation-delay:1.2s]" />
 
-        <div className="relative z-10 flex size-11 items-center justify-center rounded-2xl bg-ish-black shadow-[var(--shadow-ish-sm)] animate-ish-float">
+        <div className="relative z-10 flex size-11 items-center justify-center rounded-2xl bg-brand-black shadow-[var(--shadow-brand-sm)] animate-brand-float">
           <Send className="size-5 text-white" strokeWidth={2.25} />
         </div>
 
-        <span className="absolute inset-0 animate-ish-orbit">
-          <span className="absolute left-1/2 top-0 size-1.5 -translate-x-1/2 rounded-full bg-ish-stratus-blue shadow-[0_0_6px_rgba(131,162,219,0.7)]" />
+        <span className="absolute inset-0 animate-brand-orbit">
+          <span className="absolute left-1/2 top-0 size-1.5 -translate-x-1/2 rounded-full bg-brand-stratus-blue shadow-[0_0_6px_rgba(131,162,219,0.7)]" />
         </span>
       </div>
 
-      <p className="text-[15px] font-semibold tracking-tight text-ish-ink">
+      <p className="text-[15px] font-semibold tracking-tight text-brand-ink">
         {message}
         <span className="inline-flex w-[1.1em]">
-          <span className="animate-ish-dot [animation-delay:0ms]">.</span>
-          <span className="animate-ish-dot [animation-delay:180ms]">.</span>
-          <span className="animate-ish-dot [animation-delay:360ms]">.</span>
+          <span className="animate-brand-dot [animation-delay:0ms]">.</span>
+          <span className="animate-brand-dot [animation-delay:180ms]">.</span>
+          <span className="animate-brand-dot [animation-delay:360ms]">.</span>
         </span>
       </p>
 
-      <div className="mt-4 h-1 w-44 overflow-hidden rounded-full bg-ish-border">
-        <div className="h-full w-2/5 rounded-full bg-gradient-to-r from-ish-stratus-blue via-ish-green to-ish-yellow animate-ish-shimmer-bar" />
+      <div className="mt-4 h-1 w-44 overflow-hidden rounded-full bg-brand-border">
+        <div className="h-full w-2/5 rounded-full bg-gradient-to-r from-brand-stratus-blue via-brand-green to-brand-yellow animate-brand-shimmer-bar" />
       </div>
 
       <p
         key={hintIndex}
-        className="mt-3 flex items-center gap-1.5 text-[12px] text-ish-ink-faint animate-d365-in"
+        className="mt-3 flex items-center gap-1.5 text-[12px] text-brand-ink-faint animate-d365-in"
       >
-        <CalendarClock className="size-3 shrink-0 text-ish-stratus-blue" strokeWidth={2.5} />
+        <CalendarClock className="size-3 shrink-0 text-brand-stratus-blue" strokeWidth={2.5} />
         {hints[hintIndex]}
       </p>
 
-      <p className="mt-4 flex items-center gap-1.5 text-[11px] font-medium text-ish-ink-soft">
-        <Mail className="size-3 text-ish-ink-faint" />
+      <p className="mt-4 flex items-center gap-1.5 text-[11px] font-medium text-brand-ink-soft">
+        <Mail className="size-3 text-brand-ink-faint" />
         Sequence started
       </p>
     </div>

@@ -30,7 +30,7 @@ function CityChip({
 
   return (
     <span
-      className="flex shrink-0 items-center gap-1 rounded-full bg-ish-yellow py-1 pl-1 pr-1.5 text-[11px] font-bold text-ish-ink shadow-[var(--shadow-ish-yellow-sm)]"
+      className="flex shrink-0 items-center gap-1 rounded-full bg-brand-yellow py-1 pl-1 pr-1.5 text-[11px] font-bold text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
       title={city}
     >
       <span className="flex size-5 items-center justify-center rounded-full bg-white/80 text-[11px] leading-none">
@@ -41,7 +41,7 @@ function CityChip({
         type="button"
         onClick={onRemove}
         disabled={removeDisabled}
-        className="flex size-3.5 shrink-0 items-center justify-center rounded-full hover:bg-ish-ink/10 disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex size-3.5 shrink-0 items-center justify-center rounded-full hover:bg-brand-ink/10 disabled:cursor-not-allowed disabled:opacity-40"
         aria-label={`Remove ${city}`}
       >
         <X className="size-2.5" />
@@ -70,26 +70,26 @@ function CityOptionRow({
       disabled={locked}
       className={cn(
         "flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors",
-        selected ? "bg-ish-yellow/35 text-ish-ink" : "text-ish-ink-soft hover:bg-ish-app hover:text-ish-ink",
+        selected ? "bg-brand-yellow/35 text-brand-ink" : "text-brand-ink-soft hover:bg-brand-app hover:text-brand-ink",
         locked && "cursor-not-allowed opacity-70",
       )}
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-base shadow-[var(--shadow-ish-sm)]">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-white text-base shadow-[var(--shadow-brand-sm)]">
         {meta.icon}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-center gap-2">
-          <span className="rounded-md bg-ish-app px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-ish-ink">
+          <span className="rounded-md bg-brand-app px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-brand-ink">
             {meta.initials}
           </span>
-          <span className="truncate text-[12.5px] font-semibold text-ish-ink">{city}</span>
+          <span className="truncate text-[12.5px] font-semibold text-brand-ink">{city}</span>
         </span>
-        <span className="truncate text-[10.5px] text-ish-ink-faint">{meta.tagline}</span>
+        <span className="truncate text-[10.5px] text-brand-ink-faint">{meta.tagline}</span>
       </span>
       <span
         className={cn(
           "flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors",
-          selected ? "border-ish-ink bg-ish-yellow text-ish-ink" : "border-ish-border bg-white text-transparent",
+          selected ? "border-brand-ink bg-brand-yellow text-brand-ink" : "border-brand-border bg-white text-transparent",
         )}
       >
         {selected ? <Check className="size-3" strokeWidth={2.5} /> : null}
@@ -149,7 +149,7 @@ export function CitySelector({ cities, onCitiesChange, minSelection = 1, classNa
 
   return (
     <div className={cn("flex min-w-0 items-center", className)}>
-      <MapPin className="mr-1.5 size-4 shrink-0 text-ish-ink-soft" aria-hidden />
+      <MapPin className="mr-1.5 size-4 shrink-0 text-brand-ink-soft" aria-hidden />
 
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         {cities.length > 0 ? (
@@ -162,14 +162,14 @@ export function CitySelector({ cities, onCitiesChange, minSelection = 1, classNa
             />
           ))
         ) : (
-          <span className="shrink-0 text-[11.5px] font-medium text-ish-ink-faint">No cities</span>
+          <span className="shrink-0 text-[11.5px] font-medium text-brand-ink-faint">No cities</span>
         )}
 
         <DropdownMenu open={open} onOpenChange={setOpen}>
           <DropdownMenuTrigger
             className={cn(
-              "flex shrink-0 items-center gap-1 rounded-full border border-ish-border bg-white px-2.5 py-1 text-[11.5px] font-semibold text-ish-ink shadow-[var(--shadow-ish-sm)] transition-colors hover:bg-ish-app",
-              cities.length === 0 && "border-dashed text-ish-ink-soft",
+              "flex shrink-0 items-center gap-1 rounded-full border border-brand-border bg-white px-2.5 py-1 text-[11.5px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-app",
+              cities.length === 0 && "border-dashed text-brand-ink-soft",
             )}
           >
             {cities.length === 0 ? (
@@ -186,29 +186,29 @@ export function CitySelector({ cities, onCitiesChange, minSelection = 1, classNa
             )}
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-[320px] p-0">
-            <div className="border-b border-ish-border p-2.5">
-              <div className="flex items-center gap-2 rounded-lg border border-ish-border bg-ish-app px-2.5 py-1.5">
-                <Search className="size-3.5 shrink-0 text-ish-ink-faint" />
+            <div className="border-b border-brand-border p-2.5">
+              <div className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-app px-2.5 py-1.5">
+                <Search className="size-3.5 shrink-0 text-brand-ink-faint" />
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search by name or code…"
-                  className="min-w-0 flex-1 bg-transparent text-[12px] text-ish-ink outline-none placeholder:text-ish-ink-faint"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
                 />
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={selectAllVisible}
-                  className="text-[11px] font-semibold text-ish-ink-soft hover:text-ish-ink"
+                  className="text-[11px] font-semibold text-brand-ink-soft hover:text-brand-ink"
                 >
                   Select visible
                 </button>
                 <button
                   type="button"
                   onClick={clearAll}
-                  className="text-[11px] font-semibold text-ish-ink-soft hover:text-ish-ink"
+                  className="text-[11px] font-semibold text-brand-ink-soft hover:text-brand-ink"
                 >
                   Reset
                 </button>
@@ -217,11 +217,11 @@ export function CitySelector({ cities, onCitiesChange, minSelection = 1, classNa
 
             <div className="max-h-[320px] overflow-y-auto p-2">
               {filteredGroups.length === 0 ? (
-                <p className="px-2 py-4 text-center text-[12px] text-ish-ink-faint">No cities match your search.</p>
+                <p className="px-2 py-4 text-center text-[12px] text-brand-ink-faint">No cities match your search.</p>
               ) : (
                 filteredGroups.map((group) => (
                   <div key={group.label} className="mb-3 last:mb-0">
-                    <div className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wide text-ish-ink-faint">
+                    <div className="mb-1 px-1 text-[10px] font-bold uppercase tracking-wide text-brand-ink-faint">
                       {group.label}
                     </div>
                     <div className="flex flex-col gap-1">

@@ -283,10 +283,10 @@ function SettingsAppInner() {
             : !dirty || saving || !config
         }
         className={cn(
-          "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold shadow-[var(--shadow-ish-sm)] transition-all lg:px-4 lg:py-2",
+          "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all lg:px-4 lg:py-2",
           (activeTab === "email" ? (emailDirty || smtpPassDraft.trim() || resendApiKeyDraft.trim()) && emailConfig : dirty && config) && !saving
-            ? "bg-ish-black text-white hover:opacity-90"
-            : "cursor-not-allowed bg-white/60 text-ish-ink-faint opacity-60",
+            ? "bg-brand-black text-white hover:opacity-90"
+            : "cursor-not-allowed bg-white/60 text-brand-ink-faint opacity-60",
         )}
       >
         {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
@@ -295,7 +295,7 @@ function SettingsAppInner() {
     ) : null;
 
   const settingsList = (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-ish-canvas lg:hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-brand-canvas lg:hidden">
       <MobileHeader title="Settings" subtitle="Workspace preferences" largeTitle />
       <div className="ish-page-padding flex-1 overflow-y-auto py-4">
         <ListGroup>
@@ -344,7 +344,7 @@ function SettingsAppInner() {
                 );
               })()}
             </div>
-          <div key={activeTab} className="animate-ish-tab-in">
+          <div key={activeTab} className="animate-brand-tab-in">
           {activeTab === "enrichment" && (
             <EnrichmentTab
               config={config}
@@ -364,7 +364,7 @@ function SettingsAppInner() {
           {activeTab === "team" && <TeamTab />}
 
           {activeTab === "integrations" && (
-            <Suspense fallback={<div className="py-12 text-center text-ish-ink-faint">Loading…</div>}>
+            <Suspense fallback={<div className="py-12 text-center text-brand-ink-faint">Loading…</div>}>
               <LinkedInIntegration />
             </Suspense>
           )}
@@ -394,7 +394,7 @@ function SettingsAppInner() {
 
 export function SettingsApp() {
   return (
-    <Suspense fallback={<div className="min-w-0 flex-1 p-8 text-ish-ink-faint">Loading settings…</div>}>
+    <Suspense fallback={<div className="min-w-0 flex-1 p-8 text-brand-ink-faint">Loading settings…</div>}>
       <SettingsAppInner />
     </Suspense>
   );

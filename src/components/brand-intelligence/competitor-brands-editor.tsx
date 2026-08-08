@@ -38,14 +38,14 @@ export function CompetitorBrandsEditor({
           {brands.map((brand) => (
             <li
               key={brand}
-              className="flex items-center justify-between gap-3 rounded-xl border border-ish-border/70 bg-white/80 px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-xl border border-brand-border/70 bg-white/80 px-3 py-2"
             >
-              <span className="text-[13px] text-ish-ink">{brand}</span>
+              <span className="text-[13px] text-brand-ink">{brand}</span>
               <button
                 type="button"
                 onClick={() => removeBrand(brand)}
                 aria-label={`Remove ${brand}`}
-                className="rounded-lg p-1 text-ish-ink-faint transition hover:bg-ish-canvas hover:text-ish-ink"
+                className="rounded-lg p-1 text-brand-ink-faint transition hover:bg-brand-canvas hover:text-brand-ink"
               >
                 <X className="size-3.5" />
               </button>
@@ -53,7 +53,7 @@ export function CompetitorBrandsEditor({
           ))}
         </ul>
       ) : (
-        <p className="text-[12px] text-ish-ink-faint">No competitors yet. Add brands your team wants to track.</p>
+        <p className="text-[12px] text-brand-ink-faint">No competitors yet. Add brands your team wants to track.</p>
       )}
 
       <div className="flex gap-2">
@@ -67,7 +67,7 @@ export function CompetitorBrandsEditor({
             }
           }}
           placeholder={placeholder}
-          className="min-w-0 flex-1 rounded-xl border border-ish-border/70 bg-white/80 px-3 py-2 text-[13px] text-ish-ink outline-none focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)]"
+          className="min-w-0 flex-1 rounded-xl border border-brand-border/70 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)]"
         />
         <button
           type="button"
@@ -76,8 +76,8 @@ export function CompetitorBrandsEditor({
           className={cn(
             "inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition",
             draft.trim()
-              ? "bg-ish-black text-white hover:opacity-90"
-              : "bg-ish-canvas text-ish-ink-faint",
+              ? "bg-brand-black text-white hover:opacity-90"
+              : "bg-brand-canvas text-brand-ink-faint",
           )}
         >
           <Plus className="size-3.5" />

@@ -61,7 +61,7 @@ export function PersonTile({
       {isSelected && selectable && (
         <span
           aria-hidden
-          className="absolute right-3 top-3 z-10 flex size-5 items-center justify-center rounded-full bg-white/80 text-ish-ink shadow-sm"
+          className="absolute right-3 top-3 z-10 flex size-5 items-center justify-center rounded-full bg-white/80 text-brand-ink shadow-sm"
         >
           <Check className="size-3" strokeWidth={2.5} />
         </span>
@@ -71,15 +71,15 @@ export function PersonTile({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="truncate text-[13.5px] font-bold text-ish-ink">{person.name}</span>
+          <span className="truncate text-[13.5px] font-bold text-brand-ink">{person.name}</span>
           {person.isKeyDecisionMaker && (
-            <span className="shrink-0 rounded-[5px] bg-ish-black px-1.5 py-0.5 text-[8.5px] font-bold tracking-wide text-white">
+            <span className="shrink-0 rounded-[5px] bg-brand-black px-1.5 py-0.5 text-[8.5px] font-bold tracking-wide text-white">
               KEY
             </span>
           )}
         </div>
-        <div className="mt-0.5 truncate text-[11.5px] text-ish-ink-soft">{person.title}</div>
-        <div className="mt-0.5 text-[10.5px] text-ish-ink-faint">{person.department} · {person.seniority}</div>
+        <div className="mt-0.5 truncate text-[11.5px] text-brand-ink-soft">{person.title}</div>
+        <div className="mt-0.5 text-[10.5px] text-brand-ink-faint">{person.department} · {person.seniority}</div>
       </div>
 
       {selectable && (
@@ -92,8 +92,8 @@ export function PersonTile({
           className={cn(
             "ish-scout-select-cta flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all active:scale-95",
             isSelected
-              ? "text-ish-ink"
-              : "border border-ish-border bg-white/60 text-ish-ink-soft hover:border-ish-ink-soft hover:text-ish-ink",
+              ? "text-brand-ink"
+              : "border border-brand-border bg-white/60 text-brand-ink-soft hover:border-brand-ink-soft hover:text-brand-ink",
           )}
         >
           {isSelected ? (

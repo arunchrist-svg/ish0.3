@@ -90,7 +90,7 @@ export async function runSequencer(): Promise<{
 
       if (!generatedOutreach) throw new Error("No outreach draft for follow-up");
 
-      const subject = generatedOutreach.subjectA ?? `Re: Diwali gifting for ${account.name}`;
+      const subject = generatedOutreach.subjectA ?? `Re: Outreach for ${account.name}`;
       const body = generatedOutreach.emailBody ?? "";
 
       const quality = await evaluateOutreachDraft({
@@ -98,7 +98,7 @@ export async function runSequencer(): Promise<{
         emailBody: body,
         contact: { name: contact.name, firstName: contact.firstName, title: contact.title },
         account,
-        giftingHook: research?.giftingHook,
+        outreachHook: research?.outreachHook,
         sequencePosition: generatedOutreach.sequencePosition ?? 2,
       });
 

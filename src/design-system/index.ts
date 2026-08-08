@@ -1,5 +1,5 @@
 /**
- * ISH Design System — single import surface
+ * Nebula Design System — single import surface
  *
  * @example
  * import { CircleButton, PanelCard, Button, text } from "@/design-system";

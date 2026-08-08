@@ -9,8 +9,8 @@ import {
 
 describe("writer-plan", () => {
   it("detects missing research fields", () => {
-    expect(getResearchQualityGaps({ giftingHook: "", decisionChain: [] })).toEqual([
-      "giftingHook",
+    expect(getResearchQualityGaps({ outreachHook: "", decisionChain: [] })).toEqual([
+      "outreachHook",
       "decisionChain",
     ]);
   });
@@ -18,14 +18,14 @@ describe("writer-plan", () => {
   it("passes when research is complete", () => {
     expect(() =>
       assertResearchReadyForWriter({
-        giftingHook: "Diwali hampers for Bangalore IT teams",
+        outreachHook: "Diwali hampers for Bangalore IT teams",
         decisionChain: ["Priya Sharma"],
       }),
     ).not.toThrow();
   });
 
   it("throws ResearchNotReadyError when hook missing", () => {
-    expect(() => assertResearchReadyForWriter({ giftingHook: "", decisionChain: ["x"] })).toThrow(
+    expect(() => assertResearchReadyForWriter({ outreachHook: "", decisionChain: ["x"] })).toThrow(
       ResearchNotReadyError,
     );
   });

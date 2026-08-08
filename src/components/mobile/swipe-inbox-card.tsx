@@ -45,17 +45,17 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
 
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <IshAvatar name={row.contactName} index={index} size={48} className="shadow-ish-sm ring-2 ring-white" />
+          <IshAvatar name={row.contactName} index={index} size={48} className="shadow-brand-sm ring-2 ring-white" />
 
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <h3 className="truncate text-[16px] font-bold tracking-tight text-ish-ink">{row.contactName}</h3>
-                <p className="truncate text-[13px] font-medium text-ish-ink-soft">{row.companyName}</p>
+                <h3 className="truncate text-[16px] font-bold tracking-tight text-brand-ink">{row.contactName}</h3>
+                <p className="truncate text-[13px] font-medium text-brand-ink-soft">{row.companyName}</p>
               </div>
               <Link
                 href={href}
-                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-ish-ink-soft shadow-ish-sm ring-1 ring-ish-border/50 active:scale-95"
+                className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/80 text-brand-ink-soft shadow-brand-sm ring-1 ring-brand-border/50 active:scale-95"
                 aria-label="Open lead"
               >
                 <ChevronRight className="size-4" />
@@ -64,18 +64,18 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
 
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {isReply ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-ish-pink-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ish-stratus-salmon ring-1 ring-ish-stratus-salmon/20">
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/20">
                   <Sparkles className="size-3" />
                   Hot reply
                 </span>
               ) : null}
               {followUp ? (
-                <span className="inline-flex rounded-full bg-ish-green-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ish-stratus-blue ring-1 ring-ish-stratus-blue/20">
+                <span className="inline-flex rounded-full bg-brand-green-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-stratus-blue ring-1 ring-brand-stratus-blue/20">
                   Follow-up{row.followUpSequenceDay != null ? ` · Day ${row.followUpSequenceDay}` : ""}
                 </span>
               ) : null}
               {!isReply && !followUp ? (
-                <span className="inline-flex rounded-full bg-ish-yellow-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-ish-ink/70 ring-1 ring-ish-stratus-yellow/30">
+                <span className="inline-flex rounded-full bg-brand-yellow-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-ink/70 ring-1 ring-brand-stratus-yellow/30">
                   Needs review
                 </span>
               ) : null}
@@ -85,11 +85,11 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
 
         <div className="ish-inbox-preview mt-3 px-3.5 py-3">
           {row.draftSubject ? (
-            <p className="line-clamp-2 text-[14px] font-bold leading-snug text-ish-ink">{row.draftSubject}</p>
+            <p className="line-clamp-2 text-[14px] font-bold leading-snug text-brand-ink">{row.draftSubject}</p>
           ) : null}
           <p
             className={cn(
-              "line-clamp-3 text-[13px] leading-relaxed text-ish-ink-soft",
+              "line-clamp-3 text-[13px] leading-relaxed text-brand-ink-soft",
               row.draftSubject && "mt-1.5",
             )}
           >
@@ -98,9 +98,9 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
         </div>
 
         {qualityBlocked ? (
-          <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-ish-stratus-yellow/40 bg-gradient-to-br from-ish-yellow-soft/90 to-white px-3.5 py-3 shadow-ish-yellow-sm">
+          <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-brand-stratus-yellow/40 bg-gradient-to-br from-brand-yellow-soft/90 to-white px-3.5 py-3 shadow-brand-yellow-sm">
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
-            <p className="text-[13px] font-medium leading-snug text-ish-ink">
+            <p className="text-[13px] font-medium leading-snug text-brand-ink">
               {row.revisionTimeout
                 ? "Writer timed out before quality passed."
                 : `Quality scores are low (inbox ${row.deliverabilityScore ?? "?"}, rubric ${row.rubricTotal ?? "?"}).`}
@@ -117,7 +117,7 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
               onClick={() => onApprove?.(row)}
               className="ish-inbox-btn-approve ish-touch-target flex h-12 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold active:scale-[0.98] disabled:opacity-50"
             >
-              <Check className="size-4 text-ish-stratus-blue" strokeWidth={2.5} />
+              <Check className="size-4 text-brand-stratus-blue" strokeWidth={2.5} />
               Approve
             </button>
             <button

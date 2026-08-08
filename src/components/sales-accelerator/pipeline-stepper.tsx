@@ -13,8 +13,8 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
         className={cn(
           "flex items-center gap-1.5 whitespace-nowrap rounded-[14px] text-[11px] font-semibold lg:gap-2 lg:rounded-[20px] lg:text-[12.5px]",
           active
-            ? "bg-ish-black px-2.5 py-1.5 text-white lg:px-[18px] lg:py-2.5"
-            : "bg-white/50 px-2 py-1.5 text-ish-ink-soft lg:px-3.5 lg:py-2.5",
+            ? "bg-brand-black px-2.5 py-1.5 text-white lg:px-[18px] lg:py-2.5"
+            : "bg-white/50 px-2 py-1.5 text-brand-ink-soft lg:px-3.5 lg:py-2.5",
         )}
       >
         {active ? (
@@ -26,7 +26,7 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
         )}
         {label}
       </div>
-      {!isLast && <div className="mx-1 h-px w-3 shrink-0 bg-ish-ink/10 lg:mx-2 lg:w-5" />}
+      {!isLast && <div className="mx-1 h-px w-3 shrink-0 bg-brand-ink/10 lg:mx-2 lg:w-5" />}
     </div>
   );
 }

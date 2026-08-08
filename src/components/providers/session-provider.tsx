@@ -28,6 +28,7 @@ export type SessionData = {
   mustChangePassword: boolean;
   permissions: PermissionFlags;
   sendMode: string;
+  emailConfigured?: boolean;
   credits: number;
 };
 

@@ -306,7 +306,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           type="button"
           disabled={!canWrite || generating || draftingReply}
           onClick={() => void handleDraftReply()}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-brand-black px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           <Sparkles className="size-3" />
           {draftingReply ? "Writing…" : replyDraft ? "Regenerate reply" : "Generate reply"}
@@ -343,7 +343,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           {showWriterControl ? (
             <div
               className={cn(
-                "inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-ish-border bg-white shadow-[var(--shadow-ish-sm)]",
+                "inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-brand-border bg-white shadow-[var(--shadow-brand-sm)]",
                 (!canWrite || generating) && "opacity-40",
               )}
             >
@@ -352,12 +352,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   <DropdownMenuTrigger
                     disabled={!canWrite || generating}
                     className={cn(
-                      "flex h-full items-center gap-1 border-r border-ish-border/80 px-2.5 text-[11px] font-semibold text-ish-ink outline-none",
-                      "hover:bg-ish-canvas focus-visible:ring-2 focus-visible:ring-ish-black/20 disabled:cursor-not-allowed",
+                      "flex h-full items-center gap-1 border-r border-brand-border/80 px-2.5 text-[11px] font-semibold text-brand-ink outline-none",
+                      "hover:bg-brand-canvas focus-visible:ring-2 focus-visible:ring-brand-black/20 disabled:cursor-not-allowed",
                     )}
                   >
                     <span>{activeTemplate.shortLabel}</span>
-                    <ChevronDown className="size-3 text-ish-ink-faint" />
+                    <ChevronDown className="size-3 text-brand-ink-faint" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-[220px]">
                     <DropdownMenuRadioGroup
@@ -371,7 +371,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                         <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
                           <div>
                             <div className="font-semibold">{template.label}</div>
-                            <div className="text-[11px] text-ish-ink-faint">{template.description}</div>
+                            <div className="text-[11px] text-brand-ink-faint">{template.description}</div>
                           </div>
                         </DropdownMenuRadioItem>
                       ))}
@@ -383,7 +383,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                 type="button"
                 disabled={!canWrite || generating}
                 onClick={() => void handleGenerate()}
-                className="flex h-full items-center gap-1.5 bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:cursor-not-allowed"
+                className="flex h-full items-center gap-1.5 bg-brand-black px-3 text-[11px] font-semibold text-white hover:bg-brand-black/90 disabled:cursor-not-allowed"
               >
                 <FileText className="size-3" />
                 {regenerateLabel}
@@ -398,14 +398,14 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             variant="ghost"
             size="sm"
             disabled={advancing}
-            className="h-7 shrink-0 rounded-full bg-ish-black px-3 text-[11px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
+            className="h-7 shrink-0 rounded-full bg-brand-black px-3 text-[11px] font-semibold text-white hover:bg-brand-black/90 disabled:opacity-40"
             onClick={() => void handleMarkTastingSent()}
           >
             {advancing ? "Updating…" : "Mark tasting sent"}
           </Button>
           <Link
             href="/email?tab=active"
-            className="shrink-0 text-[11px] font-semibold text-ish-stratus-blue underline-offset-2 hover:underline lg:inline-flex lg:h-7 lg:items-center lg:rounded-full lg:border lg:border-ish-border lg:bg-white lg:px-3 lg:text-ish-ink lg:no-underline lg:hover:bg-ish-canvas"
+            className="shrink-0 text-[11px] font-semibold text-brand-stratus-blue underline-offset-2 hover:underline lg:inline-flex lg:h-7 lg:items-center lg:rounded-full lg:border lg:border-brand-border lg:bg-white lg:px-3 lg:text-brand-ink lg:no-underline lg:hover:bg-brand-canvas"
           >
             View in Outreach Queue
           </Link>
@@ -415,7 +415,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   );
 
   return (
-    <div className="animate-ish-tab-in space-y-3 px-0 py-1 lg:space-y-4 lg:px-[22px] lg:py-[18px]">
+    <div className="animate-brand-tab-in space-y-3 px-0 py-1 lg:space-y-4 lg:px-[22px] lg:py-[18px]">
       <OutreachJourneyPanel
         thread={thread}
         statusSubtitle={statusSubtitle}
@@ -427,9 +427,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       />
 
       {generating ? (
-        <div className="border-y border-ish-border bg-white py-10 lg:mx-0 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-brand-border bg-white py-10 lg:mx-0 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-brand-sm)]">
           {streamMessage ? (
-        <div className="mx-3 rounded-xl bg-ish-yellow-soft px-3 py-2.5 text-[13px] font-medium text-ish-ink lg:mx-4 lg:px-4 lg:py-3">{streamMessage}</div>
+        <div className="mx-3 rounded-xl bg-brand-yellow-soft px-3 py-2.5 text-[13px] font-medium text-brand-ink lg:mx-4 lg:px-4 lg:py-3">{streamMessage}</div>
       ) : null}
       <WritingLoader
             contactName={lead.name}
@@ -438,51 +438,51 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           />
         </div>
       ) : canWrite && !hasDraft && !generating ? (
-        <div className="border-y border-dashed border-ish-stratus-blue/30 bg-gradient-to-br from-ish-canvas/80 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-ish-sm)]">
-          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-ish-yellow-soft">
-            <Sparkles className="size-5 text-ish-ink" />
+        <div className="border-y border-dashed border-brand-stratus-blue/30 bg-gradient-to-br from-brand-canvas/80 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-brand-sm)]">
+          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-yellow-soft">
+            <Sparkles className="size-5 text-brand-ink" />
           </div>
-          <p className="text-[15px] font-bold text-ish-ink">Start your outreach sequence</p>
-          <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
+          <p className="text-[15px] font-bold text-brand-ink">Start your outreach sequence</p>
+          <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
             AI will write 3 emails for {lead.name ?? "this contact"} using the{" "}
-            <span className="font-semibold text-ish-ink">{activeTemplate.shortLabel}</span> template.
+            <span className="font-semibold text-brand-ink">{activeTemplate.shortLabel}</span> template.
           </p>
           <button
             type="button"
             disabled={!canWrite || generating}
             onClick={() => void handleGenerate()}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             <Sparkles className="size-4" />
             Write 3 emails
           </button>
         </div>
       ) : needsReplyDraft ? (
-        <div className="border-y border-ish-stratus-blue/25 bg-gradient-to-br from-ish-green-soft/40 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-ish-sm)]">
-          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-ish-green-soft">
-            <Sparkles className="size-5 text-ish-stratus-blue" />
+        <div className="border-y border-brand-stratus-blue/25 bg-gradient-to-br from-brand-green-soft/40 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-brand-sm)]">
+          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-green-soft">
+            <Sparkles className="size-5 text-brand-stratus-blue" />
           </div>
-          <p className="text-[15px] font-bold text-ish-ink">They replied</p>
+          <p className="text-[15px] font-bold text-brand-ink">They replied</p>
           {thread?.inboundSnippet ? (
-            <p className="mx-auto mt-3 max-w-lg rounded-[14px] bg-white/80 px-4 py-3 text-left text-[12px] italic leading-relaxed text-ish-ink-soft ring-1 ring-ish-border/50">
+            <p className="mx-auto mt-3 max-w-lg rounded-[14px] bg-white/80 px-4 py-3 text-left text-[12px] italic leading-relaxed text-brand-ink-soft ring-1 ring-brand-border/50">
               &ldquo;{thread.inboundSnippet}&rdquo;
             </p>
           ) : null}
-          <p className="mx-auto mt-3 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
+          <p className="mx-auto mt-3 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
             Generate a smart reply using their message, your original outreach, and gifting context.
           </p>
           <button
             type="button"
             disabled={!canWrite || draftingReply}
             onClick={() => void handleDraftReply()}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-ish-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-ish-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {draftingReply ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
             {draftingReply ? "Writing reply…" : "Generate AI reply"}
           </button>
         </div>
       ) : draftingReply ? (
-        <div className="border-y border-ish-border bg-white py-10 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-ish-sm)]">
+        <div className="border-y border-brand-border bg-white py-10 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-brand-sm)]">
           <WritingLoader contactName={lead.name} companyName={lead.company} sequenceLabel="Drafting reply" />
         </div>
       ) : showComposeZone && isEditableNode && resolvedDraft ? (
@@ -510,16 +510,16 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           />
         </div>
       ) : isEmptyCompose ? (
-        <div className="border-y border-dashed border-ish-stratus-blue/25 bg-ish-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-ish-sm)]">
-          <p className="text-[15px] font-bold text-ish-ink">Ready to write outreach</p>
-          <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-ish-ink-soft">
+        <div className="border-y border-dashed border-brand-stratus-blue/25 bg-brand-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-brand-sm)]">
+          <p className="text-[15px] font-bold text-brand-ink">Ready to write outreach</p>
+          <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
             AI will draft a 3-email sequence for {lead.name || "this contact"}. Pick a template above, then click Write.
           </p>
           <Button
             type="button"
             size="sm"
             disabled={!canWrite || generating}
-            className="mt-5 h-auto rounded-full bg-ish-black px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-ish-black/90 disabled:opacity-40"
+            className="mt-5 h-auto rounded-full bg-brand-black px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-brand-black/90 disabled:opacity-40"
             onClick={() => void handleGenerate()}
           >
             <FileText className="size-3.5" />
@@ -532,7 +532,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto rounded-full bg-ish-black px-4 py-2 text-[12px] font-semibold text-white"
+            className="h-auto rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white"
             onClick={() => void handleGenerate()}
           >
             Draft another reply

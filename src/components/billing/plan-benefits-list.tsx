@@ -26,23 +26,23 @@ export function PlanBenefitsList({ plan, compact = false }: PlanBenefitsListProp
   return (
     <div className={compact ? "mt-3 space-y-2" : "mt-5 space-y-4"}>
       {!compact ? (
-        <p className="text-sm text-ish-ink-soft">{plan.bestFor}</p>
+        <p className="text-sm text-brand-ink-soft">{plan.bestFor}</p>
       ) : null}
 
-      <ul className={`space-y-1.5 text-ish-ink-soft ${compact ? "text-xs" : "text-sm"}`}>
+      <ul className={`space-y-1.5 text-brand-ink-soft ${compact ? "text-xs" : "text-sm"}`}>
         {plan.benefits.map((benefit) => (
           <li key={benefit} className="flex gap-2">
-            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ish-black/70" />
+            <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-brand-black/70" />
             <span>{benefit}</span>
           </li>
         ))}
       </ul>
 
-      <div className={`rounded-xl bg-ish-canvas/80 ${compact ? "p-2.5" : "p-3.5"}`}>
-        <p className={`font-semibold text-ish-ink ${compact ? "text-[11px]" : "text-xs"}`}>
+      <div className={`rounded-xl bg-brand-canvas/80 ${compact ? "p-2.5" : "p-3.5"}`}>
+        <p className={`font-semibold text-brand-ink ${compact ? "text-[11px]" : "text-xs"}`}>
           Monthly capacity with {formatCapacity(plan.includedCredits)} credits
         </p>
-        <ul className={`mt-1.5 space-y-1 text-ish-ink-soft ${compact ? "text-[11px]" : "text-xs"}`}>
+        <ul className={`mt-1.5 space-y-1 text-brand-ink-soft ${compact ? "text-[11px]" : "text-xs"}`}>
           {capacityLines.map((line) => (
             <li key={line}>{line}</li>
           ))}

@@ -37,7 +37,7 @@ export function EnrichmentTab({
 }: Props) {
   if (!config) {
     return (
-      <div className="flex flex-1 items-center justify-center py-24 text-[13px] text-ish-ink-faint">
+      <div className="flex flex-1 items-center justify-center py-24 text-[13px] text-brand-ink-faint">
         <Loader2 className="mr-2 size-4 animate-spin" /> Loading settings…
       </div>
     );
@@ -169,8 +169,8 @@ export function EnrichmentTab({
                 className={cn(
                   "flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold transition-all",
                   scoutVolumeDirty && !savingVolume
-                    ? "bg-ish-black text-white hover:opacity-90"
-                    : "bg-ish-canvas text-ish-ink-faint",
+                    ? "bg-brand-black text-white hover:opacity-90"
+                    : "bg-brand-canvas text-brand-ink-faint",
                 )}
               >
                 {savingVolume ? (
@@ -243,13 +243,13 @@ function SettingsTextRow({
     <>
       {showDivider ? <SettingsGroupDivider /> : null}
       <div className="px-4 py-3">
-        <div className="mb-1.5 text-[13px] font-semibold text-ish-ink">{label}</div>
-        <p className="mb-2 text-[11.5px] text-ish-ink-soft">{desc}</p>
+        <div className="mb-1.5 text-[13px] font-semibold text-brand-ink">{label}</div>
+        <p className="mb-2 text-[11.5px] text-brand-ink-soft">{desc}</p>
         <input
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-xl border border-ish-border/70 bg-white/80 px-3 py-2 text-[13px] text-ish-ink outline-none focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)]"
+          className="w-full rounded-xl border border-brand-border/70 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)]"
         />
       </div>
     </>

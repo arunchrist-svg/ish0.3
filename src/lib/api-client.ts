@@ -603,7 +603,7 @@ export type LeadDetailRecord = {
   tags: string[];
   research?: {
     confidenceTier: string;
-    giftingHook?: string;
+    outreachHook?: string;
     estimatedOrderValue?: string;
     scoreFactors: { label: string; bold: string }[];
     writerPlan?: WriterPlan;
@@ -625,8 +625,8 @@ export type LeadDetailRecord = {
   companyOverview?: CompanyOverview;
   accountId?: string;
   industry?: string;
-  giftScore?: number;
-  giftBudget?: string;
+  fitScore?: number;
+  budgetBand?: string;
   isPinned?: boolean;
 };
 
@@ -805,7 +805,7 @@ export type DirectoryCompany = {
   city: string;
   industry: string;
   employees: string;
-  giftScore: number;
+  fitScore: number;
   domain?: string;
   website?: string;
   companyOverview?: CompanyOverview;
@@ -848,7 +848,7 @@ export type PinnedCompany = {
   industry: string;
   city: string;
   employees: string;
-  giftScore: number;
+  fitScore: number;
   isPinned: boolean;
   updatedAt: string;
 };
@@ -973,13 +973,13 @@ export type {
   GiftIntelResultRow,
   GiftIntelSweepResult,
   SourceTier,
-} from "./gift-intel/types";
+} from "./brand-intel/types";
 
 import type {
   ExtractedGiftIntel,
   GiftIntelSweepResult,
   SourceTier,
-} from "./gift-intel/types";
+} from "./brand-intel/types";
 
 export type GiftIntelConfigView = {
   productCategory: string;
@@ -987,7 +987,7 @@ export type GiftIntelConfigView = {
 };
 
 export async function fetchGiftIntelConfig(): Promise<GiftIntelConfigView> {
-  return get<GiftIntelConfigView>("/api/settings/gift-intel");
+  return get<GiftIntelConfigView>("/api/settings/brand-intel");
 }
 
 export async function runGiftIntelSweep(params: {
@@ -995,14 +995,14 @@ export async function runGiftIntelSweep(params: {
   cities?: string[];
   enabledSourceTiers?: SourceTier[];
 }): Promise<GiftIntelSweepResult> {
-  return post<GiftIntelSweepResult>("/api/agents/gift-intel/run", params);
+  return post<GiftIntelSweepResult>("/api/agents/brand-intel/run", params);
 }
 
 export async function confirmGiftIntelMerge(params: {
   accountId: string;
   extraction: ExtractedGiftIntel;
 }): Promise<{ ok: boolean; accountId: string }> {
-  return post<{ ok: boolean; accountId: string }>("/api/agents/gift-intel/confirm", params);
+  return post<{ ok: boolean; accountId: string }>("/api/agents/brand-intel/confirm", params);
 }
 
 

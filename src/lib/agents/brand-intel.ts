@@ -1,18 +1,18 @@
 import { randomUUID } from "crypto";
 import { callLLM } from "@/lib/llm";
-import { parseGiftIntelExtractions } from "@/lib/agents/schemas/gift-intel-output";
+import { parseGiftIntelExtractions } from "@/lib/agents/schemas/brand-intel-output";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
-import { discoverGiftIntelPosts } from "@/lib/enrichment/gift-intel-search";
+import { discoverGiftIntelPosts } from "@/lib/enrichment/brand-intel-search";
 import { enrichPostsWithOcr } from "@/lib/enrichment/post-image-ocr";
-import { buildGiftIntelSystemPrompt, buildGiftIntelUserPrompt } from "./gift-intel-prompt";
-import { classifyAndMergeExtractions } from "@/lib/gift-intel/merge-accounts";
-import { matchesTargetCity } from "@/lib/gift-intel/city-match";
+import { buildGiftIntelSystemPrompt, buildGiftIntelUserPrompt } from "./brand-intel-prompt";
+import { classifyAndMergeExtractions } from "@/lib/brand-intel/merge-accounts";
+import { matchesTargetCity } from "@/lib/brand-intel/city-match";
 import type {
   ExtractedGiftIntel,
   GiftIntelResultRow,
   GiftIntelSweepParams,
   GiftIntelSweepResult,
-} from "@/lib/gift-intel/types";
+} from "@/lib/brand-intel/types";
 
 const BATCH_SIZE = 5;
 

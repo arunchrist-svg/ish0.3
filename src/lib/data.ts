@@ -71,7 +71,7 @@ export const RECORD: LeadRecord = {
   leadSource: "LinkedIn",
   rating: "Warm",
   status: "New",
-  owner: "ISH Cluster Mgr",
+  owner: "Account Owner",
   tags: ["Lead", "Gifting Signal"],
   contact: {
     firstName: "Rajan",

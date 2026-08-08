@@ -22,7 +22,7 @@ export function BottomTabBar({ pathname, inboxBadge = 0, onMorePress }: BottomTa
 
   return (
     <nav
-      className="ish-mobile-tab-bar fixed inset-x-0 bottom-0 z-40 border-t border-ish-border/40 bg-white/92 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 backdrop-blur-2xl lg:hidden"
+      className="ish-mobile-tab-bar fixed inset-x-0 bottom-0 z-40 border-t border-brand-border/40 bg-white/92 pb-[max(env(safe-area-inset-bottom),6px)] pt-1.5 backdrop-blur-2xl lg:hidden"
       aria-label="Main navigation"
     >
       <div className="mx-auto flex max-w-lg items-stretch justify-around px-1">
@@ -37,18 +37,18 @@ export function BottomTabBar({ pathname, inboxBadge = 0, onMorePress }: BottomTa
               <span
                 className={cn(
                   "relative flex size-9 items-center justify-center rounded-2xl transition-all duration-200",
-                  active && "bg-ish-stratus-blue/12",
+                  active && "bg-brand-stratus-blue/12",
                 )}
               >
                 <Icon
                   className={cn(
                     "size-[22px] transition-colors duration-200",
-                    active ? "text-ish-stratus-blue" : "text-ish-ink-soft",
+                    active ? "text-brand-stratus-blue" : "text-brand-ink-soft",
                   )}
                   strokeWidth={active ? 2.4 : 2}
                 />
                 {badge > 0 ? (
-                  <span className="absolute -right-1.5 -top-1 min-w-[18px] rounded-full bg-ish-stratus-salmon px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white">
+                  <span className="absolute -right-1.5 -top-1 min-w-[18px] rounded-full bg-brand-stratus-salmon px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white">
                     {badge > 99 ? "99+" : badge}
                   </span>
                 ) : null}
@@ -56,7 +56,7 @@ export function BottomTabBar({ pathname, inboxBadge = 0, onMorePress }: BottomTa
               <span
                 className={cn(
                   "mt-0.5 text-[10px] font-semibold",
-                  active ? "text-ish-stratus-blue" : text.caption,
+                  active ? "text-brand-stratus-blue" : text.caption,
                 )}
               >
                 {tab.label}

@@ -79,7 +79,7 @@
       "city": "Bangalore",
       "employees": "500"
     },
-    "giftingHook": "Bangalore campus expansion",
+    "outreachHook": "Bangalore campus expansion",
     "minRubricTotal": 65,
     "minDeliverability": 75
   }

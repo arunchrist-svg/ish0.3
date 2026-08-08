@@ -48,10 +48,10 @@ export function FieldRow({
           <div className="flex min-w-0 items-center gap-1.5">
             <div className={cn(text.body, "truncate text-right")}>{value}</div>
             {showAction && action === "phone" ? (
-              <Phone className="size-3 shrink-0 text-ish-ink-faint" aria-hidden />
+              <Phone className="size-3 shrink-0 text-brand-ink-faint" aria-hidden />
             ) : null}
             {showAction && action === "mail" ? (
-              <Mail className="size-3 shrink-0 text-ish-ink-faint" aria-hidden />
+              <Mail className="size-3 shrink-0 text-brand-ink-faint" aria-hidden />
             ) : null}
           </div>
         </div>
@@ -62,8 +62,8 @@ export function FieldRow({
         <div className={cn("mb-1", text.label)}>{label}</div>
         <div className="flex items-center justify-between">
           <div className={text.body}>{value}</div>
-          {showAction && action === "phone" ? <Phone className="size-3.5 text-ish-ink-faint" /> : null}
-          {showAction && action === "mail" ? <Mail className="size-3.5 text-ish-ink-faint" /> : null}
+          {showAction && action === "phone" ? <Phone className="size-3.5 text-brand-ink-faint" /> : null}
+          {showAction && action === "mail" ? <Mail className="size-3.5 text-brand-ink-faint" /> : null}
         </div>
       </div>
     </div>

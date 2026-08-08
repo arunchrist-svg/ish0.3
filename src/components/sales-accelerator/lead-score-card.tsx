@@ -28,12 +28,12 @@ export function LeadScoreCard({ record, current }: Props) {
         <ScoreGauge score={current.score} size="lg" background />
       </div>
 
-      <Separator className="my-4 bg-ish-border" />
+      <Separator className="my-4 bg-brand-border" />
 
       <div className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-bold leading-none text-ish-ink">Grade {grade}</span>
-          <span className="rounded-lg bg-ish-green/20 px-2.5 py-0.5 text-[11.5px] font-semibold leading-none text-[#1f8050]">
+          <span className="text-[13px] font-bold leading-none text-brand-ink">Grade {grade}</span>
+          <span className="rounded-lg bg-brand-green/20 px-2.5 py-0.5 text-[11.5px] font-semibold leading-none text-[#1f8050]">
             → {record.score.trend}
           </span>
         </div>
@@ -41,8 +41,8 @@ export function LeadScoreCard({ record, current }: Props) {
         <div className="flex flex-col gap-2.5">
           {record.score.factors.map((f, i) => (
             <div key={`${f.label}-${i}`} className="flex items-start gap-2">
-              <TrendingUp className="mt-0.5 size-3.5 shrink-0 text-ish-green" />
-              <div className="text-[12.5px] leading-snug text-ish-ink">
+              <TrendingUp className="mt-0.5 size-3.5 shrink-0 text-brand-green" />
+              <div className="text-[12.5px] leading-snug text-brand-ink">
                 {f.label} <b>{f.bold}</b>
               </div>
             </div>

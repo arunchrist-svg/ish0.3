@@ -10,8 +10,8 @@ export type ScoutCompanyResult = {
   city?: string;
   employees?: string;
   logo?: string;
-  giftScore?: number;
-  giftBudget?: string;
+  fitScore?: number;
+  budgetBand?: string;
   pastGifting?: object[];
   intelNotes?: string;
   revenue?: string;

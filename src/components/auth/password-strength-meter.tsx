@@ -6,14 +6,14 @@ import { cn } from "@/lib/utils";
 const SEGMENT_ACTIVE: Record<Exclude<PasswordStrengthLevel, "empty">, string> = {
   weak: "bg-score-low",
   fair: "bg-score-mid",
-  good: "bg-ish-stratus-blue",
+  good: "bg-brand-stratus-blue",
   strong: "bg-score-high",
 };
 
 const LABEL_COLOR: Record<Exclude<PasswordStrengthLevel, "empty">, string> = {
   weak: "text-score-low",
   fair: "text-score-mid",
-  good: "text-ish-stratus-blue",
+  good: "text-brand-stratus-blue",
   strong: "text-score-high",
 };
 
@@ -34,7 +34,7 @@ export function PasswordStrengthMeter({ password, className }: PasswordStrengthM
           <span
             key={i}
             className={cn(
-              "h-1 flex-1 rounded-full bg-ish-border transition-colors",
+              "h-1 flex-1 rounded-full bg-brand-border transition-colors",
               i < segments && SEGMENT_ACTIVE[level],
             )}
           />

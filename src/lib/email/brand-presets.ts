@@ -1,55 +1,141 @@
 import type { BrandConfig, BrandSlug, CampaignMode } from "@/lib/email/config";
+import {
+  applyVerticalPack,
+  getVerticalPack,
+  packIdFromLegacyBrandSlug,
+  resolveVerticalPackId,
+  VERTICAL_PACK_OPTIONS,
+  VERTICAL_PACKS,
+} from "@/vertical-packs";
+import {
+  resolvePlatformIntent,
+  verticalPackIdForIntent,
+  type PlatformIntent,
+} from "@/lib/brand/platform-intent";
 
+/** UI: vertical packs as one-shot templates (legacy BrandSlug values map to packs). */
 export const BRAND_PRESET_OPTIONS: { value: BrandSlug; label: string; desc: string }[] = [
-  { value: "ish", label: "ISH — Sweets & Gifting", desc: "Mithai, hampers, Diwali corporate gifting" },
-  { value: "prestige", label: "Prestige — Appliances", desc: "Kitchen appliances, bulk employee rewards" },
-  { value: "custom", label: "Custom", desc: "Define your own product catalog and tone" },
+  { value: "custom", label: "Custom / from website", desc: "Define your own product catalog and tone" },
+  {
+    value: "ish",
+    label: VERTICAL_PACKS["gifting-sweets"].label,
+    desc: VERTICAL_PACKS["gifting-sweets"].description,
+  },
+  {
+    value: "prestige",
+    label: VERTICAL_PACKS["gifting-appliances"].label,
+    desc: VERTICAL_PACKS["gifting-appliances"].description,
+  },
 ];
+
+export const VERTICAL_PACK_UI_OPTIONS = VERTICAL_PACK_OPTIONS;
 
 export const CAMPAIGN_MODE_OPTIONS: { value: CampaignMode; label: string; desc: string }[] = [
-  { value: "diwali_gifting", label: "Diwali Gifting", desc: "Seasonal employee gifting, sampling, hampers" },
+  { value: "custom", label: "Custom", desc: "Free-text campaign notes" },
   { value: "mass_ordering", label: "Mass Ordering", desc: "Bulk orders, volume pricing, procurement CTAs" },
   { value: "festival_bundle", label: "Festival Bundle", desc: "Festival combos and limited-time bundles" },
-  { value: "custom", label: "Custom", desc: "Free-text campaign notes" },
+  { value: "diwali_gifting", label: "Diwali Gifting", desc: "Seasonal employee gifting (sweets pack)" },
 ];
 
+/** Campaign modes allowed for the active vertical pack / platform intent. */
+export function campaignModeOptionsForBrand(brand?: Partial<BrandConfig> | null): typeof CAMPAIGN_MODE_OPTIONS {
+  const intent = resolvePlatformIntent(brand?.platformIntent, brand?.verticalPackId ?? brand?.brandSlug);
+  const packId = brand?.verticalPackId ?? verticalPackIdForIntent(intent);
+  const allowed = new Set(getVerticalPack(packId).campaignModes);
+  return CAMPAIGN_MODE_OPTIONS.filter((o) => allowed.has(o.value));
+}
+
+/** @deprecated Use applyVerticalPack. Kept for tests reading legacy shapes. */
 export const BRAND_PRESETS: Record<Exclude<BrandSlug, "custom">, BrandConfig> = {
-  ish: {
-    brandSlug: "ish",
-    brandName: "India Sweet House",
-    vertical: "sweets_gifting",
-    productSummary:
-      "Premium pure-ghee mithai, dry fruit hampers, and curated Diwali gift boxes. Bulk pricing from ₹500/person for 200+ employees. Custom-branded boxes and pan-India delivery.",
-    buyerPersonas: ["HR Director", "HR Manager", "Admin Head", "Procurement Manager"],
-    toneNotes: "Festive but plain. Focus on mithai, hampers, and tasting samples. Mention Diwali timing without hype. Not salesy.",
-  },
-  prestige: {
-    brandSlug: "prestige",
-    brandName: "Prestige",
-    vertical: "appliances",
-    productSummary:
-      "Mixer grinders, induction cooktops, pressure cookers, and kitchen appliance bundles for corporate rewards. Volume pricing for 100+ units. Pan-India warranty and service network.",
-    buyerPersonas: ["HR Director", "Procurement Manager", "Admin Head", "CEO at SMBs"],
-    toneNotes: "Practical and direct. Focus on appliances, employee rewards, warranty, and bulk value. Not flashy or promotional.",
-  },
+  ish: applyVerticalPack("gifting-sweets"),
+  prestige: applyVerticalPack("gifting-appliances"),
 };
 
+/**
+ * Resolve seller brand for runtime. Always returns custom fields.
+ * Legacy ish/prestige slugs hydrate once from their vertical pack when fields are thin.
+ */
 export function resolveBrandConfig(partial?: Partial<BrandConfig>): BrandConfig {
-  const slug = partial?.brandSlug ?? "custom";
   const websiteUrl = partial?.websiteUrl?.trim() || undefined;
   const websiteInsights = partial?.websiteInsights;
-  if (slug === "custom") {
-    return {
-      brandSlug: "custom",
-      brandName: partial?.brandName?.trim() || "Your Company",
-      vertical: partial?.vertical?.trim() || "general",
-      productSummary: partial?.productSummary?.trim() || "",
-      buyerPersonas: partial?.buyerPersonas?.length ? partial.buyerPersonas : ["HR Manager"],
-      toneNotes: partial?.toneNotes,
+  const packId = resolveVerticalPackId(
+    partial?.verticalPackId,
+    partial?.brandSlug,
+  );
+  const platformIntent = resolvePlatformIntent(partial?.platformIntent, packId);
+
+  const legacyPackId = packIdFromLegacyBrandSlug(partial?.brandSlug);
+  const shouldHydrateFromPack =
+    Boolean(legacyPackId) &&
+    (!partial?.productSummary?.trim() || partial.brandSlug === "ish" || partial.brandSlug === "prestige");
+
+  if (shouldHydrateFromPack && legacyPackId) {
+    const applied = applyVerticalPack(legacyPackId, {
+      ...partial,
       websiteUrl,
       websiteInsights,
+    });
+    return {
+      ...applied,
+      brandName: partial?.brandName?.trim() || applied.brandName,
+      productSummary: partial?.productSummary?.trim() || applied.productSummary,
+      vertical: partial?.vertical?.trim() || applied.vertical,
+      buyerPersonas: partial?.buyerPersonas?.length ? partial.buyerPersonas : applied.buyerPersonas,
+      toneNotes: partial?.toneNotes ?? applied.toneNotes,
+      websiteUrl,
+      websiteInsights,
+      brandSlug: "custom",
+      verticalPackId: packId,
+      platformIntent,
     };
   }
-  const preset = BRAND_PRESETS[slug];
-  return { ...preset, ...partial, brandSlug: slug, websiteUrl, websiteInsights };
+
+  return {
+    brandSlug: "custom",
+    verticalPackId: packId,
+    platformIntent,
+    brandName: partial?.brandName?.trim() || "Your Company",
+    vertical: partial?.vertical?.trim() || "general",
+    productSummary: partial?.productSummary?.trim() || "",
+    buyerPersonas: partial?.buyerPersonas?.length ? partial.buyerPersonas : ["HR Manager"],
+    toneNotes: partial?.toneNotes,
+    websiteUrl,
+    websiteInsights,
+  };
+}
+
+/** Apply a UI preset selection as a one-shot pack copy into custom brand. */
+export function brandConfigFromPresetSelection(
+  slug: BrandSlug,
+  overrides?: Partial<BrandConfig>,
+): BrandConfig {
+  const packId = packIdFromLegacyBrandSlug(slug) ?? "general";
+  if (slug === "custom") {
+    return resolveBrandConfig({
+      ...overrides,
+      brandSlug: "custom",
+      verticalPackId: "general",
+      platformIntent: overrides?.platformIntent ?? "general_b2b",
+    });
+  }
+  const platformIntent: PlatformIntent =
+    slug === "ish" ? "corporate_gifting" : "appliances";
+  return applyVerticalPack(packId, { ...overrides, platformIntent });
+}
+
+/** Apply an explicit platform intent (onboarding / Settings). */
+export function brandConfigFromPlatformIntent(
+  intent: PlatformIntent,
+  overrides?: Partial<BrandConfig>,
+): BrandConfig {
+  const packId = verticalPackIdForIntent(intent);
+  if (packId === "general") {
+    return resolveBrandConfig({
+      ...overrides,
+      brandSlug: "custom",
+      verticalPackId: "general",
+      platformIntent: intent,
+    });
+  }
+  return applyVerticalPack(packId, { ...overrides, platformIntent: intent });
 }

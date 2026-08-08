@@ -271,7 +271,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
       enrichmentSource: contact.enrichmentSource,
     },
     contact: { firstName: contactFirstName, title: contact.title },
-    giftingHook: research?.giftingHook,
+    outreachHook: research?.outreachHook,
   };
 
   const rubricParams = {
@@ -283,7 +283,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
       employees: account.employees,
     },
     deliverabilityOptions: delivOpts,
-    giftingHook: research?.giftingHook,
+    outreachHook: research?.outreachHook,
     intelNotes: account.intelNotes,
   };
 

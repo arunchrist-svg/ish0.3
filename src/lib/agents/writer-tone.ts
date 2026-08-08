@@ -1,4 +1,5 @@
-import type { BrandConfig, BrandSlug } from "@/lib/email/config";
+import type { BrandConfig } from "@/lib/email/config";
+import { getVerticalPack, resolveVerticalPackId } from "@/vertical-packs";
 
 export const BASE_WRITER_TONE = `WRITER TONE (all brands):
 - Friendly but professional. Write like a thoughtful colleague who did their homework.
@@ -9,14 +10,11 @@ export const BASE_WRITER_TONE = `WRITER TONE (all brands):
 - Confident and helpful without being pushy. Short sentences. One idea at a time.
 - Never cite numeric company stats (employee count, headcount, revenue). Say your team instead.`;
 
-const VERTICAL_HINTS: Record<string, string> = {
-  sweets_gifting: "Product angle: mithai, hampers, Diwali gifting, tasting samples. Festive but plain language.",
-  appliances: "Product angle: kitchen appliances, employee rewards, warranty, bulk pricing. Practical, not flashy.",
-  general: "Product angle: use the product summary below. Stay factual, not promotional.",
-};
-
 export function getWriterTonePersona(brandConfig: BrandConfig): string {
-  const verticalHint = VERTICAL_HINTS[brandConfig.vertical] ?? VERTICAL_HINTS.general;
+  const pack = getVerticalPack(
+    resolveVerticalPackId(brandConfig.verticalPackId, brandConfig.brandSlug),
+  );
+  const verticalHint = pack.toneHint;
   const brandBlock = [
     `BRAND VOICE (${brandConfig.brandName}):`,
     `- Vertical: ${brandConfig.vertical.replace(/_/g, " ")}`,
@@ -33,70 +31,35 @@ export function getWriterTonePersona(brandConfig: BrandConfig): string {
 }
 
 export function getWriterFewShotExample(
-  brandSlug: BrandSlug,
+  _brandSlug: BrandConfig["brandSlug"] | string,
   brandName: string,
   senderFirstName: string,
   contactFirstName = "Priya",
   companyName = "TechCorp",
   productSummary = "",
+  verticalPackId?: BrandConfig["verticalPackId"],
 ): string {
-  if (brandSlug === "prestige") {
-    return `
----
-GOOD EXAMPLE (follow this pattern):
-Subject A: Employee rewards for ${companyName}
-Subject B: ${contactFirstName}, ${companyName} appliance bundles
-Body:
-Hi ${contactFirstName},
-
-${companyName}'s team rewards program came up in our research. We supply mixer grinders and kitchen bundles for corporate gifting at volume pricing, with pan-India warranty support.
-
-Open to a quick note on two bundle formats that fit HR budgets?
-
-No worries if the timing is off.
-
-${senderFirstName}
-Partnerships, ${brandName}
-
----
-`;
-  }
-
-  if (brandSlug === "ish") {
-    return `
----
-GOOD EXAMPLE (follow this pattern):
-Subject A: Diwali hampers for ${companyName}
-Subject B: ${contactFirstName}, ${companyName} campus gifting
-Body:
-Hi ${contactFirstName},
-
-${companyName} has been growing its Bangalore tech campus. With Diwali a few weeks out, we have been curating mithai and dry-fruit hampers for IT teams in the city.
-
-Open to a quick note on a few options?
-
-No worries if the timing is off.
-
-${senderFirstName}
-Partnerships, ${brandName}
-
----
-`;
-  }
-
   const productLine = productSummary.trim()
     ? productSummary.trim().replace(/\.\s*$/, "")
-    : "we help teams with corporate rewards and gifting";
+    : `we help teams with solutions from ${brandName}`;
+
+  const packId = resolveVerticalPackId(verticalPackId, _brandSlug as BrandConfig["brandSlug"]);
+  const subjectHint =
+    packId === "gifting-sweets"
+      ? `Options for ${companyName}`
+      : packId === "gifting-appliances"
+        ? `Employee rewards for ${companyName}`
+        : `Partnership with ${companyName}`;
 
   return `
 ---
 GOOD EXAMPLE (follow this pattern):
-Subject A: Corporate options for ${companyName}
-Subject B: ${contactFirstName}, ${companyName} team rewards
+Subject A: ${subjectHint}
+Subject B: ${contactFirstName}, ${companyName} team
 Body:
 Hi ${contactFirstName},
 
-${companyName}'s team rewards program came up in our research. At ${brandName}, ${productLine}.
+${companyName}'s team priorities came up in our research. At ${brandName}, ${productLine}.
 
 Open to a quick note on a few options that fit your team?
 

@@ -9,7 +9,7 @@ vi.mock("@/lib/settings/workspace-settings", () => ({
   }),
 }));
 
-vi.mock("@/lib/agents/gift-intel", () => ({
+vi.mock("@/lib/agents/brand-intel", () => ({
   runGiftIntelSweep: (...args: unknown[]) => runGiftIntelSweep(...args),
 }));
 
@@ -21,10 +21,10 @@ vi.mock("@/lib/tenant", async (importOriginal) => {
   };
 });
 
-import { POST } from "../gift-intel/run/route";
+import { POST } from "../brand-intel/run/route";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 
-describe("AGENT-API gift-intel route", () => {
+describe("AGENT-API brand-intel route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     runGiftIntelSweep.mockResolvedValue({
@@ -48,7 +48,7 @@ describe("AGENT-API gift-intel route", () => {
   it("returns 401 when tenant context is missing", async () => {
     vi.mocked(requireTenantContext).mockRejectedValueOnce(new UnauthorizedError());
     const res = await POST(
-      new Request("http://localhost/api/agents/gift-intel/run", {
+      new Request("http://localhost/api/agents/brand-intel/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ competitorBrands: ["Kanti Sweets"] }),
@@ -73,7 +73,7 @@ describe("AGENT-API gift-intel route", () => {
     });
 
     const res = await POST(
-      new Request("http://localhost/api/agents/gift-intel/run", {
+      new Request("http://localhost/api/agents/brand-intel/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

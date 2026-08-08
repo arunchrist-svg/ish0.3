@@ -62,9 +62,11 @@ const SEARCH_BODY_OPTS = {
 export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[]> {
   if (!getTavilyKeys().length) throw new Error("TAVILY_API_KEY not set");
 
-  let accountKeys = await fetchTavilyAccountUsage();
+  // Session-first rotation. Avoid blocking every search on Tavily GET /usage
+  // (multi-key walk + gaps). Refresh account usage only when rotating on quota.
+  let accountKeys: Awaited<ReturnType<typeof fetchTavilyAccountUsage>> = [];
   const maxResults = optimizedMaxResults(limit);
-  let keyEntry = getNextTavilyKey(accountKeys);
+  let keyEntry = getNextTavilyKey();
   let lastError: Error | null = null;
   const tried = new Set<string>();
 
@@ -92,7 +94,10 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
         const msg = tavilyErrorMessage(res.status, data);
         if (quotaResponse || isTavilyQuotaError(msg)) {
           lastError = new Error(msg);
-          keyEntry = rotateToNextKey(keyEntry.id, accountKeys);
+          if (!accountKeys.length) {
+            accountKeys = await fetchTavilyAccountUsage({ force: true }).catch(() => []);
+          }
+          keyEntry = rotateToNextKey(keyEntry.id, accountKeys.length ? accountKeys : undefined);
           continue;
         }
         throw new Error(msg);
@@ -104,7 +109,10 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
       const err = e instanceof Error ? e : new Error(String(e));
       if (isTavilyQuotaError(err.message) && keyEntry) {
         lastError = err;
-        keyEntry = rotateToNextKey(keyEntry.id, accountKeys);
+        if (!accountKeys.length) {
+          accountKeys = await fetchTavilyAccountUsage({ force: true }).catch(() => []);
+        }
+        keyEntry = rotateToNextKey(keyEntry.id, accountKeys.length ? accountKeys : undefined);
         continue;
       }
       throw err;

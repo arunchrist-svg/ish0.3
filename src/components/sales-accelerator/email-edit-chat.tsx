@@ -111,8 +111,8 @@ export function EmailEditChat({
                   "max-w-[92%] rounded-[14px] px-3.5 py-2.5 sm:max-w-[85%]",
                   text.bodySoft,
                   msg.role === "user"
-                    ? "rounded-br-[4px] bg-ish-black text-white"
-                    : "rounded-bl-[4px] border border-ish-border/50 bg-ish-canvas/50 text-ish-ink",
+                    ? "rounded-br-[4px] bg-brand-black text-white"
+                    : "rounded-bl-[4px] border border-brand-border/50 bg-brand-canvas/50 text-brand-ink",
                 )}
               >
                 {msg.content}
@@ -122,7 +122,7 @@ export function EmailEditChat({
           {revising && (
             <div className="flex flex-col items-start gap-1">
               <span className={cn(text.label, "px-1")}>AI</span>
-              <div className={cn("flex items-center gap-2 rounded-[14px] rounded-bl-[4px] border border-ish-border/50 bg-ish-canvas/50 px-3.5 py-2.5", text.caption)}>
+              <div className={cn("flex items-center gap-2 rounded-[14px] rounded-bl-[4px] border border-brand-border/50 bg-brand-canvas/50 px-3.5 py-2.5", text.caption)}>
                 <Loader2 className="size-3.5 animate-spin" />
                 Updating draft…
               </div>
@@ -137,15 +137,15 @@ export function EmailEditChat({
           className={cn(
             pad,
             "pb-4",
-            embedded ? "border-t border-ish-border/50 bg-ish-canvas/30 pt-2.5" : "border-t border-ish-border/50 bg-white/70 py-3 backdrop-blur-sm",
+            embedded ? "border-t border-brand-border/50 bg-brand-canvas/30 pt-2.5" : "border-t border-brand-border/50 bg-white/70 py-3 backdrop-blur-sm",
           )}
         >
           <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
             {embedded ? (
-              <Sparkles className="size-3.5 shrink-0 text-ish-ink-faint" aria-hidden />
+              <Sparkles className="size-3.5 shrink-0 text-brand-ink-faint" aria-hidden />
             ) : (
               <div
-                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ish-black text-white shadow-[var(--shadow-ish-sm)]"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-black text-white shadow-[var(--shadow-brand-sm)]"
                 aria-hidden
               >
                 <Sparkles className="size-3.5" />
@@ -158,9 +158,9 @@ export function EmailEditChat({
                 disabled={revising}
                 onClick={() => sendMessage(prompt)}
                 className={cn(
-                  "rounded-full border border-ish-border/50 px-2.5 py-1 font-semibold transition-colors",
-                  "text-[10px] text-ish-ink-soft hover:border-ish-stratus-blue/30 hover:bg-ish-canvas hover:text-ish-ink disabled:opacity-40",
-                  embedded ? "bg-ish-canvas/60" : "bg-white",
+                  "rounded-full border border-brand-border/50 px-2.5 py-1 font-semibold transition-colors",
+                  "text-[10px] text-brand-ink-soft hover:border-brand-stratus-blue/30 hover:bg-brand-canvas hover:text-brand-ink disabled:opacity-40",
+                  embedded ? "bg-brand-canvas/60" : "bg-white",
                 )}
               >
                 {prompt}
@@ -178,10 +178,10 @@ export function EmailEditChat({
               rows={2}
               placeholder="Ask for a specific change (e.g. fix the second paragraph, or change one line…)"
               className={cn(
-                "min-h-[44px] max-h-[100px] min-w-0 flex-1 resize-none rounded-[14px] border border-ish-border/50 px-3.5 py-2.5",
+                "min-h-[44px] max-h-[100px] min-w-0 flex-1 resize-none rounded-[14px] border border-brand-border/50 px-3.5 py-2.5",
                 text.bodySoft,
-                "outline-none placeholder:text-ish-ink-faint focus:border-ish-stratus-blue/40 focus:ring-2 focus:ring-ish-stratus-blue/12 disabled:opacity-50",
-                embedded ? "bg-ish-canvas/40" : "bg-white",
+                "outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/12 disabled:opacity-50",
+                embedded ? "bg-brand-canvas/40" : "bg-white",
               )}
             />
             <VoiceMicButton
@@ -191,7 +191,7 @@ export function EmailEditChat({
             <button
               type="submit"
               disabled={revising || !input.trim()}
-              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-ish-black text-white shadow-[var(--shadow-ish-sm)] transition-all hover:bg-ish-black/90 disabled:opacity-40"
+              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-black text-white shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-black/90 disabled:opacity-40"
               aria-label="Send edit"
             >
               {revising ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
@@ -199,7 +199,7 @@ export function EmailEditChat({
           </form>
         </div>
       ) : (
-        <p className={cn(text.caption, "border-t border-ish-border/50 px-4 py-3 text-center sm:px-5")}>
+        <p className={cn(text.caption, "border-t border-brand-border/50 px-4 py-3 text-center sm:px-5")}>
           Chat editing is disabled after approval or rejection.
         </p>
       )}

@@ -2,9 +2,9 @@ import { cn } from "@/lib/utils";
 import { text } from "@/design-system/tokens";
 
 const inputClassName = cn(
-  "w-full rounded-2xl border border-ish-border bg-ish-canvas px-4 py-3.5 text-[16px] font-medium text-ish-ink lg:py-3 lg:text-[15px]",
-  "placeholder:text-ish-ink-faint",
-  "focus:border-ish-stratus-blue focus:bg-white focus:outline-none focus:ring-2 focus:ring-ish-stratus-blue/20",
+  "w-full rounded-2xl border border-brand-border bg-brand-canvas px-4 py-3.5 text-[16px] font-medium text-brand-ink lg:py-3 lg:text-[15px]",
+  "placeholder:text-brand-ink-faint",
+  "focus:border-brand-stratus-blue focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/20",
   "disabled:cursor-not-allowed disabled:opacity-50",
 );
 

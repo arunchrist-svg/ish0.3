@@ -63,13 +63,13 @@ function SignupForm() {
       <AuthShell>
         <div className="mb-8">
           <h1 className={cn("mb-2 leading-tight", text.display)}>Sign up</h1>
-          <p className="text-[14px] text-ish-ink-soft">
+          <p className="text-[14px] text-brand-ink-soft">
             You need an invite link from your admin to create an account.
           </p>
         </div>
-        <p className="text-center text-[13px] text-ish-ink-soft">
+        <p className="text-center text-[13px] text-brand-ink-soft">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-ish-black underline">
+          <Link href="/login" className="font-medium text-brand-black underline">
             Sign in
           </Link>
         </p>
@@ -80,7 +80,7 @@ function SignupForm() {
   if (loadingInvite) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-ish-ink-soft" />
+        <Loader2 className="size-8 animate-spin text-brand-ink-soft" />
       </div>
     );
   }
@@ -91,7 +91,7 @@ function SignupForm() {
         <p className="text-center text-[14px] text-red-600">
           {inviteError || "Invite link is invalid or expired."}
         </p>
-        <p className="mt-4 text-center text-[13px] text-ish-ink-soft">
+        <p className="mt-4 text-center text-[13px] text-brand-ink-soft">
           <Link href="/login" className="underline">Sign in</Link>
         </p>
       </AuthShell>
@@ -102,7 +102,7 @@ function SignupForm() {
     <AuthShell>
       <div className="mb-8">
         <h1 className={cn("mb-2 leading-tight", text.display)}>Sign up</h1>
-        <p className="text-[14px] text-ish-ink-soft">
+        <p className="text-[14px] text-brand-ink-soft">
           Join <strong>{invite.tenantName}</strong> as {invite.email}
         </p>
       </div>
@@ -117,7 +117,7 @@ function SignupForm() {
           required
         />
         <div>
-          <label htmlFor="email" className="mb-2.5 block text-[13px] font-semibold text-ish-ink">
+          <label htmlFor="email" className="mb-2.5 block text-[13px] font-semibold text-brand-ink">
             Email
           </label>
           <input
@@ -125,7 +125,7 @@ function SignupForm() {
             type="email"
             value={invite.email}
             disabled
-            className="w-full rounded-2xl border border-ish-border bg-ish-app px-5 py-4 text-[15px] font-medium text-ish-ink-soft"
+            className="w-full rounded-2xl border border-brand-border bg-brand-app px-5 py-4 text-[15px] font-medium text-brand-ink-soft"
           />
         </div>
         <div>
@@ -149,7 +149,7 @@ function SignupForm() {
         ) : null}
 
         {!name.trim() || password.length < 8 ? (
-          <p className="text-center text-[12px] text-ish-ink-soft">
+          <p className="text-center text-[12px] text-brand-ink-soft">
             {!name.trim() && password.length < 8
               ? "Enter your name and a password (8+ characters) to continue."
               : !name.trim()
@@ -162,8 +162,8 @@ function SignupForm() {
           type="submit"
           disabled={loading}
           className={cn(
-            "h-12 w-full rounded-2xl bg-ish-black text-[14px] font-bold text-white",
-            "hover:bg-ish-black/90 disabled:opacity-50",
+            "h-12 w-full rounded-2xl bg-brand-black text-[14px] font-bold text-white",
+            "hover:bg-brand-black/90 disabled:opacity-50",
           )}
         >
           {loading ? (
@@ -176,9 +176,9 @@ function SignupForm() {
           )}
         </Button>
 
-        <p className="text-center text-[12px] text-ish-ink-faint">
+        <p className="text-center text-[12px] text-brand-ink-faint">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-ish-black underline">
+          <Link href="/login" className="font-medium text-brand-black underline">
             Sign in
           </Link>
         </p>
@@ -191,7 +191,7 @@ export default function SignupPage() {
   return (
     <Suspense fallback={
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-ish-ink-soft" />
+        <Loader2 className="size-8 animate-spin text-brand-ink-soft" />
       </div>
     }>
       <SignupForm />

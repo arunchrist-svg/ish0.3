@@ -41,39 +41,39 @@ export function AgentsApp() {
         <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
           <div className="mx-auto max-w-2xl">
             <div className="mb-6 flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]">
-                <Bot className="size-5 text-ish-ink" />
+              <div className="flex size-10 items-center justify-center rounded-xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
+                <Bot className="size-5 text-brand-ink" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-ish-ink">Agents</h1>
-                <p className="text-[13px] text-ish-ink-soft">Automated lead discovery at volume</p>
+                <h1 className="text-xl font-bold text-brand-ink">Agents</h1>
+                <p className="text-[13px] text-brand-ink-soft">Automated lead discovery at volume</p>
               </div>
             </div>
 
-            <div className="rounded-[20px] border border-ish-border bg-white p-6 shadow-[var(--shadow-ish-sm)]">
-              <h2 className="mb-1 text-[15px] font-bold text-ish-ink">Scout Agent</h2>
-              <p className="mb-5 text-[12.5px] leading-relaxed text-ish-ink-soft">
+            <div className="rounded-[20px] border border-brand-border bg-white p-6 shadow-[var(--shadow-brand-sm)]">
+              <h2 className="mb-1 text-[15px] font-bold text-brand-ink">Scout Agent</h2>
+              <p className="mb-5 text-[12.5px] leading-relaxed text-brand-ink-soft">
                 Discovers companies, finds decision-makers, and saves leads with email automatically.
                 Best for batch volume — use the Scouting wizard for hand-picked quality.
               </p>
 
               <div className="mb-4">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">Cities</div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">Cities</div>
                 <CitySelector cities={cities} onCitiesChange={setCities} />
-                <p className="mt-2 text-[11.5px] text-ish-ink-faint">
+                <p className="mt-2 text-[11.5px] text-brand-ink-faint">
                   Karnataka cities within ~4–5 hrs of Bangalore, plus Hosur.
                 </p>
               </div>
 
               <div className="mb-4">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">
                   Industries (optional, leave empty for all)
                 </div>
                 <IndustrySelector industries={industries} onIndustriesChange={setIndustries} />
               </div>
 
               <div className="mb-6">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ish-ink-faint">Data mode</div>
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">Data mode</div>
                 <div className="flex gap-2">
                   {(["free", "paid", "auto"] as DataMode[]).map((m) => (
                     <button
@@ -82,7 +82,7 @@ export function AgentsApp() {
                       onClick={() => setDataMode(m)}
                       className={cn(
                         "rounded-lg px-3 py-1.5 text-[12px] font-semibold capitalize",
-                        dataMode === m ? "bg-ish-black text-white" : "bg-ish-app text-ish-ink-soft",
+                        dataMode === m ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft",
                       )}
                     >
                       {m}
@@ -95,7 +95,7 @@ export function AgentsApp() {
                 type="button"
                 onClick={handleRunScout}
                 disabled={running}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-ish-black py-3 text-[13px] font-bold text-white shadow-[var(--shadow-ish)] hover:opacity-90 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-black py-3 text-[13px] font-bold text-white shadow-[var(--shadow-brand)] hover:opacity-90 disabled:opacity-50"
               >
                 <Play className="size-4" />
                 {running ? "Scouting…" : "Run Scout Agent"}
@@ -103,27 +103,27 @@ export function AgentsApp() {
             </div>
 
             {lastResult && (
-              <div className="mt-4 rounded-[20px] border border-ish-border bg-white p-6 shadow-[var(--shadow-ish-sm)]">
-                <div className="mb-3 flex items-center gap-2 text-[14px] font-bold text-ish-ink">
-                  <CheckCircle className="size-4 text-ish-green" />
+              <div className="mt-4 rounded-[20px] border border-brand-border bg-white p-6 shadow-[var(--shadow-brand-sm)]">
+                <div className="mb-3 flex items-center gap-2 text-[14px] font-bold text-brand-ink">
+                  <CheckCircle className="size-4 text-brand-green" />
                   Run complete
                 </div>
                 <dl className="grid grid-cols-2 gap-3 text-[13px]">
                   <div>
-                    <dt className="text-ish-ink-faint">Run ID</dt>
-                    <dd className="font-mono text-[11px] text-ish-ink">{lastResult.runId.slice(0, 8)}…</dd>
+                    <dt className="text-brand-ink-faint">Run ID</dt>
+                    <dd className="font-mono text-[11px] text-brand-ink">{lastResult.runId.slice(0, 8)}…</dd>
                   </div>
                   <div>
-                    <dt className="text-ish-ink-faint">Companies discovered</dt>
-                    <dd className="font-bold text-ish-ink">{lastResult.companiesDiscovered}</dd>
+                    <dt className="text-brand-ink-faint">Companies discovered</dt>
+                    <dd className="font-bold text-brand-ink">{lastResult.companiesDiscovered}</dd>
                   </div>
                   <div>
-                    <dt className="text-ish-ink-faint">Leads saved</dt>
-                    <dd className="font-bold text-ish-green">{lastResult.leadsSaved}</dd>
+                    <dt className="text-brand-ink-faint">Leads saved</dt>
+                    <dd className="font-bold text-brand-green">{lastResult.leadsSaved}</dd>
                   </div>
                   <div>
-                    <dt className="text-ish-ink-faint">Skipped</dt>
-                    <dd className="font-bold text-ish-ink">{lastResult.leadsSkipped}</dd>
+                    <dt className="text-brand-ink-faint">Skipped</dt>
+                    <dd className="font-bold text-brand-ink">{lastResult.leadsSkipped}</dd>
                   </div>
                 </dl>
                 {lastResult.errors.length > 0 && (

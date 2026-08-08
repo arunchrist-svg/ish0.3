@@ -67,18 +67,18 @@ export function PushPermissionBanner() {
   if (!visible) return null;
 
   return (
-    <div className="mx-4 mb-4 flex items-start gap-3 rounded-[20px] bg-white p-4 shadow-[var(--shadow-ish-sm)] ring-1 ring-ish-stratus-blue/20 lg:mx-8">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-ish-green-soft">
-        <Bell className="size-5 text-ish-stratus-blue" />
+    <div className="mx-4 mb-4 flex items-start gap-3 rounded-[20px] bg-white p-4 shadow-[var(--shadow-brand-sm)] ring-1 ring-brand-stratus-blue/20 lg:mx-8">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-brand-green-soft">
+        <Bell className="size-5 text-brand-stratus-blue" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[14px] font-bold text-ish-ink">Get notified when AI finishes</div>
-        <p className="mt-0.5 text-xs text-ish-ink-soft">Research complete, replies, and drafts ready for review.</p>
+        <div className="text-[14px] font-bold text-brand-ink">Get notified when AI finishes</div>
+        <p className="mt-0.5 text-xs text-brand-ink-soft">Research complete, replies, and drafts ready for review.</p>
         <button
           type="button"
           disabled={loading}
           onClick={() => void enable()}
-          className="mt-3 min-h-[40px] rounded-xl bg-ish-black px-4 text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
+          className="mt-3 min-h-[40px] rounded-xl bg-brand-black px-4 text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? "Enabling..." : "Enable notifications"}
         </button>
@@ -90,7 +90,7 @@ export function PushPermissionBanner() {
           localStorage.setItem("ish-push-dismissed", "1");
           setVisible(false);
         }}
-        className="shrink-0 rounded-full p-1 text-ish-ink-faint"
+        className="shrink-0 rounded-full p-1 text-brand-ink-faint"
       >
         <X className="size-4" />
       </button>

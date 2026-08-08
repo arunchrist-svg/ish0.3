@@ -36,7 +36,7 @@ export async function GET() {
         city: string;
         industry: string;
         employees: string;
-        giftScore: number;
+        fitScore: number;
         domain?: string;
         website?: string;
         overviewEnrichedAt?: string;
@@ -86,7 +86,7 @@ export async function GET() {
           city: row.account.city ?? "—",
           industry: row.account.industry ?? "—",
           employees: row.account.employees ?? "—",
-          giftScore: row.account.giftScore ?? 60,
+          fitScore: row.account.fitScore ?? 60,
           domain: row.account.domain ?? undefined,
           website: row.account.website ?? undefined,
           overviewEnrichedAt: row.account.overviewEnrichedAt?.toISOString(),

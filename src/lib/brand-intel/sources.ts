@@ -208,13 +208,20 @@ function buildRoundupQuery(brand: string): string {
   return `site:marketingmonk.so "${brand}" ("Diwali gift" OR "corporate gift")`;
 }
 
-function buildCategoryAnchor(category: string): string | null {
+function buildCategoryAnchor(category: string, lexicon?: string[]): string | null {
+  if (lexicon?.length) {
+    const quoted = lexicon.slice(0, 4).map((p) => `"${p}"`).join(" OR ");
+    return `(${quoted})`;
+  }
   const lower = category.toLowerCase();
   if (lower.includes("kitchen") || lower.includes("appliance")) {
     return '("air fryer" OR "mixer grinder" OR appliance)';
   }
   if (lower.includes("sweet") || lower.includes("mithai")) {
     return '("mithai" OR "sweets box" OR hamper)';
+  }
+  if (lower.trim()) {
+    return `"${category.trim()}"`;
   }
   return null;
 }
@@ -224,9 +231,10 @@ export function buildQueriesForSource(
   brand: string,
   category: string,
   city?: string,
+  lexicon?: string[],
 ): string[] {
   const queries: string[] = [];
-  const categoryAnchor = buildCategoryAnchor(category);
+  const categoryAnchor = buildCategoryAnchor(category, lexicon);
 
   for (let i = 0; i < source.queriesPerSweep; i++) {
     let q: string;

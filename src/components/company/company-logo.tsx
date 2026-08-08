@@ -46,7 +46,7 @@ export function CompanyLogo({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center overflow-hidden bg-white ring-1 ring-ish-border/60",
+        "flex shrink-0 items-center justify-center overflow-hidden bg-white ring-1 ring-brand-border/60",
         rounded,
         dims.box,
         className,
@@ -69,7 +69,7 @@ export function CompanyLogo({
           }}
         />
       ) : (
-        <span className="font-bold text-ish-ink-soft">{initials}</span>
+        <span className="font-bold text-brand-ink-soft">{initials}</span>
       )}
     </div>
   );

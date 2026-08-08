@@ -86,7 +86,7 @@ export async function searchPeopleViaTavily(params: {
   const roleTerm =
     params.roleHints && params.roleHints.length > 0
       ? params.roleHints.slice(0, 4).join(" OR ")
-      : "HR OR Admin OR Procurement";
+      : "Director OR Manager OR Head OR Founder OR VP OR CEO";
 
   const queries = [
     `site:linkedin.com/in "${company}" ${roleTerm} (${cityClause})`,
@@ -154,8 +154,9 @@ Only real named people at the target company. Never invent emails or phones.
 Prefer people located in the target city when location is stated.`,
         prompt: `Company: ${company}
 Target city: ${cityClause}
-Find: HR, Admin, Procurement, Facilities, or senior decision-makers based in or near ${cityClause}.
+Find: decision-makers (Directors, Managers, Heads, Founders, VPs) based in or near ${cityClause}.
 Exclude people who clearly work from a different city (e.g. Pune for a Mysuru scout).
+Do not filter for gifting or HR-only roles unless those titles appear in the results.
 
 ${context}
 

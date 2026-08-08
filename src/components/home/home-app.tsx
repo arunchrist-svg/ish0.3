@@ -79,21 +79,21 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_CHIP: Record<string, string> = {
   scouted:    "bg-amber-400 text-white",
   researched: "bg-blue-500 text-white",
-  approved:   "bg-ish-green text-white",
+  approved:   "bg-brand-green text-white",
   outreached: "bg-violet-500 text-white",
   replied:    "bg-teal-500 text-white",
   meeting:    "bg-emerald-600 text-white",
-  closed:     "bg-ish-black text-white",
-  po_closed:  "bg-ish-black text-white",
+  closed:     "bg-brand-black text-white",
+  po_closed:  "bg-brand-black text-white",
 };
 
 const AVATAR_COLORS = [
-  "bg-ish-avatar-1",
-  "bg-ish-avatar-2",
-  "bg-ish-avatar-3",
-  "bg-ish-avatar-4",
-  "bg-ish-avatar-5",
-  "bg-ish-avatar-6",
+  "bg-brand-avatar-1",
+  "bg-brand-avatar-2",
+  "bg-brand-avatar-3",
+  "bg-brand-avatar-4",
+  "bg-brand-avatar-5",
+  "bg-brand-avatar-6",
 ];
 
 function StatusChip({ status }: { status: string }) {
@@ -101,7 +101,7 @@ function StatusChip({ status }: { status: string }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold tracking-wide",
-        STATUS_CHIP[status] ?? "bg-ish-border text-ish-ink-soft",
+        STATUS_CHIP[status] ?? "bg-brand-border text-brand-ink-soft",
       )}
     >
       {STATUS_LABELS[status] ?? status}
@@ -131,7 +131,7 @@ function KpiTile({ label, value, sub, icon: Icon, cardClass, iconClass, valueCla
         </div>
       </div>
       <div>
-        <div className={cn("text-[32px] font-extrabold leading-none", valueClass ?? "text-ish-ink")}>{value}</div>
+        <div className={cn("text-[32px] font-extrabold leading-none", valueClass ?? "text-brand-ink")}>{value}</div>
         {sub && <div className="mt-1.5 text-[12px] font-medium opacity-60">{sub}</div>}
       </div>
     </div>
@@ -156,8 +156,8 @@ function QuickActionCard({ label, description, icon: Icon, href, iconBg, iconCol
     <button
       onClick={() => router.push(href)}
       className={cn(
-        "group flex w-full items-center gap-3.5 rounded-2xl border border-ish-border bg-white p-4",
-        "text-left transition-all duration-200 hover:shadow-ish-sm active:scale-[0.99]",
+        "group flex w-full items-center gap-3.5 rounded-2xl border border-brand-border bg-white p-4",
+        "text-left transition-all duration-200 hover:shadow-brand-sm active:scale-[0.99]",
         hoverBorder,
       )}
     >
@@ -168,7 +168,7 @@ function QuickActionCard({ label, description, icon: Icon, href, iconBg, iconCol
         <div className={cn(text.body, "font-bold")}>{label}</div>
         <div className={cn(text.caption, "mt-0.5 truncate")}>{description}</div>
       </div>
-      <ArrowRight className="size-3.5 shrink-0 text-ish-ink-faint transition-transform duration-200 group-hover:translate-x-1" />
+      <ArrowRight className="size-3.5 shrink-0 text-brand-ink-faint transition-transform duration-200 group-hover:translate-x-1" />
     </button>
   );
 }
@@ -198,14 +198,14 @@ function UsageBar({
           {used.toLocaleString()} / {total.toLocaleString()}
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-ish-border">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-brand-border">
         <div
           className={cn("h-full rounded-full transition-all duration-700", barClass)}
           style={{ width: `${clamped}%` }}
         />
       </div>
       <div className="flex items-center justify-between">
-        <span className={cn(text.caption, "text-ish-green font-medium")}>
+        <span className={cn(text.caption, "text-brand-green font-medium")}>
           {(total - used).toLocaleString()} remaining
         </span>
         <span className={cn(text.caption, "font-semibold")}>{Math.round(clamped)}%</span>
@@ -222,12 +222,12 @@ function ActivityItem({ lead, index }: { lead: LeadItem; index: number }) {
     <div
       className={cn(
         "flex items-center gap-3 py-3",
-        index !== 0 && "border-t border-ish-border",
+        index !== 0 && "border-t border-brand-border",
       )}
     >
       <div
         className={cn(
-          "flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold text-ish-ink",
+          "flex size-8 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold text-brand-ink",
           avatarBg,
         )}
       >
@@ -330,7 +330,7 @@ export function HomeApp() {
       largeTitle
       rightSlot={<NotificationBell />}
       contentClassName="lg:overflow-y-visible"
-      className="lg:bg-ish-canvas"
+      className="lg:bg-brand-canvas"
     >
       <PushPermissionBanner />
       <div className="mx-auto w-full max-w-5xl ish-page-padding py-4 lg:px-8 lg:py-8">
@@ -339,8 +339,8 @@ export function HomeApp() {
         <div className="mb-7 hidden items-end justify-between lg:flex">
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <span className="size-2 rounded-full bg-ish-green animate-pulse" />
-              <span className={cn(text.caption, "font-semibold text-ish-green")}>Live</span>
+              <span className="size-2 rounded-full bg-brand-green animate-pulse" />
+              <span className={cn(text.caption, "font-semibold text-brand-green")}>Live</span>
             </div>
             <h1 className={text.largeTitle}>{greeting}</h1>
             <p className={cn(text.bodySoft, "mt-0.5")}>{today}</p>
@@ -349,9 +349,9 @@ export function HomeApp() {
             onClick={() => loadAll(true)}
             disabled={refreshing}
             className={cn(
-              "flex items-center gap-1.5 rounded-full border border-ish-border bg-white px-3.5 py-2",
+              "flex items-center gap-1.5 rounded-full border border-brand-border bg-white px-3.5 py-2",
               text.caption,
-              "font-semibold transition-all hover:border-ish-ink/20 hover:bg-ish-yellow-soft hover:shadow-ish-sm active:scale-95",
+              "font-semibold transition-all hover:border-brand-ink/20 hover:bg-brand-yellow-soft hover:shadow-brand-sm active:scale-95",
             )}
           >
             <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />
@@ -362,9 +362,9 @@ export function HomeApp() {
 
         
         {hotReplyCount > 0 ? (
-          <div className="mb-5 rounded-[20px] border border-ish-stratus-salmon/30 bg-white p-4 shadow-[var(--shadow-ish-sm)]">
+          <div className="mb-5 rounded-[20px] border border-brand-stratus-salmon/30 bg-white p-4 shadow-[var(--shadow-brand-sm)]">
             <div className="mb-3 flex items-center justify-between">
-              <div className="text-[14px] font-bold text-ish-ink">Hot replies</div>
+              <div className="text-[14px] font-bold text-brand-ink">Hot replies</div>
               <span className="rounded-full bg-teal-500 px-2 py-0.5 text-[10px] font-bold text-white">{hotReplyCount} waiting</span>
             </div>
             <div className="space-y-2">
@@ -372,13 +372,13 @@ export function HomeApp() {
                 <Link
                   key={n.id}
                   href={n.leadId ? `/leads/${n.leadId}?tab=Email` : "/inbox"}
-                  className="flex items-center justify-between rounded-xl bg-ish-canvas px-3 py-2.5 hover:bg-ish-pink-soft/50"
+                  className="flex items-center justify-between rounded-xl bg-brand-canvas px-3 py-2.5 hover:bg-brand-pink-soft/50"
                 >
                   <div className="min-w-0">
-                    <div className="truncate text-[12px] font-semibold text-ish-ink">{n.title}</div>
-                    <div className="truncate text-[11px] text-ish-ink-soft">{n.body}</div>
+                    <div className="truncate text-[12px] font-semibold text-brand-ink">{n.title}</div>
+                    <div className="truncate text-[11px] text-brand-ink-soft">{n.body}</div>
                   </div>
-                  <ArrowRight className="size-4 shrink-0 text-ish-ink-faint" />
+                  <ArrowRight className="size-4 shrink-0 text-brand-ink-faint" />
                 </Link>
               ))}
             </div>
@@ -388,16 +388,16 @@ export function HomeApp() {
 {inboxCount > 0 ? (
           <Link
             href="/inbox"
-            className="mb-5 flex min-h-[56px] items-center gap-3 rounded-[20px] bg-white px-4 py-3 shadow-[var(--shadow-ish-sm)] ring-1 ring-ish-stratus-salmon/25 active:scale-[0.99] lg:hidden"
+            className="mb-5 flex min-h-[56px] items-center gap-3 rounded-[20px] bg-white px-4 py-3 shadow-[var(--shadow-brand-sm)] ring-1 ring-brand-stratus-salmon/25 active:scale-[0.99] lg:hidden"
           >
-            <div className="flex size-10 items-center justify-center rounded-2xl bg-ish-pink-soft">
-              <Inbox className="size-5 text-ish-stratus-salmon" />
+            <div className="flex size-10 items-center justify-center rounded-2xl bg-brand-pink-soft">
+              <Inbox className="size-5 text-brand-stratus-salmon" />
             </div>
             <div className="min-w-0 flex-1">
-              <div className="text-[14px] font-bold text-ish-ink">{inboxCount} item{inboxCount === 1 ? "" : "s"} need attention</div>
-              <div className="text-xs text-ish-ink-soft">Review drafts and replies in Inbox</div>
+              <div className="text-[14px] font-bold text-brand-ink">{inboxCount} item{inboxCount === 1 ? "" : "s"} need attention</div>
+              <div className="text-xs text-brand-ink-soft">Review drafts and replies in Inbox</div>
             </div>
-            <span className="rounded-full bg-ish-stratus-salmon px-2 py-0.5 text-[10px] font-bold text-white">{inboxCount}</span>
+            <span className="rounded-full bg-brand-stratus-salmon px-2 py-0.5 text-[10px] font-bold text-white">{inboxCount}</span>
           </Link>
         ) : null}
 
@@ -405,7 +405,7 @@ export function HomeApp() {
         {kpiLoading ? (
           <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-32 animate-pulse rounded-[20px] bg-ish-border" />
+              <div key={i} className="h-32 animate-pulse rounded-[20px] bg-brand-border" />
             ))}
           </div>
         ) : (
@@ -415,31 +415,31 @@ export function HomeApp() {
             value={totalLeads}
             sub="in pipeline"
             icon={TrendingUp}
-            cardClass="bg-ish-yellow-soft"
-            iconClass="bg-ish-yellow text-ish-ink"
+            cardClass="bg-brand-yellow-soft"
+            iconClass="bg-brand-yellow text-brand-ink"
           />
           <KpiTile
             label="Closed Deals"
             value={closedCount}
             sub={closedAmount > 0 ? `₹${(closedAmount / 100000).toFixed(1)}L` : "track wins"}
             icon={CheckCircle2}
-            cardClass="bg-ish-green-soft"
-            iconClass="bg-ish-green text-white"
+            cardClass="bg-brand-green-soft"
+            iconClass="bg-brand-green text-white"
           />
           <KpiTile
             label="Contacts"
             value={contacts}
             sub="in directory"
             icon={Users}
-            cardClass="bg-ish-pink-soft"
-            iconClass="bg-ish-pink text-ish-ink"
+            cardClass="bg-brand-pink-soft"
+            iconClass="bg-brand-pink text-brand-ink"
           />
           <KpiTile
             label="Email Hit Rate"
             value={`${emailFoundRate}%`}
             sub="emails found"
             icon={Mail}
-            cardClass="bg-ish-black text-white"
+            cardClass="bg-brand-black text-white"
             iconClass="bg-white/15 text-white"
             valueClass="text-white"
           />
@@ -460,7 +460,7 @@ export function HomeApp() {
               </div>
               <span className={cn(
                 "rounded-full px-2 py-0.5 text-[11px] font-bold",
-                "bg-ish-yellow text-ish-ink",
+                "bg-brand-yellow text-brand-ink",
               )}>
                 {leads.length}
               </span>
@@ -468,7 +468,7 @@ export function HomeApp() {
 
             {leads.length === 0 ? (
               <div className="flex flex-1 flex-col items-center justify-center py-14 gap-3">
-                <div className="flex size-12 items-center justify-center rounded-full bg-ish-yellow-soft">
+                <div className="flex size-12 items-center justify-center rounded-full bg-brand-yellow-soft">
                   <Clock className="size-6 text-amber-500" />
                 </div>
                 <p className={cn(text.bodySoft, "text-center max-w-[220px]")}>
@@ -490,8 +490,8 @@ export function HomeApp() {
             {/* Quick Actions */}
             <PanelCard>
               <div className="mb-3.5 flex items-center gap-2">
-                <div className="flex size-6 items-center justify-center rounded-full bg-ish-yellow">
-                  <Zap className="size-3.5 text-ish-ink" />
+                <div className="flex size-6 items-center justify-center rounded-full bg-brand-yellow">
+                  <Zap className="size-3.5 text-brand-ink" />
                 </div>
                 <span className={cn(text.sectionTitle)}>Quick Actions</span>
               </div>
@@ -501,8 +501,8 @@ export function HomeApp() {
                   description="Find new companies & contacts"
                   icon={Telescope}
                   href="/scouting"
-                  iconBg="bg-ish-yellow"
-                  iconColor="text-ish-ink"
+                  iconBg="bg-brand-yellow"
+                  iconColor="text-brand-ink"
                   hoverBorder="hover:border-amber-300"
                 />
                 <QuickActionCard
@@ -510,8 +510,8 @@ export function HomeApp() {
                   description="Review and action your leads"
                   icon={Rocket}
                   href="/leads"
-                  iconBg="bg-ish-pink"
-                  iconColor="text-ish-ink"
+                  iconBg="bg-brand-pink"
+                  iconColor="text-brand-ink"
                   hoverBorder="hover:border-pink-300"
                 />
                 <QuickActionCard
@@ -519,7 +519,7 @@ export function HomeApp() {
                   description="Track pipeline progression"
                   icon={GitFork}
                   href="/funnel"
-                  iconBg="bg-ish-green"
+                  iconBg="bg-brand-green"
                   iconColor="text-white"
                   hoverBorder="hover:border-emerald-300"
                 />
@@ -536,7 +536,7 @@ export function HomeApp() {
                 <span className={cn(text.sectionTitle)}>Usage</span>
 
                 {llmConfig && (
-                  <span className="ml-auto rounded-full bg-ish-black px-2.5 py-0.5 text-[11px] font-bold text-white">
+                  <span className="ml-auto rounded-full bg-brand-black px-2.5 py-0.5 text-[11px] font-bold text-white">
                     {llmConfig.provider === "openrouter" ? "OpenRouter" : llmConfig.provider === "gemini" ? "Gemini" : "Anthropic"}
                   </span>
                 )}
@@ -552,12 +552,12 @@ export function HomeApp() {
                     tavilyUsage.percentUsed > 85
                       ? "bg-red-500"
                       : tavilyUsage.percentUsed > 60
-                      ? "bg-ish-yellow"
-                      : "bg-ish-green"
+                      ? "bg-brand-yellow"
+                      : "bg-brand-green"
                   }
                 />
               ) : (
-                <div className="flex items-center justify-between rounded-xl bg-ish-canvas px-3.5 py-3">
+                <div className="flex items-center justify-between rounded-xl bg-brand-canvas px-3.5 py-3">
                   <span className={text.bodySoft}>Web Search</span>
                   <span className={cn(text.caption, "italic")}>not configured</span>
                 </div>

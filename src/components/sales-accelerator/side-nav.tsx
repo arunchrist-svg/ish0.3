@@ -107,7 +107,7 @@ function NavItemRow({
       <Icon
         className={cn(
           "size-4 shrink-0 transition-[transform,color] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-          highlighted ? "scale-110 text-ish-ink" : "text-ish-ink-soft group-hover:scale-105 group-hover:text-ish-ink",
+          highlighted ? "scale-110 text-brand-ink" : "text-brand-ink-soft group-hover:scale-105 group-hover:text-brand-ink",
         )}
       />
       {!collapsed && (
@@ -119,14 +119,14 @@ function NavItemRow({
         >
           <span className="truncate">{label}</span>
           {item.badge != null && item.badge > 0 ? (
-            <span className="shrink-0 rounded-full bg-ish-stratus-salmon px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-white">
+            <span className="shrink-0 rounded-full bg-brand-stratus-salmon px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-white">
               {item.badge > 99 ? "99+" : item.badge}
             </span>
           ) : null}
         </span>
       )}
       {collapsed && item.badge != null && item.badge > 0 ? (
-        <span className="absolute right-1 top-1 size-2 rounded-full bg-ish-stratus-salmon ring-2 ring-white" aria-hidden />
+        <span className="absolute right-1 top-1 size-2 rounded-full bg-brand-stratus-salmon ring-2 ring-white" aria-hidden />
       ) : null}
     </>
   );
@@ -207,7 +207,7 @@ export function SideNav() {
       >
         <span
           className={cn(
-            "shrink-0 font-extrabold tracking-tight text-ish-ink",
+            "shrink-0 font-extrabold tracking-tight text-brand-ink",
             collapsed ? "text-[15px]" : "text-[18px]",
           )}
         >
@@ -237,7 +237,7 @@ export function SideNav() {
               {section.title && !collapsed && (
                 <div className={cn("mb-1.5 mt-4 px-2", text.navSection)}>{section.title}</div>
               )}
-              {section.title && collapsed && <div className="mb-2 mt-3 border-t border-ish-border/70" />}
+              {section.title && collapsed && <div className="mb-2 mt-3 border-t border-brand-border/70" />}
               {section.items.map((item) => (
                 <NavItemRow
                   key={item.key}
@@ -254,7 +254,7 @@ export function SideNav() {
         </div>
 
         <div className="mt-2">
-          <div className="mb-2 border-t border-ish-border" />
+          <div className="mb-2 border-t border-brand-border" />
           {isSuperadmin ? (
             <NavItemRow
               item={{ icon: Shield, label: "Platform Admin", href: "/admin", key: "platform-admin" }}

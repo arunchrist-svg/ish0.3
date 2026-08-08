@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 const panelCardVariants = cva("rounded-2xl p-4 lg:rounded-[20px] lg:p-5", {
   variants: {
     tone: {
-      pink: "bg-ish-pink-soft",
-      yellow: "bg-ish-yellow-soft",
-      green: "bg-ish-green-soft",
+      pink: "bg-brand-pink-soft",
+      yellow: "bg-brand-yellow-soft",
+      green: "bg-brand-green-soft",
       white: "bg-white",
     },
     compact: {

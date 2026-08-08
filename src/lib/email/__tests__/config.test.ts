@@ -7,6 +7,7 @@ import {
   OUTREACH_PAUSED_MESSAGE,
   fromAddressMatchesSmtpUser,
   resolveSmtpCredentials,
+  getSmtpStatus,
 } from "@/lib/email/config";
 
 const ORIGINAL_ENV = process.env;
@@ -31,19 +32,38 @@ describe("resolveEmailConfig", () => {
     expect(resolved.fromName).toBe("Custom Team");
   });
 
-  it("defaults provider to smtp", () => {
-    delete process.env.EMAIL_PROVIDER;
+  it("defaults provider to smtp with empty credentials", () => {
+    process.env.SMTP_USER = "env@gmail.com";
+    process.env.SMTP_PASS = "env-pass";
+    process.env.EMAIL_FROM_ADDRESS = "env@gmail.com";
+    process.env.EMAIL_FROM_NAME = "Env Name";
+    process.env.EMAIL_SEND_MODE = "live";
+    process.env.EMAIL_TEST_RECIPIENT = "test@example.com";
+
     const resolved = resolveEmailConfig({});
     expect(resolved.provider).toBe("smtp");
+    expect(resolved.sendMode).toBe("dry_run");
+    expect(resolved.smtpUser).toBe("");
+    expect(resolved.smtpPass).toBe("");
+    expect(resolved.fromAddress).toBe("");
+    expect(resolved.fromName).toBe("");
+    expect(resolved.testRecipient).toBe("");
   });
 
-  it("reads EMAIL_TEST_RECIPIENT with RESEND fallback", () => {
-    process.env.EMAIL_TEST_RECIPIENT = "test@example.com";
-    const resolved = resolveEmailConfig({});
-    expect(resolved.testRecipient).toBe("test@example.com");
+  it("does not fall back to env SMTP credentials", () => {
+    process.env.SMTP_USER = "env@gmail.com";
+    process.env.SMTP_PASS = "env-pass";
+    const resolved = resolveEmailConfig({
+      smtpUser: "",
+      smtpPass: "",
+    });
+    const creds = resolveSmtpCredentials(resolved);
+    expect(creds.user).toBe("");
+    expect(creds.pass).toBe("");
+    expect(getSmtpStatus(resolved).configured).toBe(false);
   });
 
-  it("prefers settings smtp credentials over env", () => {
+  it("uses workspace smtp credentials only", () => {
     process.env.SMTP_USER = "env@gmail.com";
     process.env.SMTP_PASS = "env-pass";
     const resolved = resolveEmailConfig({
@@ -106,10 +126,10 @@ describe("validateEmailConfig", () => {
 });
 
 describe("EMAIL-UNIT-001 additional config cases", () => {
-  it("reads resend provider from env", () => {
+  it("defaults provider to smtp even if EMAIL_PROVIDER env is set", () => {
     process.env.EMAIL_PROVIDER = "resend";
     const resolved = resolveEmailConfig({});
-    expect(resolved.provider).toBe("resend");
+    expect(resolved.provider).toBe("smtp");
   });
 
   it("defaults outreach sending to active (not paused)", () => {
@@ -129,16 +149,16 @@ describe("EMAIL-UNIT-001 additional config cases", () => {
     expect(resolved.cadenceDays[0]).toBe(1);
   });
 
-  it("uses RESEND_TEST_RECIPIENT as fallback", () => {
+  it("ignores env test recipient defaults", () => {
     delete process.env.EMAIL_TEST_RECIPIENT;
     process.env.RESEND_TEST_RECIPIENT = "resend-test@example.com";
     const resolved = resolveEmailConfig({});
-    expect(resolved.testRecipient).toBe("resend-test@example.com");
+    expect(resolved.testRecipient).toBe("");
   });
 
   it("passes validation for complete smtp dry_run config", () => {
-    delete process.env.SMTP_USER;
-    delete process.env.SMTP_PASS;
+    process.env.SMTP_USER = "env@gmail.com";
+    process.env.SMTP_PASS = "env-pass";
     const errors = validateEmailConfig({
       ...getDefaultEmailConfig(),
       provider: "smtp",

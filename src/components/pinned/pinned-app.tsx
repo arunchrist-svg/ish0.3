@@ -83,35 +83,35 @@ export function PinnedApp() {
       contentClassName="flex flex-col !overflow-hidden"
     >
       <SearchBar value={search} onChange={setSearch} placeholder="Search" sticky className="lg:hidden" />
-      <header className="ish-pinned-hero relative hidden shrink-0 overflow-hidden border-b border-ish-border/60 px-6 py-5 lg:block">
+      <header className="ish-pinned-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
         <div className="ish-pinned-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
         <div className="relative flex flex-wrap items-center gap-4">
           <div className="flex min-w-0 flex-1 items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-ish-yellow shadow-[var(--shadow-ish-yellow-sm)]">
-              <Pin className="size-5 text-ish-ink" />
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
+              <Pin className="size-5 text-brand-ink" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-[20px] font-extrabold tracking-tight text-ish-ink">Pinned</h1>
-              <p className="text-[12.5px] text-ish-ink-soft">Your priority leads and companies — one tap away</p>
+              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Pinned</h1>
+              <p className="text-[12.5px] text-brand-ink-soft">Your priority leads and companies — one tap away</p>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative w-[220px] max-w-full">
-              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-ish-ink-faint" />
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search pins…"
-                className="w-full rounded-full border border-ish-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-ish-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--ish-stratus-blue-rgb),0.45)] focus:bg-white"
+                className="w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
               />
             </div>
             <button
               type="button"
               onClick={() => load({ silent: true })}
               disabled={refreshing}
-              className="flex size-9 items-center justify-center rounded-full border border-ish-border/70 bg-white/70 text-ish-ink-soft transition-all hover:border-ish-ink/20 hover:text-ish-ink active:scale-95"
+              className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95"
               aria-label="Refresh"
             >
               <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
@@ -134,9 +134,9 @@ export function PinnedApp() {
           <EmptyState />
         ) : noResults ? (
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
-            <Search className="size-8 text-ish-ink-faint" />
-            <div className="text-[14px] font-semibold text-ish-ink">No matches</div>
-            <p className="text-[12px] text-ish-ink-soft">Try a different search term</p>
+            <Search className="size-8 text-brand-ink-faint" />
+            <div className="text-[14px] font-semibold text-brand-ink">No matches</div>
+            <p className="text-[12px] text-brand-ink-soft">Try a different search term</p>
           </div>
         ) : (
           <div className="mx-auto max-w-6xl space-y-10">
@@ -183,12 +183,12 @@ function StatPill({
     <div
       className={cn(
         "flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[11px] font-semibold",
-        tone === "yellow" ? "bg-ish-yellow/35 text-ish-ink" : "bg-ish-green/12 text-ish-ink",
+        tone === "yellow" ? "bg-brand-yellow/35 text-brand-ink" : "bg-brand-green/12 text-brand-ink",
       )}
     >
       <Icon className="size-3.5 opacity-70" />
-      <span className="text-ish-ink-faint">{label}</span>
-      <span className="font-extrabold text-ish-ink">{value}</span>
+      <span className="text-brand-ink-faint">{label}</span>
+      <span className="font-extrabold text-brand-ink">{value}</span>
     </div>
   );
 }
@@ -204,11 +204,11 @@ function SectionLabel({
 }) {
   return (
     <div className="mb-4 flex items-center gap-2.5">
-      <div className="flex size-7 items-center justify-center rounded-lg bg-white/80 shadow-[var(--shadow-ish-sm)]">
-        <Icon className="size-3.5 text-ish-ink-soft" />
+      <div className="flex size-7 items-center justify-center rounded-lg bg-white/80 shadow-[var(--shadow-brand-sm)]">
+        <Icon className="size-3.5 text-brand-ink-soft" />
       </div>
-      <h2 className="text-[13px] font-bold uppercase tracking-wider text-ish-ink">{title}</h2>
-      <span className="rounded-full bg-ish-canvas px-2 py-0.5 text-[10px] font-bold text-ish-ink-faint">{count}</span>
+      <h2 className="text-[13px] font-bold uppercase tracking-wider text-brand-ink">{title}</h2>
+      <span className="rounded-full bg-brand-canvas px-2 py-0.5 text-[10px] font-bold text-brand-ink-faint">{count}</span>
     </div>
   );
 }
@@ -234,9 +234,9 @@ function PinnedLeadCard({
           <div className="flex min-w-0 gap-3">
             <IshAvatar name={lead.name} index={index} size={48} />
             <div className="min-w-0 pt-0.5">
-              <div className="truncate text-[15px] font-bold leading-tight text-ish-ink">{lead.name}</div>
-              <div className="mt-0.5 truncate text-[12px] font-medium text-ish-ink-soft">{lead.title}</div>
-              <div className="mt-1.5 flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-ish-green">
+              <div className="truncate text-[15px] font-bold leading-tight text-brand-ink">{lead.name}</div>
+              <div className="mt-0.5 truncate text-[12px] font-medium text-brand-ink-soft">{lead.title}</div>
+              <div className="mt-1.5 flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-brand-green">
                 <Sparkles className="size-3 shrink-0" />
                 {action}
               </div>
@@ -248,8 +248,8 @@ function PinnedLeadCard({
         <div className="mb-3 flex items-center gap-2.5 rounded-xl bg-white/50 px-2.5 py-2">
           <CompanyLogo name={lead.company} size="sm" rounded="rounded-lg" />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-semibold text-ish-ink">{lead.company}</div>
-            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-ish-ink-faint">
+            <div className="truncate text-[12px] font-semibold text-brand-ink">{lead.company}</div>
+            <div className="mt-0.5 flex items-center gap-1 text-[11px] text-brand-ink-faint">
               <MapPin className="size-3 shrink-0" />
               <span className="truncate">{lead.city}</span>
             </div>
@@ -257,7 +257,7 @@ function PinnedLeadCard({
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="rounded-full bg-white/65 px-2.5 py-1 text-[10.5px] font-bold text-ish-ink-soft">
+          <span className="rounded-full bg-white/65 px-2.5 py-1 text-[10.5px] font-bold text-brand-ink-soft">
             {stage}
           </span>
           <EmailStatusChip status={lead.emailStatus} />
@@ -267,7 +267,7 @@ function PinnedLeadCard({
       <div className="flex items-center gap-2 border-t border-black/[0.05] bg-white/30 px-4 py-3">
         <Link
           href={`/leads?lead=${lead.id}`}
-          className="ish-pinned-cta flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-bold text-ish-ink transition-all active:scale-[0.98]"
+          className="ish-pinned-cta flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-bold text-brand-ink transition-all active:scale-[0.98]"
         >
           Open Lead
           <ArrowRight className="size-3.5" />
@@ -275,7 +275,7 @@ function PinnedLeadCard({
         <button
           type="button"
           onClick={onPinOff}
-          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-ish-ink-faint transition-all hover:border-ish-border/80 hover:bg-white/60 hover:text-ish-ink"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-transparent text-brand-ink-faint transition-all hover:border-brand-border/80 hover:bg-white/60 hover:text-brand-ink"
           title="Unpin"
           aria-label="Unpin lead"
         >
@@ -301,7 +301,7 @@ function PinnedCompanyCard({
           <button
             type="button"
             onClick={onPinOff}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-ish-ink-faint opacity-0 transition-all hover:bg-white/70 hover:text-ish-ink group-hover:opacity-100"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-brand-ink-faint opacity-0 transition-all hover:bg-white/70 hover:text-brand-ink group-hover:opacity-100"
             title="Unpin"
             aria-label="Unpin company"
           >
@@ -309,24 +309,24 @@ function PinnedCompanyCard({
           </button>
         </div>
 
-        <div className="mb-1 truncate text-[15px] font-bold text-ish-ink">{company.name}</div>
-        <div className="mb-3 truncate text-[12px] text-ish-ink-soft">{company.industry ?? "—"}</div>
+        <div className="mb-1 truncate text-[15px] font-bold text-brand-ink">{company.name}</div>
+        <div className="mb-3 truncate text-[12px] text-brand-ink-soft">{company.industry ?? "—"}</div>
 
-        <div className="mb-3 flex items-center gap-1.5 text-[11px] text-ish-ink-faint">
+        <div className="mb-3 flex items-center gap-1.5 text-[11px] text-brand-ink-faint">
           <MapPin className="size-3 shrink-0" />
           <span className="truncate">{company.city ?? "—"}</span>
           {company.employees && (
             <>
-              <span className="text-ish-border">·</span>
+              <span className="text-brand-border">·</span>
               <span className="shrink-0">{company.employees} employees</span>
             </>
           )}
         </div>
 
-        {company.giftScore ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-ish-green/12 px-2.5 py-1 text-[10.5px] font-bold text-ish-green">
+        {company.fitScore ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-green/12 px-2.5 py-1 text-[10.5px] font-bold text-brand-green">
             <Sparkles className="size-3" />
-            Gift Score {company.giftScore}
+            Fit Score {company.fitScore}
           </span>
         ) : null}
       </div>
@@ -334,7 +334,7 @@ function PinnedCompanyCard({
       <div className="border-t border-black/[0.05] bg-white/30 px-4 py-3">
         <Link
           href={`/directory?company=${company.id}`}
-          className="ish-pinned-cta flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-bold text-ish-ink transition-all active:scale-[0.98]"
+          className="ish-pinned-cta flex w-full items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12px] font-bold text-brand-ink transition-all active:scale-[0.98]"
         >
           View in Directory
           <ArrowRight className="size-3.5" />
@@ -347,10 +347,10 @@ function PinnedCompanyCard({
 function EmailStatusChip({ status }: { status: string }) {
   const tone =
     status === "verified"
-      ? "bg-ish-green/15 text-ish-green"
+      ? "bg-brand-green/15 text-brand-green"
       : status === "unverified"
         ? "bg-[#e8a000]/15 text-[#b87d00]"
-        : "bg-ish-canvas text-ish-ink-faint";
+        : "bg-brand-canvas text-brand-ink-faint";
 
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10.5px] font-bold", tone)}>
@@ -363,25 +363,25 @@ function EmailStatusChip({ status }: { status: string }) {
 function EmptyState() {
   return (
     <div className="ish-pinned-empty mx-auto flex max-w-md flex-col items-center justify-center gap-4 py-20 text-center">
-      <div className="flex size-16 items-center justify-center rounded-[22px] bg-ish-yellow/40 shadow-[var(--shadow-ish-yellow-sm)]">
-        <Pin className="size-7 text-ish-ink" />
+      <div className="flex size-16 items-center justify-center rounded-[22px] bg-brand-yellow/40 shadow-[var(--shadow-brand-yellow-sm)]">
+        <Pin className="size-7 text-brand-ink" />
       </div>
       <div>
         <div className={cn(text.body, "font-bold")}>No pinned items yet</div>
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-ish-ink-soft">
+        <p className="mt-1.5 text-[12.5px] leading-relaxed text-brand-ink-soft">
           Pin leads from Lead Accelerator or companies from Directory — they&apos;ll show up here for quick access.
         </p>
       </div>
       <div className="flex flex-wrap justify-center gap-2 pt-2">
         <Link
           href="/leads"
-          className="ish-pinned-cta rounded-full px-4 py-2 text-[12px] font-bold text-ish-ink"
+          className="ish-pinned-cta rounded-full px-4 py-2 text-[12px] font-bold text-brand-ink"
         >
           Go to Leads
         </Link>
         <Link
           href="/directory"
-          className="rounded-full border border-ish-border/80 bg-white/70 px-4 py-2 text-[12px] font-semibold text-ish-ink-soft transition-colors hover:text-ish-ink"
+          className="rounded-full border border-brand-border/80 bg-white/70 px-4 py-2 text-[12px] font-semibold text-brand-ink-soft transition-colors hover:text-brand-ink"
         >
           Browse Directory
         </Link>
@@ -394,10 +394,10 @@ function PinnedSkeleton() {
   return (
     <div className="mx-auto max-w-6xl space-y-10">
       <div>
-        <div className="mb-4 h-7 w-40 animate-pulse rounded-lg bg-ish-border/50" />
+        <div className="mb-4 h-7 w-40 animate-pulse rounded-lg bg-brand-border/50" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-[220px] animate-pulse rounded-[20px] bg-ish-border/40" />
+            <div key={i} className="h-[220px] animate-pulse rounded-[20px] bg-brand-border/40" />
           ))}
         </div>
       </div>

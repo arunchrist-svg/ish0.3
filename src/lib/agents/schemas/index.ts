@@ -14,4 +14,4 @@ export {
   giftIntelExtractionSchema,
   parseGiftIntelExtractions,
   type GiftIntelExtractionRow,
-} from "./gift-intel-output";
+} from "./brand-intel-output";

@@ -37,7 +37,7 @@ export async function GET() {
         industry: accounts.industry,
         city: accounts.city,
         employees: accounts.employees,
-        giftScore: accounts.giftScore,
+        fitScore: accounts.fitScore,
         isPinned: accounts.isPinned,
         updatedAt: accounts.updatedAt,
       })

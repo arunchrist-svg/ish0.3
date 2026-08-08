@@ -54,14 +54,14 @@ export function BottomSheet({
           className,
         )}
       >
-        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-ish-border lg:hidden" aria-hidden />
+        <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-brand-border lg:hidden" aria-hidden />
         {title ? (
-          <div className="flex items-center justify-between border-b border-ish-border/60 px-4 py-3">
+          <div className="flex items-center justify-between border-b border-brand-border/60 px-4 py-3">
             <h2 className={text.pageTitle}>{title}</h2>
             <button
               type="button"
               onClick={onClose}
-              className="flex size-10 items-center justify-center rounded-full bg-ish-canvas text-ish-ink active:scale-95"
+              className="flex size-10 items-center justify-center rounded-full bg-brand-canvas text-brand-ink active:scale-95"
               aria-label="Close"
             >
               <X className="size-5" />
@@ -70,7 +70,7 @@ export function BottomSheet({
         ) : null}
         <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", contentClassName ?? "p-4")}>{children}</div>
         {footer ? (
-          <div className="shrink-0 border-t border-ish-border/60 bg-white px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-3">
+          <div className="shrink-0 border-t border-brand-border/60 bg-white px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-3">
             {footer}
           </div>
         ) : null}

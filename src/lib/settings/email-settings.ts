@@ -153,9 +153,14 @@ export async function getResolvedEmailConfig(workspaceId?: string): Promise<Emai
 export async function patchWorkspaceBrandConfig(
   brandConfig: BrandConfig,
   workspaceId?: string,
+  extras?: { campaignMode?: EmailConfig["campaignMode"] },
 ): Promise<EmailConfig> {
   const existing = await loadWorkspaceEmailOverrides(workspaceId);
-  const merged = resolveEmailConfig({ ...existing, brandConfig });
+  const merged = resolveEmailConfig({
+    ...existing,
+    brandConfig,
+    ...(extras?.campaignMode ? { campaignMode: extras.campaignMode } : {}),
+  });
   await persistEmailConfig(merged, workspaceId);
   return merged;
 }

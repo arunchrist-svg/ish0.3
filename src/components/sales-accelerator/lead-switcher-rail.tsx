@@ -58,7 +58,7 @@ function LeadChip({
       )}
     >
       <IshAvatar name={lead.name} index={index} size={24} className="ring-1 ring-white" />
-      <span className="max-w-[72px] truncate text-[12px] font-semibold text-ish-ink">{lead.name}</span>
+      <span className="max-w-[72px] truncate text-[12px] font-semibold text-brand-ink">{lead.name}</span>
       <span
         className={cn(
           "flex size-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold",
@@ -110,13 +110,13 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
 
   return (
     <>
-      <div className="ish-lead-switcher-rail sticky top-0 z-30 shrink-0 border-b border-ish-border/40 bg-white/90 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur-xl lg:hidden">
+      <div className="ish-lead-switcher-rail sticky top-0 z-30 shrink-0 border-b border-brand-border/40 bg-white/90 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur-xl lg:hidden">
         <div className="flex items-center gap-1.5 px-2 pb-2 pt-1">
           {onBack ? (
             <button
               type="button"
               onClick={onBack}
-              className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-white/80 text-ish-ink shadow-ish-sm active:scale-95"
+              className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-white/80 text-brand-ink shadow-brand-sm active:scale-95"
               aria-label="Back to leads"
             >
               <ChevronLeft className="size-5" />
@@ -144,11 +144,11 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
             <button
               type="button"
               onClick={() => setSheetOpen(true)}
-              className="flex shrink-0 items-center gap-0.5 rounded-xl border border-ish-border/60 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-ish-ink shadow-ish-sm active:scale-95"
+              className="flex shrink-0 items-center gap-0.5 rounded-xl border border-brand-border/60 bg-white/90 px-2 py-1.5 text-[11px] font-bold text-brand-ink shadow-brand-sm active:scale-95"
               aria-label={`${overflow.length} more leads`}
             >
               <span>+{overflow.length}</span>
-              <ChevronDown className="size-3.5 text-ish-ink-soft" />
+              <ChevronDown className="size-3.5 text-brand-ink-soft" />
             </button>
           ) : null}
         </div>
@@ -172,7 +172,7 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
         ) : null}
         <div className="space-y-1">
           {sheetLeads.length === 0 ? (
-            <p className="py-6 text-center text-[13px] text-ish-ink-soft">No leads match your search</p>
+            <p className="py-6 text-center text-[13px] text-brand-ink-soft">No leads match your search</p>
           ) : (
             sheetLeads.map((lead, index) => {
               const active = lead.id === activeId;
@@ -184,13 +184,13 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
                   onClick={() => pickLead(lead.id)}
                   className={cn(
                     "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition-colors active:scale-[0.99]",
-                    active ? "bg-ish-stratus-blue/10 ring-1 ring-ish-stratus-blue/30" : "hover:bg-ish-canvas",
+                    active ? "bg-brand-stratus-blue/10 ring-1 ring-brand-stratus-blue/30" : "hover:bg-brand-canvas",
                   )}
                 >
                   <IshAvatar name={lead.name} index={index} size={36} />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[14px] font-semibold text-ish-ink">{lead.name}</div>
-                    <div className="truncate text-[12px] text-ish-ink-soft">
+                    <div className="truncate text-[14px] font-semibold text-brand-ink">{lead.name}</div>
+                    <div className="truncate text-[12px] text-brand-ink-soft">
                       {[lead.title, lead.company].filter(Boolean).join(" · ") || "—"}
                     </div>
                   </div>

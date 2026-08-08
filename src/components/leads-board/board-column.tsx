@@ -18,15 +18,15 @@ export function BoardColumn({ stage, leads }: Props) {
   return (
     <section className="ish-board-column flex w-[280px] shrink-0 flex-col rounded-[18px]">
       <header className="ish-board-column-header mb-3 flex shrink-0 items-center justify-between gap-2 px-1">
-        <h2 className="truncate text-[12.5px] font-bold text-ish-ink">{stage}</h2>
-        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-ish-ink-faint">
+        <h2 className="truncate text-[12.5px] font-bold text-brand-ink">{stage}</h2>
+        <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-brand-ink-faint">
           {leads.length}
         </span>
       </header>
 
       <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-0.5 pb-1 scrollbar-none">
         {leads.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-ish-border/60 px-3 py-8 text-center text-[11px] text-ish-ink-faint">
+          <div className="rounded-xl border border-dashed border-brand-border/60 px-3 py-8 text-center text-[11px] text-brand-ink-faint">
             No leads
           </div>
         ) : (

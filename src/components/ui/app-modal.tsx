@@ -35,15 +35,15 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
     >
       <div
         className={cn(
-          "ish-modal-panel ish-bottom-sheet w-full max-h-[min(92dvh,720px)] overflow-y-auto rounded-t-3xl border border-ish-border bg-white p-6 shadow-2xl",
-          "lg:max-h-none lg:max-w-md lg:rounded-[22px] lg:p-6 lg:shadow-[var(--shadow-ish-float)]",
+          "ish-modal-panel ish-bottom-sheet w-full max-h-[min(92dvh,720px)] overflow-y-auto rounded-t-3xl border border-brand-border bg-white p-6 shadow-2xl",
+          "lg:max-h-none lg:max-w-md lg:rounded-[22px] lg:p-6 lg:shadow-[var(--shadow-brand-float)]",
           panelClassName,
         )}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-ish-border lg:hidden" aria-hidden />
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-brand-border lg:hidden" aria-hidden />
         {children}
       </div>
     </div>,

@@ -52,7 +52,7 @@ export function BusinessCardCapture({ onExtracted }: BusinessCardCaptureProps) {
         type="button"
         disabled={scanning}
         onClick={() => inputRef.current?.click()}
-        className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl border border-ish-border bg-white px-4 text-[13px] font-semibold text-ish-ink shadow-sm active:scale-[0.98] disabled:opacity-50"
+        className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl border border-brand-border bg-white px-4 text-[13px] font-semibold text-brand-ink shadow-sm active:scale-[0.98] disabled:opacity-50"
       >
         {scanning ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
         {scanning ? "Scanning..." : "Scan business card"}
