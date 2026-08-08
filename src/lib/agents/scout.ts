@@ -8,7 +8,7 @@ import {
   getResolvedWorkspaceEnrichmentConfig,
 } from "@/lib/settings/workspace-settings";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { locationOptionsFromSelection, searchTermsForScoutLabels } from "@/lib/geo/india";
+import { locationOptionsFromSelection } from "@/lib/geo/india";
 import type { DataMode } from "@/lib/enrichment/types";
 import { mapWithConcurrency } from "@/lib/async";
 import { db, accounts } from "@/db";
@@ -45,10 +45,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
   const runId = randomUUID();
   const workspaceCfg = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
   const locationLabels = locationOptionsFromSelection(workspaceCfg.scoutGeo).map((o) => o.label);
-  const cities = searchTermsForScoutLabels(
-    params.cities?.length ? params.cities : locationLabels,
-    workspaceCfg.scoutGeo,
-  );
+  const cities = params.cities?.length ? params.cities : locationLabels;
   const dataMode = params.dataMode ?? (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free";
   const companyLimit = params.companyLimit ?? getScoutCompaniesLimit();
   const maxCompanies = params.maxCompaniesToProcess ?? 20;

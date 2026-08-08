@@ -1,6 +1,7 @@
 import type { ScoutCompanyResult } from "./types";
 import { expandCitySearchTerms } from "./city-search";
 import { isGeographicEntity } from "./company-name-match";
+import { isBroadGeoLabel } from "@/lib/geo/india";
 
 type DirectoryHit = { title: string; url: string; content: string };
 
@@ -61,12 +62,16 @@ function isListingUrl(url: string): boolean {
 
 function inferCityFromText(blob: string, cities: string[]): string | undefined {
   const lower = blob.toLowerCase();
+  const hits: string[] = [];
   for (const city of cities) {
     for (const term of expandCitySearchTerms([city])) {
-      if (lower.includes(term.toLowerCase())) return city;
+      if (term.length >= 3 && lower.includes(term.toLowerCase())) hits.push(term);
     }
   }
-  return undefined;
+  if (!hits.length) return undefined;
+  const specific = hits.filter((term) => !isBroadGeoLabel(term));
+  const pool = specific.length ? specific : hits;
+  return [...pool].sort((a, b) => b.length - a.length)[0];
 }
 
 function inferCityFromSegment(segment: string, cities: string[]): string | undefined {

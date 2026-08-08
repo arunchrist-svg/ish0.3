@@ -1,4 +1,9 @@
-import { isNationwideLabel } from "@/lib/geo/india";
+import {
+  compactSearchTermsForScoutLabels,
+  isBroadGeoLabel,
+  isNationwideLabel,
+  matchTermsForScoutLabels,
+} from "@/lib/geo/india";
 
 export function isNationwideSelection(cities: string[]): boolean {
   return cities.some((c) => isNationwideLabel(c));
@@ -30,17 +35,29 @@ const CITY_SEARCH_ALIASES: Record<string, string[]> = {
   Kolar: ["Kolar"],
   Ramanagara: ["Ramanagara"],
   Chitradurga: ["Chitradurga"],
+  Hyderabad: ["Hyderabad", "Secunderabad"],
+  Secunderabad: ["Secunderabad", "Hyderabad"],
 };
+
+function applyCityAliases(terms: Iterable<string>): string[] {
+  const out = new Set<string>();
+  for (const term of terms) {
+    if (!term.trim()) continue;
+    out.add(term);
+    for (const alias of CITY_SEARCH_ALIASES[term] ?? []) out.add(alias);
+  }
+  return [...out];
+}
 
 export function expandCitySearchTerms(cities: string[]): string[] {
   if (isNationwideSelection(cities)) return ["India"];
-  const terms = new Set<string>();
-  for (const city of cities) {
-    for (const alias of CITY_SEARCH_ALIASES[city] ?? [city]) {
-      terms.add(alias);
-    }
-  }
-  return [...terms];
+  return applyCityAliases(compactSearchTermsForScoutLabels(cities));
+}
+
+/** Full alias set for post-filters: state/region labels include every district and metro. */
+export function expandCityMatchTerms(cities: string[]): string[] {
+  if (isNationwideSelection(cities)) return ["India"];
+  return applyCityAliases(matchTermsForScoutLabels(cities));
 }
 
 export function citySearchClause(cities: string[], max = 6): string {
@@ -59,20 +76,23 @@ export function companyCityMatchesSelection(
   selectedCities: string[],
 ): boolean {
   if (selectedCities.length === 0 || isNationwideSelection(selectedCities)) return true;
-  if (!companyCity?.trim()) return false;
+
+  const broad = selectedCities.some((label) => isBroadGeoLabel(label));
+  if (!companyCity?.trim()) return broad;
 
   const normalizedCompany = normalizeCity(companyCity);
-  if (UNVERIFIED_CITY_LABELS.has(normalizedCompany)) return false;
+  if (UNVERIFIED_CITY_LABELS.has(normalizedCompany)) return broad;
 
-  return selectedCities.some((selected) => {
-    const aliases = expandCitySearchTerms([selected]).map(normalizeCity);
-    return aliases.some(
-      (alias) =>
-        normalizedCompany === alias ||
-        normalizedCompany.includes(alias) ||
-        alias.includes(normalizedCompany),
-    );
-  });
+  const aliases = expandCityMatchTerms(selectedCities)
+    .map(normalizeCity)
+    .filter((alias) => alias.length >= 3);
+
+  return aliases.some(
+    (alias) =>
+      normalizedCompany === alias ||
+      normalizedCompany.includes(alias) ||
+      (alias.length >= 5 && normalizedCompany.length >= 4 && alias.includes(normalizedCompany)),
+  );
 }
 
 

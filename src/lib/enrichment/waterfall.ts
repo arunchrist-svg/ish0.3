@@ -6,7 +6,14 @@ import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
-import { companyCityMatchesSelection, isNationwideSelection, personLocationMatchesSelection, rankPeopleByCityMatch } from "./city-search";
+import {
+  companyCityMatchesSelection,
+  expandCityMatchTerms,
+  expandCitySearchTerms,
+  isNationwideSelection,
+  personLocationMatchesSelection,
+  rankPeopleByCityMatch,
+} from "./city-search";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -86,11 +93,15 @@ export async function discoverCompanies(params: {
   const errors: string[] = [];
   const searchMeta = { warnings };
   const isNameSearch = !!params.companyName?.trim();
+  const selectionLabels = params.cities;
+  const nationwide = isNationwideSelection(selectionLabels);
+  const queryCities = expandCitySearchTerms(selectionLabels);
+  const matchCities = expandCityMatchTerms(selectionLabels);
 
   // ── SEARCH MODE: targeted lookup by company name ──────────────────────────
   if (isNameSearch) {
     const nameQuery = params.companyName!.trim();
-    const locationHint = params.cities.filter((c) => !isNationwideSelection([c])).slice(0, 2);
+    const locationHint = queryCities.filter((c) => !isNationwideSelection([c])).slice(0, 2);
     let dbResults: (typeof accounts.$inferSelect)[] = [];
     try {
       dbResults = await db
@@ -142,7 +153,7 @@ export async function discoverCompanies(params: {
       const remaining = limit - dbMapped.length - external.length;
       await runStep("name_search_tavily", () =>
         tavilySearchCompanies({
-          cities: params.cities,
+          cities: queryCities,
           industries: params.industries,
           limit: remaining,
           meta: searchMeta,
@@ -189,8 +200,8 @@ export async function discoverCompanies(params: {
         .where(
           and(
             eq(accounts.tenantId, params.tenantId),
-            params.cities.length > 0 && !isNationwideSelection(params.cities)
-              ? inArray(accounts.city, params.cities)
+            params.cities.length > 0 && !nationwide
+              ? inArray(accounts.city, matchCities.slice(0, 120))
               : undefined,
           ),
         )
@@ -215,7 +226,7 @@ export async function discoverCompanies(params: {
     case "india_directories":
       await runStep("india_directories", () =>
         indiaDirectoriesSearchCompanies({
-          cities: params.cities,
+          cities: queryCities,
           industries: params.industries,
           limit: remaining,
           meta: searchMeta,
@@ -227,14 +238,14 @@ export async function discoverCompanies(params: {
 
     case "google_places":
       await runStep("google_places", () =>
-        googlePlacesSearchCompanies({ cities: params.cities, industries: params.industries, limit: remaining }),
+        googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
         external, remaining, excludeNames, warnings, errors,
       );
       break;
 
     case "apollo":
       await runStep("apollo", () =>
-        apolloSearchCompanies({ cities: params.cities, industries: params.industries, limit: remaining }),
+        apolloSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
         external, remaining, excludeNames, warnings, errors,
       );
       break;
@@ -242,7 +253,7 @@ export async function discoverCompanies(params: {
     case "tavily_ai":
       await runStep("tavily_ai", () =>
         tavilySearchCompanies({
-          cities: params.cities,
+          cities: queryCities,
           industries: params.industries,
           limit: remaining,
           meta: searchMeta,
@@ -261,7 +272,7 @@ export async function discoverCompanies(params: {
     if (hasGooglePlacesKey()) {
       await runStep(
         "google_places_fallback",
-        () => googlePlacesSearchCompanies({ cities: params.cities, industries: params.industries, limit: remaining }),
+        () => googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
         external,
         remaining,
         excludeNames,
@@ -293,7 +304,7 @@ export async function discoverCompanies(params: {
   ) {
     await runStep("tavily_ai_fallback", () =>
       tavilySearchCompanies({
-        cities: params.cities,
+        cities: queryCities,
         industries: params.industries,
         limit: remaining - external.length,
         meta: searchMeta,
@@ -304,10 +315,10 @@ export async function discoverCompanies(params: {
   }
 
   const merged = [...dbMapped, ...external];
-  const companies = filterBySelectedCities(merged, params.cities).slice(0, limit);
-  if (merged.length > 0 && companies.length === 0 && params.cities.length > 0) {
+  const companies = filterBySelectedCities(merged, selectionLabels).slice(0, limit);
+  if (merged.length > 0 && companies.length === 0 && selectionLabels.length > 0 && !nationwide) {
     warnings.push(
-      `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${params.cities.join(", ")}. Try a nearby city or leave industries unselected.`,
+      `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
     );
   }
   return {

@@ -160,27 +160,158 @@ export function summarizeScoutGeo(geo: ScoutGeoSelection): string {
   return `${parts[0]} +${parts.length - 1} more`;
 }
 
+function uniqueTerms(terms: Iterable<string>): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of terms) {
+    const term = raw.trim();
+    if (!term) continue;
+    const key = term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(term);
+  }
+  return out;
+}
+
 function searchTermsForDistrict(district: IndiaDistrict): string[] {
-  return [...new Set([district.displayName, district.name, ...district.aliases])];
+  return uniqueTerms([district.displayName, district.name, ...district.aliases]);
 }
 
-function searchTermsForState(state: IndiaState): string[] {
-  const terms = new Set<string>([state.name]);
+/** Major cities used in Tavily/directory queries so state picks hit metros, not the first district alphabetically. */
+const STATE_QUERY_CITIES: Record<string, string[]> = {
+  TS: ["Hyderabad", "Secunderabad", "Warangal", "Karimnagar"],
+  AP: ["Visakhapatnam", "Vijayawada", "Guntur", "Tirupati"],
+  KA: ["Bengaluru", "Bangalore", "Mysuru", "Mangaluru", "Hubballi"],
+  TN: ["Chennai", "Coimbatore", "Madurai", "Hosur"],
+  KL: ["Kochi", "Thiruvananthapuram", "Kozhikode"],
+  MH: ["Mumbai", "Pune", "Nagpur", "Thane"],
+  GJ: ["Ahmedabad", "Surat", "Vadodara", "Rajkot"],
+  DL: ["Delhi", "New Delhi"],
+  UP: ["Noida", "Lucknow", "Kanpur", "Ghaziabad"],
+  RJ: ["Jaipur", "Udaipur", "Jodhpur"],
+  WB: ["Kolkata", "Howrah"],
+  HR: ["Gurugram", "Gurgaon", "Faridabad"],
+  PB: ["Ludhiana", "Amritsar", "Chandigarh"],
+  MP: ["Indore", "Bhopal"],
+  CG: ["Raipur"],
+  OR: ["Bhubaneswar", "Cuttack"],
+  BR: ["Patna"],
+  JH: ["Ranchi", "Jamshedpur"],
+  AS: ["Guwahati"],
+  UK: ["Dehradun"],
+  GA: ["Goa", "Panaji"],
+  CH: ["Chandigarh"],
+  PY: ["Puducherry"],
+  TG: ["Hyderabad"],
+};
+
+function compactTermsForState(state: IndiaState): string[] {
+  const terms = [state.name, ...(STATE_QUERY_CITIES[state.id] ?? [])];
+  const metroDistricts = [...state.districts]
+    .filter((d) => d.aliases.length > 0)
+    .sort((a, b) => b.aliases.length - a.aliases.length);
+  for (const district of metroDistricts) {
+    terms.push(district.displayName, ...district.aliases);
+  }
+  return uniqueTerms(terms).slice(0, 8);
+}
+
+function matchTermsForState(state: IndiaState): string[] {
+  return uniqueTerms([
+    state.name,
+    ...(STATE_QUERY_CITIES[state.id] ?? []),
+    ...state.districts.flatMap(searchTermsForDistrict),
+  ]);
+}
+
+function compactTermsForRegion(region: IndiaRegion): string[] {
+  return uniqueTerms([region.name, ...region.states.map((s) => s.name)]).slice(0, 10);
+}
+
+function matchTermsForRegion(region: IndiaRegion): string[] {
+  return uniqueTerms([region.name, ...region.states.flatMap(matchTermsForState)]);
+}
+
+export type ResolvedScoutLabel =
+  | { kind: "india" }
+  | { kind: "region"; region: IndiaRegion }
+  | { kind: "state"; state: IndiaState }
+  | { kind: "district"; district: IndiaDistrict; state: IndiaState };
+
+function normalizeLabelKey(label: string): string {
+  return label.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+const LABEL_INDEX = new Map<string, ResolvedScoutLabel>();
+
+function indexLabel(label: string, value: ResolvedScoutLabel) {
+  const key = normalizeLabelKey(label);
+  if (!key || LABEL_INDEX.has(key)) return;
+  LABEL_INDEX.set(key, value);
+}
+
+indexLabel(ENTIRE_INDIA_LABEL, { kind: "india" });
+indexLabel("India", { kind: "india" });
+for (const region of INDIA_REGIONS) {
+  indexLabel(region.name, { kind: "region", region });
+}
+for (const state of INDIA_STATES) {
+  indexLabel(state.name, { kind: "state", state });
+}
+for (const state of INDIA_STATES) {
   for (const district of state.districts) {
-    for (const term of searchTermsForDistrict(district)) terms.add(term);
+    const value: ResolvedScoutLabel = { kind: "district", district, state };
+    indexLabel(district.displayName, value);
+    indexLabel(district.name, value);
+    for (const alias of district.aliases) indexLabel(alias, value);
   }
-  return [...terms];
 }
 
-function searchTermsForRegion(region: IndiaRegion): string[] {
-  const terms = new Set<string>([region.name]);
-  for (const state of region.states) {
-    terms.add(state.name);
-    for (const district of state.districts.slice(0, 8)) {
-      terms.add(district.displayName);
-    }
-  }
-  return [...terms];
+export function resolveScoutLabel(label: string): ResolvedScoutLabel | null {
+  const key = normalizeLabelKey(label);
+  if (!key) return null;
+  if (isNationwideLabel(label)) return { kind: "india" };
+  return LABEL_INDEX.get(key) ?? null;
+}
+
+export function isBroadGeoLabel(label: string): boolean {
+  const resolved = resolveScoutLabel(label);
+  return resolved?.kind === "india" || resolved?.kind === "region" || resolved?.kind === "state";
+}
+
+export function compactSearchTermsForLabel(label: string): string[] {
+  const resolved = resolveScoutLabel(label);
+  if (!resolved) return label.trim() ? [label.trim()] : [];
+  if (resolved.kind === "india") return ["India"];
+  if (resolved.kind === "region") return compactTermsForRegion(resolved.region);
+  if (resolved.kind === "state") return compactTermsForState(resolved.state);
+  return searchTermsForDistrict(resolved.district);
+}
+
+export function matchTermsForLabel(label: string): string[] {
+  const resolved = resolveScoutLabel(label);
+  if (!resolved) return label.trim() ? [label.trim()] : [];
+  if (resolved.kind === "india") return ["India"];
+  if (resolved.kind === "region") return matchTermsForRegion(resolved.region);
+  if (resolved.kind === "state") return matchTermsForState(resolved.state);
+  return uniqueTerms([
+    ...searchTermsForDistrict(resolved.district),
+    ...(STATE_QUERY_CITIES[resolved.state.id] ?? []).filter((city) => {
+      const n = city.toLowerCase();
+      return searchTermsForDistrict(resolved.district).some((t) => t.toLowerCase() === n);
+    }),
+  ]);
+}
+
+export function compactSearchTermsForScoutLabels(labels: string[]): string[] {
+  if (labels.some(isNationwideLabel)) return ["India"];
+  return uniqueTerms(labels.flatMap(compactSearchTermsForLabel));
+}
+
+export function matchTermsForScoutLabels(labels: string[]): string[] {
+  if (labels.some(isNationwideLabel)) return ["India"];
+  return uniqueTerms(labels.flatMap(matchTermsForLabel));
 }
 
 export function locationOptionsFromSelection(raw?: Partial<ScoutGeoSelection> | null): ScoutLocationOption[] {
@@ -206,7 +337,7 @@ export function locationOptionsFromSelection(raw?: Partial<ScoutGeoSelection> | 
       label: region.name,
       group: "Regions",
       kind: "region",
-      searchTerms: searchTermsForRegion(region),
+        searchTerms: compactTermsForRegion(region),
     });
   }
   for (const id of geo.stateIds) {
@@ -218,7 +349,7 @@ export function locationOptionsFromSelection(raw?: Partial<ScoutGeoSelection> | 
       label: state.name,
       group: region?.name ?? "States",
       kind: "state",
-      searchTerms: searchTermsForState(state),
+        searchTerms: compactTermsForState(state),
     });
   }
   for (const id of geo.districtIds) {
@@ -248,20 +379,54 @@ export function isNationwideLabel(label: string): boolean {
   return n === "india" || n === "entire india";
 }
 
-export function searchTermsForScoutLabels(labels: string[], raw?: Partial<ScoutGeoSelection> | null): string[] {
-  if (labels.some(isNationwideLabel)) return ["India"];
-  const options = locationOptionsFromSelection(raw);
-  const byLabel = new Map(options.map((o) => [o.label.toLowerCase(), o]));
-  const terms = new Set<string>();
-  for (const label of labels) {
-    const option = byLabel.get(label.trim().toLowerCase());
-    if (option) {
-      for (const term of option.searchTerms) terms.add(term);
-    } else if (label.trim()) {
-      terms.add(label.trim());
+export function searchTermsForScoutLabels(labels: string[], _raw?: Partial<ScoutGeoSelection> | null): string[] {
+  return compactSearchTermsForScoutLabels(labels);
+}
+
+export function statesInSelection(geo: ScoutGeoSelection): IndiaState[] {
+  const normalized = sanitizeScoutGeo(geo);
+  if (normalized.entireIndia) return [...INDIA_STATES];
+  const ids = new Set<string>();
+  for (const regionId of normalized.regionIds) {
+    for (const state of REGION_BY_ID.get(regionId as IndiaRegionId)?.states ?? []) ids.add(state.id);
+  }
+  for (const stateId of normalized.stateIds) ids.add(stateId);
+  for (const districtId of normalized.districtIds) {
+    const district = DISTRICT_BY_ID.get(districtId);
+    if (district) ids.add(district.stateId);
+  }
+  return INDIA_STATES.filter((state) => ids.has(state.id));
+}
+
+export function scoutGeoFromStateAndDistrictPicks(
+  entireIndia: boolean,
+  stateIds: string[],
+  districtIdsByState: Record<string, string[]>,
+): ScoutGeoSelection {
+  if (entireIndia) {
+    return { entireIndia: true, regionIds: [], stateIds: [], districtIds: [] };
+  }
+  const nextStateIds: string[] = [];
+  const nextDistrictIds: string[] = [];
+  for (const stateId of uniqueTerms(stateIds)) {
+    const state = STATE_BY_ID.get(stateId);
+    if (!state) continue;
+    const picked = districtIdsByState[stateId];
+    if (!picked || picked.length === 0 || picked.length >= state.districts.length) {
+      nextStateIds.push(stateId);
+      continue;
+    }
+    const allowed = new Set(state.districts.map((d) => d.id));
+    for (const districtId of picked) {
+      if (allowed.has(districtId)) nextDistrictIds.push(districtId);
     }
   }
-  return [...terms];
+  return sanitizeScoutGeo({
+    entireIndia: false,
+    regionIds: [],
+    stateIds: nextStateIds,
+    districtIds: nextDistrictIds,
+  });
 }
 
 export function toggleRegion(geo: ScoutGeoSelection, regionId: string): ScoutGeoSelection {

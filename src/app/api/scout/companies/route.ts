@@ -9,8 +9,6 @@ import {
   getResolvedWorkspaceEnrichmentConfig,
   loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
-import { searchTermsForScoutLabels } from "@/lib/geo/india";
-
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
@@ -42,7 +40,6 @@ export async function POST(req: Request) {
     const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
     const discoveryConfig = { ...storedSettings, ...requestOverride };
     const limit = Math.min(requestedLimit ?? cfg.scoutCompaniesLimit, 100);
-    const searchCities = searchTermsForScoutLabels(cities, cfg.scoutGeo);
 
     const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);
     const blockingErrors = prerequisiteErrors.filter((e) =>
@@ -67,7 +64,7 @@ export async function POST(req: Request) {
     const { companies, warnings, errors } = await discoverCompanies({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
-      cities: searchCities.length ? searchCities : cities,
+      cities,
       industries,
       dataMode: cfg.dataMode,
       config: discoveryConfig,
