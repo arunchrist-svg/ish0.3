@@ -178,12 +178,15 @@ export default function OnboardingPage() {
         </p>
       </div>
 
-      <div className="mb-10 flex gap-2 overflow-x-auto">
+      <div
+        className="mb-10 grid w-full gap-1 overflow-hidden sm:gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}
+      >
         {STEPS.map((s) => (
           <div
             key={s.id}
             className={cn(
-              "flex min-w-[100px] flex-col items-center gap-1 rounded-xl px-3 py-2 text-center text-xs",
+              "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-center text-[10px] font-medium leading-tight sm:rounded-xl sm:px-1.5 sm:py-2 sm:text-[11px]",
               (s.id === 3.5 ? showLocation : step === s.id && !showLocation)
                 ? "bg-brand-black text-white"
                 : s.id === 3 && showLocation
@@ -193,8 +196,8 @@ export default function OnboardingPage() {
                     : "bg-white text-brand-ink-faint",
             )}
           >
-            <s.icon className="size-4" />
-            {s.label}
+            <s.icon className="size-3.5 shrink-0 sm:size-4" />
+            <span className="w-full break-words">{s.label}</span>
           </div>
         ))}
       </div>
