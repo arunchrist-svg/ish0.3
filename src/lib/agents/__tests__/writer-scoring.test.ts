@@ -89,6 +89,59 @@ describe("AGENT-UNIT-002 rubric scoring", () => {
     expect(tailored.personalization_depth).toBeGreaterThan(generic.personalization_depth);
   });
 
+  it("penalizes brand catalog dumps versus thesis-led copy", async () => {
+    const dump = await scoreRubric({
+      subjectA: "Festival boxes for Acme Auto",
+      emailBody: `Hi Vijetha,
+
+Hosur factories often need festival boxes for both office and shop-floor staff. India Sweet House offers traditional mithai and dry-fruit hampers designed to travel well.
+
+Would a small tasting sample help you compare options for your team?
+
+No worries if the timing is off.
+
+Srilaksha
+Partnerships, India Sweet House`,
+      contact: { name: "Vijetha", firstName: "Vijetha", title: "HR Manager" },
+      account: { name: "Acme Auto", industry: "Manufacturing", city: "Hosur" },
+    });
+    const thesis = await scoreRubric({
+      subjectA: "Shop-floor Diwali boxes, Acme Auto",
+      emailBody: `Hi Vijetha,
+
+Festival week on a Hosur line is less about a catalogue and more about whether the box feels considered for both office and shop-floor. A hamper that travels well still has to say the company thought about the people who keep the plant running.
+
+Want a sampler box on your desk this week?
+
+No worries if the timing is off.
+
+Srilaksha
+Partnerships, India Sweet House`,
+      contact: { name: "Vijetha", firstName: "Vijetha", title: "HR Manager" },
+      account: { name: "Acme Auto", industry: "Manufacturing", city: "Hosur" },
+    });
+    expect(thesis.value_clarity).toBeGreaterThan(dump.value_clarity);
+  });
+
+  it("rewards role vocabulary and penalizes hook parroting", async () => {
+    const hook = "SEG Automotive is expanding its Bengaluru plant with a new festive gifting program";
+    const parrot = await scoreRubric({
+      subjectA: "Note for SEG",
+      emailBody: `Hi Kavitha,\n\n${hook}. Want to talk?\n\nSrilaksha`,
+      contact: { name: "Kavitha Rao", firstName: "Kavitha", title: "HR Manager" },
+      account: { name: "SEG Automotive", industry: "Manufacturing" },
+      outreachHook: hook,
+    });
+    const translated = await scoreRubric({
+      subjectA: "Shop-floor Diwali boxes, SEG Automotive",
+      emailBody: `Hi Kavitha,\n\nPlant HR usually splits festive boxes between office and shop-floor. Open to a tasting sample?\n\nSrilaksha`,
+      contact: { name: "Kavitha Rao", firstName: "Kavitha", title: "HR Manager" },
+      account: { name: "SEG Automotive", industry: "Manufacturing" },
+      outreachHook: hook,
+    });
+    expect(translated.personalization_depth).toBeGreaterThan(parrot.personalization_depth);
+  });
+
   it("penalizes follow-up-only email 2 copy", async () => {
     const followUpOnly = await scoreDeliverability(
       "Hi Priya,\n\nJust following up on my last note. Did you get a chance to read it?\n\nThanks",

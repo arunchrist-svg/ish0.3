@@ -7,10 +7,11 @@ import { logAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
-import { buildContactEmails, hasUsableEmail, withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import { buildContactEmails, hasUsableContactEmail, withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { buildEmailThread } from "@/lib/email/email-thread";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { getOutreachTemplatesForBrand } from "@/lib/email/outreach-templates";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { updateLeadFields, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
 
@@ -143,6 +144,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       inboundReplyAt: repliedFunnel?.enteredAt?.toISOString() ?? null,
       cadenceDays: emailConfig.cadenceDays,
     });
+    const alternateEmails =
+      (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
+    const emails = buildContactEmails({
+      primaryEmail: contact.email,
+      emailStatus: contact.emailStatus,
+      emailConfidence: contact.emailConfidence,
+      enrichmentSource: contact.enrichmentSource,
+      enrichmentProvider: contact.enrichmentProvider,
+      testStatus:
+        contact.enrichmentProvider === "permutation"
+          ? isEmailOutreachStarted(lead.status, Boolean(outreach))
+            ? "sent"
+            : "saved"
+          : undefined,
+      alternateEmails,
+    });
     const upNext = deriveUpNext(
       lead.status,
       scheduleRows,
@@ -151,10 +168,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       Boolean(outreach),
       outreach,
       replyDraftSent,
+      emails,
     );
-
-    const alternateEmails =
-      (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
 
     const record: LeadDetailRecord = {
       id: lead.id,
@@ -168,20 +183,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       city: account.city ?? "—",
       employees: account.employees ?? "—",
       email: contact.email ?? "—",
-      emails: buildContactEmails({
-        primaryEmail: contact.email,
-        emailStatus: contact.emailStatus,
-        emailConfidence: contact.emailConfidence,
-        enrichmentSource: contact.enrichmentSource,
-        enrichmentProvider: contact.enrichmentProvider,
-        testStatus:
-          contact.enrichmentProvider === "permutation"
-            ? isEmailOutreachStarted(lead.status, Boolean(outreach))
-              ? "sent"
-              : "saved"
-            : undefined,
-        alternateEmails,
-      }),
+      emails,
       emailStatus: contact.emailStatus ?? "missing",
       emailConfidence: contact.emailConfidence ?? undefined,
       enrichmentSource: contact.enrichmentSource ?? undefined,
@@ -226,6 +228,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       budgetBand: account.budgetBand ?? undefined,
       isPinned: lead.isPinned ?? false,
       emailThread,
+      outreachTemplates: getOutreachTemplatesForBrand(emailConfig.brandConfig).map((t) => ({
+        id: t.id,
+        label: t.label,
+        shortLabel: t.shortLabel,
+        description: t.description,
+      })),
     };
 
     return NextResponse.json({ lead: record });
@@ -248,18 +256,21 @@ function deriveUpNext(
   hasDraft = false,
   outreach?: typeof leadOutreach.$inferSelect | null,
   replyDraftSent = false,
+  emails?: { email?: string | null; emailStatus?: string | null }[],
 ): LeadDetailRecord["upNext"] {
   const tasks: LeadDetailRecord["upNext"] = [];
 
-  const canSuggestWrite = hasUsableEmail(email, emailStatus) && !isEmailOutreachStarted(status, hasDraft);
+  const canSuggestWrite =
+    hasUsableContactEmail({ email, emailStatus, emails }) &&
+    !isEmailOutreachStarted(status, hasDraft);
   if ((status === "researched" || status === "scouted" || status === "prefiltered") && canSuggestWrite) {
     tasks.push({
-      title: "Write Email",
+      title: "Write smart emails",
       step: "Suggested next step",
-      desc: "This contact has an email — start personalized outreach",
+      desc: "This contact has an email. Start personalized outreach.",
       icon: "mail",
       active: true,
-      primaryAction: "Write Email",
+      primaryAction: "Write smart emails",
     });
   }
 

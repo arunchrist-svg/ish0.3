@@ -8,6 +8,8 @@ import {
   verticalPackIdForIntent,
   type PlatformIntent,
 } from "@/lib/brand/platform-intent";
+import { INDUSTRY_CATALOG, inferProductCategory } from "@/lib/brand-intel/industry-catalog";
+import { normalizeEmailKeywords, writeupFromSummary } from "@/lib/brand/email-keywords";
 
 const PAGE_PATHS = ["/", "/about", "/about-us", "/products", "/product", "/services", "/solutions"];
 
@@ -104,11 +106,15 @@ function stringList(raw: unknown, max: number): string[] {
     .slice(0, max);
 }
 
+export { normalizeEmailKeywords, writeupFromSummary } from "@/lib/brand/email-keywords";
+
 export type AnalyzeSellerWebsiteResult = {
   websiteUrl: string;
   insights: WebsiteBrandInsights;
   /** BrandConfig fields ready to merge (custom slug). */
   brandPatch: Partial<BrandConfig>;
+  platformIntent: PlatformIntent;
+  productCategory: string | null;
 };
 
 export async function analyzeSellerWebsite(params: {
@@ -132,6 +138,7 @@ export async function analyzeSellerWebsite(params: {
   const industryList = SCOUT_INDUSTRIES.join(", ");
   const deptList = SCOUT_DEPARTMENTS.join(", ");
   const senList = SCOUT_SENIORITY.join(", ");
+  const categoryList = INDUSTRY_CATALOG.map((e) => e.label).join(", ");
 
   const prompt = `Analyze this seller company's website and extract brand/outreach profile for B2B cold email and prospect scouting.
 
@@ -148,7 +155,11 @@ Return ONLY valid JSON:
 {
   "brandName": "official brand/company name",
   "vertical": "short snake_case vertical e.g. sweets_gifting, appliances, saas, manufacturing, consulting",
+  "platformIntent": "b2b_saas | corporate_gifting | appliances | general_b2b",
+  "productCategory": "ONE catalog label: ${categoryList}",
   "productSummary": "2-4 sentences: what they sell, who buys, key offers/pricing if stated. Concrete, no fluff.",
+  "productWriteup": "2-3 sentences positioning blurb for cold email: what they sell, who it is for, why it matters. No fluff.",
+  "emailKeywords": ["5-8 short phrases Writer should lean on, e.g. bulk Diwali hampers, custom branded boxes, pan-India delivery"],
   "toneNotes": "1-2 sentences: how outreach email should sound for this brand (vocabulary, formality, angles to use/avoid)",
   "buyerPersonas": ["role titles who typically buy, e.g. VP Sales or HR Director"],
   "valueProposition": "one sentence core value for buyers",
@@ -159,9 +170,12 @@ Return ONLY valid JSON:
 }
 
 Rules:
+- platformIntent = what they would use Nebula for: SaaS/software sales → b2b_saas; mithai/hampers/corporate gifts → corporate_gifting; kitchen appliances/corporate rewards → appliances; otherwise general_b2b.
+- productCategory = what THEY sell (seller catalog), not buyer industry. Must be one catalog label.
 - scoutIndustries = who they SELL TO (buyer industries), not the seller's own industry unless B2B peer sales.
 - Prefer 1-4 scoutIndustries, 1-3 departments, 1-3 seniority levels.
-- productSummary and toneNotes must be grounded in the website text.
+- productSummary, productWriteup, and toneNotes must be grounded in the website text.
+- emailKeywords = concrete offer/occasion/proof/logistics phrases. Never spam words like free, guaranteed, act now.
 - Match buyer personas and scout roles to how this company actually sells (SaaS → sales/leadership buyers; gifting → HR/procurement).
 - Never invent competitor brands or fake stats.`;
 
@@ -176,7 +190,7 @@ Rules:
             tenantId: params.tenantId,
             workspaceId: params.workspaceId,
             agent: "brand_website_analyze",
-            promptVersion: "seller-website-v2-intent",
+            promptVersion: "seller-website-v3-writeup-keywords",
           }
         : undefined,
   });
@@ -208,6 +222,10 @@ Rules:
     "general";
   const productSummary =
     parsed.productSummary != null ? String(parsed.productSummary).trim() : "";
+  const productWriteup =
+    (parsed.productWriteup != null ? String(parsed.productWriteup).trim() : "") ||
+    writeupFromSummary(productSummary);
+  const emailKeywords = normalizeEmailKeywords(parsed.emailKeywords);
   const toneNotes = parsed.toneNotes != null ? String(parsed.toneNotes).trim() : "";
   const buyerPersonas = stringList(parsed.buyerPersonas, 5);
   const valueProposition =
@@ -222,13 +240,27 @@ Rules:
     throw new Error("Website analysis could not determine what you sell. Add a product summary manually.");
   }
 
-  const platformIntent =
-    params.platformIntent ??
-    inferPlatformIntent({
-      vertical,
-      productSummary,
-      buyerPersonas,
-    });
+  const llmIntentRaw =
+    parsed.platformIntent != null ? String(parsed.platformIntent).trim().toLowerCase().replace(/[\s-]+/g, "_") : "";
+  const llmIntent: PlatformIntent | null =
+    llmIntentRaw === "b2b_saas" ||
+    llmIntentRaw === "corporate_gifting" ||
+    llmIntentRaw === "appliances" ||
+    llmIntentRaw === "general_b2b"
+      ? llmIntentRaw
+      : null;
+  const inferredIntent = inferPlatformIntent({
+    vertical,
+    productSummary,
+    buyerPersonas,
+  });
+  const platformIntent = params.platformIntent ?? llmIntent ?? inferredIntent;
+  const productCategory = inferProductCategory({
+    vertical,
+    productSummary,
+    llmCategory: parsed.productCategory != null ? String(parsed.productCategory) : undefined,
+    platformIntent,
+  });
   const intentDefaults = scoutDefaultsForIntent(platformIntent);
   const resolvedPersonas = buyerPersonas.length ? buyerPersonas : intentDefaults.buyerPersonas;
   if (!scoutDepartments.length) scoutDepartments = intentDefaults.scoutDepartments;
@@ -248,6 +280,10 @@ Rules:
     scoutIndustries,
     scoutDepartments,
     scoutSeniority,
+    productCategory: productCategory ?? undefined,
+    platformIntent,
+    productWriteup: productWriteup || undefined,
+    emailKeywords: emailKeywords.length ? emailKeywords : undefined,
   };
 
   const brandPatch: Partial<BrandConfig> = {
@@ -263,7 +299,7 @@ Rules:
     websiteInsights: insights,
   };
 
-  return { websiteUrl, insights, brandPatch };
+  return { websiteUrl, insights, brandPatch, platformIntent, productCategory };
 }
 
 /** Apply website analysis onto an existing BrandConfig (preserves preset slug if set). */

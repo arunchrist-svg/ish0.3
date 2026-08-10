@@ -11,6 +11,7 @@ import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
 import { parsePeopleFromSearchResults } from "./people-parser";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, TAVILY_QUOTA_PEOPLE_MSG, tavilySearch } from "./tavily-client";
 import { citySearchClause, personLocationMatchesSelection, rankPeopleByCityMatch } from "./city-search";
+import { personFieldsShowCurrentEmployment } from "@/lib/enrichment/person-company-match";
 
 function cleanCompanyName(name: string): string {
   return name
@@ -130,7 +131,12 @@ export async function searchPeopleViaTavily(params: {
   }
 
   const heuristic = filterPeopleByCities(
-    parsePeopleFromSearchResults(allResults, Math.max(limit * 2, 8), `${dataSource}_heuristic`),
+    parsePeopleFromSearchResults(
+      allResults,
+      Math.max(limit * 2, 8),
+      `${dataSource}_heuristic`,
+      company,
+    ),
     params.cities,
   );
   const keyDmCount = heuristic.filter((p) => p.isKeyDM).length;
@@ -150,12 +156,14 @@ export async function searchPeopleViaTavily(params: {
         system: `Extract named individuals from search results for a B2B outreach contact list.
 Output ONLY a valid JSON array. No markdown fences.
 Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
-Only real named people at the target company. Never invent emails or phones.
+Only people whose CURRENT employer is the target company. Put the employer in title (e.g. "Plant HR Manager at Titan Company").
+Exclude former employees, consultants at other firms, and anyone whose headline names a different company.
+Never invent emails or phones.
 Prefer people located in the target city when location is stated.`,
         prompt: `Company: ${company}
 Target city: ${cityClause}
-Find: decision-makers (Directors, Managers, Heads, Founders, VPs) based in or near ${cityClause}.
-Exclude people who clearly work from a different city (e.g. Pune for a Mysuru scout).
+Find: decision-makers (Directors, Managers, Heads, Founders, VPs) currently working at ${company}, based in or near ${cityClause}.
+Exclude people who clearly work from a different city (e.g. Pune for a Mysuru scout) or a different country.
 Do not filter for gifting or HR-only roles unless those titles appear in the results.
 
 ${context}
@@ -167,7 +175,8 @@ Return up to ${limit} people.`,
       const parsed = filterPeopleByCities(
         parseJsonArrayFromLLM(raw)
           .map((person) => mapLLMPerson(person, dataSource))
-          .filter((person): person is ScoutPersonResult => !!person),
+          .filter((person): person is ScoutPersonResult => !!person)
+          .filter((person) => personFieldsShowCurrentEmployment(person, company)),
         params.cities,
       );
 

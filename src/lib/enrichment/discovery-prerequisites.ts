@@ -11,11 +11,7 @@ export function hasGeminiKey(): boolean {
 }
 
 export function hasLLMKey(): boolean {
-  const provider = (process.env.LLM_PROVIDER ?? "gemini").trim().toLowerCase();
-  if (provider === "anthropic") return !!process.env.ANTHROPIC_API_KEY;
-  if (provider === "openrouter") return !!process.env.OPENROUTER_API_KEY;
-  if (provider === "omlx") return true;
-  return hasGeminiKey();
+  return !!process.env.ANTHROPIC_API_KEY;
 }
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
@@ -34,9 +30,7 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
     !hasLLMKey()
   ) {
     errors.push(
-      process.env.LLM_PROVIDER === "omlx"
-        ? "Local OMLX server is not configured. Set LLM_PROVIDER=omlx and OMLX_BASE_URL in .env.local."
-        : "LLM API key is missing. Directory search will use basic parsing only until an AI key is configured.",
+      "ANTHROPIC_API_KEY is missing. Directory search will use basic parsing only until Claude is configured.",
     );
   }
 

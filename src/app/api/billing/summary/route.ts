@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
-import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 import { canManageBilling } from "@/lib/auth/permissions";
 import { getCreditBalance } from "@/lib/billing/credits";
+import { CREDIT_COST_CATALOG } from "@/lib/billing/credit-costs";
 import { getTenantPlan } from "@/lib/billing/entitlements";
-import { db, creditTransactions, subscriptions, plans } from "@/db";
+import { db, creditTransactions, subscriptions } from "@/db";
 import { eq, and, gte, lt, sql } from "drizzle-orm";
 import { handleApiError } from "@/lib/api-errors";
 
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
-    if (!canManageBilling(ctx.role, ctx.platformRole)) {
-      throw new ForbiddenError("Only owners can view billing");
-    }
 
     const balance = await getCreditBalance(ctx.tenantId);
     const { plan, tenant } = await getTenantPlan(ctx.tenantId);
@@ -40,9 +38,19 @@ export async function GET() {
       .groupBy(creditTransactions.action);
 
     return NextResponse.json({
-      plan: plan ? { slug: plan.slug, name: plan.name, priceCents: plan.priceCents, includedCredits: plan.includedCredits, seatLimit: plan.seatLimit } : null,
+      plan: plan
+        ? {
+            slug: plan.slug,
+            name: plan.name,
+            priceCents: plan.priceCents,
+            includedCredits: plan.includedCredits,
+            seatLimit: plan.seatLimit,
+          }
+        : null,
       tenantPlan: tenant?.plan,
       balance,
+      canManage: canManageBilling(ctx.role, ctx.platformRole),
+      costs: CREDIT_COST_CATALOG,
       subscription: sub ? { status: sub.status, currentPeriodEnd: sub.currentPeriodEnd } : null,
       usageLast30Days: usageByAction,
     });

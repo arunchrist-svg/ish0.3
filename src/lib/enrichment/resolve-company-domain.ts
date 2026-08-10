@@ -1,41 +1,15 @@
 import { apolloSearchOrganizationByName } from "./apollo";
+import { isAcceptableCompanyDomain, normalizeHost } from "./company-domain-quality";
 import { domainFromWebsite } from "./provider-utils";
 import { hasTavilyKeys } from "./tavily-keys";
 import { tavilySearch } from "./tavily-client";
 
-const DIRECTORY_DOMAINS = [
-  "justdial.com",
-  "indiamart.com",
-  "sulekha.com",
-  "zaubacorp.com",
-  "tradeindia.com",
-  "linkedin.com",
-  "facebook.com",
-  "instagram.com",
-  "twitter.com",
-  "x.com",
-  "youtube.com",
-  "wikipedia.org",
-  "google.com",
-  "apollo.io",
-  "github.com",
-  "gitlab.com",
-  "bitbucket.org",
-];
-
 export function normalizeDomain(domain?: string | null): string | undefined {
-  if (!domain?.trim()) return undefined;
-  return domain
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split("/")[0];
+  return normalizeHost(domain);
 }
 
-function isDirectoryDomain(domain: string): boolean {
-  const lower = domain.toLowerCase();
-  return DIRECTORY_DOMAINS.some((dir) => lower === dir || lower.endsWith(`.${dir}`));
+function isUsableForCompany(domain: string | undefined, companyName: string): domain is string {
+  return Boolean(domain && isAcceptableCompanyDomain(domain, companyName));
 }
 
 export type ResolvedCompanyDomain = {
@@ -51,12 +25,12 @@ export async function resolveCompanyDomain(params: {
   city?: string;
 }): Promise<ResolvedCompanyDomain> {
   const provided = normalizeDomain(params.domain);
-  if (provided) {
+  if (isUsableForCompany(provided, params.companyName)) {
     return { domain: provided, website: params.website, source: "provided" };
   }
 
   const fromWebsite = domainFromWebsite(params.website);
-  if (fromWebsite) {
+  if (isUsableForCompany(fromWebsite, params.companyName)) {
     return { domain: fromWebsite, website: params.website, source: "website" };
   }
 
@@ -67,9 +41,9 @@ export async function resolveCompanyDomain(params: {
         city: params.city,
         limit: 3,
       });
-      const match = orgs.find((org) => normalizeDomain(org.domain)) ?? orgs[0];
+      const match = orgs.find((org) => isUsableForCompany(normalizeDomain(org.domain), params.companyName));
       const domain = normalizeDomain(match?.domain);
-      if (domain) {
+      if (isUsableForCompany(domain, params.companyName)) {
         return { domain, website: match?.website ?? params.website, source: "apollo" };
       }
     } catch (e) {
@@ -83,7 +57,7 @@ export async function resolveCompanyDomain(params: {
       const hits = await tavilySearch(`"${params.companyName}" official website${cityHint}`, 5);
       for (const hit of hits) {
         const domain = domainFromWebsite(hit.url);
-        if (domain && !isDirectoryDomain(domain)) {
+        if (isUsableForCompany(domain, params.companyName)) {
           return { domain, website: hit.url, source: "tavily" };
         }
       }

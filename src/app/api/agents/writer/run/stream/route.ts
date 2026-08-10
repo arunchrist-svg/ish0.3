@@ -1,8 +1,8 @@
 import { runWriter } from "@/lib/agents/writer";
 import { db, leads, leadOutreach } from "@/db";
 import { eq } from "drizzle-orm";
-import { friendlyLLMError } from "@/lib/llm";
-import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
+import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
@@ -36,8 +36,9 @@ export async function POST(req: Request) {
           await assertCredits(ctx.tenantId, "writer.draft", 1);
           send({ type: "progress", message: "Drafting email with AI..." });
 
-          const template = getOutreachTemplate(outreachTemplate as OutreachTemplateId | undefined);
-          const outreachId = await runWriter(leadId, { outreachTemplate: template.id });
+          const outreachId = await runWriter(leadId, {
+            outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
+          });
 
           send({ type: "progress", message: "Scoring deliverability..." });
           await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
@@ -74,6 +75,6 @@ export async function POST(req: Request) {
     if (e instanceof ResearchNotReadyError) {
       return new Response(JSON.stringify({ code: e.code, error: e.message }), { status: 422 });
     }
-    return new Response(JSON.stringify({ error: friendlyLLMError(e) }), { status: 500 });
+    return new Response(JSON.stringify({ error: friendlyLLMError(e) }), { status: llmErrorHttpStatus(e) });
   }
 }

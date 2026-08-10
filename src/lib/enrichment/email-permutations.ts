@@ -1,3 +1,4 @@
+import { isAcceptableCompanyDomain } from "@/lib/enrichment/company-domain-quality";
 import { domainFromCompany, domainFromWebsite, parseName } from "@/lib/enrichment/provider-utils";
 
 export type EmailPermutation = {
@@ -28,11 +29,16 @@ export function resolveAccountDomain(input: {
   website?: string | null;
   companyName?: string | null;
 }): string | undefined {
-  return (
-    normalizeDomain(input.domain) ??
-    domainFromWebsite(input.website ?? undefined) ??
-    (input.companyName?.trim() ? domainFromCompany(input.companyName) : undefined)
-  );
+  const companyName = input.companyName ?? undefined;
+  const fromDomain = normalizeDomain(input.domain);
+  if (fromDomain && isAcceptableCompanyDomain(fromDomain, companyName)) return fromDomain;
+
+  const fromWebsite = domainFromWebsite(input.website ?? undefined);
+  if (fromWebsite && isAcceptableCompanyDomain(fromWebsite, companyName)) return fromWebsite;
+
+  if (!input.companyName?.trim()) return undefined;
+  const guessed = domainFromCompany(input.companyName);
+  return isAcceptableCompanyDomain(guessed, companyName) ? guessed : undefined;
 }
 
 export function resolveContactName(input: {

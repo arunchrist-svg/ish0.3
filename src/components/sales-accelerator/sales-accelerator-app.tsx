@@ -2,10 +2,17 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { filterLeadsByQuery, QueuePanel } from "@/components/sales-accelerator/queue-panel";
+import {
+  filterLeadsByQuery,
+  LEAD_QUEUE_SORT_STORAGE_KEY,
+  parseLeadQueueSort,
+  QueuePanel,
+  sortLeadsQueue,
+  type LeadQueueSort,
+} from "@/components/sales-accelerator/queue-panel";
 import { LeadSwitcherRail } from "@/components/sales-accelerator/lead-switcher-rail";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
-import { createLead, deleteLead, fetchLeads, fetchLead, updateLead } from "@/lib/api-client";
+import { createLead, deleteLead, fetchLeads, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
 import type { LeadDetailRecord, LeadQueueItem } from "@/lib/api-client";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
@@ -42,12 +49,23 @@ export function SalesAcceleratorApp() {
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingLead, setEditingLead] = useState<LeadDetailRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [queueSort, setQueueSort] = useState<LeadQueueSort>("score_desc");
+  const [mergingDuplicates, setMergingDuplicates] = useState(false);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTop = useRef(0);
 
   useEffect(() => {
     activeLeadIdRef.current = activeLeadId;
   }, [activeLeadId]);
+
+  useEffect(() => {
+    setQueueSort(parseLeadQueueSort(localStorage.getItem(LEAD_QUEUE_SORT_STORAGE_KEY)));
+  }, []);
+
+  function handleQueueSortChange(next: LeadQueueSort) {
+    setQueueSort(next);
+    localStorage.setItem(LEAD_QUEUE_SORT_STORAGE_KEY, next);
+  }
 
   const syncLeadToUrl = useCallback(
     (leadId: string) => {
@@ -96,8 +114,8 @@ export function SalesAcceleratorApp() {
 
   async function handleLeadFormSubmit(values: import("@/lib/api-client").LeadFormInput) {
     if (formMode === "create") {
-      const { id } = await createLead(values);
-      toast.success("Lead created");
+      const { id, existing } = await createLead(values);
+      toast.success(existing ? "Lead already in your list" : "Lead created");
       await refreshLeadList({ silent: true });
       await selectLead(id);
       return;
@@ -135,6 +153,38 @@ export function SalesAcceleratorApp() {
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Delete failed");
+    }
+  }
+
+
+  async function handleMergeDuplicates() {
+    if (mergingDuplicates) return;
+    if (!window.confirm("Merge duplicate leads? We will keep the furthest-along record for each person and copy missing contact details onto it.")) {
+      return;
+    }
+    setMergingDuplicates(true);
+    try {
+      const result = await mergeLeadDuplicates();
+      if (result.merged === 0) {
+        toast.success("No duplicates to merge");
+        return;
+      }
+      toast.success(
+        result.merged === 1 ? "Merged 1 duplicate lead" : `Merged ${result.merged} duplicate leads`,
+      );
+      const current = activeLeadIdRef.current;
+      const remap = result.groups.find((group) => current && group.deletedIds.includes(current));
+      await refreshLeadList({ silent: true });
+      if (remap) {
+        await selectLead(remap.keepId);
+      } else if (current) {
+        const detail = await fetchLead(current).catch(() => null);
+        if (detail) setPrefetchedLead(detail);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not merge duplicates");
+    } finally {
+      setMergingDuplicates(false);
     }
   }
 
@@ -234,8 +284,8 @@ export function SalesAcceleratorApp() {
   }, [leadFromUrl]);
 
   const filteredLeads = useMemo(
-    () => filterLeadsByQuery(leads, searchQuery),
-    [leads, searchQuery],
+    () => sortLeadsQueue(filterLeadsByQuery(leads, searchQuery), queueSort),
+    [leads, searchQuery, queueSort],
   );
 
   const handleBackToList = useCallback(() => {
@@ -301,6 +351,10 @@ export function SalesAcceleratorApp() {
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
       listScrollRef={listScrollRef}
+      sort={queueSort}
+      onSortChange={handleQueueSortChange}
+      onMergeDuplicates={canWritePipeline ? handleMergeDuplicates : undefined}
+      mergingDuplicates={mergingDuplicates}
     />
   );
 

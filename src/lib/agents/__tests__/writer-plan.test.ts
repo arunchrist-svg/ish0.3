@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertResearchReadyForWriter,
+  fallbackResearchBrief,
   formatWriterPlanForPrompt,
   getResearchQualityGaps,
   ResearchNotReadyError,
@@ -22,6 +23,18 @@ describe("writer-plan", () => {
         decisionChain: ["Priya Sharma"],
       }),
     ).not.toThrow();
+  });
+
+  it("builds a fallback brief when research has not run", () => {
+    const brief = fallbackResearchBrief({
+      contactName: "Abhimanyu Sen",
+      contactTitle: "President & CHRO",
+      accountName: "SEG Automotive",
+      brandName: "Nebula",
+    });
+    expect(brief.outreachHook).toContain("SEG Automotive");
+    expect(brief.outreachHook).not.toMatch(/outreach for .+ with /i);
+    expect(brief.decisionChain).toEqual(["Abhimanyu Sen"]);
   });
 
   it("throws ResearchNotReadyError when hook missing", () => {

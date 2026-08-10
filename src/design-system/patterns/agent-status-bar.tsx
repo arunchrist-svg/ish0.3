@@ -21,7 +21,7 @@ type AgentStatusBarProps = {
 
 function labelForAgent(agent: string): string {
   if (agent === "researcher-lite") return "Research";
-  if (agent === "writer") return "Writer";
+  if (agent === "writer") return "Smart emails";
   if (agent === "scout") return "Scout";
   if (agent === "gift-intel" || agent === "brand-intel") return "Brand Intelligence";
   if (agent === "sequencer") return "Sequencer";

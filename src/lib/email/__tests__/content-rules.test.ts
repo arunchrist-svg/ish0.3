@@ -29,6 +29,15 @@ describe("content quality — Christ Test Co Diwali draft", () => {
 });
 
 describe("scoreContentQuality", () => {
+  it("penalizes vendors lock-in urgency", () => {
+    const result = scoreContentQuality(
+      `Hi Vijetha,\n\nWould a sample help before Hosur vendors lock in?\n\nSrilaksha\nPartnerships, India Sweet House`,
+      "Sampler for Acme",
+      { contactFirstName: "Vijetha", sequencePosition: 1 },
+    );
+    expect(result.factors.some((f) => /vendors lock-in/i.test(f.label))).toBe(true);
+  });
+
   it("penalizes dear opener and spam words", () => {
     const result = scoreContentQuality(
       "Dear Arun,\n\nFree offer for your team.\n\nISH Gifting Team",

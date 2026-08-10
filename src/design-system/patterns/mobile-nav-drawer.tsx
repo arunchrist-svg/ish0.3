@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { X } from "lucide-react";
+import { Coins, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   MOBILE_ADMIN_ITEM,
@@ -18,6 +18,7 @@ type MobileNavDrawerProps = {
   open: boolean;
   pathname: string;
   isSuperadmin?: boolean;
+  credits?: number | null;
   onClose: () => void;
 };
 
@@ -63,7 +64,13 @@ function DrawerRow({
   );
 }
 
-export function MobileNavDrawer({ open, pathname, isSuperadmin = false, onClose }: MobileNavDrawerProps) {
+export function MobileNavDrawer({
+  open,
+  pathname,
+  isSuperadmin = false,
+  credits = null,
+  onClose,
+}: MobileNavDrawerProps) {
   if (!open) return null;
 
   return (
@@ -88,6 +95,24 @@ export function MobileNavDrawer({ open, pathname, isSuperadmin = false, onClose 
         </div>
 
         <div className="flex-1 space-y-4 overflow-y-auto ish-page-padding pb-8">
+          {typeof credits === "number" ? (
+            <Link
+              href="/settings?tab=billing"
+              onClick={() => {
+                void hapticLight();
+                onClose();
+              }}
+              className="flex items-center justify-between rounded-2xl border border-brand-border bg-white px-4 py-3 shadow-brand-sm"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-medium text-brand-ink-soft">
+                <Coins className="size-4 text-brand-stratus-yellow" />
+                Workspace credits
+              </span>
+              <span className="text-[14px] font-semibold tabular-nums text-brand-ink">
+                {credits.toLocaleString("en-IN")}
+              </span>
+            </Link>
+          ) : null}
           {MOBILE_DRAWER_SECTIONS.map((section) => (
             <div key={section.title ?? "main"}>
               {section.title ? (

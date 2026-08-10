@@ -205,7 +205,7 @@ export async function POST(req: Request) {
           to,
           subject,
           html: buildEmailHtml({
-            body: outreach.emailBody ?? "",
+            body: approval.bodyUsed || outreach.emailBody || "",
             trackingToken,
             appUrl: emailConfig.appUrl,
             emailStyle: emailConfig.emailStyle,

@@ -14,6 +14,7 @@ import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
+import { isAcceptableCompanyDomain } from "@/lib/enrichment/company-domain-quality";
 import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-company-domain";
 import { resolveContactName } from "@/lib/enrichment/email-permutations";
 import { withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
@@ -160,8 +161,15 @@ export async function saveScoutLeads(params: {
     await db
       .update(accounts)
       .set({
-        domain: existing.domain ?? normalizeDomain(resolvedCompany.domain) ?? null,
-        website: existing.website ?? resolvedCompany.website ?? null,
+        domain: isAcceptableCompanyDomain(existing.domain, resolvedCompany.name)
+          ? existing.domain
+          : normalizeDomain(resolvedCompany.domain) ?? null,
+        website: isAcceptableCompanyDomain(
+          normalizeDomain(existing.website) ?? existing.domain,
+          resolvedCompany.name,
+        )
+          ? existing.website
+          : resolvedCompany.website ?? null,
         industry: existing.industry ?? resolvedCompany.industry ?? null,
         city: existing.city ?? resolvedCompany.city ?? null,
         employees: existing.employees ?? resolvedCompany.employees ?? null,

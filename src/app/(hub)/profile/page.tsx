@@ -81,7 +81,9 @@ export default function ProfilePage() {
                   <Coins className="size-4 text-brand-stratus-yellow" />
                   <span className="text-[13px] text-brand-ink-soft">Credits remaining</span>
                 </div>
-                <span className="text-[14px] font-semibold text-brand-ink">{credits.toLocaleString()}</span>
+                <a href="/settings?tab=billing" className="text-[14px] font-semibold text-brand-ink hover:underline">
+                  {credits.toLocaleString()} →
+                </a>
               </SettingsRow>
             </>
           )}

@@ -1,4 +1,6 @@
-import { getVerticalPack, type PackOutreachCta } from "@/vertical-packs";
+import { getVerticalPack, resolveVerticalPackId, type PackOutreachCta } from "@/vertical-packs";
+import { resolvePlatformIntent, verticalPackIdForIntent } from "@/lib/brand/platform-intent";
+import type { BrandConfig } from "@/lib/email/config";
 
 const SHARED_FOLLOW_UPS: PackOutreachCta[] = [
   {
@@ -7,7 +9,7 @@ const SHARED_FOLLOW_UPS: PackOutreachCta[] = [
     shortLabel: "Follow-up",
     description: "Second email with new value, not a generic check-in",
     ctaInstruction:
-      "Email 2 of 3. Do NOT say 'just following up' or 'checking in'. Add ONE new value angle not in Email 1: a proof point, case study, seasonal deadline, or new detail from company intel. One soft CTA. Max 3 sentences in the pitch body.",
+      "Email 2 of 3. Subject must be Re: plus Email 1 subject. Do NOT say 'just following up', 'checking in', or 'circling back'. Use seasonal urgency (Diwali window, tasting slots filling) plus a sampler CTA. Max 4 sentences in the pitch body.",
   },
   {
     id: "final_reminder",
@@ -28,9 +30,23 @@ export function getOutreachTemplatesForPack(packId?: string | null) {
   return [...byId.values()];
 }
 
+export function packIdFromBrand(brand?: Partial<BrandConfig> | null): string {
+  const fromPack = resolveVerticalPackId(brand?.verticalPackId, brand?.brandSlug);
+  const intent = resolvePlatformIntent(brand?.platformIntent, fromPack);
+  const fromIntent = verticalPackIdForIntent(intent);
+  if (fromPack === "general" && fromIntent !== "general") return fromIntent;
+  return fromPack;
+}
+
+export function getOutreachTemplatesForBrand(brand?: Partial<BrandConfig> | null) {
+  return getOutreachTemplatesForPack(packIdFromBrand(brand));
+}
+
 export const OUTREACH_TEMPLATES = getOutreachTemplatesForPack("general");
 
 export type OutreachTemplateId = string;
+
+export type OutreachTemplateOption = Pick<PackOutreachCta, "id" | "label" | "shortLabel" | "description">;
 
 export const REPLY_SEQUENCE_POSITION = 4;
 

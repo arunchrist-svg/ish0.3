@@ -13,18 +13,27 @@ import {
   type BrandConfig,
   type BrandSlug,
   type CampaignMode,
+  type WebsiteBrandInsights,
 } from "@/lib/email/config";
-import { BRAND_PRESET_OPTIONS, campaignModeOptionsForBrand, brandConfigFromPresetSelection, brandConfigFromPlatformIntent } from "@/lib/email/brand-presets";
+import { campaignModeOptionsForBrand, brandConfigFromPresetSelection, brandConfigFromPlatformIntent } from "@/lib/email/brand-presets";
 import {
   PLATFORM_INTENT_OPTIONS,
   defaultCampaignModeForIntent,
   resolvePlatformIntent,
   type PlatformIntent,
 } from "@/lib/brand/platform-intent";
+import {
+  brandPresetOptionsForUser,
+  campaignModeOptionsForUser,
+  platformIntentOptionsForUser,
+} from "@/lib/brand/vertical-catalog";
+import { useSession } from "@/components/providers/session-provider";
+import { emailKeywordsToInput, normalizeEmailKeywords } from "@/lib/brand/email-keywords";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, XCircle } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 
 type Props = {
   config: EmailConfigResponse | null;
@@ -37,13 +46,91 @@ type Props = {
   verifying: boolean;
 };
 
+function AppPasswordHelp() {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger
+        aria-label="How to get an App Password"
+        className={cn(
+          "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-brand-ink-faint",
+          "transition-colors hover:bg-brand-canvas hover:text-brand-ink",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/30",
+        )}
+      >
+        <CircleHelp className="size-3.5" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        side="bottom"
+        sideOffset={6}
+        className="w-[min(18rem,calc(100vw-2rem))] min-w-[16rem] rounded-xl border border-brand-border/60 bg-white p-3 shadow-[var(--shadow-brand)]"
+      >
+        <p className="text-[12px] font-semibold text-brand-ink">How to get an App Password</p>
+        <div className="mt-1.5 space-y-1.5 text-[12px] leading-relaxed text-brand-ink-soft">
+          <p>1. Enable 2-Step Verification on the Gmail account.</p>
+          <p>2. Go to Google Account → Security → App passwords.</p>
+          <p>3. Create a password for Mail, then paste it here and tap Verify connection.</p>
+          <p>4. From email below will auto-match your Gmail address.</p>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function SettingsTextRow({
   label,
   desc,
   value,
   onChange,
+  onBlur,
   placeholder,
   type = "text",
+  showDivider,
+  labelAccessory,
+}: {
+  label: string;
+  desc?: string;
+  value: string;
+  onChange: (v: string) => void;
+  onBlur?: () => void;
+  placeholder?: string;
+  type?: string;
+  showDivider?: boolean;
+  labelAccessory?: ReactNode;
+}) {
+  return (
+    <>
+      {showDivider ? <SettingsGroupDivider /> : null}
+      <SettingsRow className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <div className="text-[15px] font-medium text-brand-ink">{label}</div>
+            {labelAccessory}
+          </div>
+          {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">{desc}</p> : null}
+        </div>
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          placeholder={placeholder}
+          className={cn(
+            "w-full rounded-xl border border-brand-border/60 bg-brand-canvas/50 px-3 py-2 text-[14px] text-brand-ink sm:max-w-[280px]",
+            "focus:border-brand-stratus-blue/50 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/15",
+          )}
+        />
+      </SettingsRow>
+    </>
+  );
+}
+
+function SettingsTextareaRow({
+  label,
+  desc,
+  value,
+  onChange,
+  placeholder,
   showDivider,
 }: {
   label: string;
@@ -51,24 +138,23 @@ function SettingsTextRow({
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  type?: string;
   showDivider?: boolean;
 }) {
   return (
     <>
       {showDivider ? <SettingsGroupDivider /> : null}
-      <SettingsRow className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 flex-1">
+      <SettingsRow className="flex-col items-stretch gap-2">
+        <div className="min-w-0">
           <div className="text-[15px] font-medium text-brand-ink">{label}</div>
           {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">{desc}</p> : null}
         </div>
-        <input
-          type={type}
+        <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          rows={3}
           className={cn(
-            "w-full rounded-xl border border-brand-border/60 bg-brand-canvas/50 px-3 py-2 text-[14px] text-brand-ink sm:max-w-[280px]",
+            "w-full rounded-xl border border-brand-border/60 bg-brand-canvas/50 px-3 py-2 text-[14px] text-brand-ink",
             "focus:border-brand-stratus-blue/50 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/15",
           )}
         />
@@ -90,13 +176,23 @@ function StatusBadge({ ok, okLabel, failLabel }: { ok: boolean; okLabel: string;
 }
 
 export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, resendApiKeyDraft, onResendApiKeyChange, onVerify, verifying }: Props) {
-  const [showGoogleGuide, setShowGoogleGuide] = useState(false);
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [analyzeMessage, setAnalyzeMessage] = useState("");
+  const [keywordDraft, setKeywordDraft] = useState<string | null>(null);
+  const { session } = useSession();
+  const operatorEmail = session?.user.email;
 
+  const intentOptions = useMemo(
+    () => platformIntentOptionsForUser(operatorEmail),
+    [operatorEmail],
+  );
+  const presetOptions = useMemo(
+    () => brandPresetOptionsForUser(operatorEmail),
+    [operatorEmail],
+  );
   const campaignOptions = useMemo(
-    () => campaignModeOptionsForBrand(config?.brandConfig),
-    [config?.brandConfig],
+    () => campaignModeOptionsForUser(campaignModeOptionsForBrand(config?.brandConfig), operatorEmail),
+    [config?.brandConfig, operatorEmail],
   );
 
   const activeIntent = resolvePlatformIntent(
@@ -119,6 +215,24 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
   const canSelectLive = config.sendMode === "live" || providerReady;
 
   const smtpEmail = config.smtpUser || "";
+
+  function patchWebsiteInsights(partial: Partial<WebsiteBrandInsights>) {
+    const current = config.brandConfig as BrandConfig;
+    const base: WebsiteBrandInsights = current.websiteInsights ?? {
+      analyzedAt: new Date().toISOString(),
+      vertical: current.vertical || "general",
+      productSummary: current.productSummary || "",
+      toneNotes: current.toneNotes || "",
+      buyerPersonas: current.buyerPersonas ?? [],
+      scoutIndustries: [],
+      scoutDepartments: [],
+      scoutSeniority: [],
+    };
+    onUpdate("brandConfig", {
+      ...current,
+      websiteInsights: { ...base, ...partial },
+    });
+  }
 
   const senderFooter = isSmtp
     ? smtpEmail
@@ -178,8 +292,8 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
         [
           intentLabel ? `Intent: ${intentLabel}.` : null,
           industries
-            ? `Updated product summary, writing style, and Scout targets (${industries}).`
-            : "Updated product summary and writing style from your website.",
+            ? `Updated writeup, keywords, writing style, and Scout targets (${industries}).`
+            : "Updated product writeup, email keywords, and writing style from your website.",
           "Save if you change anything else.",
         ]
           .filter(Boolean)
@@ -241,82 +355,60 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
       </SettingsGroup>
 
       {isSmtp && (
-        <>
-          <SettingsGroup
-            title="Gmail SMTP credentials"
-            footer="Verify connection saves your credentials to the workspace. Use a Google App Password — not your login password."
-          >
-            <SettingsRow className="justify-between">
-              <div>
-                <div className="text-[15px] font-medium text-brand-ink">Connection status</div>
-                <p className="mt-0.5 text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
-              </div>
-              <StatusBadge
-                ok={config.smtpConfigured}
-                okLabel="Verified"
-                failLabel="Not verified"
-              />
-            </SettingsRow>
-            <SettingsGroupDivider />
-            <SettingsTextRow
-              label="Gmail address"
-              desc="Your outbound Gmail or Google Workspace address"
-              value={config.smtpUser}
-              onChange={handleSmtpUserChange}
-              placeholder="you@company.com"
-              type="email"
-              showDivider
+        <SettingsGroup
+          title="Gmail SMTP credentials"
+          footer="Verify connection saves your credentials to the workspace. Use a Google App Password, not your login password."
+        >
+          <SettingsRow className="justify-between">
+            <div>
+              <div className="text-[15px] font-medium text-brand-ink">Connection status</div>
+              <p className="mt-0.5 text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
+            </div>
+            <StatusBadge
+              ok={config.smtpConfigured}
+              okLabel="Verified"
+              failLabel="Not verified"
             />
-            <SettingsTextRow
-              label="App Password"
-              desc={
-                config.smtpPassSet && !smtpPassDraft
-                  ? "Password saved — enter a new one only to change it"
-                  : "16-character Google App Password"
-              }
-              value={smtpPassDraft}
-              onChange={onSmtpPassChange}
-              placeholder={config.smtpPassSet ? "••••••••••••••••" : "xxxx xxxx xxxx xxxx"}
-              type="password"
-              showDivider
-            />
-            <SettingsGroupDivider />
-            <SettingsRow>
-              <button
-                type="button"
-                onClick={onVerify}
-                disabled={verifying || !config.smtpUser}
-                className={cn(
-                  "rounded-xl bg-brand-stratus-blue px-4 py-2 text-[13px] font-semibold text-white",
-                  "hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50",
-                )}
-              >
-                {verifying ? "Verifying…" : "Verify connection"}
-              </button>
-            </SettingsRow>
-          </SettingsGroup>
-
-          <SettingsGroup title="Google setup">
-            <SettingsRow>
-              <button
-                type="button"
-                onClick={() => setShowGoogleGuide((v) => !v)}
-                className="flex w-full items-center justify-between text-left text-[14px] font-medium text-brand-ink"
-              >
-                How to get an App Password
-                {showGoogleGuide ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-              </button>
-            </SettingsRow>
-            {showGoogleGuide && (
-              <div className="space-y-2 px-4 pb-4 text-[12px] leading-relaxed text-brand-ink-soft">
-                <p>1. Enable 2-Step Verification on the Gmail account.</p>
-                <p>2. Go to Google Account → Security → App passwords.</p>
-                <p>3. Create a password for Mail, then paste it above and click Save.</p>
-                <p>4. From email below will auto-match your Gmail address.</p>
-              </div>
-            )}
-          </SettingsGroup>
-        </>
+          </SettingsRow>
+          <SettingsGroupDivider />
+          <SettingsTextRow
+            label="Gmail address"
+            desc="Your outbound Gmail or Google Workspace address"
+            value={config.smtpUser}
+            onChange={handleSmtpUserChange}
+            placeholder="you@company.com"
+            type="email"
+            showDivider
+          />
+          <SettingsTextRow
+            label="App Password"
+            labelAccessory={<AppPasswordHelp />}
+            desc={
+              config.smtpPassSet && !smtpPassDraft
+                ? "Password saved. Enter a new one only to change it"
+                : "16-character Google App Password"
+            }
+            value={smtpPassDraft}
+            onChange={onSmtpPassChange}
+            placeholder={config.smtpPassSet ? "••••••••••••••••" : "xxxx xxxx xxxx xxxx"}
+            type="password"
+            showDivider
+          />
+          <SettingsGroupDivider />
+          <SettingsRow>
+            <button
+              type="button"
+              onClick={onVerify}
+              disabled={verifying || !config.smtpUser}
+              className={cn(
+                "rounded-xl bg-brand-stratus-blue px-4 py-2 text-[13px] font-semibold text-white",
+                "hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50",
+              )}
+            >
+              {verifying ? "Verifying…" : "Verify connection"}
+            </button>
+          </SettingsRow>
+        </SettingsGroup>
       )}
 
       {isResend && (
@@ -384,7 +476,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
           </div>
         </SettingsRow>
         <SettingsGroupDivider />
-        {PLATFORM_INTENT_OPTIONS.map((option, i) => (
+        {intentOptions.map((option, i) => (
           <SettingsSelectRow
             key={option.value}
             label={option.label}
@@ -406,7 +498,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
           />
         ))}
         <SettingsGroupDivider />
-        {BRAND_PRESET_OPTIONS.map((option, i) => {
+        {presetOptions.map((option, i) => {
           const selectedPack =
             config.brandConfig?.verticalPackId ??
             (config.brandConfig?.brandSlug === "ish"
@@ -470,6 +562,29 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
             onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), productSummary: v })
           }
           placeholder="What you sell and key pricing"
+          showDivider
+        />
+        <SettingsTextareaRow
+          label="Product writeup"
+          desc="Short positioning blurb Writer uses as the brand story"
+          value={config.brandConfig?.websiteInsights?.productWriteup ?? ""}
+          onChange={(v) => patchWebsiteInsights({ productWriteup: v })}
+          placeholder="2–3 sentences: what you sell, who it is for, why it matters"
+          showDivider
+        />
+        <SettingsTextRow
+          label="Email keywords"
+          desc="Comma-separated themes. Writer uses 1–2 per email, never all at once."
+          value={keywordDraft ?? emailKeywordsToInput(config.brandConfig?.websiteInsights?.emailKeywords)}
+          onChange={setKeywordDraft}
+          onBlur={() => {
+            const next = normalizeEmailKeywords(
+              keywordDraft ?? emailKeywordsToInput(config.brandConfig?.websiteInsights?.emailKeywords),
+            );
+            patchWebsiteInsights({ emailKeywords: next });
+            setKeywordDraft(null);
+          }}
+          placeholder="bulk Diwali hampers, custom branded boxes, pan-India delivery"
           showDivider
         />
         <SettingsTextRow

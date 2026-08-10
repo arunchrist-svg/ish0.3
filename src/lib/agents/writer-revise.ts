@@ -13,7 +13,7 @@ import {
   getDeliverabilityIssues,
 } from "@/lib/agents/writer-scoring";
 import { toWriterDraft, toEditMessage } from "@/lib/agents/writer-draft";
-import { getOutreachTemplate, getReplyCtaInstruction, REPLY_SEQUENCE_POSITION } from "@/lib/email/outreach-templates";
+import { getOutreachTemplate, getReplyCtaInstruction, packIdFromBrand, REPLY_SEQUENCE_POSITION } from "@/lib/email/outreach-templates";
 import { classifyReplyIntent, extractPriorCta } from "@/lib/email/reply-intent";
 import { pickOriginalEmailContext } from "@/lib/email/reply-context";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
@@ -32,6 +32,7 @@ import {
   type EditIntent,
 } from "@/lib/email/edit-intent";
 import { normalizeEmailBody, EMAIL_BODY_FORMAT_RULE } from "@/lib/email/email-body-format";
+import { isUsableEmailBody, parseWriterOutput } from "@/lib/agents/schemas/writer-output";
 
 const MAX_HISTORY_IN_PROMPT = 20;
 const MAX_REVISIONS = 1;
@@ -168,14 +169,19 @@ async function callReviseLLM(params: {
     tier: tierForAgentStep("writer.revise"),
     system: params.systemPrompt,
     prompt: params.extraNote ? `${params.userPrompt}\n\n${params.extraNote}` : params.userPrompt,
-    maxTokens: 1024,
+    maxTokens: 1536,
   });
 
-  try {
-    return JSON.parse(raw.replace(/```json|```/g, "").trim()) as ParsedDraft;
-  } catch {
+  const { data, valid } = parseWriterOutput(raw);
+  if (!valid || !isUsableEmailBody(data.emailBody)) {
     throw new Error("Could not parse revised draft from AI");
   }
+  return {
+    subjectA: data.subjectA,
+    subjectB: data.subjectB,
+    emailBody: data.emailBody,
+    changeSummary: data.changeSummary,
+  };
 }
 
 function applySubjectLock(params: {
@@ -216,7 +222,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
-  const senderFirstName = emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
+  const senderFirstName = emailConfig.fromName.trim() || emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
   const isReplyDraft = outreach.templateVariant === "reply";
   const sequencePosition = isReplyDraft
@@ -225,6 +231,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const brandConfig = emailConfig.brandConfig;
   const template = getOutreachTemplate(
     isReplyDraft ? undefined : (outreach.templateVariant ?? undefined),
+    packIdFromBrand(brandConfig),
   );
 
   let templateGoal = `${template.label}: ${template.ctaInstruction}`;
@@ -365,7 +372,21 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
                 }),
               );
 
-    const parsed = await callReviseLLM({ systemPrompt, userPrompt: baseUserPrompt, extraNote });
+    let parsed: ParsedDraft;
+    try {
+      parsed = await callReviseLLM({
+        systemPrompt,
+        userPrompt: baseUserPrompt,
+        extraNote:
+          extraNote ??
+          (attempt > 0
+            ? "Previous output was invalid JSON. Return ONLY valid JSON. Escape newlines in emailBody as \\n."
+            : undefined),
+      });
+    } catch {
+      if (attempt === MAX_REVISIONS) throw new Error("Could not parse revised draft from AI");
+      continue;
+    }
 
     subjectA = parsed.subjectA ?? subjectA;
     subjectB = parsed.subjectB ?? subjectB;

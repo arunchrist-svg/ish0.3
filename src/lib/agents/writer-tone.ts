@@ -8,7 +8,8 @@ export const BASE_WRITER_TONE = `WRITER TONE (all brands):
 - Not fluffy: avoid Hope you are well, Hope this finds you, I wanted to reach out.
 - Not pleasing: no over-apologizing, no excessive thank-yous, no begging for time.
 - Confident and helpful without being pushy. Short sentences. One idea at a time.
-- Never cite numeric company stats (employee count, headcount, revenue). Say your team instead.`;
+- Never cite numeric company stats (employee count, headcount, revenue). Say your team instead.
+- Never write before vendors lock in, before Hosur vendors lock in, or any vendors-lock-in line.`;
 
 export function getWriterTonePersona(brandConfig: BrandConfig): string {
   const pack = getVerticalPack(
@@ -44,12 +45,57 @@ export function getWriterFewShotExample(
     : `we help teams with solutions from ${brandName}`;
 
   const packId = resolveVerticalPackId(verticalPackId, _brandSlug as BrandConfig["brandSlug"]);
+
+  if (packId === "gifting-sweets") {
+    return `
+---
+ISH TEMPLATES (keep ~90% of this wording; only fill name and company; return as subjectA/B/C + emailBody/B/C):
+
+Subject A: Send happiness this Diwali, ${contactFirstName}
+Body A:
+Hi ${contactFirstName},
+
+Most corporate gifts get opened and forgotten. Ours get opened and remembered: pure-ghee sweets, handcrafted, the taste of an actual festival.
+
+Don't take our word for it. Let us send ${companyName} a taste first.
+
+Want a sampler box on your desk this week?
+
+Thanks & Regards
+${senderFirstName}
+
+Subject B: ${companyName}, make someone's Diwali better
+Body B:
+Hi ${contactFirstName},
+
+A good gift doesn't just say "thank you." It makes someone genuinely happy. That's what ${brandName} delivers this festive season, every single box.
+
+Taste it before you trust it. Send me an address and I'll ship a sampler this week.
+
+Thanks & Regards
+${senderFirstName}
+
+Subject C: Happiness, handcrafted
+Body C:
+Hi ${contactFirstName},
+
+No fillers. No mass production. Just pure-ghee sweets made to make people happy, the way Diwali gifting used to feel.
+
+Happy to send a small sampler your way, no obligation, just proof.
+
+Want it sent to ${companyName} this week?
+
+Thanks & Regards
+${senderFirstName}
+
+---
+`;
+  }
+
   const subjectHint =
-    packId === "gifting-sweets"
-      ? `Options for ${companyName}`
-      : packId === "gifting-appliances"
-        ? `Employee rewards for ${companyName}`
-        : `Partnership with ${companyName}`;
+    packId === "gifting-appliances"
+      ? `Employee rewards for ${companyName}`
+      : `Partnership with ${companyName}`;
 
   return `
 ---
@@ -65,8 +111,8 @@ Open to a quick note on a few options that fit your team?
 
 No worries if the timing is off.
 
+Thanks & Regards
 ${senderFirstName}
-Partnerships, ${brandName}
 
 ---
 `;

@@ -131,6 +131,15 @@ function locationMentionsCityLabel(location: string, cityLabel: string): boolean
   );
 }
 
+const FOREIGN_LOCATION_RE =
+  /\b(united states|u\.s\.a\.|u\.s\.|usa|united kingdom|u\.k\.|uk|canada|australia|germany|france|netherlands|switzerland|sweden|norway|denmark|ireland|new zealand|brazil|mexico|japan|spain|italy|florida|california|texas|illinois|ohio|georgia|arizona|colorado|michigan|pennsylvania|massachusetts|washington|virginia|north carolina|new york|new jersey|tampa|miami|orlando|atlanta|chicago|seattle|boston|dallas|houston|phoenix|denver|detroit|philadelphia|los angeles|san francisco|las vegas)\b/i;
+
+/** True when a profile location is clearly outside India. */
+export function isForeignPersonLocation(location: string | null | undefined): boolean {
+  if (!location?.trim()) return false;
+  return FOREIGN_LOCATION_RE.test(normalizeCity(location));
+}
+
 /** True when person location is unknown or matches any selected scout city. */
 export function personLocationMatchesSelection(
   location: string | null | undefined,
@@ -145,6 +154,8 @@ export function personLocationMatchesSelection(
   }
 
   if (companyCityMatchesSelection(location, selectedCities)) return true;
+
+  if (isForeignPersonLocation(location)) return false;
 
   for (const cityLabel of Object.keys(INDIA_METRO_ALIASES)) {
     if (!locationMentionsCityLabel(location, cityLabel)) continue;

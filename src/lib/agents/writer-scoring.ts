@@ -5,6 +5,7 @@ import {
 } from "@/lib/email/content-quality-score";
 import type { ContentRuleContext } from "@/lib/email/content-rules";
 import type { EmailStyle } from "@/lib/email/config";
+import { isNearParaphrase, BASELINE_PARAPHRASE_THRESHOLD } from "@/lib/email/email-similarity";
 
 export const RUBRIC_DIMENSIONS = [
   "spam_signal_risk",
@@ -27,6 +28,7 @@ export type DeliverabilityOptions = ContentRuleContext & {
   isReplyDraft?: boolean;
   replyIntent?: "affirmative" | "negative" | "question" | "scheduling" | "other";
   priorCta?: string | null;
+  baselineBody?: string;
 };
 
 function buildScoreOptions(body: string, options?: DeliverabilityOptions) {
@@ -89,6 +91,7 @@ export async function scoreRubric(params: {
   deliverabilityOptions?: DeliverabilityOptions;
   outreachHook?: string | null;
   intelNotes?: string | null;
+  baselineBody?: string | null;
 }): Promise<RubricScores> {
   const { subjectA, emailBody, contact, account } = params;
   const lower = emailBody.toLowerCase();
@@ -109,6 +112,7 @@ export async function scoreRubric(params: {
       },
       contact: { firstName: contact.firstName ?? contact.name.split(" ")[0], title: contact.title },
       outreachHook: params.outreachHook ?? params.deliverabilityOptions?.outreachHook,
+      baselineBody: params.baselineBody ?? params.deliverabilityOptions?.baselineBody,
     }),
   );
 
@@ -127,11 +131,45 @@ export async function scoreRubric(params: {
     personalization_depth += 4;
   }
   if (hook && lower.includes(hook.toLowerCase().slice(0, Math.min(20, hook.length)))) {
-    personalization_depth += 8;
+    personalization_depth += 4;
   }
   if (intel && lower.includes(intel.toLowerCase().slice(0, Math.min(24, intel.length)))) {
-    personalization_depth += 6;
+    personalization_depth += 4;
   }
+
+  const ROLE_CUES = [
+    "shop floor",
+    "shop-floor",
+    "plant",
+    "factory",
+    "engineers",
+    "campus",
+    "designers",
+    "procurement",
+    "vendor",
+    "festival",
+    "office staff",
+    "coding",
+    "lab",
+    "empanel",
+  ];
+  for (const cue of ROLE_CUES) {
+    if (lower.includes(cue)) personalization_depth += 3;
+  }
+
+  if (hook && hook.trim().length >= 20) {
+    const hookWords = hook
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+    if (hookWords.length) {
+      const hit = hookWords.filter((w) => lower.includes(w)).length / hookWords.length;
+      if (hit > 0.5 || lower.includes(hook.toLowerCase())) {
+        personalization_depth = Math.max(0, personalization_depth - 6);
+      }
+    }
+  }
+
   if (personalization_depth >= 18 && hook) personalization_depth = Math.min(25, personalization_depth + 3);
 
   let value_clarity = 0;
@@ -139,8 +177,16 @@ export async function scoreRubric(params: {
   if (wordCount <= 120) value_clarity += 10;
   else if (wordCount <= 150) value_clarity += 6;
   if (emailBody.split("\n\n").length >= 2) value_clarity += 4;
-  if (!/we offer|our services|gifting services/i.test(emailBody)) value_clarity += 6;
+  if (!/we offer|our services|gifting services|\boffers\b|\bspecializes in\b/i.test(emailBody)) {
+    value_clarity += 6;
+  } else {
+    value_clarity = Math.max(0, value_clarity - 8);
+  }
   if (/diwali|hamper|gift|mithai|corporate/i.test(lower)) value_clarity += 5;
+  const baseline = params.baselineBody ?? params.deliverabilityOptions?.baselineBody;
+  if (baseline && isNearParaphrase(emailBody, baseline, BASELINE_PARAPHRASE_THRESHOLD, "hook")) {
+    value_clarity = Math.max(0, value_clarity - 10);
+  }
 
   let cta_quality = 0;
   const questions = countQuestions(emailBody);
@@ -153,7 +199,13 @@ export async function scoreRubric(params: {
   else if (hardAsk) cta_quality += 4;
 
   if (/15.?min|10.?min|quick call|open to/i.test(lower)) cta_quality += 6;
-  if (/no worries|timing is off|not relevant|when the time is right/i.test(lower)) cta_quality += 4;
+  if (
+    /no worries|timing is off|not relevant|when the time is right|won't email further|door is open|leave it here/i.test(
+      lower,
+    )
+  ) {
+    cta_quality += 4;
+  }
 
   const isReplyDraft = params.deliverabilityOptions?.isReplyDraft || sequencePosition >= 4;
   const replyIntent = params.deliverabilityOptions?.replyIntent;
@@ -174,7 +226,7 @@ export async function scoreRubric(params: {
     }
   }
 
-  if (sequencePosition <= 2 && pitchSentenceCount(emailBody) > 3) {
+  if (sequencePosition <= 2 && pitchSentenceCount(emailBody) > 4) {
     value_clarity = Math.max(0, value_clarity - 8);
   }
 
@@ -202,7 +254,7 @@ export function getRubricIssues(rubric: RubricScores, sequencePosition = 1): str
     issues.push("add researched personalization (specific hook, role, intel, or industry detail beyond name and company)");
   }
   if (rubric.value_clarity < RUBRIC_ISSUE_THRESHOLD) {
-    issues.push("clarify value in under 10 seconds (specific offer, credibility, concise pitch; max 3 sentences for emails 1-2)");
+    issues.push("clarify value in under 10 seconds (specific offer, credibility, concise pitch; max 4 sentences for emails 1-2)");
   }
   if (rubric.cta_quality < RUBRIC_ISSUE_THRESHOLD) {
     if (sequencePosition >= 4) {

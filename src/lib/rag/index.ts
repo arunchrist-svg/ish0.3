@@ -44,6 +44,8 @@ export function retrieveRelevantRules(context: {
     valueProposition?: string;
     differentiators?: string[];
     toneNotes?: string;
+    productWriteup?: string;
+    emailKeywords?: string[];
   };
 }): string {
   const sections: string[] = [];
@@ -52,6 +54,16 @@ export function retrieveRelevantRules(context: {
   const packKnowledge = loadPackKnowledge(packId);
   if (packKnowledge) {
     sections.push(filterPackKnowledge(packKnowledge, context));
+  }
+
+  if (context.websiteInsights?.productWriteup?.trim()) {
+    sections.push(`## Product writeup\n${context.websiteInsights.productWriteup.trim()}`);
+  }
+
+  if (context.websiteInsights?.emailKeywords?.length) {
+    sections.push(
+      `## Email focus keywords\nUse 1-2 of these themes. Never stuff all of them:\n${context.websiteInsights.emailKeywords.map((k) => `- ${k}`).join("\n")}`,
+    );
   }
 
   if (context.productSummary?.trim()) {

@@ -3,9 +3,11 @@ import { eq, and, inArray, isNotNull } from "drizzle-orm";
 import { runWriter } from "@/lib/agents/writer";
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
+import { isNearParaphrase, SEQUENCE_CLONE_THRESHOLD } from "@/lib/email/email-similarity";
 
 export type WriterSequenceOptions = {
   outreachTemplate?: OutreachTemplateId;
+  forceNewAngle?: boolean;
 };
 
 export async function runWriterSequence(
@@ -32,20 +34,25 @@ export async function runWriterSequence(
 
   const draft1 = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, id1) });
   const e1Body = draft1?.emailBody ?? "";
+  const e1Subject = draft1?.subjectA ?? undefined;
 
-  const id2 = await runWriter(leadId, {
+  let id2 = await runWriter(leadId, {
     followUpMode: "follow_up",
     originalEmailBody: e1Body,
+    originalEmailSubject: e1Subject,
     sequencePosition: 2,
     skipStatusUpdate: true,
   });
+  id2 = await ensureDistinctSequenceStep(leadId, 2, e1Body, id2, options);
 
-  const id3 = await runWriter(leadId, {
+  let id3 = await runWriter(leadId, {
     followUpMode: "final_reminder",
     originalEmailBody: e1Body,
+    originalEmailSubject: e1Subject,
     sequencePosition: 3,
     skipStatusUpdate: true,
   });
+  id3 = await ensureDistinctSequenceStep(leadId, 3, e1Body, id3, options);
 
   await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
   await db.insert(yieldFunnel).values({ leadId, stage: "draft_ready", metadata: { sequence: true } });
@@ -76,13 +83,27 @@ export async function regenerateSequenceStep(
   );
 
   const followUpMode = sequencePosition === 2 ? "follow_up" : "final_reminder";
-  const id = await runWriter(leadId, {
+  return runWriter(leadId, {
     followUpMode,
     originalEmailBody: draft1.emailBody,
+    originalEmailSubject: draft1.subjectA ?? undefined,
     sequencePosition,
     skipStatusUpdate: true,
     outreachTemplate: options?.outreachTemplate,
+    forceNewAngle: options?.forceNewAngle,
   });
+}
 
-  return id;
+export async function ensureDistinctSequenceStep(
+  leadId: string,
+  sequencePosition: 2 | 3,
+  e1Body: string,
+  outreachId: string,
+  options?: WriterSequenceOptions,
+): Promise<string> {
+  const draft = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
+  if (!draft?.emailBody || !isNearParaphrase(draft.emailBody, e1Body, SEQUENCE_CLONE_THRESHOLD)) {
+    return outreachId;
+  }
+  return regenerateSequenceStep(leadId, sequencePosition, { ...options, forceNewAngle: true });
 }

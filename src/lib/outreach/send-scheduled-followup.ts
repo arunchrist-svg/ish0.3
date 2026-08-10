@@ -11,6 +11,7 @@ import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
 import { isOutreachSendingPaused } from "@/lib/email/config";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
+import { resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
 
 export class FollowUpQualityError extends Error {
   code = "FOLLOWUP_QUALITY_FAILED" as const;
@@ -64,8 +65,8 @@ export async function sendScheduledFollowUp(params: {
     : null;
   if (!generatedOutreach) throw new Error("No outreach draft linked to schedule");
 
-  const subject = generatedOutreach.subjectA ?? `Re: Outreach for ${account.name}`;
-  const body = generatedOutreach.emailBody ?? "";
+  const subject = resolveDraftSubject(generatedOutreach) || `Re: Outreach for ${account.name}`;
+  const body = resolveDraftBody(generatedOutreach);
 
   const quality = await evaluateOutreachDraft({
     subject,

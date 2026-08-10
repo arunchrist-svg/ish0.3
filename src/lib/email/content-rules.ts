@@ -148,7 +148,12 @@ export function applyContentRules(
   const questionIdx = body.indexOf("?");
   const hasSoftExit = SOFT_EXIT.some((p) => lowerBody.includes(p));
   const wordCount = body.trim().split(/\s+/).filter(Boolean).length;
-  if (questionIdx >= 0 && wordCount > 30 && !hasSoftExit) {
+  const signOff = signOffBlock(body);
+  const e1IshShape =
+    sequencePosition === 1 &&
+    /sampler|tasting|taste first|desk this week/i.test(lowerBody) &&
+    (/partnerships/i.test(signOff) || /thanks\s*(&|and)\s*regards/i.test(signOff));
+  if (questionIdx >= 0 && wordCount > 30 && !hasSoftExit && !e1IshShape) {
     const beforeQuestion = body.slice(0, questionIdx);
     const pitchWords = beforeQuestion.trim().split(/\s+/).filter(Boolean).length;
     const highPitchRatio = pitchWords / wordCount > 0.55;
@@ -189,11 +194,11 @@ export function applyContentRules(
     }
   }
 
-  const signOff = signOffBlock(body);
   const fromFirst = ctx.fromName?.split(" ")[0]?.trim();
   if (fromFirst && signOff.toLowerCase().includes(fromFirst.toLowerCase())) {
     const hasRoleOrContact =
       /\b(manager|director|head|founder|ceo|vp|lead|partnerships|sales|account)\b/i.test(signOff) ||
+      /thanks\s*(&|and)\s*regards/i.test(signOff) ||
       /linkedin|phone|\+91|\(\d{3}\)|\b\d{10}\b/i.test(signOff);
     if (!hasRoleOrContact) {
       hits.push({
@@ -253,10 +258,10 @@ export function applyContentRules(
     const sentenceCount = pitch
       ? pitch.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 0).length
       : 0;
-    if (sentenceCount > 3) {
+    if (sentenceCount > 4) {
       hits.push({
         id: "K",
-        label: "Pitch body exceeds 3 sentences for emails 1-2",
+        label: "Pitch body exceeds 4 sentences for emails 1-2",
         delta: -10,
         severity: "warn",
       });

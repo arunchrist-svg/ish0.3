@@ -23,6 +23,7 @@ import { useNotifications } from "@/hooks/use-notifications";
 import Link from "next/link";
 import { MobilePageLayout, PanelCard, text } from "@/design-system";
 import { NotificationBell } from "@/components/sales-accelerator/notification-bell";
+import { CreditBalanceChip } from "@/components/sales-accelerator/credit-balance-chip";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { PushPermissionBanner } from "@/components/mobile/push-permission-banner";
 import { Inbox } from "lucide-react";
@@ -59,7 +60,6 @@ type TavilyUsage = {
 
 type LlmConfig = {
   provider: string;
-  gemini: { configured: boolean; active: boolean; flashModel: string };
   anthropic: { configured: boolean; active: boolean };
 };
 
@@ -328,7 +328,12 @@ export function HomeApp() {
       title={greeting}
       subtitle={today}
       largeTitle
-      rightSlot={<NotificationBell />}
+      rightSlot={
+        <div className="flex items-center gap-1.5">
+          <CreditBalanceChip compact className="lg:hidden" />
+          <NotificationBell />
+        </div>
+      }
       contentClassName="lg:overflow-y-visible"
       className="lg:bg-brand-canvas"
     >
@@ -537,7 +542,7 @@ export function HomeApp() {
 
                 {llmConfig && (
                   <span className="ml-auto rounded-full bg-brand-black px-2.5 py-0.5 text-[11px] font-bold text-white">
-                    {llmConfig.provider === "openrouter" ? "OpenRouter" : llmConfig.provider === "gemini" ? "Gemini" : "Anthropic"}
+                    Claude
                   </span>
                 )}
               </div>

@@ -1,23 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { MapPin, Sparkles } from "lucide-react";
+import { MapPin } from "lucide-react";
 import { IshAvatar, ScoreBadge } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
-import type { PipelineStageAccent } from "@/lib/pipeline-status";
+import { statusToDisplayLabel, type PipelineStageAccent } from "@/lib/pipeline-status";
 
 type Props = {
   lead: LeadQueueItem;
   index: number;
   accent: PipelineStageAccent;
 };
-
-function emailStatusDot(status: string) {
-  if (status === "verified") return "bg-brand-green";
-  if (status === "unverified") return "bg-[#e8a000]";
-  return "bg-brand-ink-faint";
-}
 
 export function BoardLeadCard({ lead, index, accent }: Props) {
   return (
@@ -45,24 +39,21 @@ export function BoardLeadCard({ lead, index, accent }: Props) {
           <ScoreBadge score={lead.score ?? 0} />
         </div>
 
-        <div className="mb-2.5 flex items-center gap-1 text-[10.5px] text-brand-ink-faint">
-          <MapPin className="size-3 shrink-0" />
-          <span className="truncate">{lead.city}</span>
-        </div>
-
-        <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-brand-green">
-          <Sparkles className="size-3 shrink-0" />
-          <span className="truncate">{lead.action}</span>
-        </div>
+        {lead.employees && lead.employees !== "—" ? (
+          <div className="mb-2.5 truncate text-[10.5px] text-brand-ink-faint">
+            {/employee/i.test(lead.employees) ? lead.employees : `${lead.employees} employees`}
+          </div>
+        ) : (
+          <div className="mb-2.5 flex items-center gap-1 text-[10.5px] text-brand-ink-faint">
+            <MapPin className="size-3 shrink-0" />
+            <span className="truncate">{lead.city}</span>
+          </div>
+        )}
 
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-black/[0.04] pt-2.5">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn("size-2 shrink-0 rounded-full", emailStatusDot(lead.emailStatus))}
-              title={lead.emailStatus}
-            />
-            <span className="text-[10px] font-medium capitalize text-brand-ink-faint">{lead.emailStatus}</span>
-          </div>
+          <span className="rounded-md bg-brand-canvas px-2 py-0.5 text-[10px] font-bold text-brand-ink-soft">
+            {statusToDisplayLabel(lead.status)}
+          </span>
           <IshAvatar name={lead.name} index={index} size={26} />
         </div>
       </div>

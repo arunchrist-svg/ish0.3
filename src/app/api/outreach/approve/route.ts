@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadOutreachId, leadId, channel, status, subjectUsed, rejectReason, rejectNote } =
+    const { leadOutreachId, leadId, channel, status, subjectUsed, bodyUsed, rejectReason, rejectNote } =
       await req.json();
 
     if (!leadOutreachId || !leadId || !channel || !status) {
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
         channel,
         status,
         subjectUsed,
+        bodyUsed,
         rejectReason,
         rejectNote,
         reviewedAt: new Date(),

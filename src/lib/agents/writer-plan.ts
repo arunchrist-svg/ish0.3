@@ -7,6 +7,11 @@ import type { WriterPlan } from "@/db/schema";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import type { BrandConfig } from "@/lib/email/config";
+import type { CompanyOverview } from "@/lib/company-overview";
+import {
+  buildPersonalizationContext,
+  formatPersonalizationContextForPrompt,
+} from "@/lib/agents/personalization-context";
 
 export const writerPlanSchema = z.object({
   hook: z.string().min(8),
@@ -44,6 +49,54 @@ export function assertResearchReadyForWriter(
   if (gaps.length) throw new ResearchNotReadyError(gaps);
 }
 
+export function fallbackResearchBrief(params: {
+  contactName: string;
+  contactTitle?: string | null;
+  accountName: string;
+  brandName: string;
+}): { outreachHook: string; decisionChain: string[] } {
+  return {
+    outreachHook: `Seasonal corporate gifting for ${params.accountName}`,
+    decisionChain: [params.contactName],
+  };
+}
+
+export async function ensureResearchBriefForWriter(params: {
+  leadId: string;
+  contactName: string;
+  contactTitle?: string | null;
+  accountName: string;
+  brandName: string;
+  existing?: {
+    id: string;
+    outreachHook?: string | null;
+    decisionChain?: string[] | null;
+  } | null;
+}): Promise<{ outreachHook: string; decisionChain: string[] }> {
+  const fallback = fallbackResearchBrief(params);
+  const outreachHook = params.existing?.outreachHook?.trim() || fallback.outreachHook;
+  const decisionChain = params.existing?.decisionChain?.length
+    ? params.existing.decisionChain
+    : fallback.decisionChain;
+
+  if (!params.existing) {
+    await db.insert(leadResearch).values({
+      leadId: params.leadId,
+      confidenceTier: "low",
+      outreachHook,
+      decisionChain,
+      outreachHooks: [outreachHook],
+    });
+  } else if (getResearchQualityGaps(params.existing).length) {
+    await db
+      .update(leadResearch)
+      .set({ outreachHook, decisionChain })
+      .where(eq(leadResearch.id, params.existing.id));
+  }
+
+  return { outreachHook, decisionChain };
+}
+
 export function formatWriterPlanForPrompt(plan: WriterPlan): string {
   return `Outreach plan (follow this structure):
 - Hook: ${plan.hook}
@@ -61,9 +114,9 @@ function brandAwareFallbackPlan(
     `Corporate outreach options from ${brand.brandName}.`;
 
   return {
-    hook: outreachHook?.trim() || `Outreach angle for ${accountName}`,
+    hook: outreachHook?.trim() || `Thoughtful festive gifting for ${accountName}`,
     valueProp: product.split(".")[0].trim() + ".",
-    cta: "Open to a quick note on a few options for your team?",
+    cta: "Open to a tasting sample for your team?",
   };
 }
 
@@ -82,23 +135,40 @@ export async function generateWriterPlan(leadId: string): Promise<WriterPlan> {
   const account = lead.account as typeof accounts.$inferSelect;
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
   const brand = emailConfig.brandConfig;
+  const persona = buildPersonalizationContext({
+    industry: account.industry,
+    city: account.city,
+    accountName: account.name,
+    contactTitle: contact.title,
+    intelNotes: account.intelNotes,
+    overview: (account.companyOverview as CompanyOverview | null) ?? null,
+    campaignMode: emailConfig.campaignMode,
+    campaignNotes: emailConfig.campaignNotes,
+    buyerPersonas: brand.buyerPersonas,
+    decisionChain: research?.decisionChain,
+  });
 
   const prompt = `Create a 3-part cold email plan for B2B corporate outreach.
 
 Brand: ${brand.brandName} (${brand.vertical})
 Product: ${brand.productSummary || "(use brand vertical only)"}
+Writeup: ${brand.websiteInsights?.productWriteup || "(use product summary)"}
+Email keywords: ${(brand.websiteInsights?.emailKeywords ?? []).join("; ") || "(none)"}
 Tone: ${brand.toneNotes || "Friendly but professional. Plain and direct. Not salesy."}
 ${brand.websiteInsights?.valueProposition ? `Value prop: ${brand.websiteInsights.valueProposition}` : ""}
 ${brand.websiteInsights?.differentiators?.length ? `Differentiators: ${brand.websiteInsights.differentiators.join("; ")}` : ""}
 
+${formatPersonalizationContextForPrompt(persona)}
+
 Company: ${account.name}
-Contact: ${contact.name}, ${contact.title ?? "Unknown"}
-Industry: ${account.industry ?? "Corporate"}
-Outreach hook: ${research?.outreachHook ?? "General corporate outreach"}
-Intel: ${account.intelNotes ?? "none"}
+Contact: ${contact.name}, ${contact.title ?? "unknown role"}
+Outreach hook (do not copy verbatim): ${research?.outreachHook ?? "none"}
+Intel (do not copy verbatim): ${account.intelNotes ?? "none"}
 
 Rules:
 - Value prop must match the brand product above. Never invent products the brand does not sell.
+- Hook and value should use at most 1-2 email keywords when they fit.
+- Translate industry, role, and market dynamics. Never invent numbers.
 - Never use em dashes.
 
 Output ONLY JSON:

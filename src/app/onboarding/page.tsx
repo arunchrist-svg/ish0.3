@@ -3,15 +3,40 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Building2, CreditCard, Radar, Users, Rocket, Mail, MapPin } from "lucide-react";
+import { Loader2, Building2, CreditCard, Radar, Users, Rocket, Mail, MapPin, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, text } from "@/design-system";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
 import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly, getPlanBySlug } from "@/lib/billing/plan-catalog";
 import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
 import { PLATFORM_INTENT_OPTIONS, type PlatformIntent } from "@/lib/brand/platform-intent";
+import { isSweetsOnlyOperator, platformIntentOptionsForUser } from "@/lib/brand/vertical-catalog";
+import { getIndustryByLabel } from "@/lib/brand-intel/industry-catalog";
 import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
+import { SettingsHero } from "@/components/settings/settings-hero";
 import { DEFAULT_SCOUT_GEO, type ScoutGeoSelection } from "@/lib/geo/india";
+
+function looksLikeWebsite(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return parsed.hostname.includes(".");
+  } catch {
+    return false;
+  }
+}
+
+function websiteKey(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+    return parsed.hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return trimmed.toLowerCase().replace(/\/$/, "");
+  }
+}
 
 const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
@@ -21,6 +46,22 @@ const STEPS = [
   { id: 4, label: "Team", icon: Users },
   { id: 5, label: "Launch", icon: Rocket },
 ];
+
+const SETUP_CTA =
+  "h-12 rounded-2xl text-[14px] font-bold text-white shadow-[var(--shadow-brand)] bg-brand-black hover:bg-brand-black/90 ring-1 ring-brand-stratus-blue/20";
+
+const SETUP_FIELD =
+  "ish-onboarding-field w-full rounded-xl border border-brand-border bg-brand-canvas px-4 py-3 text-[15px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue focus:bg-white focus:ring-2 focus:ring-brand-stratus-blue/20";
+
+function viewRank(step: number, showLocation: boolean): number {
+  return showLocation ? 3.5 : step;
+}
+
+function onboardingStepState(stepId: number, currentRank: number, reachedRank: number) {
+  if (stepId === currentRank) return "active" as const;
+  if (reachedRank > stepId) return "done" as const;
+  return "idle" as const;
+}
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -32,10 +73,38 @@ export default function OnboardingPage() {
   const [productCategory, setProductCategory] = useState("");
   const [competitorBrands, setCompetitorBrands] = useState<string[]>([]);
   const [websiteUrl, setWebsiteUrl] = useState("");
-  const [platformIntent, setPlatformIntent] = useState<PlatformIntent>("b2b_saas");
+  const [platformIntent, setPlatformIntent] = useState<PlatformIntent | null>(null);
+  const [operatorEmail, setOperatorEmail] = useState("");
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [websiteStatus, setWebsiteStatus] = useState("");
   const [showLocation, setShowLocation] = useState(false);
+  const [reachedRank, setReachedRank] = useState(1);
+  const [analyzedWebsiteUrl, setAnalyzedWebsiteUrl] = useState("");
+  const [intentFromWebsite, setIntentFromWebsite] = useState(false);
+  const [categoryFromWebsite, setCategoryFromWebsite] = useState(false);
+  const [productWriteup, setProductWriteup] = useState("");
+  const [emailKeywords, setEmailKeywords] = useState<string[]>([]);
+  const intentOptions = platformIntentOptionsForUser(operatorEmail);
+  const sweetsOnly = isSweetsOnlyOperator(operatorEmail);
+  const websiteAnalysed =
+    Boolean(analyzedWebsiteUrl) && websiteKey(websiteUrl) === websiteKey(analyzedWebsiteUrl);
+  const currentRank = viewRank(step, showLocation);
+
+  useEffect(() => {
+    setReachedRank((prev) => Math.max(prev, currentRank));
+  }, [currentRank]);
+
+  function goToStep(stepId: number) {
+    if (stepId >= reachedRank) return;
+    setError("");
+    if (stepId === 3.5) {
+      setStep(3);
+      setShowLocation(true);
+      return;
+    }
+    setShowLocation(false);
+    setStep(stepId);
+  }
 
   useEffect(() => {
     void (async () => {
@@ -45,15 +114,47 @@ export default function OnboardingPage() {
       ]);
       if (onbRes.ok) {
         const data = await onbRes.json();
-        setStep(data.step ?? 1);
+        const loaded = data.step ?? 1;
+        setStep(loaded);
+        if (loaded === 3 && data.brandReady) {
+          setShowLocation(true);
+          setReachedRank(3.5);
+        } else {
+          setReachedRank(loaded);
+        }
         if (data.orgName) setOrgName(data.orgName);
         if (data.websiteUrl) setWebsiteUrl(data.websiteUrl);
-        if ((data.step ?? 1) === 3 && data.brandReady) setShowLocation(true);
+        if (typeof data.productCategory === "string" && data.productCategory.trim()) {
+          setProductCategory(data.productCategory);
+        }
+        if (Array.isArray(data.competitorBrands) && data.competitorBrands.length) {
+          setCompetitorBrands(data.competitorBrands);
+        }
+        if (data.platformIntent) {
+          setPlatformIntent(data.platformIntent as PlatformIntent);
+        }
+        if (typeof data.productWriteup === "string" && data.productWriteup.trim()) {
+          setProductWriteup(data.productWriteup);
+        }
+        if (Array.isArray(data.emailKeywords)) {
+          setEmailKeywords(data.emailKeywords.filter((k: unknown) => typeof k === "string" && k.trim()));
+        }
+        if (data.websiteUrl && data.brandReady) {
+          setAnalyzedWebsiteUrl(String(data.websiteUrl).replace(/\/$/, ""));
+          setIntentFromWebsite(Boolean(data.platformIntent));
+          setCategoryFromWebsite(Boolean(data.productCategory));
+        }
       }
       if (meRes.ok) {
         const data = await meRes.json();
         if (data.tenant?.name) {
           setOrgName(data.tenant.name);
+        }
+        if (typeof data.user?.email === "string") {
+          setOperatorEmail(data.user.email);
+          if (isSweetsOnlyOperator(data.user.email)) {
+            setPlatformIntent("corporate_gifting");
+          }
         }
       }
     })();
@@ -109,11 +210,98 @@ export default function OnboardingPage() {
     }
   }
 
+  async function analyzeWebsiteAndFill(options?: { silent?: boolean }) {
+    const url = websiteUrl.trim();
+    if (!looksLikeWebsite(url)) {
+      if (!options?.silent) setError("Enter a valid website URL (e.g. https://acme.com)");
+      return false;
+    }
+    setError("");
+    setAnalyzingWebsite(true);
+    setWebsiteStatus("Reading your website to detect how you sell and your product category…");
+    try {
+      const res = await fetch("/api/settings/brand/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          websiteUrl: url,
+          persist: true,
+          forceCustomSlug: true,
+          platformIntent: sweetsOnly ? "corporate_gifting" : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setWebsiteStatus(data.error ?? "Could not read that website. Pick category and Nebula use manually.");
+        return false;
+      }
+
+      const inferredIntent = (data.platformIntent ?? data.insights?.platformIntent) as PlatformIntent | undefined;
+      const allowed = inferredIntent && intentOptions.some((o) => o.value === inferredIntent);
+      if (sweetsOnly) {
+        setPlatformIntent("corporate_gifting");
+        setIntentFromWebsite(true);
+      } else if (allowed && inferredIntent) {
+        setPlatformIntent(inferredIntent);
+        setIntentFromWebsite(true);
+      }
+
+      const category =
+        (typeof data.productCategory === "string" && data.productCategory.trim()) ||
+        (typeof data.insights?.productCategory === "string" && data.insights.productCategory.trim()) ||
+        "";
+      if (category) {
+        setProductCategory(category);
+        setCategoryFromWebsite(true);
+        if (competitorBrands.length === 0) {
+          const suggested = getIndustryByLabel(category)?.suggestedCompetitors.slice(0, 2) ?? [];
+          if (suggested.length) setCompetitorBrands(suggested);
+        }
+      }
+
+      const writeup =
+        (typeof data.productWriteup === "string" && data.productWriteup.trim()) ||
+        (typeof data.insights?.productWriteup === "string" && data.insights.productWriteup.trim()) ||
+        "";
+      if (writeup) setProductWriteup(writeup);
+      const keywords = Array.isArray(data.emailKeywords)
+        ? data.emailKeywords
+        : Array.isArray(data.insights?.emailKeywords)
+          ? data.insights.emailKeywords
+          : [];
+      setEmailKeywords(
+        keywords.filter((k: unknown): k is string => typeof k === "string" && Boolean(k.trim())),
+      );
+
+      setAnalyzedWebsiteUrl((data.websiteUrl as string | undefined) ?? url.replace(/\/$/, ""));
+      const intentLabel = PLATFORM_INTENT_OPTIONS.find((o) => o.value === (sweetsOnly ? "corporate_gifting" : inferredIntent))?.label;
+      setWebsiteStatus(
+        [
+          intentLabel ? `Nebula use: ${intentLabel}` : null,
+          category ? `Product category: ${category}` : null,
+          "You can change either before continuing.",
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+      return true;
+    } catch {
+      setWebsiteStatus("Could not read that website. Pick category and Nebula use manually.");
+      return false;
+    } finally {
+      setAnalyzingWebsite(false);
+    }
+  }
+
   async function handlePrefsSubmit(e: React.FormEvent) {
     e.preventDefault();
     const category = productCategory.trim();
+    if (!platformIntent) {
+      setError("Select what you will use Nebula for, or add a website to auto-detect.");
+      return;
+    }
     if (!category) {
-      setError("Product category is required");
+      setError("Product category is required. Add a website to auto-select, or pick one below.");
       return;
     }
     if (competitorBrands.length === 0) {
@@ -121,13 +309,17 @@ export default function OnboardingPage() {
       return;
     }
     const hasWebsite = Boolean(websiteUrl.trim());
-    if (hasWebsite) {
+    const alreadyAnalyzed = hasWebsite && websiteKey(analyzedWebsiteUrl) === websiteKey(websiteUrl);
+    const skipWebsiteAnalyze = alreadyAnalyzed || !hasWebsite;
+
+    if (hasWebsite && !skipWebsiteAnalyze) {
       setAnalyzingWebsite(true);
       setWebsiteStatus("Reading your website to customise email writing and scouting…");
     }
     const data = await submitStep({
       step: 3,
       websiteUrl: websiteUrl.trim() || undefined,
+      skipWebsiteAnalyze,
       platformIntent,
       enrichmentConfig: {
         giftIntelProductCategory: category,
@@ -135,13 +327,12 @@ export default function OnboardingPage() {
       },
     });
     setAnalyzingWebsite(false);
-    setWebsiteStatus("");
     if (!data) return;
     if (data.websiteWarning) {
       setWebsiteStatus(
         `Saved your website, but auto-customise had an issue: ${data.websiteWarning}. You can retry in Settings → Email.`,
       );
-    } else if (data.brandAnalyzed) {
+    } else if (data.brandAnalyzed || alreadyAnalyzed) {
       setWebsiteStatus("Writer and Scout are now tuned from your website.");
     }
     if (data.needsLocation) {
@@ -170,65 +361,68 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-12">
-      <div className="mb-10">
-        <h1 className={cn("mb-2", text.display)}>Set up your workspace</h1>
-        <p className="text-sm text-brand-ink-soft">
-          Complete these steps before accessing your sales hub. Add your website during Brand setup so Writer and Scout match how you sell; refine later in Settings.
-        </p>
-      </div>
+    <div className="ish-onboarding-page settings-ambient mx-auto max-w-3xl px-6 py-10 sm:py-12 animate-brand-page-in">
+      <SettingsHero icon={Sparkles} title="Set up your workspace" />
 
       <div
-        className="mb-10 grid w-full gap-1 overflow-hidden sm:gap-1.5"
+        className="ish-onboarding-stepper mb-10 grid w-full gap-1 overflow-hidden sm:gap-1.5"
         style={{ gridTemplateColumns: `repeat(${STEPS.length}, minmax(0, 1fr))` }}
       >
-        {STEPS.map((s) => (
-          <div
-            key={s.id}
-            className={cn(
-              "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-center text-[10px] font-medium leading-tight sm:rounded-xl sm:px-1.5 sm:py-2 sm:text-[11px]",
-              (s.id === 3.5 ? showLocation : step === s.id && !showLocation)
-                ? "bg-brand-black text-white"
-                : s.id === 3 && showLocation
-                  ? "bg-brand-black/10 text-brand-ink"
-                  : step > s.id
-                    ? "bg-brand-black/10 text-brand-ink"
-                    : "bg-white text-brand-ink-faint",
-            )}
-          >
-            <s.icon className="size-3.5 shrink-0 sm:size-4" />
-            <span className="w-full break-words">{s.label}</span>
-          </div>
-        ))}
+        {STEPS.map((s) => {
+          const state = onboardingStepState(s.id, currentRank, reachedRank);
+          const canGoBack = state === "done";
+          return (
+            <button
+              key={s.id}
+              type="button"
+              data-state={state}
+              disabled={!canGoBack}
+              onClick={() => goToStep(s.id)}
+              aria-current={state === "active" ? "step" : undefined}
+              aria-label={canGoBack ? `Go back to ${s.label}` : s.label}
+              className={cn(
+                "ish-onboarding-step flex min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg px-0.5 py-1.5 text-center text-[10px] font-medium leading-tight sm:rounded-xl sm:px-1.5 sm:py-2 sm:text-[11px]",
+                state === "active"
+                  ? "bg-brand-black text-white"
+                  : state === "done"
+                    ? "cursor-pointer bg-brand-black/10 text-brand-ink hover:bg-brand-black/15"
+                    : "cursor-default bg-white text-brand-ink-faint disabled:opacity-100",
+              )}
+            >
+              <s.icon className="size-3.5 shrink-0 sm:size-4" />
+              <span className="w-full break-words">{s.label}</span>
+            </button>
+          );
+        })}
       </div>
 
       {error ? (
-        <p className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+        <p className="ish-onboarding-error mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
       ) : null}
 
       {step === 1 && (
-        <form onSubmit={handleOrgSubmit} className="space-y-6 rounded-2xl border border-brand-border bg-white p-8">
-          <h2 className="text-lg font-semibold">Your organization</h2>
+        <form onSubmit={handleOrgSubmit} className="ish-onboarding-card space-y-6 rounded-2xl border border-brand-border bg-white p-8">
+          <h2 className="text-lg font-semibold text-brand-ink">Your organization</h2>
           <div>
-            <label className="mb-2 block text-sm font-medium">Company name</label>
+            <label className="mb-2 block text-sm font-medium text-brand-ink">Company name</label>
             <input
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
               required
-              className="w-full rounded-xl border border-brand-border px-4 py-3"
+              className={SETUP_FIELD}
               placeholder="Acme Corp"
             />
           </div>
-          <Button type="submit" disabled={loading || !orgName.trim()} className="w-full">
+          <Button type="submit" disabled={loading || !orgName.trim()} className={cn("w-full", SETUP_CTA)}>
             {loading ? <Loader2 className="size-4 animate-spin" /> : "Continue"}
           </Button>
         </form>
       )}
 
       {step === 2 && (
-        <div className="space-y-6 rounded-2xl border border-brand-border bg-white p-8">
+        <div className="ish-onboarding-card space-y-6 rounded-2xl border border-brand-border bg-white p-8">
           <div>
-            <h2 className="text-lg font-semibold">Choose a plan</h2>
+            <h2 className="text-lg font-semibold text-brand-ink">Choose a plan</h2>
             <p className="mt-1 text-sm text-brand-ink-soft">
               All plans include one shared credit pool for your workspace. Credits cover scouting accounts, AI email writing, and live sends.
             </p>
@@ -238,15 +432,18 @@ export default function OnboardingPage() {
               <button
                 key={p.slug}
                 type="button"
+                data-selected={planSlug === p.slug}
                 onClick={() => setPlanSlug(p.slug)}
                 className={cn(
-                  "rounded-xl border p-4 text-left transition",
-                  planSlug === p.slug ? "border-brand-black ring-2 ring-brand-black/10" : "border-brand-border hover:border-brand-black/30",
+                  "ish-onboarding-choice rounded-xl border p-4 text-left transition",
+                  planSlug === p.slug
+                    ? "border-brand-stratus-blue bg-brand-green-soft/50 ring-2 ring-brand-stratus-blue/20"
+                    : "border-brand-border hover:border-brand-stratus-blue/40",
                 )}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="font-semibold">{p.name}</div>
+                    <div className="font-semibold text-brand-ink">{p.name}</div>
                     <p className="mt-1 text-xs text-brand-ink-soft">{p.tagline}</p>
                   </div>
                   {p.highlight ? (
@@ -255,7 +452,7 @@ export default function OnboardingPage() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-3 text-2xl font-bold">
+                <div className="mt-3 text-2xl font-bold text-brand-ink">
                   {formatPlanPriceMonthly(p.priceCents).replace("/mo", "")}
                   <span className="text-sm font-normal">/mo</span>
                 </div>
@@ -269,10 +466,16 @@ export default function OnboardingPage() {
             </p>
           ) : null}
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button type="button" variant="outline" onClick={handlePlanTrial} disabled={loading} className="flex-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handlePlanTrial}
+              disabled={loading}
+              className={cn("ish-onboarding-cta-outline h-12 flex-1 rounded-2xl text-[14px] font-semibold")}
+            >
               Start 14-day trial (200 credits)
             </Button>
-            <Button type="button" onClick={handlePlanSubscribe} disabled={loading} className="flex-1">
+            <Button type="button" onClick={handlePlanSubscribe} disabled={loading} className={cn("flex-1", SETUP_CTA)}>
               Subscribe now
             </Button>
           </div>
@@ -280,123 +483,197 @@ export default function OnboardingPage() {
       )}
 
       {step === 3 && showLocation && (
-        <div className="space-y-4 rounded-2xl border border-brand-border bg-white p-6">
+        <div className="ish-onboarding-card space-y-4 rounded-2xl border border-brand-border bg-white p-6">
           {websiteStatus ? (
-            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
+            <p className="ish-onboarding-note rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
           <AreaOfInterestWizard value={DEFAULT_SCOUT_GEO} onComplete={handleLocationComplete} />
         </div>
       )}
 
       {step === 3 && !showLocation && (
-        <form onSubmit={handlePrefsSubmit} className="space-y-8 rounded-2xl border border-brand-border bg-white p-8">
+        <form onSubmit={handlePrefsSubmit} className="ish-onboarding-card space-y-8 rounded-2xl border border-brand-border bg-white p-8">
           <div>
-            <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-brand-ink-faint")}>
+            <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-brand-stratus-blue")}>
               Brand Intelligence
             </p>
-            <h2 className="text-lg font-semibold">Your website, category, and competitors</h2>
+            <h2 className="text-lg font-semibold text-brand-ink">Your company website</h2>
             <p className="mt-1 text-sm text-brand-ink-soft">
-              Tell us how you will use the platform, then we read your website to customise email writing and scout targeting.
+              Add your website. We will customise setup after we read it.
             </p>
-          </div>
-
-          <div>
-            <label className="mb-2 block text-[13px] font-semibold text-brand-ink">
-              What will you use Nebula for?
-            </label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {PLATFORM_INTENT_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setPlatformIntent(option.value)}
-                  className={cn(
-                    "rounded-xl border p-3 text-left transition",
-                    platformIntent === option.value
-                      ? "border-brand-black ring-2 ring-brand-black/10"
-                      : "border-brand-border hover:border-brand-black/30",
-                  )}
-                >
-                  <div className="text-[13px] font-semibold text-brand-ink">{option.label}</div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-brand-ink-soft">{option.desc}</p>
-                </button>
-              ))}
-            </div>
           </div>
 
           <div>
             <label className="mb-1.5 block text-[13px] font-semibold text-brand-ink">Company website</label>
             <p className="mb-2 text-[11.5px] text-brand-ink-soft">
-              Optional but recommended. Product summary, writing tone, and scout industries come from this page.
+              Required. We use this page to tune email writing and scouting.
             </p>
-            <input
-              type="url"
-              value={websiteUrl}
-              onChange={(e) => setWebsiteUrl(e.target.value)}
-              className="w-full rounded-xl border border-brand-border px-4 py-3"
-              placeholder="https://yourcompany.com"
-              autoComplete="url"
-            />
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                type="url"
+                value={websiteUrl}
+                onChange={(e) => {
+                  setWebsiteUrl(e.target.value);
+                  setIntentFromWebsite(false);
+                  setCategoryFromWebsite(false);
+                  if (websiteKey(e.target.value) !== websiteKey(analyzedWebsiteUrl)) {
+                    setAnalyzedWebsiteUrl("");
+                  }
+                }}
+                onBlur={() => {
+                  if (looksLikeWebsite(websiteUrl) && !analyzingWebsite) {
+                    const normalized = websiteUrl.trim().replace(/\/$/, "");
+                    if (websiteKey(normalized) !== websiteKey(analyzedWebsiteUrl)) {
+                      void analyzeWebsiteAndFill({ silent: true });
+                    }
+                  }
+                }}
+                className={SETUP_FIELD}
+                placeholder="https://yourcompany.com"
+                autoComplete="url"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                disabled={analyzingWebsite || !looksLikeWebsite(websiteUrl)}
+                onClick={() => void analyzeWebsiteAndFill()}
+                className="ish-onboarding-cta-outline h-12 shrink-0 rounded-2xl px-4 text-[13px] font-semibold"
+              >
+                {analyzingWebsite ? <Loader2 className="size-4 animate-spin" /> : "Analyse website"}
+              </Button>
+            </div>
           </div>
 
-          <BrandIntelligenceSetup
-            productCategory={productCategory}
-            competitorBrands={competitorBrands}
-            onProductCategoryChange={setProductCategory}
-            onCompetitorBrandsChange={setCompetitorBrands}
-          />
-
-          {websiteStatus ? (
-            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
+          {!websiteAnalysed && websiteStatus ? (
+            <p className="ish-onboarding-note rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
 
-          <Button
-            type="submit"
-            disabled={loading || analyzingWebsite || !productCategory.trim() || competitorBrands.length === 0}
-            className="w-full"
-          >
-            {loading || analyzingWebsite ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                {analyzingWebsite ? "Analysing website…" : "Saving…"}
-              </>
-            ) : websiteUrl.trim() ? (
-              "Analyse website & continue"
-            ) : (
-              "Continue"
-            )}
-          </Button>
+          {websiteAnalysed ? (
+            <>
+              <div>
+                <label className="mb-2 block text-[13px] font-semibold text-brand-ink">
+                  What will you use Nebula for?
+                </label>
+                <p className="mb-2 text-[11.5px] text-brand-ink-soft">
+                  {intentFromWebsite && platformIntent
+                    ? "Auto-selected from your website. Change it if this is wrong."
+                    : "Change this if the auto-selection is wrong."}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {intentOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      data-selected={platformIntent === option.value}
+                      onClick={() => {
+                        setPlatformIntent(option.value);
+                        setIntentFromWebsite(false);
+                      }}
+                      className={cn(
+                        "ish-onboarding-choice rounded-xl border p-3 text-left transition",
+                        platformIntent === option.value
+                          ? "border-brand-stratus-blue bg-brand-green-soft/50 ring-2 ring-brand-stratus-blue/20"
+                          : "border-brand-border hover:border-brand-stratus-blue/40",
+                      )}
+                    >
+                      <div className="text-[13px] font-semibold text-brand-ink">{option.label}</div>
+                      <p className="mt-1 text-[11px] leading-relaxed text-brand-ink-soft">{option.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {productWriteup || emailKeywords.length ? (
+                <div className="space-y-3 rounded-xl border border-brand-border bg-brand-app/60 px-4 py-3">
+                  <p className="text-[12px] font-semibold text-brand-ink">Writer will use this from your website</p>
+                  {productWriteup ? (
+                    <div>
+                      <p className="mb-1 text-[11px] font-medium text-brand-ink-soft">Product writeup</p>
+                      <p className="text-[13px] leading-relaxed text-brand-ink">{productWriteup}</p>
+                    </div>
+                  ) : null}
+                  {emailKeywords.length ? (
+                    <div>
+                      <p className="mb-1.5 text-[11px] font-medium text-brand-ink-soft">Email focus keywords</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {emailKeywords.map((keyword) => (
+                          <span
+                            key={keyword}
+                            className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-brand-ink ring-1 ring-brand-border"
+                          >
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <p className="text-[11px] text-brand-ink-faint">Edit later in Settings → Email if needed.</p>
+                </div>
+              ) : null}
+
+              <BrandIntelligenceSetup
+                productCategory={productCategory}
+                competitorBrands={competitorBrands}
+                onProductCategoryChange={(value) => {
+                  setProductCategory(value);
+                  setCategoryFromWebsite(false);
+                }}
+                onCompetitorBrandsChange={setCompetitorBrands}
+                categoryDesc={
+                  categoryFromWebsite
+                    ? "Auto-selected from your website. Change it if this is wrong."
+                    : "Used for Corporate Gift Tracker OSINT sweeps."
+                }
+              />
+
+              <Button
+                type="submit"
+                disabled={
+                  loading ||
+                  analyzingWebsite ||
+                  !platformIntent ||
+                  !productCategory.trim() ||
+                  competitorBrands.length === 0
+                }
+                className={cn("w-full", SETUP_CTA)}
+              >
+                {loading ? <Loader2 className="size-4 animate-spin" /> : "Continue"}
+              </Button>
+            </>
+          ) : null}
         </form>
       )}
 
       {step === 4 && (
-        <div className="space-y-6 rounded-2xl border border-brand-border bg-white p-8">
-          <h2 className="text-lg font-semibold">Invite your team</h2>
+        <div className="ish-onboarding-card space-y-6 rounded-2xl border border-brand-border bg-white p-8">
+          <h2 className="text-lg font-semibold text-brand-ink">Invite your team</h2>
           <p className="text-sm text-brand-ink-soft">
             Invite teammates from Settings → Team after launch. Each user only sees your organization&apos;s data.
           </p>
-          <Button type="button" onClick={handleTeamSkip} disabled={loading} className="w-full">Skip for now</Button>
+          <Button type="button" onClick={handleTeamSkip} disabled={loading} className={cn("w-full", SETUP_CTA)}>
+            Skip for now
+          </Button>
         </div>
       )}
 
       {step === 5 && (
-        <div className="space-y-6 rounded-2xl border border-brand-border bg-white p-8 text-center">
-          <Rocket className="mx-auto size-12 text-brand-black" />
-          <h2 className="text-lg font-semibold">You&apos;re ready to scout</h2>
+        <div className="ish-onboarding-card space-y-6 rounded-2xl border border-brand-border bg-white p-8 text-center">
+          <Rocket className="mx-auto size-12 text-brand-stratus-blue" />
+          <h2 className="text-lg font-semibold text-brand-ink">You&apos;re ready to scout</h2>
           <p className="text-sm text-brand-ink-soft">
             Your workspace is ready. If you added a website, email drafts and scout filters already use it.
           </p>
           {websiteStatus ? (
-            <p className="rounded-xl bg-brand-app/80 px-4 py-3 text-left text-[12px] text-brand-ink-soft">{websiteStatus}</p>
+            <p className="ish-onboarding-note rounded-xl bg-brand-app/80 px-4 py-3 text-left text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
-          <div className="space-y-2 rounded-xl border border-brand-border bg-brand-app/80 px-4 py-3 text-left text-[12px] text-brand-ink-soft">
+          <div className="ish-onboarding-note space-y-2 rounded-xl border border-brand-border bg-brand-app/80 px-4 py-3 text-left text-[12px] text-brand-ink-soft">
             <div className="flex items-start gap-2">
-              <Mail className="mt-0.5 size-4 shrink-0" />
+              <Mail className="mt-0.5 size-4 shrink-0 text-brand-stratus-blue" />
               <div>
                 <p className="font-medium text-brand-ink">Next: connect your outbound email</p>
                 <p className="mt-0.5">
                   After you enter the hub, open{" "}
-                  <Link href="/settings?tab=email" className="font-medium text-brand-ink underline">
+                  <Link href="/settings?tab=email" className="font-medium text-brand-stratus-blue underline">
                     Settings → Email
                   </Link>
                   {" "}and add your own Gmail or Resend credentials. Nothing is pre-filled from another company.
@@ -405,13 +682,13 @@ export default function OnboardingPage() {
             </div>
             <p>
               Optional: update competitors under{" "}
-              <Link href="/settings?tab=enrichment" className="font-medium text-brand-ink underline">
+              <Link href="/settings?tab=enrichment" className="font-medium text-brand-stratus-blue underline">
                 Settings → Enrichment
               </Link>
               .
             </p>
           </div>
-          <Button type="button" onClick={handleComplete} disabled={loading} className="w-full">
+          <Button type="button" onClick={handleComplete} disabled={loading} className={cn("w-full", SETUP_CTA)}>
             {loading ? <Loader2 className="size-4 animate-spin" /> : "Enter Nebula"}
           </Button>
         </div>

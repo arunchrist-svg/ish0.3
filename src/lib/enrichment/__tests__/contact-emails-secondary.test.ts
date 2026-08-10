@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFirstLastSecondaryEmail,
+  hasUsableContactEmail,
+  shouldSuggestWriteEmail,
   withFirstLastSecondaryEmail,
 } from "@/lib/enrichment/contact-emails";
 
@@ -57,5 +59,53 @@ describe("first.last secondary email", () => {
       expect.arrayContaining(["jane.doe@acme.com", "other@acme.com"]),
     );
     expect(alternates.some((e) => e.email === "ceo@acme.com")).toBe(false);
+  });
+});
+
+describe("hasUsableContactEmail", () => {
+  it("treats an unverified primary email as usable for outreach", () => {
+    expect(
+      hasUsableContactEmail({
+        email: "vijetha.gowda@seg-automotive.com",
+        emailStatus: "unverified",
+      }),
+    ).toBe(true);
+  });
+
+  it("uses saved/suggested emails when primary is missing", () => {
+    expect(
+      hasUsableContactEmail({
+        email: "—",
+        emailStatus: "missing",
+        emails: [
+          {
+            email: "vijetha.gowda@seg-automotive.com",
+            emailStatus: "unverified",
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat generic-only emails as usable", () => {
+    expect(
+      hasUsableContactEmail({
+        email: "info@seg-automotive.com",
+        emailStatus: "generic",
+        emails: [{ email: "sales@seg-automotive.com", emailStatus: "generic" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("suggests write email when any listed address is usable", () => {
+    expect(
+      shouldSuggestWriteEmail(
+        "—",
+        "missing",
+        "scouted",
+        false,
+        [{ email: "vijetha.gowda@seg-automotive.com", emailStatus: "unverified" }],
+      ),
+    ).toBe(true);
   });
 });

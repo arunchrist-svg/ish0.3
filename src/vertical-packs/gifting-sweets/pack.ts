@@ -57,6 +57,7 @@ export const giftingSweetsPack: VerticalPack = {
     "knowledge/brand.md",
     "knowledge/rules.md",
     "knowledge/campaign-diwali.md",
+    "knowledge/roles.md",
   ],
   searchLexicon: ["mithai", "sweets box", "hamper", "Diwali gift", "festive hamper"],
 };

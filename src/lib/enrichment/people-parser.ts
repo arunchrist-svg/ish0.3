@@ -1,6 +1,7 @@
 import type { ScoutPersonResult } from "./types";
 import { computeSeniorityScore } from "./seniority-score";
 import { normalizeLinkedInUrl } from "@/lib/utils";
+import { hitShowsCurrentEmployment } from "@/lib/enrichment/person-company-match";
 
 type SearchHit = { title: string; url: string; content: string };
 
@@ -21,10 +22,25 @@ function slugToName(slug: string): string | null {
 }
 
 function extractLocation(text: string): string | undefined {
-  const match = text.match(
+  const india = text.match(
     /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)?)\s*,\s*(Maharashtra|Karnataka|Tamil Nadu|Telangana|Kerala|Gujarat|Rajasthan|Delhi|Haryana|Punjab|West Bengal|India)\b/,
   );
-  return match ? `${match[1]}, ${match[2]}` : undefined;
+  if (india) return `${india[1]}, ${india[2]}`;
+
+  const us = text.match(
+    /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s*,\s*(Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|United States|USA)\b/,
+  );
+  if (us) return `${us[1]}, ${us[2]}`;
+
+  const area = text.match(/\b(Greater\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*\s+Area)\b/);
+  if (area) return area[1];
+
+  const country = text.match(
+    /\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*),\s*(United States|USA|United Kingdom|UK|Canada|Australia)\b/,
+  );
+  if (country) return `${country[1]}, ${country[2]}`;
+
+  return undefined;
 }
 
 function parseLinkedInTitle(title: string): { name?: string; title?: string; location?: string } {
@@ -48,11 +64,15 @@ function isKeyDM(title?: string): boolean {
   );
 }
 
-function collectLinkedInHits(hits: SearchHit[]): { name: string; title?: string; linkedIn: string; location?: string }[] {
+function collectLinkedInHits(
+  hits: SearchHit[],
+  companyName?: string,
+): { name: string; title?: string; linkedIn: string; location?: string }[] {
   const out: { name: string; title?: string; linkedIn: string; location?: string }[] = [];
   const seen = new Set<string>();
 
   for (const hit of hits) {
+    if (companyName && !hitShowsCurrentEmployment(hit, companyName)) continue;
     const blob = `${hit.title}\n${hit.url}\n${hit.content}`;
     const fromTitle = parseLinkedInTitle(hit.title);
 
@@ -87,8 +107,9 @@ export function parsePeopleFromSearchResults(
   hits: SearchHit[],
   limit: number,
   dataSource = "web_heuristic",
+  companyName?: string,
 ): ScoutPersonResult[] {
-  const candidates = collectLinkedInHits(hits);
+  const candidates = collectLinkedInHits(hits, companyName);
   return candidates.slice(0, limit).map((c) => ({
     name: c.name,
     title: c.title,

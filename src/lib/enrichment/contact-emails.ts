@@ -48,6 +48,21 @@ export function hasUsableEmail(email?: string | null, emailStatus?: string | nul
   return true;
 }
 
+export type EmailCandidate = {
+  email?: string | null;
+  emailStatus?: string | null;
+};
+
+/** True when the primary field or any listed contact email can be used for outreach. */
+export function hasUsableContactEmail(input: {
+  email?: string | null;
+  emailStatus?: string | null;
+  emails?: EmailCandidate[] | null;
+}): boolean {
+  if (hasUsableEmail(input.email, input.emailStatus)) return true;
+  return (input.emails ?? []).some((entry) => hasUsableEmail(entry.email, entry.emailStatus));
+}
+
 export function buildContactEmails(params: {
   primaryEmail?: string | null;
   emailStatus?: string | null;
@@ -119,8 +134,12 @@ export function shouldSuggestWriteEmail(
   emailStatus: string | undefined | null,
   status: string,
   hasDraft: boolean,
+  emails?: EmailCandidate[] | null,
 ): boolean {
-  return hasUsableEmail(email, emailStatus) && !isEmailOutreachStarted(status, hasDraft);
+  return (
+    hasUsableContactEmail({ email, emailStatus, emails }) &&
+    !isEmailOutreachStarted(status, hasDraft)
+  );
 }
 
 export function buildPermutationEmailEntry(email: string, pattern: string): ContactEmailEntry {

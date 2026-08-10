@@ -39,4 +39,21 @@ describe("retrieveRelevantRules brand isolation", () => {
     expect(rules.toLowerCase()).not.toContain("mithai");
     expect(rules).toMatch(/Outreach Rules|Personalise/i);
   });
+
+  it("injects product writeup and email keywords from website insights", () => {
+    const rules = retrieveRelevantRules({
+      brandSlug: "custom",
+      verticalPackId: "general",
+      productSummary: "B2B scheduling software for ops teams",
+      websiteInsights: {
+        productWriteup: "Acme helps ops teams schedule plant shifts without spreadsheets.",
+        emailKeywords: ["shift scheduling", "plant ops", "no spreadsheets"],
+      },
+    });
+    expect(rules).toContain("## Product writeup");
+    expect(rules).toContain("Acme helps ops teams schedule plant shifts");
+    expect(rules).toContain("## Email focus keywords");
+    expect(rules).toContain("shift scheduling");
+    expect(rules).toContain("Use 1-2 of these themes");
+  });
 });

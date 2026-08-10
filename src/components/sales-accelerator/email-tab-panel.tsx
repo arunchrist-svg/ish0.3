@@ -11,7 +11,8 @@ import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
-import { OUTREACH_TEMPLATES, getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { CREDIT_COSTS } from "@/lib/billing/credit-costs";
 import { WritingLoader } from "./writing-loader";
 import { OutreachApprovalCard } from "./outreach-approval-card";
 import { OutreachJourneyPanel } from "./outreach-journey-panel";
@@ -44,8 +45,13 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(thread?.selectedNodeId);
   const [activeDraft, setActiveDraft] = useState<WriterDraft | undefined>(draft);
+  const templates = useMemo(() => {
+    const all = lead.outreachTemplates?.length ? lead.outreachTemplates : OUTREACH_TEMPLATES;
+    const primary = all.filter((t) => t.id !== "follow_up" && t.id !== "final_reminder");
+    return primary.length ? primary : all;
+  }, [lead.outreachTemplates]);
   const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplateId>(
-    (draft?.templateVariant as OutreachTemplateId) ?? OUTREACH_TEMPLATES[0].id,
+    (draft?.templateVariant as OutreachTemplateId) ?? templates[0]?.id ?? OUTREACH_TEMPLATES[0].id,
   );
   const [generating, setGenerating] = useState(false);
   const [generatingLabel, setGeneratingLabel] = useState<string | undefined>();
@@ -86,6 +92,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     }
   }, [draft?.id, draft?.templateVariant]);
 
+  useEffect(() => {
+    if (!templates.some((t) => t.id === selectedTemplate)) {
+      setSelectedTemplate(templates[0]?.id ?? OUTREACH_TEMPLATES[0].id);
+    }
+  }, [templates, selectedTemplate]);
+
   const selectedNode = thread?.barNodes.find((n) => n.id === selectedNodeId);
 
   const resolvedDraft = useMemo(() => {
@@ -122,7 +134,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   const canWrite = isContactReadyStage(lead.status) || lead.status === "draft_ready" || isReplyLead;
   const hasDraft = !!(resolvedDraft ?? draft ?? sequence.length);
-  const activeTemplate = getOutreachTemplate(selectedTemplate);
+  const activeTemplate = templates.find((t) => t.id === selectedTemplate) ?? templates[0] ?? OUTREACH_TEMPLATES[0];
   const isEmptyCompose = canWrite && !hasDraft && !isReplyLead && (phase === "compose" || thread?.barMode === "hidden");
   const isEditableNode =
     isEmptyCompose ||
@@ -159,7 +171,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   const statusSubtitle =
     generating
-      ? "Writing drafts…"
+      ? "Writing smart emails…"
       : phase === "reply_sent"
         ? "Reply sent in thread"
         : phase === "awaiting_reply"
@@ -202,7 +214,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       }
 
       if (isMobileLayout) {
-        setStreamMessage("Starting writer...");
+        setStreamMessage("Starting smart emails...");
         const draft = await runWriterStream(lead.id, { outreachTemplate: selectedTemplate }, (ev) => {
           if (ev.type === "progress" && ev.message) setStreamMessage(ev.message);
         });
@@ -231,8 +243,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         },
       });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : isReplyLead ? "Reply draft failed" : "Email draft failed");
-      console.error(e);
+      const message = e instanceof Error ? e.message : isReplyLead ? "Reply draft failed" : "Email draft failed";
+      toast.error(message);
+      if (!/quota/i.test(message)) console.error(e);
     } finally {
       setGenerating(false);
       setGeneratingLabel(undefined);
@@ -286,14 +299,23 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }
 
   const regenerateLabel = generating
-    ? "Writing…"
+    ? "Writing smart emails…"
     : hasDraft
       ? isReplyLead
         ? "Regenerate reply"
         : followUpPosition
           ? `Regenerate E${followUpPosition}`
           : "Regenerate all"
-      : "Write";
+      : "Write smart emails";
+
+  const draftCreditCost = CREDIT_COSTS["writer.draft"] ?? 8;
+  const writeCredits = isReplyLead
+    ? 0
+    : followUpPosition
+      ? draftCreditCost
+      : isMobileLayout
+        ? draftCreditCost
+        : draftCreditCost * 3;
 
   const showWriterControl = showRegenerate || (isReplyLead && phase !== "reply_sent");
 
@@ -309,7 +331,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-brand-black px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
         >
           <Sparkles className="size-3" />
-          {draftingReply ? "Writing…" : replyDraft ? "Regenerate reply" : "Generate reply"}
+          {draftingReply ? "Writing smart emails…" : replyDraft ? "Regenerate reply" : "Generate reply"}
         </button>
       ) : null}
       {showSyncReplies ? (
@@ -367,7 +389,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                         setTemplateMenuOpen(false);
                       }}
                     >
-                      {OUTREACH_TEMPLATES.map((template) => (
+                      {templates.map((template) => (
                         <DropdownMenuRadioItem key={template.id} value={template.id} className="text-[12px]">
                           <div>
                             <div className="font-semibold">{template.label}</div>
@@ -387,6 +409,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
               >
                 <FileText className="size-3" />
                 {regenerateLabel}
+                {writeCredits > 0 && !generating ? (
+                  <span className="font-medium opacity-70">· {writeCredits} cr</span>
+                ) : null}
               </button>
             </div>
           ) : null}
@@ -442,9 +467,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-yellow-soft">
             <Sparkles className="size-5 text-brand-ink" />
           </div>
-          <p className="text-[15px] font-bold text-brand-ink">Start your outreach sequence</p>
+          <p className="text-[15px] font-bold text-brand-ink">Start writing smart emails</p>
           <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-            AI will write 3 emails for {lead.name ?? "this contact"} using the{" "}
+            AI will write 3 smart emails for {lead.name ?? "this contact"} using the{" "}
             <span className="font-semibold text-brand-ink">{activeTemplate.shortLabel}</span> template.
           </p>
           <button
@@ -454,7 +479,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             <Sparkles className="size-4" />
-            Write 3 emails
+            Write smart emails
           </button>
         </div>
       ) : needsReplyDraft ? (
@@ -478,7 +503,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {draftingReply ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {draftingReply ? "Writing reply…" : "Generate AI reply"}
+            {draftingReply ? "Writing smart emails…" : "Generate AI reply"}
           </button>
         </div>
       ) : draftingReply ? (
@@ -511,9 +536,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         </div>
       ) : isEmptyCompose ? (
         <div className="border-y border-dashed border-brand-stratus-blue/25 bg-brand-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-brand-sm)]">
-          <p className="text-[15px] font-bold text-brand-ink">Ready to write outreach</p>
+          <p className="text-[15px] font-bold text-brand-ink">Ready to write smart emails</p>
           <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-            AI will draft a 3-email sequence for {lead.name || "this contact"}. Pick a template above, then click Write.
+            AI will draft a 3-email sequence for {lead.name || "this contact"}. Pick a template above, then click Write smart emails.
           </p>
           <Button
             type="button"
@@ -523,7 +548,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             onClick={() => void handleGenerate()}
           >
             <FileText className="size-3.5" />
-            Write 3 emails
+            Write smart emails
           </Button>
         </div>
       ) : (phase === "reply_sent" || phase === "complete") && isReplyLead ? (

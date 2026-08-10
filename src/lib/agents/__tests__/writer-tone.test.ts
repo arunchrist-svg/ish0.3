@@ -26,7 +26,14 @@ describe("getWriterFewShotExample", () => {
       "Premium mithai and dry-fruit hampers.",
       "gifting-sweets",
     );
-    expect(example.toLowerCase()).toContain("mithai");
+    expect(example.toLowerCase()).toContain("pure-ghee");
+    expect(example.toLowerCase()).toContain("taste first");
+    expect(example.toLowerCase()).toContain("sampler box");
+    expect(example).toMatch(/Send happiness this Diwali/i);
+    expect(example).toMatch(/No fillers\. No mass production/);
+    expect(example).toMatch(/thank you/);
+    expect(example.toLowerCase()).not.toContain("offers traditional");
+    expect(example).not.toMatch(/No worries/i);
   });
 
   it("builds custom example from product summary, not mithai", () => {

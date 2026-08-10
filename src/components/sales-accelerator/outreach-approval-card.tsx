@@ -15,10 +15,17 @@ import {
   fetchSenderHealth,
   type SenderHealthResponse,
 } from "@/lib/api-client";
-import { SegmentedTabs } from "@/design-system";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
 import { EmailEditChat } from "./email-edit-chat";
+import {
+  asVariantKey,
+  draftBodyOptions,
+  draftSubjectOptions,
+  resolveDraftBody,
+  resolveDraftSubject,
+  type VariantKey,
+} from "@/lib/email/draft-variants";
 
 type Props = {
   draft: WriterDraft;
@@ -53,6 +60,38 @@ function useAutoGrowTextarea(value: string) {
   return { ref, resize };
 }
 
+function AutoGrowBodyTextarea({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  placeholder?: string;
+}) {
+  const { ref, resize } = useAutoGrowTextarea(value);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={(e) => {
+        onChange(e.target.value);
+        requestAnimationFrame(resize);
+      }}
+      placeholder={placeholder}
+      rows={1}
+      disabled={disabled}
+      className={cn(
+        "block w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-0",
+        text.body,
+        "min-h-[8rem] whitespace-pre-wrap leading-[1.65] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60 lg:min-h-[6rem] lg:leading-[1.7]",
+      )}
+    />
+  );
+}
+
 function EnvelopeRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 items-center gap-2 border-b border-brand-border/30 px-3 py-2.5 last:border-b-0 lg:grid lg:grid-cols-[52px_1fr] lg:gap-2 lg:px-0 lg:py-2">
@@ -80,7 +119,8 @@ export function OutreachApprovalCard({
   emailThread,
   scheduleIdForFollowUp,
 }: Props) {
-  const [subjectUsed, setSubjectUsed] = useState<"A" | "B">("A");
+  const [subjectKey, setSubjectKey] = useState<VariantKey>(() => asVariantKey(draft.chosenSubjectKey));
+  const [bodyKey, setBodyKey] = useState<VariantKey>(() => asVariantKey(draft.chosenBodyKey));
   const [displayDraft, setDisplayDraft] = useState(draft);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -148,8 +188,15 @@ export function OutreachApprovalCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactEmail, contactEmails]);
 
-  const bodyText = displayDraft.emailBody ?? "";
-  const { ref: bodyRef, resize: resizeBody } = useAutoGrowTextarea(bodyText);
+  const subjectOptions = draftSubjectOptions(displayDraft);
+  const bodyOptions = draftBodyOptions(displayDraft);
+  const safeSubjectKey = subjectOptions.some((s) => s.key === subjectKey)
+    ? subjectKey
+    : (subjectOptions[0]?.key ?? "A");
+  const safeBodyKey = bodyOptions.some((b) => b.key === bodyKey)
+    ? bodyKey
+    : (bodyOptions[0]?.key ?? "A");
+  const bodyText = resolveDraftBody(displayDraft, safeBodyKey);
 
   const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
   const isFollowUpReview = Boolean(scheduleIdForFollowUp);
@@ -171,6 +218,8 @@ export function OutreachApprovalCard({
 
   useEffect(() => {
     setDisplayDraft(draft);
+    setSubjectKey(asVariantKey(draft.chosenSubjectKey));
+    setBodyKey(asVariantKey(draft.chosenBodyKey));
     setDirty(false);
   }, [draft]);
 
@@ -211,20 +260,44 @@ export function OutreachApprovalCard({
   }, []);
 
   const persistDraft = useCallback(
-    async (payload: { emailBody?: string; subjectA?: string; subjectB?: string }) => {
+    async (
+      payload?: Partial<
+        Pick<
+          WriterDraft,
+          | "emailBody"
+          | "emailBodyB"
+          | "emailBodyC"
+          | "subjectA"
+          | "subjectB"
+          | "subjectC"
+          | "chosenSubjectKey"
+          | "chosenBodyKey"
+        >
+      >,
+    ) => {
       setSaving(true);
       try {
         const updated = await updateOutreachDraft({
           leadOutreachId: draft.id,
-          subjectA: payload.subjectA ?? displayDraft.subjectA,
-          subjectB: payload.subjectB ?? displayDraft.subjectB,
-          emailBody: payload.emailBody ?? displayDraft.emailBody,
+          subjectA: payload?.subjectA ?? displayDraft.subjectA,
+          subjectB: payload?.subjectB ?? displayDraft.subjectB,
+          subjectC: payload?.subjectC ?? displayDraft.subjectC,
+          emailBody: payload?.emailBody ?? displayDraft.emailBody,
+          emailBodyB: payload?.emailBodyB ?? displayDraft.emailBodyB,
+          emailBodyC: payload?.emailBodyC ?? displayDraft.emailBodyC,
+          chosenSubjectKey: payload?.chosenSubjectKey ?? subjectKey,
+          chosenBodyKey: payload?.chosenBodyKey ?? bodyKey,
         });
         const next = {
           ...displayDraft,
           subjectA: updated.subjectA ?? displayDraft.subjectA,
           subjectB: updated.subjectB ?? displayDraft.subjectB,
+          subjectC: updated.subjectC ?? displayDraft.subjectC,
           emailBody: updated.emailBody ?? displayDraft.emailBody,
+          emailBodyB: updated.emailBodyB ?? displayDraft.emailBodyB,
+          emailBodyC: updated.emailBodyC ?? displayDraft.emailBodyC,
+          chosenSubjectKey: updated.chosenSubjectKey ?? subjectKey,
+          chosenBodyKey: updated.chosenBodyKey ?? bodyKey,
         };
         setDisplayDraft(next);
         onDraftUpdated(next);
@@ -237,15 +310,11 @@ export function OutreachApprovalCard({
         setSaving(false);
       }
     },
-    [draft.id, displayDraft, onDraftUpdated],
+    [draft.id, displayDraft, onDraftUpdated, subjectKey, bodyKey],
   );
 
   async function handleSave() {
-    const ok = await persistDraft({
-      subjectA: displayDraft.subjectA,
-      subjectB: displayDraft.subjectB,
-      emailBody: displayDraft.emailBody,
-    });
+    const ok = await persistDraft();
     if (ok) toast.success("Draft saved");
   }
 
@@ -255,7 +324,7 @@ export function OutreachApprovalCard({
     setDirty(false);
   }
 
-  const activeSubject = subjectUsed === "A" ? displayDraft.subjectA : displayDraft.subjectB;
+  const activeSubject = resolveDraftSubject(displayDraft, safeSubjectKey);
   const threadSubject = emailThread?.threadRootSubject;
   const showReRow = Boolean(isReplyDraft && threadSubject);
   const toLine = [contactName, companyName].filter(Boolean).join(" · ");
@@ -277,18 +346,16 @@ export function OutreachApprovalCard({
     });
   }
 
-  function handleSubjectChange(value: string) {
-    const key = subjectUsed === "A" ? "subjectA" : "subjectB";
-    const next = { ...displayDraft, [key]: value };
-    setDisplayDraft(next);
+  function handleSubjectChange(key: VariantKey, value: string) {
+    const field = key === "B" ? "subjectB" : key === "C" ? "subjectC" : "subjectA";
+    setDisplayDraft({ ...displayDraft, [field]: value });
     setDirty(true);
   }
 
-  function handleBodyChange(value: string) {
-    const next = { ...displayDraft, emailBody: value };
-    setDisplayDraft(next);
+  function handleBodyChange(key: VariantKey, value: string) {
+    const field = key === "B" ? "emailBodyB" : key === "C" ? "emailBodyC" : "emailBody";
+    setDisplayDraft({ ...displayDraft, [field]: value });
     setDirty(true);
-    requestAnimationFrame(resizeBody);
   }
 
 
@@ -321,23 +388,19 @@ export function OutreachApprovalCard({
       return;
     }
     const subjectToSend = isReplyDraft && threadSubject ? threadSubject : activeSubject;
-    if (!subjectToSend?.trim() || !bodyText.trim()) {
+    const bodyToSend = bodyText;
+    if (!subjectToSend?.trim() || !bodyToSend.trim()) {
       toast.error("Subject and body are required");
       return;
     }
 
     setSending(true);
     try {
-      if (dirty) {
-        const saved = await persistDraft({
-          subjectA: displayDraft.subjectA,
-          subjectB: displayDraft.subjectB,
-          emailBody: displayDraft.emailBody,
-        });
-        if (!saved) return;
-      } else if (saving) {
-        await new Promise((r) => setTimeout(r, 300));
-      }
+      const saved = await persistDraft({
+        chosenSubjectKey: safeSubjectKey,
+        chosenBodyKey: safeBodyKey,
+      });
+      if (!saved) return;
 
       if (isFollowUpReview && scheduleIdForFollowUp) {
         const result = await sendFollowUp(scheduleIdForFollowUp, {
@@ -355,6 +418,7 @@ export function OutreachApprovalCard({
         channel: "email",
         status: "approved",
         subjectUsed: subjectToSend,
+        bodyUsed: bodyToSend,
       });
 
       const result = await sendOutreach(approvalId, {
@@ -476,35 +540,56 @@ export function OutreachApprovalCard({
             <EnvelopeRow label="Re">
               <p className="truncate text-[12px] font-semibold text-brand-stratus-blue">{threadSubject}</p>
             </EnvelopeRow>
-          ) : null}
-          <EnvelopeRow label="Subject">
-            <div className="flex min-w-0 items-center gap-2">
-              {!showReRow && (
-                <SegmentedTabs
-                  value={subjectUsed}
-                  onChange={(v) => setSubjectUsed(v as "A" | "B")}
-                  items={[
-                    { value: "A", label: "A" },
-                    { value: "B", label: "B" },
-                  ]}
-                  className="shrink-0 origin-left scale-[0.82] p-0.5 lg:scale-100 lg:p-1"
-                />
-              )}
-              <input
-                type="text"
-                value={showReRow && threadSubject ? threadSubject : (activeSubject ?? "")}
-                onChange={(e) => handleSubjectChange(e.target.value)}
-                placeholder="Subject line"
-                disabled={isDraftLocked || (showReRow && Boolean(threadSubject))}
-                className={cn(
-                  "min-w-0 flex-1 border-0 bg-transparent px-0 py-0",
-                  text.body,
-                  "text-[13px] placeholder:text-brand-ink-faint lg:rounded-[10px] lg:border lg:border-brand-border/40 lg:bg-white lg:px-3 lg:py-1.5 lg:text-[12px]",
-                  "focus:outline-none focus:ring-0 lg:focus:border-brand-stratus-blue/40 lg:focus:ring-2 lg:focus:ring-brand-stratus-blue/12 disabled:opacity-60",
+          ) : (
+            <div className="border-t border-brand-border/30 px-3 py-2.5 lg:px-0 lg:py-2">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft">
+                Subject (pick 1)
+              </p>
+              <div className="flex flex-col gap-2">
+                {(subjectOptions.length ? subjectOptions : [{ key: "A" as const, value: activeSubject }]).map(
+                  (option) => {
+                    const checked = option.key === safeSubjectKey;
+                    return (
+                      <label
+                        key={option.key}
+                        className={cn(
+                          "flex cursor-pointer items-start gap-2 rounded-[10px] border px-2 py-1.5",
+                          checked
+                            ? "border-brand-stratus-blue/40 bg-white"
+                            : "border-transparent hover:bg-white/60",
+                        )}
+                      >
+                        <input
+                          type="radio"
+                          name={`subject-${draft.id}`}
+                          checked={checked}
+                          disabled={isDraftLocked}
+                          onChange={() => {
+                            setSubjectKey(option.key);
+                            setDirty(true);
+                          }}
+                          className="mt-1.5 size-3.5 shrink-0 border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
+                        />
+                        <input
+                          type="text"
+                          value={option.value}
+                          onChange={(e) => handleSubjectChange(option.key, e.target.value)}
+                          placeholder={`Subject ${option.key}`}
+                          disabled={isDraftLocked}
+                          className={cn(
+                            "min-w-0 flex-1 border-0 bg-transparent px-0 py-0",
+                            text.body,
+                            "text-[13px] placeholder:text-brand-ink-faint lg:text-[12px]",
+                            "focus:outline-none focus:ring-0 disabled:opacity-60",
+                          )}
+                        />
+                      </label>
+                    );
+                  },
                 )}
-              />
+              </div>
             </div>
-          </EnvelopeRow>
+          )}
         </div>
 
         {isReplyDraft && !isDraftLocked && onGenerateReply ? (
@@ -516,25 +601,54 @@ export function OutreachApprovalCard({
               className="inline-flex items-center gap-2 rounded-full border border-brand-border bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-opacity hover:bg-brand-canvas disabled:opacity-50"
             >
               {generatingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              {generatingReply ? "Writing…" : "Regenerate reply"}
+              {generatingReply ? "Writing smart emails…" : "Regenerate reply"}
             </button>
           </div>
         ) : null}
 
-        <div className="relative mt-2 min-h-[12rem] border-t border-brand-border/40 pt-1 lg:mt-3 lg:min-h-0 lg:rounded-[16px] lg:border lg:border-brand-border/50 lg:bg-white lg:pt-0 lg:shadow-[var(--shadow-brand-sm)]">
-          <textarea
-            ref={bodyRef}
-            value={bodyText}
-            onChange={(e) => handleBodyChange(e.target.value)}
-            placeholder="Write your message…"
-            rows={1}
-            disabled={isDraftLocked}
-            className={cn(
-              "block w-full resize-none overflow-hidden border-0 bg-transparent px-3 py-4",
-              text.body,
-              "min-h-[12rem] leading-[1.65] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60 lg:min-h-[5.5rem] lg:rounded-[16px] lg:px-5 lg:py-4 lg:leading-[1.7]",
-            )}
-          />
+        <div className="relative mt-2 border-t border-brand-border/40 pt-2 lg:mt-3 lg:rounded-[16px] lg:border lg:border-brand-border/50 lg:bg-white lg:pt-3 lg:shadow-[var(--shadow-brand-sm)]">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft lg:px-5">
+            Body (pick 1)
+          </p>
+          <div className="mt-2 flex flex-col gap-2 px-3 pb-2 lg:px-5">
+            {(bodyOptions.length ? bodyOptions : [{ key: "A" as const, value: bodyText }]).map((option) => {
+              const checked = option.key === safeBodyKey;
+              return (
+                <div
+                  key={option.key}
+                  className={cn(
+                    "flex items-start gap-2 rounded-[12px] border px-2.5 py-2",
+                    checked
+                      ? "border-brand-stratus-blue/40 bg-brand-canvas/40"
+                      : "border-brand-border/40 hover:bg-brand-canvas/25",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name={`body-${draft.id}`}
+                    checked={checked}
+                    disabled={isDraftLocked}
+                    onChange={() => {
+                      setBodyKey(option.key);
+                      setDirty(true);
+                    }}
+                    className="mt-1 size-3.5 shrink-0 cursor-pointer border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                      Option {option.key}
+                    </p>
+                    <AutoGrowBodyTextarea
+                      value={option.value}
+                      onChange={(value) => handleBodyChange(option.key, value)}
+                      disabled={isDraftLocked}
+                      placeholder="Write your message…"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
           {!isDraftLocked && (
             <EmailEditChat
               embedded

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getIndustryByLabel, searchIndustries } from "../industry-catalog";
+import { getIndustryByLabel, inferProductCategory, searchIndustries } from "../industry-catalog";
 
 describe("industry catalog", () => {
   it("finds kitchen appliances when typing kit", () => {
@@ -19,5 +19,22 @@ describe("industry catalog", () => {
   it("resolves industry by label", () => {
     const entry = getIndustryByLabel("Kitchen Appliances");
     expect(entry?.suggestedCompetitors).toContain("Prestige");
+  });
+
+  it("infers product category from website copy and intent", () => {
+    expect(
+      inferProductCategory({
+        vertical: "saas",
+        productSummary: "B2B CRM software platform for sales teams",
+        llmCategory: "Enterprise Software",
+      }),
+    ).toBe("Enterprise Software");
+    expect(
+      inferProductCategory({
+        vertical: "sweets_gifting",
+        productSummary: "Premium mithai hampers for Diwali corporate gifting",
+      }),
+    ).toBe("Sweets");
+    expect(inferProductCategory({ platformIntent: "appliances" })).toBe("Kitchen Appliances");
   });
 });

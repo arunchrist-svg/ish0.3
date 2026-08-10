@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 type SettingsHeroProps = {
   icon: React.ElementType;
   title: string;
-  subtitle: string;
+  subtitle?: string;
   action?: React.ReactNode;
   className?: string;
 };
@@ -18,7 +18,7 @@ export function SettingsHero({ icon: Icon, title, subtitle, action, className }:
           </div>
           <div className="min-w-0">
             <h1 className="text-[28px] font-bold leading-tight tracking-tight text-brand-ink">{title}</h1>
-            <p className="mt-1 text-[14px] leading-snug text-brand-ink-soft">{subtitle}</p>
+            {subtitle ? <p className="mt-1 text-[14px] leading-snug text-brand-ink-soft">{subtitle}</p> : null}
           </div>
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}

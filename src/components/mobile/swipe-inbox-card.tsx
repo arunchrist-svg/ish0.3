@@ -102,7 +102,7 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
             <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
             <p className="text-[13px] font-medium leading-snug text-brand-ink">
               {row.revisionTimeout
-                ? "Writer timed out before quality passed."
+                ? "Smart emails timed out before quality passed."
                 : `Quality scores are low (inbox ${row.deliverabilityScore ?? "?"}, rubric ${row.rubricTotal ?? "?"}).`}
               {" "}Tap Send to confirm anyway.
             </p>

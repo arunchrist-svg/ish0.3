@@ -62,6 +62,17 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void refresh();
+
+    function onVisible() {
+      if (document.visibilityState === "visible") void refresh();
+    }
+
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [refresh]);
 
   const value = useMemo(

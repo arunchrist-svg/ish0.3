@@ -38,6 +38,8 @@ export async function runResearcherLite(leadId: string): Promise<void> {
   const websiteBlock = brand.websiteInsights
     ? `
 Website value prop: ${brand.websiteInsights.valueProposition ?? "n/a"}
+Product writeup: ${brand.websiteInsights.productWriteup ?? "n/a"}
+Email keywords: ${(brand.websiteInsights.emailKeywords ?? []).join("; ") || "n/a"}
 Differentiators: ${(brand.websiteInsights.differentiators ?? []).join("; ") || "n/a"}
 Buyer personas: ${brand.websiteInsights.buyerPersonas.join(", ")}
 `
@@ -60,6 +62,7 @@ Confidence tier: ${confidenceTier}
 
 Rules:
 - Outreach hooks must match the seller brand/product above.
+- Prefer email keywords and writeup themes when they fit this buyer.
 - Never invent products, categories, or seasonal angles the seller does not sell.
 
 Output ONLY valid JSON with this shape:

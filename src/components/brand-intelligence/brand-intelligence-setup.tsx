@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getIndustryByLabel, type IndustryCatalogEntry } from "@/lib/brand-intel/industry-catalog";
 import { CompetitorBrandsEditor } from "@/components/brand-intelligence/competitor-brands-editor";
 import { ProductCategoryPicker } from "@/components/brand-intelligence/product-category-picker";
@@ -37,6 +37,10 @@ export function BrandIntelligenceSetup({
   const [selectedIndustry, setSelectedIndustry] = useState<IndustryCatalogEntry | null>(() =>
     getIndustryByLabel(productCategory),
   );
+
+  useEffect(() => {
+    setSelectedIndustry(getIndustryByLabel(productCategory));
+  }, [productCategory]);
 
   const suggestedCompetitors = useMemo(() => {
     if (selectedIndustry && selectedIndustry.label === productCategory.trim()) {

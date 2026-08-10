@@ -52,7 +52,7 @@ export function statusToPipelineIndex(status: string): number {
   return STATUS_TO_PIPELINE_INDEX[status] ?? 0;
 }
 
-export function groupLeadsByPipelineStage<T extends { status: string }>(
+export function groupLeadsByPipelineStage<T extends { status: string; score?: number | null }>(
   leads: T[],
 ): Record<PipelineStageLabel, T[]> {
   const groups = Object.fromEntries(
@@ -62,6 +62,10 @@ export function groupLeadsByPipelineStage<T extends { status: string }>(
   for (const lead of leads) {
     const stage = PIPELINE_STAGES[statusToPipelineIndex(lead.status)];
     groups[stage].push(lead);
+  }
+
+  for (const stage of PIPELINE_STAGES) {
+    groups[stage].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }
 
   return groups;

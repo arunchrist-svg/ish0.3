@@ -71,6 +71,14 @@ describe("email-permutations", () => {
         companyName: "Acme Corp",
       }),
     ).toBe("acme.com");
+
+    expect(
+      resolveAccountDomain({
+        domain: "manufacturingtodayindia.com",
+        website: "https://www.manufacturingtodayindia.com/story",
+        companyName: "Pavna Industries",
+      }),
+    ).toBe("pavnaindustries.com");
   });
 
   it("returns error when domain cannot be resolved", () => {

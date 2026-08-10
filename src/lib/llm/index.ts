@@ -1,13 +1,7 @@
 import { generateText } from "ai";
 import { startAgentRun, completeAgentRun } from "@/lib/agents/log-agent-run";
-
-import { google } from "@ai-sdk/google";
 import { anthropic } from "@ai-sdk/anthropic";
-import { createOpenAI } from "@ai-sdk/openai";
-import {
-  ensureGeminiApiKey,
-  sanitizeModelId,
-} from "@/lib/llm/gemini-env";
+import { sanitizeModelId } from "@/lib/llm/gemini-env";
 
 type LLMTier = "fast" | "quality";
 
@@ -19,86 +13,14 @@ export type LLMTraceContext = {
   promptVersion?: string;
 };
 
-let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
-let omlxClient: ReturnType<typeof createOpenAI> | null = null;
-
-
-
-function getOmlxBaseUrl(): string {
-  const base = process.env.OMLX_BASE_URL ?? "http://127.0.0.1:5200/v1";
-  return base.endsWith("/v1") ? base : `${base.replace(/\/$/, "")}/v1`;
-}
-
-function getOmlxClient() {
-  if (!omlxClient) {
-    omlxClient = createOpenAI({
-      baseURL: getOmlxBaseUrl(),
-      apiKey: process.env.OMLX_API_KEY ?? "none",
-    });
-  }
-  return omlxClient;
-}
-
-
-function normalizeLLMProvider(raw?: string): string {
-  return (raw ?? "gemini").trim().toLowerCase();
-}
-
 export function getLLMProvider(): string {
-  return normalizeLLMProvider(process.env.LLM_PROVIDER);
-}
-
-function getOpenRouterSiteUrl(): string {
-  if (process.env.OPENROUTER_SITE_URL) return process.env.OPENROUTER_SITE_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3002";
-}
-
-function getOpenRouterClient() {
-  if (!openRouterClient) {
-    openRouterClient = createOpenAI({
-      baseURL: "https://openrouter.ai/api/v1",
-      apiKey: process.env.OPENROUTER_API_KEY,
-      headers: {
-        "HTTP-Referer": getOpenRouterSiteUrl(),
-        "X-Title": process.env.OPENROUTER_SITE_NAME ?? "ISH Sales Accelerator",
-      },
-    });
-  }
-  return openRouterClient;
+  return "anthropic";
 }
 
 function getModel(tier: LLMTier) {
-  const provider = getLLMProvider();
-
-  if (provider === "anthropic") {
-    const haiku = sanitizeModelId(process.env.ANTHROPIC_MODEL_HAIKU, "claude-haiku-4-5");
-    const sonnet = sanitizeModelId(process.env.ANTHROPIC_MODEL_SONNET, "claude-sonnet-4-5");
-    return tier === "fast" ? anthropic(haiku) : anthropic(sonnet);
-  }
-
-  if (provider === "openrouter") {
-    const fast = sanitizeModelId(process.env.OPENROUTER_MODEL_FAST, "openai/gpt-4o-mini");
-    const quality = sanitizeModelId(process.env.OPENROUTER_MODEL_QUALITY, "openai/gpt-4o");
-    const client = getOpenRouterClient();
-    return tier === "fast" ? client.chat(fast) : client.chat(quality);
-  }
-
-  if (provider === "omlx") {
-    const fallback = sanitizeModelId(process.env.OMLX_MODEL, "Llama-3.2-3B-Instruct-4bit");
-    const fast = sanitizeModelId(process.env.OMLX_MODEL_FAST, fallback);
-    const quality = sanitizeModelId(
-      process.env.OMLX_MODEL_QUALITY ?? process.env.OMLX_MODEL_FAST,
-      fallback,
-    );
-    const client = getOmlxClient();
-    return tier === "fast" ? client.chat(fast) : client.chat(quality);
-  }
-
-  ensureGeminiApiKey();
-  const flash = sanitizeModelId(process.env.GEMINI_MODEL_FLASH, "gemini-2.5-flash");
-  const flashLite = sanitizeModelId(process.env.GEMINI_MODEL_FLASH_LITE, "gemini-2.5-flash-lite");
-  return tier === "fast" ? google(flashLite) : google(flash);
+  const haiku = sanitizeModelId(process.env.ANTHROPIC_MODEL_HAIKU, "claude-haiku-4-5");
+  const sonnet = sanitizeModelId(process.env.ANTHROPIC_MODEL_SONNET, "claude-sonnet-4-6");
+  return tier === "fast" ? anthropic(haiku) : anthropic(sonnet);
 }
 
 function getMaxTokens(requested?: number): number {
@@ -181,7 +103,7 @@ export async function callLLM(params: {
       lastError = error;
       const hasFallback = i < attemptTiers.length - 1;
       if (hasFallback && isQuotaOrRateLimitError(error)) {
-        console.warn(`[callLLM] ${tier} tier quota/rate limit — falling back to ${attemptTiers[i + 1]}`);
+        console.warn(`[callLLM] ${tier} tier quota/rate limit, falling back to ${attemptTiers[i + 1]}`);
         continue;
       }
       if (runId) {
@@ -198,25 +120,28 @@ export async function callLLM(params: {
   throw lastError ?? new Error("LLM call failed");
 }
 
+export function isLLMQuotaError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /quota|rate.?limit|resource_exhausted|exceeded your current quota/i.test(msg);
+}
+
+export function llmErrorHttpStatus(error: unknown): 429 | 500 {
+  return isLLMQuotaError(error) ? 429 : 500;
+}
+
 export function friendlyLLMError(error: unknown): string {
   const msg = error instanceof Error ? error.message : "AI request failed";
-  if (/ECONNREFUSED|ENOTFOUND|fetch failed|connect ECONNREFUSED|Local LLM server/i.test(msg)) {
-    return "Local LLM server is not reachable. Start OMLX and verify OMLX_BASE_URL in .env.local.";
+  if (/credit|billing|insufficient|402/i.test(msg)) {
+    return "Anthropic billing issue. Check credits at console.anthropic.com.";
   }
-  if (/GenerateContentRequest\.model|unexpected model name format/i.test(msg)) {
-    return "Cloud Gemini was called with an invalid model name. Set LLM_PROVIDER=omlx and restart the dev server.";
+  if (/quota|rate.?limit|resource_exhausted|exceeded your current quota|too many requests/i.test(msg)) {
+    return "Claude rate limit hit. Wait about a minute and try again.";
   }
-  if (/Failed to process successful response|\/v1\/responses/i.test(msg)) {
-    return "Local LLM response could not be parsed. Ensure OMLX is running and models are loaded.";
-  }
-  if (/quota|rate.?limit|resource_exhausted|exceeded your current quota/i.test(msg)) {
-    return "LLM API quota exceeded. Wait about a minute and try again, or switch to a paid API plan.";
+  if (/api.?key|unauthorized|401|invalid.?x-api-key|authentication/i.test(msg)) {
+    return "Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.local.";
   }
   if (/Failed after \d+ attempts/i.test(msg)) {
     const last = msg.match(/Last error:\s*(.+)$/i)?.[1] ?? msg;
-    if (/quota|rate.?limit/i.test(last)) {
-      return "LLM API quota exceeded. Wait about a minute and try again.";
-    }
     return last.length > 180 ? `${last.slice(0, 180)}…` : last;
   }
   return msg.length > 220 ? `${msg.slice(0, 220)}…` : msg;

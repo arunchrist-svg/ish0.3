@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { SettingsNav, type SettingsNavItem } from "@/components/settings/settings-nav";
@@ -23,7 +23,7 @@ import { toast } from "sonner";
 const ALL_NAV_ITEMS: SettingsNavItem[] = [
   { value: "enrichment", label: "Enrichment", icon: Wrench },
   { value: "email", label: "Email", icon: Mail },
-  { value: "billing", label: "Billing", icon: CreditCard },
+  { value: "billing", label: "Credits", icon: CreditCard },
   { value: "team", label: "Team", icon: Users },
   { value: "integrations", label: "Integrations", icon: Plug },
   { value: "ai-usage", label: "Platform Keys", icon: Sparkles },
@@ -33,7 +33,7 @@ const ALL_NAV_ITEMS: SettingsNavItem[] = [
 const TAB_SUBTITLES: Record<string, string> = {
   enrichment: "Locations, search, enrichment, and scout volume",
   email: "SMTP, send mode, cadence, and open tracking",
-  billing: "Plan, credits, top-ups, and subscription",
+  billing: "Balance, per-task costs, and usage",
   team: "Invite teammates to your workspace",
   integrations: "LinkedIn and external connections",
   "ai-usage": "Platform API key status (superadmin only)",
@@ -53,15 +53,18 @@ function SettingsAppInner() {
       }
     : null;
 
-  const NAV_ITEMS = ALL_NAV_ITEMS.filter((item) => {
-    if (item.value === "ai-usage") return session?.isSuperadmin === true;
-    if (item.value === "billing") return session?.role === "owner" || session?.isSuperadmin === true;
-    if (item.value === "team") return session?.canManageTeam === true;
-    if (item.value === "email" || item.value === "enrichment") {
-      return session?.role === "owner" || session?.role === "admin" || session?.isSuperadmin === true;
-    }
-    return true;
-  });
+  const NAV_ITEMS = useMemo(
+    () =>
+      ALL_NAV_ITEMS.filter((item) => {
+        if (item.value === "ai-usage") return session?.isSuperadmin === true;
+        if (item.value === "team") return session?.canManageTeam === true;
+        if (item.value === "email" || item.value === "enrichment") {
+          return session?.role === "owner" || session?.role === "admin" || session?.isSuperadmin === true;
+        }
+        return true;
+      }),
+    [session],
+  );
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "enrichment");
   const [config, setConfig] = useState<EnrichmentConfig | null>(null);
@@ -79,6 +82,13 @@ function SettingsAppInner() {
     const tab = searchParams.get("tab");
     if (tab) setActiveTab(tab);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (!NAV_ITEMS.some((item) => item.value === activeTab) && NAV_ITEMS[0]) {
+      setActiveTab(NAV_ITEMS[0].value);
+    }
+  }, [activeTab, session, NAV_ITEMS]);
 
   useEffect(() => {
     fetch("/api/settings")

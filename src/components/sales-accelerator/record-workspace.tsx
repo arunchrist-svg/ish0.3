@@ -17,7 +17,7 @@ import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
-import { hasUsableEmail } from "@/lib/enrichment/contact-emails";
+import { hasUsableContactEmail } from "@/lib/enrichment/contact-emails";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
 import { WorkspaceLoader } from "@/components/sales-accelerator/workspace-loader";
 import { WriterPlanCard } from "@/components/sales-accelerator/writer-plan-card";
@@ -32,7 +32,7 @@ type Props = {
 };
 
 function confidenceTierFromLead(lead: LeadDetailRecord): string {
-  if (!hasUsableEmail(lead.email, lead.emailStatus)) return "missing";
+  if (!hasUsableContactEmail(lead)) return "missing";
   if (lead.emailStatus === "generic") return "generic";
   if ((lead.emailConfidence ?? 0) >= 55) return "good";
   if ((lead.emailConfidence ?? 0) >= 40) return "generic";

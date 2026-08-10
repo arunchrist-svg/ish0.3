@@ -1,16 +1,19 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Calendar, RefreshCw, Search, Mail, X, Plus } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Check, Clock3, Loader2, Mail, Plus, RefreshCw, Search, X } from "lucide-react";
 import { CircleButton, IshAvatar, ScoreBadge, SearchBar, Separator } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { statusToDisplayLabel } from "@/lib/pipeline-status";
 import { getScoreTone, scoreToneClasses, text } from "@/design-system/tokens";
 import type { LeadQueueItem } from "@/lib/api-client";
+import { countDuplicateExtras } from "@/lib/leads/duplicates";
 import { scoutCardSurface } from "@/components/cards/scout-card-surface";
-import { Check } from "lucide-react";
+
+export type LeadQueueSort = "recent" | "score_desc" | "score_asc";
+
+export const LEAD_QUEUE_SORT_STORAGE_KEY = "ish-leads-queue-sort";
 
 type Props = {
   leads: LeadQueueItem[];
@@ -22,17 +25,109 @@ type Props = {
   searchQuery?: string;
   onSearchQueryChange?: (query: string) => void;
   listScrollRef?: React.RefObject<HTMLDivElement | null>;
+  sort?: LeadQueueSort;
+  onSortChange?: (sort: LeadQueueSort) => void;
+  onMergeDuplicates?: () => void | Promise<void>;
+  mergingDuplicates?: boolean;
 };
 
 export function filterLeadsByQuery(leads: LeadQueueItem[], query: string): LeadQueueItem[] {
   return leads.filter((item) => matchesQuery(item, query));
 }
 
+export function sortLeadsQueue(leads: LeadQueueItem[], sort: LeadQueueSort): LeadQueueItem[] {
+  if (sort === "recent") return leads;
+  return [...leads].sort((a, b) => {
+    const diff = (b.score ?? 0) - (a.score ?? 0);
+    if (diff !== 0) return sort === "score_desc" ? diff : -diff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+export function nextLeadQueueSort(sort: LeadQueueSort): LeadQueueSort {
+  if (sort === "score_desc") return "score_asc";
+  if (sort === "score_asc") return "recent";
+  return "score_desc";
+}
+
+export function parseLeadQueueSort(value: string | null | undefined): LeadQueueSort {
+  if (value === "score_asc" || value === "recent" || value === "score_desc") return value;
+  return "score_desc";
+}
+
+function sortLabel(sort: LeadQueueSort): string {
+  if (sort === "score_asc") return "Score · low to high";
+  if (sort === "recent") return "Recent first";
+  return "Score · high to low";
+}
+
+function MergeDuplicatesButton({
+  count,
+  merging,
+  onMerge,
+}: {
+  count: number;
+  merging: boolean;
+  onMerge: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onMerge}
+      disabled={merging}
+      aria-busy={merging}
+      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-stratus-blue/25 bg-brand-stratus-blue/8 px-3 py-2 text-[12px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/12 disabled:pointer-events-none disabled:opacity-60"
+    >
+      {merging ? <Loader2 className="size-3.5 animate-spin" /> : null}
+      {merging ? "Merging duplicates…" : `Merge ${count} duplicate${count === 1 ? "" : "s"}`}
+    </button>
+  );
+}
+
+function MergingDuplicatesOverlay() {
+  return (
+    <div
+      className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[2px]"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="inline-flex items-center gap-2 rounded-full border border-brand-stratus-blue/20 bg-white px-3 py-1.5 text-[12px] font-semibold text-brand-stratus-blue shadow-[var(--shadow-brand-sm)]">
+        <Loader2 className="size-3.5 animate-spin" />
+        Merging duplicates…
+      </div>
+    </div>
+  );
+}
+
+function SortChip({ sort, onClick, className }: { sort: LeadQueueSort; onClick: () => void; className?: string }) {
+  const Icon = sort === "score_asc" ? ArrowUpNarrowWide : sort === "recent" ? Clock3 : ArrowDownWideNarrow;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border border-brand-border/70 bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:border-brand-stratus-blue/40 active:scale-[0.98]",
+        className,
+      )}
+      aria-label={`Sort: ${sortLabel(sort)}. Click to change.`}
+    >
+      <Icon className="size-3.5 text-brand-stratus-blue" />
+      {sortLabel(sort)}
+    </button>
+  );
+}
+
 function matchesQuery(item: LeadQueueItem, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return [item.name, item.company, item.title, item.city, item.status, item.action, item.emailStatus]
+  return [item.name, item.company, item.employees, item.title, item.city, item.status, item.action, item.emailStatus]
     .some((field) => field?.toLowerCase().includes(q));
+}
+
+function companySizeLabel(employees?: string | null): string | null {
+  const value = employees?.trim();
+  if (!value || value === "—") return null;
+  return /employee/i.test(value) ? value : `${value} employees`;
 }
 
 function emailStatusDot(status: string) {
@@ -53,8 +148,7 @@ function CompactLeadCard({
   onClick: () => void;
 }) {
   const scoreTone = getScoreTone(item.score);
-  const subtitle = [item.title, item.company].filter((v) => v && v !== "—").join(" · ")
-    || [item.company, item.city].filter(Boolean).join(" · ");
+  const size = companySizeLabel(item.employees);
 
   return (
     <button
@@ -83,21 +177,16 @@ function CompactLeadCard({
       </div>
       <div className="mt-2.5 min-w-0 flex-1">
         <div className="line-clamp-2 text-[14px] font-semibold leading-snug text-brand-ink">{item.name}</div>
-        {subtitle ? (
-          <p className="mt-0.5 truncate text-[11px] font-medium text-brand-ink-soft">{subtitle}</p>
+        <p className="mt-0.5 truncate text-[11px] font-medium text-brand-ink-soft">{item.company}</p>
+        {size ? (
+          <p className="mt-0.5 truncate text-[10.5px] text-brand-ink-faint">{size}</p>
         ) : null}
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-brand-border/35 pt-2">
         <span className="min-w-0 truncate rounded-full bg-brand-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-ink-soft">
           {statusToDisplayLabel(item.status)}
         </span>
-        <div className="flex items-center gap-1.5">
-          <span
-            className={cn("size-2 shrink-0 rounded-full ring-2 ring-white", emailStatusDot(item.emailStatus))}
-            title={item.emailStatus}
-          />
-          {active ? <Check className="size-3.5 text-brand-stratus-blue" strokeWidth={2.5} /> : null}
-        </div>
+        {active ? <Check className="size-3.5 text-brand-stratus-blue" strokeWidth={2.5} /> : null}
       </div>
     </button>
   );
@@ -114,6 +203,7 @@ function QueueCard({
   active: boolean;
   onClick: () => void;
 }) {
+  const size = companySizeLabel(item.employees);
   return (
     <button
       type="button"
@@ -132,7 +222,10 @@ function QueueCard({
           <IshAvatar name={item.name} index={index} size={42} />
           <div className="min-w-0">
             <div className="truncate text-[14.5px] font-bold text-brand-ink">{item.name}</div>
-            <div className="mt-0.5 truncate text-xs text-brand-ink-soft">{item.action}</div>
+            <div className="mt-0.5 truncate text-xs font-medium text-brand-ink-soft">{item.company}</div>
+            {size ? (
+              <div className="mt-0.5 truncate text-[11px] text-brand-ink-faint">{size}</div>
+            ) : null}
           </div>
         </div>
         <div
@@ -146,39 +239,47 @@ function QueueCard({
         </div>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-brand-ink-soft">
-            {statusToDisplayLabel(item.status)}
-          </span>
-          <span className="flex min-w-0 items-center gap-1 truncate text-[11px] text-brand-ink-faint">
-            <span className={cn("size-1.5 shrink-0 rounded-full", emailStatusDot(item.emailStatus))} />
-            {item.emailStatus}
-          </span>
-        </div>
+        <span className="shrink-0 rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-brand-ink-soft">
+          {statusToDisplayLabel(item.status)}
+        </span>
         <ScoreBadge score={item.score} />
       </div>
     </button>
   );
 }
 
-export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, canWrite, searchQuery: controlledSearch, onSearchQueryChange, listScrollRef }: Props) {
+export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, canWrite, searchQuery: controlledSearch, onSearchQueryChange, listScrollRef, sort: controlledSort, onSortChange, onMergeDuplicates, mergingDuplicates }: Props) {
   const isMobile = useIsMobileLayout();
   const [searchOpen, setSearchOpen] = useState(false);
   const [internalSearch, setInternalSearch] = useState("");
+  const [internalSort, setInternalSort] = useState<LeadQueueSort>("score_desc");
   const [refreshing, setRefreshing] = useState(false);
   const searchQuery = controlledSearch ?? internalSearch;
   const setSearchQuery = onSearchQueryChange ?? setInternalSearch;
+  const sort = controlledSort ?? internalSort;
+
+  function setSort(next: LeadQueueSort) {
+    if (onSortChange) onSortChange(next);
+    else setInternalSort(next);
+  }
 
   const filteredLeads = useMemo(
-    () => filterLeadsByQuery(leads, searchQuery),
-    [leads, searchQuery],
+    () => sortLeadsQueue(filterLeadsByQuery(leads, searchQuery), sort),
+    [leads, searchQuery, sort],
   );
 
-  const today = filteredLeads.slice(0, Math.min(3, filteredLeads.length));
-  const older = filteredLeads.slice(3);
+  const duplicateExtra = useMemo(() => countDuplicateExtras(leads), [leads]);
+
+  const groupedByRecency = sort === "recent";
+  const today = groupedByRecency ? filteredLeads.slice(0, Math.min(3, filteredLeads.length)) : [];
+  const older = groupedByRecency ? filteredLeads.slice(3) : [];
+
+  function cycleSort() {
+    setSort(nextLeadQueueSort(sort));
+  }
 
   async function handleRefresh() {
-    if (!onRefresh || refreshing) return;
+    if (!onRefresh || refreshing || mergingDuplicates) return;
     setRefreshing(true);
     try {
       await onRefresh();
@@ -203,18 +304,12 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
               <button
                 type="button"
                 onClick={() => void handleRefresh()}
-                className="flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95"
+                disabled={refreshing || mergingDuplicates}
+                className="flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
                 aria-label="Refresh leads"
               >
                 <RefreshCw className={cn("size-4 text-brand-stratus-blue", refreshing && "animate-spin")} />
               </button>
-              <Link
-                href="/leads/board"
-                className="flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95"
-                aria-label="Board view"
-              >
-                <Calendar className="size-4 text-brand-stratus-blue" />
-              </Link>
             </div>
           </div>
           <div className="mt-3">
@@ -225,26 +320,40 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
               className="!px-0 !py-0"
             />
           </div>
+          <div className="mt-2.5">
+            <SortChip sort={sort} onClick={cycleSort} />
+
+          {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
+            <MergeDuplicatesButton
+              count={duplicateExtra}
+              merging={!!mergingDuplicates}
+              onMerge={() => void onMergeDuplicates()}
+            />
+          ) : null}
+          </div>
         </div>
 
-        <div ref={listScrollRef} className="min-h-0 flex-1 overflow-y-auto ish-page-padding py-4">
-          {filteredLeads.length === 0 ? (
-            <div className="mt-12 text-center text-[13px] text-brand-ink-soft">
-              {searchQuery ? `No leads match "${searchQuery}"` : "No leads yet"}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {filteredLeads.map((item, i) => (
-                <CompactLeadCard
-                  key={item.id}
-                  item={item}
-                  index={i}
-                  active={activeId === item.id}
-                  onClick={() => onSelect(item.id)}
-                />
-              ))}
-            </div>
-          )}
+        <div className="relative min-h-0 flex-1">
+          <div ref={listScrollRef} className="h-full overflow-y-auto ish-page-padding py-4">
+            {filteredLeads.length === 0 ? (
+              <div className="mt-12 text-center text-[13px] text-brand-ink-soft">
+                {searchQuery ? `No leads match "${searchQuery}"` : "No leads yet"}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {filteredLeads.map((item, i) => (
+                  <CompactLeadCard
+                    key={item.id}
+                    item={item}
+                    index={i}
+                    active={activeId === item.id}
+                    onClick={() => onSelect(item.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+          {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
         </div>
       </div>
     );
@@ -256,15 +365,22 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
         <span className="text-xl font-bold text-brand-ink">My Leads</span>
         <div className="flex gap-1.5">
           {canWrite && onAddLead ? (
-            <CircleButton size={30} onClick={onAddLead} aria-label="Add lead">
+            <CircleButton
+              size={30}
+              onClick={mergingDuplicates ? undefined : onAddLead}
+              className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+              aria-label="Add lead"
+            >
               <Plus className="size-3.5" />
             </CircleButton>
           ) : null}
-          <CircleButton size={30} onClick={() => void handleRefresh()}>
+          <CircleButton
+            size={30}
+            onClick={mergingDuplicates ? undefined : () => void handleRefresh()}
+            className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+            aria-label="Refresh leads"
+          >
             <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-          </CircleButton>
-          <CircleButton size={30}>
-            <Calendar className="size-3.5" />
           </CircleButton>
           <CircleButton
             size={30}
@@ -280,6 +396,18 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
             <Search className="size-3.5" />
           </CircleButton>
         </div>
+      </div>
+
+      <div className="mb-3 mt-2">
+        <SortChip sort={sort} onClick={cycleSort} />
+
+          {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
+            <MergeDuplicatesButton
+              count={duplicateExtra}
+              merging={!!mergingDuplicates}
+              onMerge={() => void onMergeDuplicates()}
+            />
+          ) : null}
       </div>
 
       {searchOpen ? (
@@ -308,48 +436,66 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none px-3 py-1">
-        {filteredLeads.length === 0 ? (
-          <div className="mt-8 px-2 text-center text-[12px] text-brand-ink-faint">
-            {searchQuery ? `No leads match "${searchQuery}"` : "No leads"}
-          </div>
-        ) : (
-          <>
-            {today.length > 0 ? (
-              <>
-                <div className="mb-2.5 mt-4 text-xs font-semibold text-brand-ink-faint">RECENT</div>
-                {today.map((item, i) => (
-                  <QueueCard
-                    key={item.id}
-                    item={item}
-                    index={i}
-                    active={activeId === item.id}
-                    onClick={() => onSelect(item.id)}
-                  />
-                ))}
-              </>
-            ) : null}
+      <div className="relative min-h-0 flex-1">
+        <div className="h-full overflow-y-auto scrollbar-none px-3 py-1">
+          {filteredLeads.length === 0 ? (
+            <div className="mt-8 px-2 text-center text-[12px] text-brand-ink-faint">
+              {searchQuery ? `No leads match "${searchQuery}"` : "No leads"}
+            </div>
+          ) : groupedByRecency ? (
+            <>
+              {today.length > 0 ? (
+                <>
+                  <div className="mb-2.5 mt-4 text-xs font-semibold text-brand-ink-faint">RECENT</div>
+                  {today.map((item, i) => (
+                    <QueueCard
+                      key={item.id}
+                      item={item}
+                      index={i}
+                      active={activeId === item.id}
+                      onClick={() => onSelect(item.id)}
+                    />
+                  ))}
+                </>
+              ) : null}
 
-            {older.length > 0 ? (
-              <>
-                <div className="my-4 flex items-center gap-2.5">
-                  <Separator className="flex-1 bg-brand-border" />
-                  <span className="text-[11.5px] font-semibold text-brand-ink-faint">EARLIER</span>
-                  <Separator className="flex-1 bg-brand-border" />
-                </div>
-                {older.map((item, i) => (
-                  <QueueCard
-                    key={item.id}
-                    item={item}
-                    index={i + 3}
-                    active={activeId === item.id}
-                    onClick={() => onSelect(item.id)}
-                  />
-                ))}
-              </>
-            ) : null}
-          </>
-        )}
+              {older.length > 0 ? (
+                <>
+                  <div className="my-4 flex items-center gap-2.5">
+                    <Separator className="flex-1 bg-brand-border" />
+                    <span className="text-[11.5px] font-semibold text-brand-ink-faint">EARLIER</span>
+                    <Separator className="flex-1 bg-brand-border" />
+                  </div>
+                  {older.map((item, i) => (
+                    <QueueCard
+                      key={item.id}
+                      item={item}
+                      index={i + 3}
+                      active={activeId === item.id}
+                      onClick={() => onSelect(item.id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <div className="mb-2.5 mt-2 text-xs font-semibold text-brand-ink-faint">
+                {sort === "score_asc" ? "LOWEST SCORE" : "HIGHEST SCORE"}
+              </div>
+              {filteredLeads.map((item, i) => (
+                <QueueCard
+                  key={item.id}
+                  item={item}
+                  index={i}
+                  active={activeId === item.id}
+                  onClick={() => onSelect(item.id)}
+                />
+              ))}
+            </>
+          )}
+        </div>
+        {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
       </div>
     </div>
   );

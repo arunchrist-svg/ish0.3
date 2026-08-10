@@ -366,9 +366,24 @@ export async function reviseDraft(
 export async function updateOutreachDraft(params: {
   leadOutreachId: string;
   emailBody?: string;
+  emailBodyB?: string;
+  emailBodyC?: string;
   subjectA?: string;
   subjectB?: string;
-}): Promise<{ id: string; subjectA?: string; subjectB?: string; emailBody?: string }> {
+  subjectC?: string;
+  chosenSubjectKey?: string;
+  chosenBodyKey?: string;
+}): Promise<{
+  id: string;
+  subjectA?: string;
+  subjectB?: string;
+  subjectC?: string;
+  emailBody?: string;
+  emailBodyB?: string;
+  emailBodyC?: string;
+  chosenSubjectKey?: string;
+  chosenBodyKey?: string;
+}> {
   const res = await fetch("/api/outreach/draft", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -387,6 +402,7 @@ export async function approveOutreach(params: {
   channel: string;
   status: "approved" | "rejected";
   subjectUsed?: string;
+  bodyUsed?: string;
   rejectReason?: string;
   rejectNote?: string;
 }): Promise<{ approvalId: string }> {
@@ -482,9 +498,21 @@ export type LeadFormInput = {
   estimatedValue?: string;
 };
 
-export async function createLead(input: LeadFormInput): Promise<{ id: string }> {
-  const data = await post<{ ok: boolean; id: string }>("/api/leads", input);
-  return { id: data.id };
+export async function createLead(input: LeadFormInput): Promise<{ id: string; existing?: boolean }> {
+  const data = await post<{ ok: boolean; id: string; existing?: boolean }>("/api/leads", input);
+  return { id: data.id, existing: data.existing };
+}
+
+export type MergeLeadDuplicatesResult = {
+  merged: number;
+  groups: { keepId: string; deletedIds: string[] }[];
+};
+
+export async function mergeLeadDuplicates(input?: {
+  keepId?: string;
+  dropIds?: string[];
+}): Promise<MergeLeadDuplicatesResult> {
+  return post<MergeLeadDuplicatesResult>("/api/leads/duplicates", input ?? {});
 }
 
 export async function updateLead(leadId: string, input: Partial<LeadFormInput>): Promise<void> {
@@ -542,6 +570,7 @@ export type LeadQueueItem = {
   name: string;
   title: string;
   company: string;
+  employees?: string;
   domain?: string;
   website?: string;
   city: string;
@@ -628,6 +657,7 @@ export type LeadDetailRecord = {
   fitScore?: number;
   budgetBand?: string;
   isPinned?: boolean;
+  outreachTemplates?: { id: string; label: string; shortLabel: string; description: string }[];
 };
 
 export type EditMessage = {
@@ -641,7 +671,12 @@ export type WriterDraft = {
   id: string;
   subjectA?: string;
   subjectB?: string;
+  subjectC?: string;
   emailBody?: string;
+  emailBodyB?: string;
+  emailBodyC?: string;
+  chosenSubjectKey?: string;
+  chosenBodyKey?: string;
   deliverabilityScore?: number;
   deliverabilityVerdict?: string;
   inboxScore?: number;

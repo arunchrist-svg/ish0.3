@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { AppShell, BottomTabBar, MobileNavDrawer } from "@/design-system";
 import { CreditBalanceBanner } from "@/components/sales-accelerator/credit-balance-banner";
+import { CreditBalanceChip } from "@/components/sales-accelerator/credit-balance-chip";
 import { SideNav } from "@/components/sales-accelerator/side-nav";
 import { DemoBanner } from "@/components/sales-accelerator/demo-banner";
 import { ReadOnlyBanner } from "@/components/sales-accelerator/read-only-banner";
@@ -32,6 +33,7 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
           <DemoBanner />
           <ReadOnlyBanner />
           <div className="hidden items-center justify-end gap-2 border-b border-brand-border bg-white px-6 py-1.5 lg:flex">
+            <CreditBalanceChip />
             <NotificationBell />
             <AgentStatusBar runs={agentRuns} className="flex-1" />
           </div>
@@ -58,6 +60,7 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
         open={drawerOpen}
         pathname={pathname}
         isSuperadmin={session?.isSuperadmin ?? false}
+        credits={session?.credits ?? null}
         onClose={closeDrawer}
       />
     </>

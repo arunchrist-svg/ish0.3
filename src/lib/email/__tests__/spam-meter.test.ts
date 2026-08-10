@@ -42,4 +42,14 @@ describe("scoreInboxSafety", () => {
     );
     expect(result.contentScore).toBeLessThan(70);
   });
+
+  it("penalizes incomplete LLM JSON dumped into the body", () => {
+    const result = scoreInboxSafety(
+      '```json\n{\n"subjectA": "Diwali gifting for Seg Automotive",\n"emailBody": "Hi',
+      "Outreach for Seg Automotive India Pvt Ltd",
+      { emailStyle: "primary", contactFirstName: "Bala", sequencePosition: 1 },
+    );
+    expect(result.contentScore).toBeLessThan(40);
+    expect(result.factors.some((f) => /incomplete LLM JSON/i.test(f.label))).toBe(true);
+  });
 });

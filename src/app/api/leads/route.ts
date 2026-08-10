@@ -27,6 +27,7 @@ export async function GET(req: Request) {
         title: contacts.title,
         emailStatus: contacts.emailStatus,
         company: accounts.name,
+        employees: accounts.employees,
         city: accounts.city,
       })
       .from(leads)
@@ -45,6 +46,7 @@ export async function GET(req: Request) {
       name: r.name,
       title: r.title ?? "—",
       company: r.company,
+      employees: r.employees ?? undefined,
       city: r.city ?? "—",
       score: r.score ?? 60,
       status: r.status,
@@ -98,7 +100,10 @@ export async function POST(req: Request) {
       tags: body.tags,
     });
 
-    return NextResponse.json({ ok: true, id: result.id }, { status: 201 });
+    return NextResponse.json(
+      { ok: true, id: result.id, existing: result.existing === true },
+      { status: result.existing ? 200 : 201 },
+    );
   } catch (e) {
     return handleApiError(e, "[api/leads POST]");
   }

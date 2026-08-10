@@ -9,7 +9,7 @@ import { enrichLead } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
 
-import { hasUsableEmail, shouldSuggestWriteEmail } from "@/lib/enrichment/contact-emails";
+import { hasUsableContactEmail, shouldSuggestWriteEmail } from "@/lib/enrichment/contact-emails";
 import { AppModal } from "@/components/ui/app-modal";
 import { toast } from "sonner";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
@@ -22,7 +22,7 @@ const iconMap = {
 };
 
 function needsEnrich(lead: LeadDetailRecord) {
-  return !hasUsableEmail(lead.email, lead.emailStatus);
+  return !hasUsableContactEmail(lead);
 }
 
 function ActionCard({
@@ -136,7 +136,7 @@ function TaskCard({
                 onClick={onOpenEmailTab}
               >
                 <Mail className="size-3.5 shrink-0" />
-                {hasEmailDraft ? "Review Email" : "Write Email"}
+                {hasEmailDraft ? "Review Email" : "Write smart emails"}
               </Button>
             ) : (
               <>
@@ -180,7 +180,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
   const [paidDialogOpen, setPaidDialogOpen] = useState(false);
 
   const showEnrich = needsEnrich(lead);
-  const showWriteEmail = !showEnrich && shouldSuggestWriteEmail(lead.email, lead.emailStatus, lead.status, hasEmailDraft);
+  const showWriteEmail = !showEnrich && shouldSuggestWriteEmail(lead.email, lead.emailStatus, lead.status, hasEmailDraft, lead.emails);
   const showReviewEmail = !showEnrich && hasEmailDraft && lead.status === "draft_ready";
   const emailThread = lead.emailThread;
   const showEmailThreadStep =
@@ -193,6 +193,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
     "Review & Approve Email",
     "Write outreach email",
     "Write Email",
+    "Write smart emails",
     "Review email draft",
     "Find contact email",
   ]);
@@ -269,11 +270,11 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
 
       {showWriteEmail && (
         <ActionCard
-          title="Write Email"
+          title="Write smart emails"
           step="Suggested next step"
-          desc="This contact has an email — start personalized outreach"
+          desc="This contact has an email. Start personalized outreach."
           icon={Mail}
-          primaryLabel="Write Email"
+          primaryLabel="Write smart emails"
           onPrimary={onOpenEmailTab}
         />
       )}

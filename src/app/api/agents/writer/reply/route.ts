@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { runReplyWriter } from "@/lib/agents/reply-writer";
 import { db, leads, leadOutreach } from "@/db";
 import { eq } from "drizzle-orm";
-import { friendlyLLMError } from "@/lib/llm";
+import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
@@ -27,6 +27,6 @@ export async function POST(req: Request) {
   } catch (e) {
     const errRes = handleApiError(e, "[api/agents/writer/reply]");
     if (errRes.status !== 500) return errRes;
-    return NextResponse.json({ error: friendlyLLMError(e) }, { status: 500 });
+    return NextResponse.json({ error: friendlyLLMError(e) }, { status: llmErrorHttpStatus(e) });
   }
 }

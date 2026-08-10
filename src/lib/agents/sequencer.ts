@@ -82,6 +82,7 @@ export async function runSequencer(): Promise<{
         outreachId = await runWriter(sched.leadId, {
           followUpMode,
           originalEmailBody: originalOutreach?.emailBody ?? undefined,
+          originalEmailSubject: originalOutreach?.subjectA ?? undefined,
         });
         generatedOutreach = await db.query.leadOutreach.findFirst({
           where: eq(leadOutreach.id, outreachId),

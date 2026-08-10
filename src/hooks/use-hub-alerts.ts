@@ -31,7 +31,7 @@ export function useHubAlerts(): HubAlert[] {
           ? "Scout and outreach are blocked until you top up."
           : `Only ${session.credits} credits left. Consider topping up before your next scout.`,
       href: "/settings?tab=billing",
-      hrefLabel: "Billing",
+      hrefLabel: "Credits",
     });
   }
 

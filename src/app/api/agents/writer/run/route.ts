@@ -3,8 +3,8 @@ import { runWriter } from "@/lib/agents/writer";
 import { runWriterSequence, regenerateSequenceStep } from "@/lib/agents/writer-sequence";
 import { db, leadOutreach, leads } from "@/db";
 import { eq } from "drizzle-orm";
-import { friendlyLLMError } from "@/lib/llm";
-import { getOutreachTemplate, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
+import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
@@ -28,9 +28,8 @@ export async function POST(req: Request) {
 
     if (mode === "single" && sequencePosition && [2, 3].includes(sequencePosition)) {
       await assertCredits(ctx.tenantId, "writer.draft", 1);
-      const template = getOutreachTemplate(outreachTemplate as OutreachTemplateId | undefined);
       const outreachId = await regenerateSequenceStep(leadId, sequencePosition as 2 | 3, {
-        outreachTemplate: template.id,
+        outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
       });
       await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
       void checkLowBalanceAlerts(ctx.tenantId);
@@ -39,12 +38,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ draft: toWriterDraft(draft, { sequencePosition: draft.sequencePosition ?? undefined }) });
     }
 
-    const template = getOutreachTemplate(outreachTemplate as OutreachTemplateId | undefined);
+    const requestedTemplate = outreachTemplate as OutreachTemplateId | undefined;
     const useSequence = mode !== "single";
 
     if (useSequence) {
       await assertCredits(ctx.tenantId, "writer.draft", 3);
-      const ids = await runWriterSequence(leadId, { outreachTemplate: template.id });
+      const ids = await runWriterSequence(leadId, { outreachTemplate: requestedTemplate });
       for (const id of ids) {
         await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: id });
       }
@@ -60,7 +59,7 @@ export async function POST(req: Request) {
     }
 
     await assertCredits(ctx.tenantId, "writer.draft", 1);
-    const outreachId = await runWriter(leadId, { outreachTemplate: template.id });
+    const outreachId = await runWriter(leadId, { outreachTemplate: requestedTemplate });
     await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
     void checkLowBalanceAlerts(ctx.tenantId);
 
@@ -77,6 +76,6 @@ export async function POST(req: Request) {
     }
     const errRes = handleApiError(e, "[api/agents/writer/run]");
     if (errRes.status !== 500) return errRes;
-    return NextResponse.json({ error: friendlyLLMError(e) }, { status: 500 });
+    return NextResponse.json({ error: friendlyLLMError(e) }, { status: llmErrorHttpStatus(e) });
   }
 }

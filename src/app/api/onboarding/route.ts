@@ -24,6 +24,7 @@ import {
   getResolvedEmailConfig,
   patchWorkspaceBrandConfig,
 } from "@/lib/settings/email-settings";
+import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import type { BrandConfig, CampaignMode } from "@/lib/email/config";
 
 /** Map legacy 6-step onboarding (with email at step 3) to 5-step flow. */
@@ -39,7 +40,10 @@ export async function GET() {
   try {
     const ctx = await requireTenantContext();
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
-    const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+    const [emailConfig, enrichment] = await Promise.all([
+      getResolvedEmailConfig(ctx.workspaceId),
+      getResolvedWorkspaceEnrichmentConfig(),
+    ]);
     const rawStep = tenant?.onboardingStep ?? 1;
     return NextResponse.json({
       step: tenant?.onboardingStatus === "complete" ? 5 : normalizeOnboardingStep(rawStep),
@@ -47,6 +51,17 @@ export async function GET() {
       orgName: tenant?.name,
       websiteUrl: emailConfig.brandConfig?.websiteUrl ?? "",
       brandReady: Boolean(emailConfig.brandConfig?.productSummary?.trim()),
+      platformIntent:
+        emailConfig.brandConfig?.platformIntent ??
+        emailConfig.brandConfig?.websiteInsights?.platformIntent ??
+        null,
+      productCategory:
+        enrichment.giftIntelProductCategory ??
+        emailConfig.brandConfig?.websiteInsights?.productCategory ??
+        "",
+      competitorBrands: enrichment.giftIntelCompetitorBrands ?? [],
+      productWriteup: emailConfig.brandConfig?.websiteInsights?.productWriteup ?? "",
+      emailKeywords: emailConfig.brandConfig?.websiteInsights?.emailKeywords ?? [],
     });
   } catch (e) {
     return handleApiError(e, "[onboarding/GET]");
@@ -75,6 +90,19 @@ async function persistBrandConfig(
   await patchWorkspaceBrandConfig(brandConfig, workspaceId, extras);
 }
 
+async function bumpOnboardingStep(tenantId: string, next: number) {
+  const [tenant] = await db
+    .select({ onboardingStep: tenants.onboardingStep })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+  const current = tenant?.onboardingStep ?? 1;
+  await db
+    .update(tenants)
+    .set({ onboardingStep: Math.max(current, next) })
+    .where(eq(tenants.id, tenantId));
+}
+
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
@@ -86,10 +114,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Organization name required" }, { status: 400 });
       }
       const orgName = body.orgName.trim();
-      await db
-        .update(tenants)
-        .set({ name: orgName, onboardingStep: 2 })
-        .where(eq(tenants.id, ctx.tenantId));
+      await db.update(tenants).set({ name: orgName }).where(eq(tenants.id, ctx.tenantId));
+      await bumpOnboardingStep(ctx.tenantId, 2);
 
       // Seed brandName from org so Writer does not say "Your Company"
       try {
@@ -109,10 +135,8 @@ export async function POST(req: Request) {
 
     if (body.step === 2) {
       const planSlug = body.planSlug || "starter";
-      await db
-        .update(tenants)
-        .set({ plan: planSlug, onboardingStep: 3 })
-        .where(eq(tenants.id, ctx.tenantId));
+      await db.update(tenants).set({ plan: planSlug }).where(eq(tenants.id, ctx.tenantId));
+      await bumpOnboardingStep(ctx.tenantId, 3);
       return NextResponse.json({ ok: true, nextStep: 3 });
     }
 
@@ -142,17 +166,19 @@ export async function POST(req: Request) {
             orgName: tenant?.name,
             tenantId: ctx.tenantId,
             workspaceId: ctx.workspaceId,
-            platformIntent,
+            // Infer from the site unless the user already overrode intent in the UI
+            platformIntent: body.platformIntent ? platformIntent : undefined,
           });
+          const resolvedIntent = result.platformIntent ?? platformIntent;
           const brandConfig = mergeWebsiteInsightsIntoBrand(existing.brandConfig, result, {
             forceCustomSlug: true,
-            platformIntent,
+            platformIntent: resolvedIntent,
           });
           if (tenant?.name?.trim() && brandConfig.brandName === "Your Company") {
             brandConfig.brandName = tenant.name.trim();
           }
           await persistBrandConfig(brandConfig, ctx.workspaceId, {
-            campaignMode: defaultCampaignModeForIntent(platformIntent),
+            campaignMode: defaultCampaignModeForIntent(resolvedIntent),
           });
           brandAnalyzed = true;
         } catch (e) {
@@ -204,12 +230,12 @@ export async function POST(req: Request) {
 
     if (body.step === "location") {
       await saveWorkspaceEnrichmentOverrides({ scoutGeo: body.scoutGeo });
-      await db.update(tenants).set({ onboardingStep: 4 }).where(eq(tenants.id, ctx.tenantId));
+      await bumpOnboardingStep(ctx.tenantId, 4);
       return NextResponse.json({ ok: true, nextStep: 4 });
     }
 
     if (body.step === 4) {
-      await db.update(tenants).set({ onboardingStep: 5 }).where(eq(tenants.id, ctx.tenantId));
+      await bumpOnboardingStep(ctx.tenantId, 5);
       return NextResponse.json({ ok: true, nextStep: 5 });
     }
 

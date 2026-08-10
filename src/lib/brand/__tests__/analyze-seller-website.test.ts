@@ -52,6 +52,8 @@ describe("mergeWebsiteInsightsIntoBrand", () => {
           brandName: "New Co",
           vertical: "retail",
           productSummary: "Corporate gift boxes",
+          productWriteup: "New Co makes corporate gift boxes for HR teams.",
+          emailKeywords: ["corporate gift boxes", "HR gifting"],
           toneNotes: "Warm and concise.",
           buyerPersonas: ["HR Director"],
           scoutIndustries: ["Retail"],
@@ -67,6 +69,8 @@ describe("mergeWebsiteInsightsIntoBrand", () => {
           toneNotes: "Warm and concise.",
           websiteUrl: "https://new.co",
         },
+        platformIntent: "corporate_gifting",
+        productCategory: "Sweets",
       },
       { forceCustomSlug: true },
     );
@@ -76,5 +80,7 @@ describe("mergeWebsiteInsightsIntoBrand", () => {
     expect(merged.productSummary).toBe("Corporate gift boxes");
     expect(merged.platformIntent).toBe("corporate_gifting");
     expect(merged.verticalPackId).toBe("gifting-sweets");
+    expect(merged.websiteInsights?.productWriteup).toContain("corporate gift boxes");
+    expect(merged.websiteInsights?.emailKeywords).toEqual(["corporate gift boxes", "HR gifting"]);
   });
 });

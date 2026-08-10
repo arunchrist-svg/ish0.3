@@ -6,7 +6,7 @@ config({ path: ".env.local" });
 config();
 
 process.env.EMAIL_SEND_MODE = process.env.EMAIL_SEND_MODE ?? "dry_run";
-process.env.LLM_PROVIDER = process.env.LLM_PROVIDER ?? "gemini";
+process.env.LLM_PROVIDER = "anthropic";
 
 vi.mock("next/headers", () => ({
   cookies: vi.fn(async () => ({

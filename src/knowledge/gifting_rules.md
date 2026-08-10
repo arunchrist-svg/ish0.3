@@ -39,7 +39,7 @@ Season window: Mid-October to November 15 (peak order period: Sep 15 – Oct 15)
 ## Outreach tone guidelines
 - Friendly but professional. Not salesy, no fluff, no people-pleasing.
 - Subject line: specific, under 50 characters, include company name OR contact first name
-- Body: max 3 sentences in pitch (excluding greeting and sign-off), under 120 words total
+- Body: max 4 sentences in pitch (excluding greeting and sign-off), under 120 words total
 - Para 1: Hook with one sourced detail (industry, company intel, or role)
 - Para 2: Plain product/value line tied to brand vertical (sweets or appliances per brand config)
 - Para 3: One low-friction question CTA (e.g. "Open to a quick note on options?")

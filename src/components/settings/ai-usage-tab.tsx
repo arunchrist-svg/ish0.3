@@ -39,31 +39,12 @@ type TavilyUsage = {
 
 type LlmUsage = {
   provider: string;
-  gemini: {
-    configured: boolean;
-    active: boolean;
-    flashModel: string;
-    flashLiteModel: string;
-  };
   anthropic: {
     configured: boolean;
     active: boolean;
     haikuModel: string;
     sonnetModel: string;
     maxOutputTokens: number | null;
-  };
-  openrouter: {
-    configured: boolean;
-    active: boolean;
-    fastModel: string;
-    qualityModel: string;
-  };
-  omlx: {
-    configured: boolean;
-    active: boolean;
-    baseUrl: string;
-    fastModel: string;
-    qualityModel: string;
   };
 };
 
@@ -269,69 +250,8 @@ export function AiUsageTab() {
       </SettingsGroup>
 
       <SettingsGroup
-        title="Google Gemini"
-        footer="Lead extraction, enrichment parsing, and AI fallback scouting. Quota managed via Google AI Studio."
-      >
-        <SettingsRow className="justify-between py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {llm ? (
-              <>
-                {llm.gemini.active && <ActiveBadge />}
-                <StatusBadge ok={llm.gemini.configured} label={llm.gemini.configured ? "Key configured" : "Key missing"} />
-              </>
-            ) : (
-              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
-            )}
-          </div>
-          <a
-            href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
-          >
-            Console <ExternalLink className="size-3" />
-          </a>
-        </SettingsRow>
-
-        {llm && (
-          <>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Quality tier (flash)</p>
-                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
-              </div>
-              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.gemini.flashModel}
-              </code>
-            </div>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Fast tier (flash-lite)</p>
-                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
-              </div>
-              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.gemini.flashLiteModel}
-              </code>
-            </div>
-            {!llm.gemini.configured && (
-              <>
-                <SettingsGroupDivider />
-                <p className="px-4 py-3 text-[12px] text-brand-ink-faint">
-                  Set <code className="rounded bg-brand-app px-1 font-mono">GEMINI_API_KEY</code> or{" "}
-                  <code className="rounded bg-brand-app px-1 font-mono">GOOGLE_GENERATIVE_AI_API_KEY</code> in{" "}
-                  <code className="rounded bg-brand-app px-1 font-mono">.env.local</code>.
-                </p>
-              </>
-            )}
-          </>
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup
         title="Anthropic Claude"
-        footer="Alternative LLM. Set LLM_PROVIDER=anthropic to activate. Quota managed via Anthropic Console."
+        footer="Smart emails, research, and scouting AI. Quota managed via Anthropic Console."
       >
         <SettingsRow className="justify-between py-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -370,7 +290,7 @@ export function AiUsageTab() {
             <div className="flex items-center justify-between px-4 py-3">
               <div>
                 <p className="text-[13px] font-medium text-brand-ink">Quality tier (sonnet)</p>
-                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
+                <p className="text-[11px] text-brand-ink-faint">Smart emails and research</p>
               </div>
               <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
                 {llm.anthropic.sonnetModel}
@@ -399,127 +319,6 @@ export function AiUsageTab() {
                 </p>
               </>
             )}
-          </>
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="OpenRouter"
-        footer="Multi-model LLM gateway. Set LLM_PROVIDER=openrouter to activate. Quota managed via OpenRouter dashboard."
-      >
-        <SettingsRow className="justify-between py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {llm ? (
-              <>
-                {llm.openrouter.active && <ActiveBadge />}
-                <StatusBadge ok={llm.openrouter.configured} label={llm.openrouter.configured ? "Key configured" : "Key missing"} />
-              </>
-            ) : (
-              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
-            )}
-          </div>
-          <a
-            href="https://openrouter.ai/keys"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
-          >
-            Dashboard <ExternalLink className="size-3" />
-          </a>
-        </SettingsRow>
-
-        {llm && (
-          <>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Fast tier</p>
-                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
-              </div>
-              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.openrouter.fastModel}
-              </code>
-            </div>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Quality tier</p>
-                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
-              </div>
-              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.openrouter.qualityModel}
-              </code>
-            </div>
-            {!llm.openrouter.configured && (
-              <>
-                <SettingsGroupDivider />
-                <p className="px-4 py-3 text-[12px] text-brand-ink-faint">
-                  Set <code className="rounded bg-brand-app px-1 font-mono">OPENROUTER_API_KEY</code> in{" "}
-                  <code className="rounded bg-brand-app px-1 font-mono">.env.local</code> to configure OpenRouter.
-                </p>
-              </>
-            )}
-          </>
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="oMLX (local)"
-        footer="On-device LLM via OMLX. Set LLM_PROVIDER=omlx to activate. Runs on Apple Silicon with no cloud quota."
-      >
-        <SettingsRow className="justify-between py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {llm ? (
-              <>
-                {llm.omlx.active && <ActiveBadge />}
-                <StatusBadge ok={llm.omlx.configured} label={llm.omlx.configured ? "Server configured" : "Not configured"} />
-              </>
-            ) : (
-              <span className="text-[13px] text-brand-ink-faint">Loading…</span>
-            )}
-          </div>
-          <a
-            href={llm?.omlx.baseUrl.replace(/\/v1\/?$/, "/admin") ?? "http://127.0.0.1:5200/admin"}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex shrink-0 items-center gap-1 text-[12px] text-brand-stratus-blue hover:underline"
-          >
-            Admin <ExternalLink className="size-3" />
-          </a>
-        </SettingsRow>
-
-        {llm && (
-          <>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Base URL</p>
-                <p className="text-[11px] text-brand-ink-faint">OMLX_BASE_URL</p>
-              </div>
-              <code className="max-w-[55%] truncate rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.omlx.baseUrl}
-              </code>
-            </div>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Fast tier</p>
-                <p className="text-[11px] text-brand-ink-faint">Quick classification tasks</p>
-              </div>
-              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.omlx.fastModel}
-              </code>
-            </div>
-            <SettingsGroupDivider />
-            <div className="flex items-center justify-between px-4 py-3">
-              <div>
-                <p className="text-[13px] font-medium text-brand-ink">Quality tier</p>
-                <p className="text-[11px] text-brand-ink-faint">Structured extraction tasks</p>
-              </div>
-              <code className="rounded-lg bg-brand-app px-2 py-1 font-mono text-[11px] text-brand-ink">
-                {llm.omlx.qualityModel}
-              </code>
-            </div>
           </>
         )}
       </SettingsGroup>

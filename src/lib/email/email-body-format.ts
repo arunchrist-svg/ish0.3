@@ -23,7 +23,8 @@ export function normalizeEmailBody(body: string): string {
   const signOffIdx = sentences.findIndex(
     (s, idx) =>
       idx >= start &&
-      (/^[A-Z][a-z]+,\s*(Partnerships|Sales|Team)/i.test(s) ||
+      (/^Thanks\s*(&|and)\s*Regards/i.test(s) ||
+        /^[A-Z][a-z]+,\s*(Partnerships|Sales|Team)/i.test(s) ||
         /,\s*Partnerships,/i.test(s)),
   );
 
@@ -51,4 +52,4 @@ export function normalizeEmailBody(body: string): string {
 }
 
 export const EMAIL_BODY_FORMAT_RULE =
-  "Format emailBody with blank lines between paragraphs (use \\n\\n): greeting line, pitch paragraph(s), optional soft close, then sign-off.";
+  "Format emailBody with blank lines between paragraphs (use \\n\\n): greeting, then the ISH beats (Email 1: hook / taste-first / one CTA; Email 2: urgency / sampler CTA; Email 3: last note / won't email further / Diwali close), then sign-off. No No worries line on Email 1.";

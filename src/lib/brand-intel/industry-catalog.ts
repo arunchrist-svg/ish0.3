@@ -78,6 +78,42 @@ export function getIndustryByLabel(label: string): IndustryCatalogEntry | null {
   return INDUSTRY_CATALOG.find((entry) => normalize(entry.label) === normalized) ?? null;
 }
 
+/** Map website / LLM copy onto a catalog product category for Brand Intel. */
+export function inferProductCategory(params: {
+  vertical?: string;
+  productSummary?: string;
+  llmCategory?: string;
+  platformIntent?: string;
+}): string | null {
+  const llm = params.llmCategory?.trim();
+  if (llm) {
+    const exact = getIndustryByLabel(llm);
+    if (exact) return exact.label;
+    const hits = searchIndustries(llm, 1);
+    if (hits[0]) return hits[0].label;
+  }
+
+  const blob = `${params.vertical ?? ""} ${params.productSummary ?? ""}`.toLowerCase();
+  if (blob.trim()) {
+    let best: { label: string; score: number } | null = null;
+    for (const entry of INDUSTRY_CATALOG) {
+      let score = 0;
+      const label = normalize(entry.label);
+      if (blob.includes(label)) score += 80;
+      for (const keyword of entry.keywords) {
+        if (keyword.length >= 3 && blob.includes(keyword)) score += 20;
+      }
+      if (score > 0 && (!best || score > best.score)) best = { label: entry.label, score };
+    }
+    if (best && best.score >= 20) return best.label;
+  }
+
+  if (params.platformIntent === "corporate_gifting") return "Sweets";
+  if (params.platformIntent === "appliances") return "Kitchen Appliances";
+  if (params.platformIntent === "b2b_saas") return "Enterprise Software";
+  return null;
+}
+
 export function searchIndustries(query: string, limit = 8): IndustryCatalogEntry[] {
   const q = normalize(query);
   if (!q) return INDUSTRY_CATALOG.slice(0, limit);

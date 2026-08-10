@@ -1,5 +1,7 @@
 import type { EmailStyle } from "@/lib/email/config";
 import { applyContentRules, type ContentRuleContext, type ContentRuleHit } from "@/lib/email/content-rules";
+import { looksLikeLlmJsonDump } from "@/lib/agents/schemas/writer-output";
+import { isNearParaphrase, BASELINE_PARAPHRASE_THRESHOLD } from "@/lib/email/email-similarity";
 
 export type ContentFactor = { label: string; delta: number; ruleId?: string };
 export type ContentQualityVerdict = "SAFE" | "CAUTION" | "RISK";
@@ -18,6 +20,7 @@ export type ContentQualityOptions = ContentRuleContext & {
   contactFirstName?: string;
   hasMarketingFooter?: boolean;
   hasBulkHeaders?: boolean;
+  baselineBody?: string;
 };
 
 const SPAM_WORDS = [
@@ -65,6 +68,38 @@ export function scoreContentQuality(
   const subjectLower = subject.trim().toLowerCase();
   const emailStyle = options?.emailStyle ?? "primary";
   const wordCount = body.trim().split(/\s+/).filter(Boolean).length;
+
+  if (looksLikeLlmJsonDump(body) || /^```/m.test(body.trim())) {
+    score -= 80;
+    factors.push({ label: "draft is incomplete LLM JSON, not an email", delta: -80 });
+  } else if (wordCount > 0 && wordCount < 20) {
+    score -= 40;
+    factors.push({ label: "email body is incomplete", delta: -40 });
+  }
+
+  const hook = options?.outreachHook?.trim();
+  if (hook && hook.length >= 24 && body.toLowerCase().includes(hook.toLowerCase())) {
+    score -= 12;
+    factors.push({ label: "hook copied verbatim", delta: -12 });
+  }
+
+  if (/\boffers\b|\bspecializes in\b/i.test(body)) {
+    score -= 12;
+    factors.push({ label: "brand catalog dump", delta: -12 });
+  }
+
+  if (/vendors?\s+lock\s+in/i.test(body)) {
+    score -= 15;
+    factors.push({ label: "vendors lock-in urgency", delta: -15 });
+  }
+
+  if (
+    options?.baselineBody &&
+    isNearParaphrase(body, options.baselineBody, BASELINE_PARAPHRASE_THRESHOLD, "hook")
+  ) {
+    score -= 15;
+    factors.push({ label: "near-baseline paraphrase", delta: -15 });
+  }
 
   if (emailStyle === "marketing") {
     score -= 15;

@@ -23,4 +23,4 @@
 - Focus on mithai, hampers, Diwali timing, tasting samples
 - One soft question CTA (sample offer or quick note on options)
 - Sign with first name, role, company
-- Max 120 words, max 3 pitch sentences
+- Max 120 words, max 4 pitch sentences

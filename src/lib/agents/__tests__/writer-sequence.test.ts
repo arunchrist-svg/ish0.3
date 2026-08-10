@@ -1,0 +1,136 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  leadFindFirst: vi.fn(),
+  outreachFindFirst: vi.fn(),
+  outreachFindMany: vi.fn(),
+  update: vi.fn(),
+  insert: vi.fn(),
+  runWriter: vi.fn(),
+  deleteLeadOutreachWhere: vi.fn(),
+}));
+
+vi.mock("@/db", () => ({
+  db: {
+    query: {
+      leads: { findFirst: mocks.leadFindFirst },
+      leadOutreach: { findFirst: mocks.outreachFindFirst, findMany: mocks.outreachFindMany },
+    },
+    update: () => ({ set: () => ({ where: mocks.update }) }),
+    insert: () => ({ values: mocks.insert }),
+  },
+  leadOutreach: { id: "id", leadId: "leadId", sequencePosition: "sequencePosition" },
+  leads: { id: "id", status: "status" },
+  yieldFunnel: {},
+}));
+
+vi.mock("drizzle-orm", () => ({
+  eq: vi.fn(),
+  and: vi.fn(),
+  inArray: vi.fn(),
+  isNotNull: vi.fn(),
+}));
+
+vi.mock("@/lib/agents/writer", () => ({ runWriter: mocks.runWriter }));
+vi.mock("@/lib/outreach/delete-lead-outreach", () => ({
+  deleteLeadOutreachWhere: mocks.deleteLeadOutreachWhere,
+}));
+
+import { runWriterSequence } from "@/lib/agents/writer-sequence";
+
+const E1 = `Hi Vijetha,
+
+Festival week on a Hosur line is less about a catalogue box and more about whether shop-floor and office both get something they'll remember.
+
+Don't take our word for it. Let us send Acme Auto a taste first.
+
+Want a sampler box on your desk this week?
+
+Srilaksha
+Partnerships, India Sweet House`;
+
+const E2_DISTINCT = `Hi Vijetha,
+
+Diwali gifting sneaks up faster than expected, and tasting slots fill before festival week.
+
+Should I send Acme Auto a sampler this week?
+
+Srilaksha
+Partnerships, India Sweet House`;
+
+const E3 = `Hi Vijetha,
+
+I don't want to keep filling your inbox, so I'll leave it here. If festive gifting for Acme Auto comes up this season, the door is open.
+
+I won't email further, but a tasting box stays available if you want to reach out.
+
+Wishing you a great Diwali either way.
+
+Srilaksha
+Partnerships, India Sweet House`;
+
+describe("runWriterSequence similarity gate", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.leadFindFirst.mockResolvedValue({ id: "lead-1" });
+    mocks.deleteLeadOutreachWhere.mockResolvedValue(undefined);
+    mocks.update.mockResolvedValue(undefined);
+    mocks.insert.mockResolvedValue(undefined);
+  });
+
+  it("regenerates E2 once when it clones E1", async () => {
+    mocks.runWriter
+      .mockResolvedValueOnce("id1")
+      .mockResolvedValueOnce("id2")
+      .mockResolvedValueOnce("id2b")
+      .mockResolvedValueOnce("id3");
+    mocks.outreachFindFirst
+      .mockResolvedValueOnce({
+        id: "id1",
+        emailBody: E1,
+        subjectA: "Send happiness this Diwali, Vijetha",
+        sequencePosition: 1,
+      })
+      .mockResolvedValueOnce({ id: "id2", emailBody: E1, sequencePosition: 2 })
+      .mockResolvedValueOnce({ id: "id3", emailBody: E3, sequencePosition: 3 });
+    mocks.outreachFindMany.mockResolvedValue([
+      {
+        id: "id1",
+        emailBody: E1,
+        subjectA: "Send happiness this Diwali, Vijetha",
+        sequencePosition: 1,
+      },
+      { id: "id2", emailBody: E1, sequencePosition: 2 },
+    ]);
+
+    const ids = await runWriterSequence("lead-1");
+
+    expect(ids).toEqual(["id1", "id2b", "id3"]);
+    expect(mocks.runWriter).toHaveBeenCalledTimes(4);
+    expect(mocks.runWriter.mock.calls[2][1]).toMatchObject({
+      sequencePosition: 2,
+      forceNewAngle: true,
+      originalEmailBody: E1,
+      originalEmailSubject: "Send happiness this Diwali, Vijetha",
+    });
+  });
+
+  it("does not regenerate when E2 and E3 are distinct", async () => {
+    mocks.runWriter.mockResolvedValueOnce("id1").mockResolvedValueOnce("id2").mockResolvedValueOnce("id3");
+    mocks.outreachFindFirst
+      .mockResolvedValueOnce({
+        id: "id1",
+        emailBody: E1,
+        subjectA: "Send happiness this Diwali, Vijetha",
+        sequencePosition: 1,
+      })
+      .mockResolvedValueOnce({ id: "id2", emailBody: E2_DISTINCT, sequencePosition: 2 })
+      .mockResolvedValueOnce({ id: "id3", emailBody: E3, sequencePosition: 3 });
+
+    const ids = await runWriterSequence("lead-1");
+
+    expect(ids).toEqual(["id1", "id2", "id3"]);
+    expect(mocks.runWriter).toHaveBeenCalledTimes(3);
+    expect(mocks.outreachFindMany).not.toHaveBeenCalled();
+  });
+});

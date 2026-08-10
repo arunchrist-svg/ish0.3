@@ -39,8 +39,8 @@ export function WritingLoader({ contactName, companyName, className, sequenceLab
   const message = sequenceLabel
     ? sequenceLabel
     : contactName
-      ? `Writing for ${contactName}`
-      : "Crafting your email";
+      ? `Writing smart emails for ${contactName}`
+      : "Writing smart emails";
 
   return (
     <div

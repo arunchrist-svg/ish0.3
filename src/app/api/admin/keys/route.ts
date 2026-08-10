@@ -12,19 +12,15 @@ export async function GET() {
   try {
     await requireSuperadmin();
     return NextResponse.json({
-      note: "Platform keys are managed centrally. Values are never exposed — only configured/not configured.",
+      note: "Platform keys are managed centrally. Values are never exposed, only configured/not configured.",
       llm: {
-        provider: process.env.LLM_PROVIDER ?? "gemini",
-        keys: [
-          maskKey("GEMINI_API_KEY"),
-          maskKey("GOOGLE_GENERATIVE_AI_API_KEY"),
-          maskKey("ANTHROPIC_API_KEY"),
-          maskKey("OPENROUTER_API_KEY"),
-        ],
+        provider: "anthropic",
+        keys: [maskKey("ANTHROPIC_API_KEY")],
       },
       enrichment: {
         keys: [maskKey("APOLLO_API_KEY"), maskKey("HUNTER_API_KEY"), maskKey("GOOGLE_PLACES_API_KEY")],
         tavily: { configured: hasTavilyKeys() },
+        ocr: maskKey("GEMINI_API_KEY"),
       },
       email: {
         platformResend: maskKey("RESEND_API_KEY"),

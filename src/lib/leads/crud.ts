@@ -1,4 +1,4 @@
-import { db, accounts, contacts, leads, leadResearch, yieldFunnel, outreachSchedule, outreachApprovals, leadOutreach, enrichmentRuns } from "@/db";
+import { db, accounts, contacts, leads, leadResearch, yieldFunnel, outreachSchedule, outreachApprovals, leadOutreach, enrichmentRuns, consentRecords, agentRuns } from "@/db";
 import { and, eq } from "drizzle-orm";
 import { verifyEmail } from "@/lib/enrichment/verify";
 import { normalizeLinkedInUrl } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
 import { domainFromCompany } from "@/lib/enrichment/provider-utils";
+import { nameCompanyDedupeKey } from "@/lib/leads/duplicates";
 export class LeadNotFoundError extends Error {
   constructor() {
     super("Lead not found");
@@ -102,7 +103,26 @@ async function resolveAccountId(params: {
   return account.id;
 }
 
-export async function createManualLead(input: CreateLeadInput): Promise<{ id: string }> {
+
+async function findExistingLeadId(params: {
+  tenantId: string;
+  accountId: string;
+  name: string;
+}): Promise<string | null> {
+  const rows = await db
+    .select({ id: leads.id, name: contacts.name, company: accounts.name })
+    .from(leads)
+    .innerJoin(contacts, eq(contacts.id, leads.contactId))
+    .innerJoin(accounts, eq(accounts.id, leads.accountId))
+    .where(and(eq(leads.tenantId, params.tenantId), eq(leads.accountId, params.accountId)));
+
+  const match = rows.find(
+    (row) => nameCompanyDedupeKey(row.name, row.company) === nameCompanyDedupeKey(params.name, row.company),
+  );
+  return match?.id ?? null;
+}
+
+export async function createManualLead(input: CreateLeadInput): Promise<{ id: string; existing?: boolean }> {
   const name = input.name.trim();
   const company = input.company.trim();
   if (!name || !company) throw new Error("Name and company are required");
@@ -115,6 +135,13 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     industry: input.industry,
     employees: input.employees,
   });
+
+  const existingId = await findExistingLeadId({
+    tenantId: input.tenantId,
+    accountId,
+    name,
+  });
+  if (existingId) return { id: existingId, existing: true };
 
   const accountRow = await db.query.accounts.findFirst({
     where: eq(accounts.id, accountId),
@@ -301,6 +328,8 @@ export async function deleteLeadById(params: {
   await db.delete(leadResearch).where(eq(leadResearch.leadId, params.leadId));
   await db.delete(yieldFunnel).where(eq(yieldFunnel.leadId, params.leadId));
   await db.delete(enrichmentRuns).where(eq(enrichmentRuns.leadId, params.leadId));
+  await db.delete(consentRecords).where(eq(consentRecords.leadId, params.leadId));
+  await db.update(agentRuns).set({ leadId: null }).where(eq(agentRuns.leadId, params.leadId));
   await db.delete(leads).where(eq(leads.id, params.leadId));
 
   await logAudit({

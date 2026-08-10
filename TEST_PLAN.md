@@ -23,7 +23,7 @@ Living test plan for the three-tier automated suite: **Vitest unit**, **API inte
 | Variable | Value | Purpose |
 |----------|-------|---------|
 | `EMAIL_SEND_MODE` | `dry_run` | Never send live email in tests |
-| `LLM_PROVIDER` | `gemini` | Default LLM (mocked in API agent tests) |
+| `ANTHROPIC_API_KEY` | set in tests | Claude is the only LLM (mocked in API agent tests) |
 | `DATABASE_URL` | Postgres connection | Required for API + E2E |
 
 ---

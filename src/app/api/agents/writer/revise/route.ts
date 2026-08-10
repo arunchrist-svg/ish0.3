@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { reviseWriter } from "@/lib/agents/writer-revise";
-import { friendlyLLMError } from "@/lib/llm";
+import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
@@ -24,6 +24,6 @@ export async function POST(req: Request) {
   } catch (e) {
     const errRes = handleApiError(e, "[api/agents/writer/revise]");
     if (errRes.status !== 500) return errRes;
-    return NextResponse.json({ error: friendlyLLMError(e) }, { status: 500 });
+    return NextResponse.json({ error: friendlyLLMError(e) }, { status: llmErrorHttpStatus(e) });
   }
 }

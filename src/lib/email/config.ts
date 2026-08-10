@@ -24,6 +24,14 @@ export type WebsiteBrandInsights = {
   scoutDepartments: string[];
   /** Target seniority for Scout people discovery. */
   scoutSeniority: string[];
+  /** Catalog product category inferred for Brand Intel (e.g. Sweets, Enterprise Software). */
+  productCategory?: string;
+  /** Inferred Nebula use from the website. */
+  platformIntent?: import("@/lib/brand/platform-intent").PlatformIntent;
+  /** Short positioning blurb for Writer (2–3 sentences). */
+  productWriteup?: string;
+  /** Themes Writer should lean on (offers, occasions, proof, logistics). */
+  emailKeywords?: string[];
 };
 
 export type BrandConfig = {

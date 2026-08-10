@@ -22,6 +22,7 @@ import { generateReplyPlan, formatReplyPlanForPrompt } from "@/lib/agents/reply-
 import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { auditContentScored } from "@/lib/email/feedback-hooks";
 import { pickOriginalEmailContext } from "@/lib/email/reply-context";
+import { parseWriterOutput } from "@/lib/agents/schemas/writer-output";
 
 const PROMPT_VERSION = "v2.0-planner-quality";
 const MAX_REVISIONS = 2;
@@ -199,22 +200,16 @@ Instructions:
                 ...rubricParams,
               }),
             )}`,
-      maxTokens: 512,
+      maxTokens: 1024,
     });
 
-    let parsed: { subjectA?: string; subjectB?: string; emailBody?: string; outreachGoal?: string } = {};
-    try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    } catch {
-      parsed = {
-        subjectA: `Re: Outreach for ${account.name}`,
-        subjectB: `Re: ${contactFirstName} reply`,
-        emailBody: raw.slice(0, 600),
-        outreachGoal: "Continue conversation and book next step",
-      };
+    const { data: parsed, valid } = parseWriterOutput(raw);
+    if (!valid || !parsed.emailBody) {
+      if (attempt < MAX_REVISIONS) continue;
+      throw new Error("Reply writer returned incomplete JSON instead of an email. Try again.");
     }
 
-    emailBody = parsed.emailBody ?? "";
+    emailBody = parsed.emailBody;
     subjectA = normalizeReplySubject(parsed.subjectA ? stripReplyPrefix(parsed.subjectA) : threadRoot);
     subjectB = normalizeReplySubject(parsed.subjectB ? stripReplyPrefix(parsed.subjectB) : threadRoot);
     outreachGoal = parsed.outreachGoal ?? outreachGoal;

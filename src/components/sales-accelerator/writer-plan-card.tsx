@@ -30,7 +30,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
   if (!lead.research) {
     return (
       <div className="mb-4 rounded-[16px] border border-brand-border/50 bg-brand-canvas/30 px-4 py-3 text-[12px] text-brand-ink-soft">
-        Research brief pending. Writer plan will appear after research completes.
+        Research brief pending. Smart email plan will appear after research completes.
       </div>
     );
   }
@@ -42,7 +42,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
     setSaving(true);
     try {
       await updateLeadWriterPlan(lead.id, { hook, valueProp, cta });
-      toast.success("Writer plan saved");
+      toast.success("Smart email plan saved");
       onUpdated();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save plan");
@@ -58,7 +58,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
       setHook(writerPlan.hook);
       setValueProp(writerPlan.valueProp);
       setCta(writerPlan.cta);
-      toast.success("Writer plan regenerated");
+      toast.success("Smart email plan regenerated");
       onUpdated();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not regenerate plan");
@@ -71,7 +71,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
     <div className="mb-4 rounded-[16px] border border-brand-border/60 bg-white p-4 shadow-[var(--shadow-brand-sm)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-[13px] font-semibold text-brand-ink">Writer plan</h3>
+          <h3 className="text-[13px] font-semibold text-brand-ink">Smart email plan</h3>
           <p className="text-[11px] text-brand-ink-soft">
             Email 1 follows this hook, value, and CTA. Edit before drafting.
           </p>

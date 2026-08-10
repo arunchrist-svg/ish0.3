@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, Check, ExternalLink, Loader2, Upload } from "lucide-react";
+import { ExternalLink, Loader2, Upload } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -104,52 +104,6 @@ export function LinkedInIntegration() {
       )}
 
       <SettingsGroup
-        title="LinkedIn Account"
-        footer="Connect your profile to match your network against CRM contacts for warm-intro paths."
-      >
-        <SettingsRow className="items-start gap-4 py-4">
-          {member?.linkedInPicture ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={member.linkedInPicture} alt="" className="size-12 shrink-0 rounded-full" />
-          ) : (
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand-canvas text-[18px] font-bold text-brand-ink-faint">
-              in
-            </div>
-          )}
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-medium text-brand-ink">{member?.name ?? "No account linked"}</p>
-            <p className="text-[13px] text-brand-ink-soft">{member?.email ?? "Connect to identify your rep profile"}</p>
-            {member && (
-              <p className="mt-1 text-[12px] text-brand-ink-faint">
-                {member.connectionCount} connections
-                {member.lastImportAt
-                  ? ` · last import ${new Date(member.lastImportAt).toLocaleDateString()}`
-                  : " · no import yet"}
-              </p>
-            )}
-          </div>
-          {status?.configured && (
-            <a
-              href="/api/auth/linkedin/authorize"
-              className="shrink-0 rounded-full bg-[#0A66C2] px-4 py-2 text-[12px] font-semibold text-white hover:opacity-90"
-            >
-              {member ? "Reconnect" : "Connect"}
-            </a>
-          )}
-        </SettingsRow>
-
-        {member?.stale && (
-          <>
-            <SettingsGroupDivider />
-            <div className="flex items-start gap-2 px-4 py-3 text-[12px] text-amber-900">
-              <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-              Export is over 30 days old. Re-import Connections.csv for up-to-date paths.
-            </div>
-          </>
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup
         title="Import Connections"
         footer="Export from LinkedIn: Me → Settings & Privacy → Data privacy → Get a copy of your data → Connections."
       >
@@ -191,33 +145,20 @@ export function LinkedInIntegration() {
           </button>
         </div>
 
-        {member?.connectionCount ? (
+        {status?.configured && !member ? (
           <>
             <SettingsGroupDivider />
-            <p className="flex items-center gap-2 px-4 py-3 text-[13px] text-brand-stratus-blue">
-              <Check className="size-4" /> {member.connectionCount} connections loaded for matching
-            </p>
+            <div className="px-4 py-3">
+              <a
+                href="/api/auth/linkedin/authorize"
+                className="flex w-full items-center justify-center rounded-xl bg-[#0A66C2] py-2.5 text-[14px] font-semibold text-white hover:opacity-90"
+              >
+                Connect LinkedIn to import
+              </a>
+            </div>
           </>
         ) : null}
       </SettingsGroup>
-
-      {status && status.members.length > 1 && (
-        <SettingsGroup title="Team Members" footer="All LinkedIn-connected reps in this workspace.">
-          {status.members.map((m, i) => (
-            <div key={m.id}>
-              {i > 0 ? <SettingsGroupDivider /> : null}
-              <div className="px-4 py-3">
-                <p className="text-[15px] font-medium text-brand-ink">{m.name}</p>
-                {m.lastImportAt && (
-                  <p className="text-[12px] text-brand-ink-faint">
-                    Imported {new Date(m.lastImportAt).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            </div>
-          ))}
-        </SettingsGroup>
-      )}
     </>
   );
 }
