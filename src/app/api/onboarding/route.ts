@@ -60,6 +60,10 @@ export async function GET() {
         emailConfig.brandConfig?.websiteInsights?.productCategory ??
         "",
       competitorBrands: enrichment.giftIntelCompetitorBrands ?? [],
+      brandIntelConfigured: Boolean(
+        enrichment.giftIntelProductCategory?.trim() &&
+          (enrichment.giftIntelCompetitorBrands?.length ?? 0) > 0,
+      ),
       productWriteup: emailConfig.brandConfig?.websiteInsights?.productWriteup ?? "",
       emailKeywords: emailConfig.brandConfig?.websiteInsights?.emailKeywords ?? [],
     });

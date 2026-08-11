@@ -9,6 +9,7 @@ type Props = {
   hints?: string[];
   className?: string;
   compact?: boolean;
+  progress?: { done: number; total: number };
 };
 
 const DEFAULT_HINTS = [
@@ -22,8 +23,10 @@ export function DiscoveringLoader({
   hints = DEFAULT_HINTS,
   className,
   compact = false,
+  progress,
 }: Props) {
   const [hintIndex, setHintIndex] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   useEffect(() => {
     if (hints.length <= 1) return;
@@ -32,6 +35,17 @@ export function DiscoveringLoader({
     }, 2400);
     return () => clearInterval(id);
   }, [hints]);
+
+  useEffect(() => {
+    setElapsedSec(0);
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [message, progress?.total]);
+
+  const pct =
+    progress && progress.total > 0
+      ? Math.max(progress.done > 0 ? 8 : 4, (progress.done / progress.total) * 100)
+      : undefined;
 
   return (
     <div
@@ -67,8 +81,22 @@ export function DiscoveringLoader({
         </span>
       </p>
 
-      <div className="mt-4 h-1 w-44 overflow-hidden rounded-full bg-brand-border">
-        <div className="h-full w-2/5 rounded-full bg-brand-yellow-gradient animate-brand-shimmer-bar" />
+      {progress && progress.total > 0 ? (
+        <p className="mt-1 text-[12px] font-medium text-brand-ink-soft">
+          {progress.done === 0
+            ? `Starting search across ${progress.total} companies · ${elapsedSec}s`
+            : `${progress.done} of ${progress.total} done · ${elapsedSec}s`}
+        </p>
+      ) : null}
+
+      <div className="mt-4 h-1.5 w-52 overflow-hidden rounded-full bg-brand-border">
+        <div
+          className={cn(
+            "h-full rounded-full bg-brand-yellow-gradient transition-all duration-500 ease-out",
+            pct == null && "w-2/5 animate-brand-shimmer-bar",
+          )}
+          style={pct != null ? { width: `${pct}%` } : undefined}
+        />
       </div>
 
       <p

@@ -69,6 +69,22 @@ describe("ENRICH-UNIT-004 people parser", () => {
     expect(parsePeopleFromSearchResults(hits, 3)).toHaveLength(3);
   });
 
+  it("drops people whose title names a different employer", () => {
+    const results = parsePeopleFromSearchResults(
+      [
+        {
+          title: "Sandeep Yadav | Plant Head Tata Steel(Hosur) | LinkedIn",
+          url: "https://www.linkedin.com/in/sandeep-yadav-hosur",
+          content: "Plant Head Tata Steel(Hosur)",
+        },
+      ],
+      5,
+      "web_heuristic",
+      "Hosur Steel Industries",
+    );
+    expect(results).toHaveLength(0);
+  });
+
   it("marks non-DM titles with lower match score", () => {
     const results = parsePeopleFromSearchResults(
       [
@@ -81,6 +97,6 @@ describe("ENRICH-UNIT-004 people parser", () => {
       5,
     );
     expect(results[0]?.isKeyDM).toBe(false);
-    expect(results[0]?.matchScore).toBe(52);
+    expect(results[0]?.matchScore).toBe(23);
   });
 });

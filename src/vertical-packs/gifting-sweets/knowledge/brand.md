@@ -12,6 +12,10 @@
 - 1,001+: ₹400–₹750 per person
 
 ## Differentiators
+- Organic milk sourced from our own dairy farm (farm-to-counter freshness)
+- Zero preservatives; sweets prepared fresh daily
+- 200+ traditional sweets and namkeens, including diet-conscious options (Jaggery Kaju Katli, Sugarfree Honey Laddu)
+- Export-grade hygiene (USA and Australia)
 - Pure ghee, no palm oil
 - Pan-India delivery for 200+ units
 - Complimentary tasting sample for HR decision-makers
@@ -20,7 +24,8 @@
 ## Outreach tone
 - Friendly but professional. Festive but plain. Not salesy.
 - Hi {firstName}, not Dear
-- Focus on mithai, hampers, Diwali timing, tasting samples
+- Lead with authenticity: own dairy, organic milk, zero preservatives, farm-to-counter
+- Focus on mithai, Diwali timing, tasting samples
 - One soft question CTA (sample offer or quick note on options)
-- Sign with first name, role, company
+- Sign with Thanks & Regards, name, brand
 - Max 120 words, max 4 pitch sentences

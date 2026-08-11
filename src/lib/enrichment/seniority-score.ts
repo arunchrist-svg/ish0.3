@@ -1,7 +1,7 @@
 import type { ScoutPersonResult } from "./types";
 
 const TITLE_PATTERNS: { rank: number; patterns: RegExp[] }[] = [
-  { rank: 100, patterns: [/\bceo\b/i, /\bcfo\b/i, /\bcto\b/i, /\bcpo\b/i, /\bcoo\b/i, /\bchief\b/i, /\bfounder\b/i, /\bco-founder\b/i, /\bmanaging director\b/i, /\bmd\b/i, /\bpresident\b/i] },
+  { rank: 100, patterns: [/\bceo\b/i, /\bcfo\b/i, /\bcto\b/i, /\bcpo\b/i, /\bcoo\b/i, /\bchro\b/i, /\bchief\b/i, /\bfounder\b/i, /\bco-founder\b/i, /\bmanaging director\b/i, /\bmd\b/i, /\bpresident\b/i] },
   { rank: 85, patterns: [/\bvp\b/i, /\bvice president\b/i, /\bsvp\b/i, /\bevp\b/i] },
   { rank: 70, patterns: [/\bdirector\b/i, /\bdir\.\b/i] },
   { rank: 65, patterns: [/\bhead of\b/i, /\bhead\b/i] },

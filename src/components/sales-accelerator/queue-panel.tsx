@@ -1,8 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Check, Clock3, Loader2, Mail, Plus, RefreshCw, Search, X } from "lucide-react";
+import { ArrowDownWideNarrow, Check, ChevronDown, Clock3, Loader2, Mail, Plus, RefreshCw, Search, X } from "lucide-react";
 import { CircleButton, IshAvatar, ScoreBadge, SearchBar, Separator } from "@/design-system";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { statusToDisplayLabel } from "@/lib/pipeline-status";
@@ -11,7 +17,7 @@ import type { LeadQueueItem } from "@/lib/api-client";
 import { countDuplicateExtras } from "@/lib/leads/duplicates";
 import { scoutCardSurface } from "@/components/cards/scout-card-surface";
 
-export type LeadQueueSort = "recent" | "score_desc" | "score_asc";
+export type LeadQueueSort = "score" | "date";
 
 export const LEAD_QUEUE_SORT_STORAGE_KEY = "ish-leads-queue-sort";
 
@@ -35,30 +41,29 @@ export function filterLeadsByQuery(leads: LeadQueueItem[], query: string): LeadQ
   return leads.filter((item) => matchesQuery(item, query));
 }
 
+function createdAtMs(item: LeadQueueItem): number {
+  if (!item.createdAt) return 0;
+  const ms = new Date(item.createdAt).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
 export function sortLeadsQueue(leads: LeadQueueItem[], sort: LeadQueueSort): LeadQueueItem[] {
-  if (sort === "recent") return leads;
   return [...leads].sort((a, b) => {
+    if (sort === "date") {
+      const diff = createdAtMs(b) - createdAtMs(a);
+      if (diff !== 0) return diff;
+      return a.name.localeCompare(b.name);
+    }
     const diff = (b.score ?? 0) - (a.score ?? 0);
-    if (diff !== 0) return sort === "score_desc" ? diff : -diff;
+    if (diff !== 0) return diff;
     return a.name.localeCompare(b.name);
   });
 }
 
-export function nextLeadQueueSort(sort: LeadQueueSort): LeadQueueSort {
-  if (sort === "score_desc") return "score_asc";
-  if (sort === "score_asc") return "recent";
-  return "score_desc";
-}
-
 export function parseLeadQueueSort(value: string | null | undefined): LeadQueueSort {
-  if (value === "score_asc" || value === "recent" || value === "score_desc") return value;
-  return "score_desc";
-}
-
-function sortLabel(sort: LeadQueueSort): string {
-  if (sort === "score_asc") return "Score · low to high";
-  if (sort === "recent") return "Recent first";
-  return "Score · high to low";
+  if (value === "date" || value === "recent") return "date";
+  if (value === "score" || value === "score_desc" || value === "score_asc") return "score";
+  return "score";
 }
 
 function MergeDuplicatesButton({
@@ -99,21 +104,71 @@ function MergingDuplicatesOverlay() {
   );
 }
 
-function SortChip({ sort, onClick, className }: { sort: LeadQueueSort; onClick: () => void; className?: string }) {
-  const Icon = sort === "score_asc" ? ArrowUpNarrowWide : sort === "recent" ? Clock3 : ArrowDownWideNarrow;
+const SORT_OPTIONS: { value: LeadQueueSort; label: string; Icon: typeof ArrowDownWideNarrow }[] = [
+  { value: "score", label: "Score", Icon: ArrowDownWideNarrow },
+  { value: "date", label: "Date", Icon: Clock3 },
+];
+
+function SortByDropdown({
+  sort,
+  onChange,
+  className,
+}: {
+  sort: LeadQueueSort;
+  onChange: (sort: LeadQueueSort) => void;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = SORT_OPTIONS.find((option) => option.value === sort) ?? SORT_OPTIONS[0];
+  const CurrentIcon = current.Icon;
+
+  function selectSort(value: LeadQueueSort) {
+    onChange(value);
+    setOpen(false);
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-brand-border/70 bg-white px-2.5 py-1 text-[11px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:border-brand-stratus-blue/40 active:scale-[0.98]",
-        className,
-      )}
-      aria-label={`Sort: ${sortLabel(sort)}. Click to change.`}
-    >
-      <Icon className="size-3.5 text-brand-stratus-blue" />
-      {sortLabel(sort)}
-    </button>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        className={cn(
+          "inline-flex h-[26px] shrink-0 items-center gap-1 rounded-full border border-brand-stratus-blue/30 bg-white/90 px-2 text-[11px] font-semibold text-brand-ink",
+          "shadow-[var(--shadow-brand-sm)] backdrop-blur-sm outline-none",
+          "hover:border-brand-stratus-blue/45 hover:bg-white",
+          "focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/25",
+          open && "border-brand-stratus-blue/50",
+          className,
+        )}
+        aria-label={`Sort by ${current.label}`}
+      >
+        <CurrentIcon className="size-3 text-brand-stratus-blue" />
+        <span>{current.label}</span>
+        <ChevronDown className={cn("size-3 text-brand-stratus-blue/70 transition-transform", open && "rotate-180")} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={6}
+        className="min-w-[148px] rounded-xl border border-brand-stratus-blue/25 bg-white/95 p-1 text-brand-ink shadow-[var(--shadow-brand)] backdrop-blur-md"
+      >
+        {SORT_OPTIONS.map(({ value, label, Icon }) => {
+          const selected = value === sort;
+          return (
+            <DropdownMenuItem
+              key={value}
+              onClick={() => selectSort(value)}
+              className={cn(
+                "cursor-pointer gap-2 rounded-lg px-2 py-1.5 text-[12px] font-semibold",
+                "focus:bg-brand-stratus-blue/10 focus:text-brand-ink",
+                selected && "bg-brand-stratus-blue/10 text-brand-stratus-blue",
+              )}
+            >
+              <Icon className={cn("size-3.5", selected ? "text-brand-stratus-blue" : "text-brand-ink-soft")} />
+              <span className="flex-1">{label}</span>
+              {selected ? <Check className="size-3.5 text-brand-stratus-blue" strokeWidth={2.5} /> : null}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -252,7 +307,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
   const isMobile = useIsMobileLayout();
   const [searchOpen, setSearchOpen] = useState(false);
   const [internalSearch, setInternalSearch] = useState("");
-  const [internalSort, setInternalSort] = useState<LeadQueueSort>("score_desc");
+  const [internalSort, setInternalSort] = useState<LeadQueueSort>("score");
   const [refreshing, setRefreshing] = useState(false);
   const searchQuery = controlledSearch ?? internalSearch;
   const setSearchQuery = onSearchQueryChange ?? setInternalSearch;
@@ -270,13 +325,9 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
 
   const duplicateExtra = useMemo(() => countDuplicateExtras(leads), [leads]);
 
-  const groupedByRecency = sort === "recent";
+  const groupedByRecency = sort === "date";
   const today = groupedByRecency ? filteredLeads.slice(0, Math.min(3, filteredLeads.length)) : [];
   const older = groupedByRecency ? filteredLeads.slice(3) : [];
-
-  function cycleSort() {
-    setSort(nextLeadQueueSort(sort));
-  }
 
   async function handleRefresh() {
     if (!onRefresh || refreshing || mergingDuplicates) return;
@@ -321,7 +372,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
             />
           </div>
           <div className="mt-2.5">
-            <SortChip sort={sort} onClick={cycleSort} />
+            <SortByDropdown sort={sort} onChange={setSort} />
 
           {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
             <MergeDuplicatesButton
@@ -361,12 +412,13 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
 
   return (
     <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
-      <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xl font-bold text-brand-ink">My Leads</span>
-        <div className="flex gap-1.5">
+      <div className="mb-3 flex min-w-0 items-center gap-2">
+        <span className="min-w-0 truncate text-[15px] font-bold leading-none text-brand-ink">My Leads</span>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <SortByDropdown sort={sort} onChange={setSort} />
           {canWrite && onAddLead ? (
             <CircleButton
-              size={30}
+              size={26}
               onClick={mergingDuplicates ? undefined : onAddLead}
               className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
               aria-label="Add lead"
@@ -375,7 +427,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
             </CircleButton>
           ) : null}
           <CircleButton
-            size={30}
+            size={26}
             onClick={mergingDuplicates ? undefined : () => void handleRefresh()}
             className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
             aria-label="Refresh leads"
@@ -383,7 +435,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
             <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           </CircleButton>
           <CircleButton
-            size={30}
+            size={26}
             active={searchOpen}
             onClick={() => {
               setSearchOpen((open) => {
@@ -398,17 +450,15 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
         </div>
       </div>
 
-      <div className="mb-3 mt-2">
-        <SortChip sort={sort} onClick={cycleSort} />
-
-          {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
-            <MergeDuplicatesButton
-              count={duplicateExtra}
-              merging={!!mergingDuplicates}
-              onMerge={() => void onMergeDuplicates()}
-            />
-          ) : null}
-      </div>
+      {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
+        <div className="mb-3">
+          <MergeDuplicatesButton
+            count={duplicateExtra}
+            merging={!!mergingDuplicates}
+            onMerge={() => void onMergeDuplicates()}
+          />
+        </div>
+      ) : null}
 
       {searchOpen ? (
         <div className="relative mb-3 mt-2">
@@ -481,7 +531,7 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
           ) : (
             <>
               <div className="mb-2.5 mt-2 text-xs font-semibold text-brand-ink-faint">
-                {sort === "score_asc" ? "LOWEST SCORE" : "HIGHEST SCORE"}
+                HIGHEST SCORE
               </div>
               {filteredLeads.map((item, i) => (
                 <QueueCard

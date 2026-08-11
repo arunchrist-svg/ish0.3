@@ -31,12 +31,15 @@ vi.mock("drizzle-orm", () => ({
   isNotNull: vi.fn(),
 }));
 
-vi.mock("@/lib/agents/writer", () => ({ runWriter: mocks.runWriter }));
+vi.mock("@/lib/agents/writer", () => ({
+  runWriter: mocks.runWriter,
+  resolveWriterMode: (mode?: string | null) => (mode === "ai" ? "ai" : "standard"),
+}));
 vi.mock("@/lib/outreach/delete-lead-outreach", () => ({
   deleteLeadOutreachWhere: mocks.deleteLeadOutreachWhere,
 }));
 
-import { runWriterSequence } from "@/lib/agents/writer-sequence";
+import { regenerateSequenceStep, runWriterSequence } from "@/lib/agents/writer-sequence";
 
 const E1 = `Hi Vijetha,
 
@@ -79,11 +82,12 @@ describe("runWriterSequence similarity gate", () => {
   });
 
   it("regenerates E2 once when it clones E1", async () => {
-    mocks.runWriter
-      .mockResolvedValueOnce("id1")
-      .mockResolvedValueOnce("id2")
-      .mockResolvedValueOnce("id2b")
-      .mockResolvedValueOnce("id3");
+    mocks.runWriter.mockImplementation(async (_leadId: string, opts: { sequencePosition?: number; forceNewAngle?: boolean }) => {
+      if (opts.forceNewAngle) return "id2b";
+      if (opts.sequencePosition === 1) return "id1";
+      if (opts.sequencePosition === 2) return "id2";
+      return "id3";
+    });
     mocks.outreachFindFirst
       .mockResolvedValueOnce({
         id: "id1",
@@ -107,12 +111,16 @@ describe("runWriterSequence similarity gate", () => {
 
     expect(ids).toEqual(["id1", "id2b", "id3"]);
     expect(mocks.runWriter).toHaveBeenCalledTimes(4);
-    expect(mocks.runWriter.mock.calls[2][1]).toMatchObject({
-      sequencePosition: 2,
-      forceNewAngle: true,
-      originalEmailBody: E1,
-      originalEmailSubject: "Send happiness this Diwali, Vijetha",
-    });
+    expect(mocks.runWriter.mock.calls.map((c) => c[1])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sequencePosition: 2,
+          forceNewAngle: true,
+          originalEmailBody: E1,
+          originalEmailSubject: "Send happiness this Diwali, Vijetha",
+        }),
+      ]),
+    );
   });
 
   it("does not regenerate when E2 and E3 are distinct", async () => {
@@ -132,5 +140,57 @@ describe("runWriterSequence similarity gate", () => {
     expect(ids).toEqual(["id1", "id2", "id3"]);
     expect(mocks.runWriter).toHaveBeenCalledTimes(3);
     expect(mocks.outreachFindMany).not.toHaveBeenCalled();
+  });
+
+  it("forwards writerMode to every sequence step", async () => {
+    mocks.runWriter.mockResolvedValueOnce("id1").mockResolvedValueOnce("id2").mockResolvedValueOnce("id3");
+    mocks.outreachFindFirst
+      .mockResolvedValueOnce({
+        id: "id1",
+        emailBody: E1,
+        subjectA: "Send happiness this Diwali, Vijetha",
+        sequencePosition: 1,
+      })
+      .mockResolvedValueOnce({ id: "id2", emailBody: E2_DISTINCT, sequencePosition: 2 })
+      .mockResolvedValueOnce({ id: "id3", emailBody: E3, sequencePosition: 3 });
+
+    await runWriterSequence("lead-1", { writerMode: "ai", outreachTemplate: "meet_online" });
+
+    expect(mocks.runWriter.mock.calls[0][1]).toMatchObject({
+      sequencePosition: 1,
+      writerMode: "ai",
+      outreachTemplate: "meet_online",
+    });
+    expect(mocks.runWriter.mock.calls[1][1]).toMatchObject({
+      sequencePosition: 2,
+      writerMode: "ai",
+    });
+    expect(mocks.runWriter.mock.calls[2][1]).toMatchObject({
+      sequencePosition: 3,
+      writerMode: "ai",
+    });
+  });
+
+  it("forwards writerMode when regenerating E2", async () => {
+    mocks.outreachFindMany.mockResolvedValue([
+      {
+        id: "id1",
+        emailBody: E1,
+        subjectA: "Send happiness this Diwali, Vijetha",
+        sequencePosition: 1,
+      },
+    ]);
+    mocks.runWriter.mockResolvedValueOnce("id2");
+
+    await regenerateSequenceStep("lead-1", 2, { writerMode: "ai" });
+
+    expect(mocks.runWriter).toHaveBeenCalledWith(
+      "lead-1",
+      expect.objectContaining({
+        sequencePosition: 2,
+        writerMode: "ai",
+        followUpMode: "follow_up",
+      }),
+    );
   });
 });

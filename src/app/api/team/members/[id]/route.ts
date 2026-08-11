@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { db, orgMembers } from "@/db";
+import { db, orgMembers, teamMembers, users } from "@/db";
 import { and, eq } from "drizzle-orm";
 import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { canManageTeam, canChangeMemberRole } from "@/lib/auth/platform";
 import { assertNotLastOwner } from "@/lib/auth/org-members";
+import { parseTeamLinkedIn } from "@/lib/linkedin/profile-url";
 import { handleApiError } from "@/lib/api-errors";
 import type { TenantRole } from "@/lib/tenant";
 
@@ -17,7 +18,7 @@ export async function PATCH(req: Request, { params }: Params) {
     }
 
     const { id: memberId } = await params;
-    const body = (await req.json()) as { role?: TenantRole; status?: "active" | "disabled" };
+    const body = (await req.json()) as { role?: TenantRole; status?: "active" | "disabled"; linkedIn?: string | null };
 
     const [member] = await db
       .select({ id: orgMembers.id, role: orgMembers.role, userId: orgMembers.userId })
@@ -40,11 +41,30 @@ export async function PATCH(req: Request, { params }: Params) {
     if (body.role) updates.role = body.role;
     if (body.status) updates.status = body.status;
 
-    if (Object.keys(updates).length === 0) {
+    let linkedIn: string | null | undefined;
+    if (body.linkedIn !== undefined) {
+      try {
+        linkedIn = parseTeamLinkedIn(body.linkedIn);
+      } catch (e) {
+        return NextResponse.json({ error: e instanceof Error ? e.message : "Invalid LinkedIn URL" }, { status: 400 });
+      }
+    }
+
+    if (Object.keys(updates).length === 0 && linkedIn === undefined) {
       return NextResponse.json({ error: "No updates provided" }, { status: 400 });
     }
 
-    await db.update(orgMembers).set(updates).where(eq(orgMembers.id, memberId));
+    if (Object.keys(updates).length > 0) {
+      await db.update(orgMembers).set(updates).where(eq(orgMembers.id, memberId));
+    }
+
+    if (linkedIn !== undefined) {
+      await db.update(users).set({ linkedIn }).where(eq(users.id, member.userId));
+      await db
+        .update(teamMembers)
+        .set({ linkedInUrl: linkedIn, updatedAt: new Date() })
+        .where(eq(teamMembers.userId, member.userId));
+    }
 
     return NextResponse.json({ ok: true });
   } catch (e) {

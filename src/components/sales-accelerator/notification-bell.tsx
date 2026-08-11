@@ -6,7 +6,12 @@ import { Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/hooks/use-notifications";
 
-export function NotificationBell() {
+type Props = {
+  compact?: boolean;
+  className?: string;
+};
+
+export function NotificationBell({ compact = false, className }: Props) {
   const { notifications, unreadCount, markRead, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -21,14 +26,17 @@ export function NotificationBell() {
   }, [open]);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className={cn("relative", className)} ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="relative flex size-10 items-center justify-center rounded-full border border-brand-border bg-white text-brand-ink shadow-[var(--shadow-brand-sm)] hover:bg-brand-canvas"
+        className={cn(
+          "relative flex items-center justify-center rounded-full border border-brand-border bg-white text-brand-ink shadow-[var(--shadow-brand-sm)] hover:bg-brand-canvas",
+          compact ? "size-8" : "size-9",
+        )}
         aria-label="Notifications"
       >
-        <Bell className="size-4" />
+        <Bell className={cn(compact ? "size-3.5" : "size-4")} />
         {unreadCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-brand-stratus-salmon text-[9px] font-bold text-white">
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -37,7 +45,7 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-[320px] overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-md)]">
+        <div className="absolute bottom-full left-0 z-50 mb-2 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-md)] lg:bottom-auto lg:left-full lg:top-0 lg:mb-0 lg:ml-2">
           <div className="flex items-center justify-between border-b border-brand-border px-4 py-2.5">
             <span className="text-[13px] font-bold text-brand-ink">Notifications</span>
             {unreadCount > 0 && (

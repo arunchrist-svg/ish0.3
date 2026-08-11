@@ -4,6 +4,7 @@ import {
   companyCityMatchesSelection,
   expandCitySearchTerms,
   isNationwideSelection,
+  selectPeopleForScoutCities,
 } from "@/lib/enrichment/city-search";
 
 describe("companyCityMatchesSelection", () => {
@@ -49,5 +50,39 @@ describe("expandCitySearchTerms", () => {
     expect(terms).toContain("Hyderabad");
     expect(citySearchClause(["Telangana"])).toContain("Hyderabad");
     expect(citySearchClause(["Telangana"])).not.toContain("Adilabad");
+  });
+});
+
+describe("selectPeopleForScoutCities", () => {
+  it("keeps India HQ DMs when the scout city is a plant location", () => {
+    const result = selectPeopleForScoutCities(
+      [
+        { name: "Meera", location: "Bengaluru, Karnataka", matchScore: 80 },
+        { name: "Arjun", location: "Chennai, Tamil Nadu", matchScore: 70 },
+      ],
+      ["Hosur"],
+    );
+    expect(result.relaxedToIndia).toBe(true);
+    expect(result.people.map((p) => p.name)).toEqual(["Meera", "Arjun"]);
+  });
+
+  it("still drops clearly foreign people", () => {
+    const result = selectPeopleForScoutCities(
+      [{ name: "Christine", location: "Greater Tampa Bay Area", matchScore: 60 }],
+      ["Hosur"],
+    );
+    expect(result.people).toHaveLength(0);
+  });
+
+  it("prefers people in the selected city when any match", () => {
+    const result = selectPeopleForScoutCities(
+      [
+        { name: "Local", location: "Hosur, Tamil Nadu", matchScore: 70 },
+        { name: "HQ", location: "Bengaluru, Karnataka", matchScore: 90 },
+      ],
+      ["Hosur"],
+    );
+    expect(result.relaxedToIndia).toBe(false);
+    expect(result.people.map((p) => p.name)).toEqual(["Local"]);
   });
 });

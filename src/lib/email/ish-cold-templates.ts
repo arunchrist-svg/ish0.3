@@ -1,3 +1,5 @@
+import { companyNameForEmail } from "@/lib/email/company-display-name";
+
 /** India Sweet House sequences from ISH_Cold_Email_Templates.md. Fill name/company only. */
 
 export type IshFillParams = {
@@ -11,18 +13,28 @@ export type IshFillParams = {
 
 type IshEmail = { subject: string; body: string };
 
-function signOff(sender: string): string {
-  return `Thanks & Regards\n${sender}`;
+function signOff(sender: string, brand: string, style: "thanks" | "best" = "thanks"): string {
+  const name = sender.trim() || "Srilaksha";
+  if (style === "best") return `Best,\n${name}\n${brand}`;
+  return `Thanks & Regards\n${name}\n${brand}`;
 }
 
 function applyCta(paragraphs: string, templateId?: string | null): string {
+  const tastingCta =
+    /Since tasting is believing, I would love to send a sample box to your office on us\. What is the best address to ship your sample box\?/;
   if (templateId === "meet_online") {
+    if (tastingCta.test(paragraphs)) {
+      return paragraphs.replace(tastingCta, "Open to a 15-minute online walkthrough this week?");
+    }
     if (/\n[^\n]+\?\s*$/.test(paragraphs)) {
       return paragraphs.replace(/\n[^\n]+\?\s*$/, "\nOpen to a 15-minute online walkthrough this week?");
     }
     return `${paragraphs}\n\nOpen to a 15-minute online walkthrough this week?`;
   }
   if (templateId === "meet_in_person") {
+    if (tastingCta.test(paragraphs)) {
+      return paragraphs.replace(tastingCta, "Open to a brief in-person tasting at your office?");
+    }
     if (/\n[^\n]+\?\s*$/.test(paragraphs)) {
       return paragraphs.replace(/\n[^\n]+\?\s*$/, "\nOpen to a brief in-person tasting at your office?");
     }
@@ -31,16 +43,22 @@ function applyCta(paragraphs: string, templateId?: string | null): string {
   return paragraphs;
 }
 
-function wrap(first: string, sender: string, paragraphs: string): string {
-  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender)}`;
+function wrap(
+  first: string,
+  sender: string,
+  brand: string,
+  paragraphs: string,
+  closing: "thanks" | "best" = "thanks",
+): string {
+  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing)}`;
 }
 
 /** Sequences 1, 2, 3 from the ISH cold-email file. */
 export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
   const first = params.contactFirstName || "there";
-  const company = params.companyName?.trim() || "your team";
-  const sender = params.senderFirstName;
-  const brand = params.brandName;
+  const company = companyNameForEmail(params.companyName);
+  const sender = params.senderFirstName?.trim() || "Srilaksha";
+  const brand = params.brandName?.trim() || "India Sweet House";
   const step = params.sequencePosition >= 3 ? 3 : params.sequencePosition === 2 ? 2 : 1;
   const cta = step === 1 ? params.templateId : undefined;
 
@@ -48,52 +66,53 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
     [
       {
         subject: `Send happiness this Diwali, ${first}`,
-        paragraphs: `Most corporate gifts get opened and forgotten. Ours get opened and remembered: pure-ghee sweets, handcrafted, the taste of an actual festival.\n\nDon't take our word for it. Let us send ${company} a taste first.\n\nWant a sampler box on your desk this week?`,
+        paragraphs: `Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and authentic for your team this year.\n\nAt ${brand}, we handcraft authentic traditional sweets. We go straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. It is just fresh milk, 100% pure ghee, and a taste that stands out.\n\nSince tasting is believing, I would love to send a sample box to your office on us. What is the best address to ship your sample box?`,
       },
       {
         subject: `Re: Send happiness this Diwali, ${first}`,
-        paragraphs: `Following up on my note below. Diwali gifting always sneaks up faster than expected, and our tasting slots are filling up.\n\nShould I go ahead and ship a free sampler to ${company}, no strings attached?`,
+        paragraphs: `What sets ${brand} apart for Diwali is the farm-to-counter pipeline: organic milk from our own dairy, mithai prepared fresh daily with zero preservatives, and hygiene standards strong enough for exports to the USA and Australia.\n\nThat purity is what teams and clients taste in every box.\n\nHappy to send ${company} a small tasting box so you can judge for yourself. Shall I ship one this week?`,
       },
       {
         subject: `Re: Send happiness this Diwali, ${first}`,
-        paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company}'s festive gifting comes up later this season, we'd love to be considered.\n\nI won't email further, but the offer for a free tasting box stays open if you ever want to reach out.\n\nWishing you a great Diwali either way.`,
+        paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company}'s festive gifting comes up later this season, ${brand} would be glad to help with farm-to-counter mithai made from our own organic dairy.\n\nI won't email further, but a tasting box stays open if you ever want to reach out.\n\nWishing you a great Diwali either way.`,
       },
     ],
     [
       {
         subject: `${company}, make someone's Diwali better`,
-        paragraphs: `A good gift doesn't just say "thank you." It makes someone genuinely happy. That's what ${brand} delivers this festive season, every single box.\n\nTaste it before you trust it. Send me an address and I'll ship a sampler this week.`,
+        paragraphs: `A good Diwali gift for employees and clients should feel authentic. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy rather than outsourced supply.\n\nTaste it before you trust it. Send me an address and I'll ship a sampler this week.`,
       },
       {
         subject: `Re: ${company}, make someone's Diwali better`,
-        paragraphs: `Just circling back. Happy to send that free sampler over so ${company} can taste it firsthand before deciding anything.\n\nWhere should I have it delivered?`,
+        paragraphs: `${brand} is known for premium mithai with real range: more than 200 traditional sweets and namkeens, plus diet-conscious picks like Jaggery Kaju Katli and Sugarfree Honey Laddu, all rooted in our own organic dairy.\n\nIf ${company} wants Diwali gifting that feels thoughtful and premium, a tasting box shows it fastest.\n\nWhere should I send one?`,
       },
       {
         subject: `Re: ${company}, make someone's Diwali better`,
-        paragraphs: `I'll stop following up after this one. If a tasting box or a gifting quote is useful down the line, just reply and I'll get it moving.\n\nI won't email further, but the door stays open. Wishing ${company} a happy Diwali.`,
+        paragraphs: `I'll stop following up after this one. If a tasting box or gifting quote is useful later, ${brand} is here with fresh daily mithai, zero preservatives, and authentic Diwali sweetness.\n\nI won't email further, but the door stays open. Wishing ${company} a happy Diwali.`,
       },
     ],
     [
       {
         subject: "Happiness, handcrafted",
-        paragraphs: `No fillers. No mass production. Just pure-ghee sweets made to make people happy, the way Diwali gifting used to feel.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
+        paragraphs: `No fillers. No mass production. For Diwali gifting to employees and clients, ${brand} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
       },
       {
         subject: "Re: Happiness, handcrafted",
-        paragraphs: `Wanted to check back in. The sampler offer is still open, no cost, no commitment, just a chance to taste what we make before Diwali orders lock in.\n\nShould I send one to ${company}?`,
+        paragraphs: `For Diwali, authenticity sells. ${brand} sources organic milk from its own dairy farm, prepares mithai fresh daily without chemical preservatives, and holds export-grade hygiene for markets like the USA and Australia.\n\nThat is why the taste holds up in a corporate gift box.\n\nShould I send ${company} a tasting box?`,
       },
       {
         subject: "Re: Happiness, handcrafted",
-        paragraphs: `I'll leave it here so I'm not cluttering your inbox further. If festive gifting for ${company} comes up this season, we'd be glad to help.\n\nI won't email further, but feel free to reach out anytime. Happy Diwali in advance.`,
+        paragraphs: `I'll leave it here so I'm not cluttering your inbox further. If festive gifting for ${company} comes up this season, ${brand} can help with export-grade hygiene and organic milk from our own dairy.\n\nI won't email further, but feel free to reach out anytime. Happy Diwali in advance.`,
       },
     ],
   ];
 
-  return sequences.map((seq) => {
+  return sequences.map((seq, i) => {
     const email = seq[step - 1];
+    const closing = step === 1 && i === 0 ? "best" : "thanks";
     return {
       subject: email.subject,
-      body: wrap(first, sender, applyCta(email.paragraphs, cta)),
+      body: wrap(first, sender, brand, applyCta(email.paragraphs, cta), closing),
     };
   });
 }

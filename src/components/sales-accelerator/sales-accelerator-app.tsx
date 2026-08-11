@@ -49,7 +49,7 @@ export function SalesAcceleratorApp() {
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingLead, setEditingLead] = useState<LeadDetailRecord | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [queueSort, setQueueSort] = useState<LeadQueueSort>("score_desc");
+  const [queueSort, setQueueSort] = useState<LeadQueueSort>("score");
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTop = useRef(0);

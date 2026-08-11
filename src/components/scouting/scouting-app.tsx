@@ -23,9 +23,15 @@ import {
 } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Compass, MapPin, MoreVertical, Search, Users } from "lucide-react";
-import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS } from "@/lib/scouting-data";
+import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS } from "@/lib/scouting-data";
+import {
+  companyPeopleBucket,
+  peoplePerCompanyLimit,
+  selectPeopleByCompanyCap,
+} from "@/lib/enrichment/people-diversity";
 import {
   locationOptionsFromSelection,
+  scoutPickerAllowedLabels,
   type ScoutGeoSelection,
   type ScoutLocationOption,
 } from "@/lib/geo/india";
@@ -216,6 +222,21 @@ function mergeCompanies(existing: CompanyShape[], incoming: CompanyShape[]): Com
   return merged;
 }
 
+function capFetchedPeople(
+  people: ReturnType<typeof toPersonShape>[],
+  selected: CompanyShape[],
+  leadsLimit: number,
+) {
+  const companyById = new Map(selected.map((c) => [c.id, c]));
+  return selectPeopleByCompanyCap(people, {
+    perCompany: peoplePerCompanyLimit(leadsLimit),
+    bucketOf: (person) => {
+      const company = companyById.get(person.companyId);
+      return companyPeopleBucket(company?.name ?? "", person.companyId);
+    },
+  });
+}
+
 function dedupeCompanyShapes(shapes: CompanyShape[]): CompanyShape[] {
   const seen = new Map<string, number>();
   return shapes.map((shape) => {
@@ -231,14 +252,18 @@ function dedupeCompanyShapes(shapes: CompanyShape[]): CompanyShape[] {
 ───────────────────────────────────────────── */
 
 function RolePickerModal({
+  initialSeniority = [],
+  initialDepartments = [],
   onConfirm,
   onSkip,
 }: {
+  initialSeniority?: string[];
+  initialDepartments?: string[];
   onConfirm: (seniority: string[], departments: string[]) => void;
   onSkip: () => void;
 }) {
-  const [chosenSeniority, setChosenSeniority] = useState<string[]>([]);
-  const [chosenDepts, setChosenDepts] = useState<string[]>([]);
+  const [chosenSeniority, setChosenSeniority] = useState<string[]>(initialSeniority);
+  const [chosenDepts, setChosenDepts] = useState<string[]>(initialDepartments);
 
   function toggleSeniority(s: string) {
     setChosenSeniority((prev) =>
@@ -260,7 +285,7 @@ function RolePickerModal({
         <div className="border-b border-brand-border px-6 py-4">
           <p className="text-[15px] font-bold text-brand-ink">Who are you looking for?</p>
           <p className="mt-0.5 text-[12px] text-brand-ink-soft">
-            Select role filters to target the right decision-makers.
+            Pick seniority and department. We only show matching decision-makers, senior-most first.
           </p>
         </div>
 
@@ -328,7 +353,7 @@ function RolePickerModal({
             onClick={onSkip}
             className="text-[12px] font-semibold text-brand-ink-faint hover:text-brand-ink"
           >
-            Skip — find all roles
+            Skip, find any role
           </button>
           <button
             type="button"
@@ -422,6 +447,7 @@ export function ScoutingApp() {
   const [cities, setCities] = useState<string[]>([]);
   const [locationOptions, setLocationOptions] = useState<ScoutLocationOption[]>([]);
   const [industries, setIndustries] = useState<string[]>([]);
+  const [employeeBands, setEmployeeBands] = useState<string[]>([]);
   const [seniority, setSeniority] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [dataMode, setDataMode] = useState<DataMode>("free");
@@ -538,7 +564,7 @@ export function ScoutingApp() {
 
   function applyLocationOptions(locations: ScoutLocationOption[]) {
     setLocationOptions(locations);
-    const allowed = new Set(locations.map((l) => l.label));
+    const allowed = scoutPickerAllowedLabels(locations);
     setCities((prev) => {
       const kept = prev.filter((c) => allowed.has(c));
       if (kept.length) return kept;
@@ -570,7 +596,6 @@ export function ScoutingApp() {
           | null
           | undefined;
         if (!defaults) return;
-        setIndustries((prev) => (prev.length ? prev : defaults.industries ?? []));
         setDepartments((prev) => (prev.length ? prev : defaults.departments ?? []));
         setSeniority((prev) => (prev.length ? prev : defaults.seniority ?? []));
       } catch {
@@ -609,6 +634,7 @@ export function ScoutingApp() {
     async (
       nextCities: string[],
       nextIndustries: string[],
+      nextEmployeeBands: string[],
       options?: { append?: boolean; skipInternal?: boolean; excludeNames?: string[]; seed?: number; forceMainLoader?: boolean; companyName?: string },
     ) => {
       const append = options?.append ?? false;
@@ -627,6 +653,7 @@ export function ScoutingApp() {
           skipInternal: options?.skipInternal ?? append,
           fetchSeed: seed,
           limit: scoutCompaniesLimit,
+          employeeBands: nextEmployeeBands,
           ...(options?.companyName ? { companyName: options.companyName } : {}),
         });
 
@@ -697,6 +724,12 @@ export function ScoutingApp() {
     [dataMode, companies, fetchSeed, scoutCompaniesLimit],
   );
 
+  function toggleEmployeeBand(bandId: string) {
+    setEmployeeBands((prev) =>
+      prev.includes(bandId) ? prev.filter((id) => id !== bandId) : [...prev, bandId],
+    );
+  }
+
   function handleCitiesChange(nextCities: string[]) {
     setCities(nextCities);
   }
@@ -741,7 +774,7 @@ export function ScoutingApp() {
     setFetchMessage(null);
 
     // Fresh scout with current filters — Load More handles appending more results.
-    loadCompanies(cities, industries, {
+    loadCompanies(cities, industries, employeeBands, {
       append: false,
       skipInternal: true,
       excludeNames: [],
@@ -754,7 +787,7 @@ export function ScoutingApp() {
     setSelectedCompanyIds(new Set());
     setFetchSeed(0);
     setDiscoveryNotice(null);
-    loadCompanies(cities, industries, { append: false, skipInternal: false, excludeNames: [], seed: 0 });
+    loadCompanies(cities, industries, employeeBands, { append: false, skipInternal: false, excludeNames: [], seed: 0 });
   }
 
   function handleScoutModeChange(mode: ScoutMode) {
@@ -821,7 +854,7 @@ export function ScoutingApp() {
       }
     }
 
-    loadCompanies(cities, industries, {
+    loadCompanies(cities, industries, employeeBands, {
       append: false,
       skipInternal: false,
       excludeNames: [],
@@ -833,7 +866,7 @@ export function ScoutingApp() {
   function handleLoadMore() {
     const nextSeed = fetchSeed + 1;
     setFetchSeed(nextSeed);
-    loadCompanies(cities, industries, {
+    loadCompanies(cities, industries, employeeBands, {
       append: true,
       skipInternal: true,
       excludeNames: companies.map((c) => c.name),
@@ -847,7 +880,7 @@ export function ScoutingApp() {
     setPrimaryPersonId(null);
     const nextSeed = fetchSeed + 1;
     setFetchSeed(nextSeed);
-    loadCompanies(cities, industries, {
+    loadCompanies(cities, industries, employeeBands, {
       append: true,
       skipInternal: true,
       excludeNames: companies.map((c) => c.name),
@@ -902,14 +935,9 @@ export function ScoutingApp() {
     const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
     if (!selected.length) return;
 
-    // If no roles selected, show role picker first
-    if (seniority.length === 0 && departments.length === 0) {
-      setPendingFetchIds(new Set(selected.map((c) => c.id)));
-      setShowRolePicker(true);
-      return;
-    }
-
-    void runFetchLeads(selected, seniority, departments);
+    // Always ask for people filters before fetching (Search mode has no People pill).
+    setPendingFetchIds(new Set(selected.map((c) => c.id)));
+    setShowRolePicker(true);
   }
 
   function handleRolePickerConfirm(chosenSeniority: string[], chosenDepartments: string[]) {
@@ -933,6 +961,24 @@ export function ScoutingApp() {
     setExistingContactNames(new Set(leadsData.leads.map((l) => l.name.toLowerCase())));
   }
 
+  function applyResolvedCompanyDomain(companyId: string, domain?: string, website?: string) {
+    if (!domain && !website) return;
+    setCompanies((prev) =>
+      prev.map((c) => {
+        if (c.id !== companyId) return c;
+        return {
+          ...c,
+          domain: domain ?? c.domain,
+          _raw: {
+            ...c._raw,
+            domain: domain ?? c._raw.domain,
+            website: website ?? c._raw.website,
+          },
+        };
+      }),
+    );
+  }
+
   async function fetchLeadsParallel(
     selected: CompanyShape[],
     activeSeniority: string[],
@@ -941,17 +987,18 @@ export function ScoutingApp() {
     peopleWarnings: string[],
   ) {
     let doneCount = 0;
-    await mapWithConcurrency(selected, 5, async (company) => {
-      const { people: results, warnings, errors } = await scoutPeople({
+    await mapWithConcurrency(selected, 8, async (company) => {
+      const { people: results, warnings, errors, resolvedDomain, resolvedWebsite } = await scoutPeople({
         companyName: company.name,
         companyDomain: resolveCompanyDomain(company._raw),
         companyWebsite: company._raw.website,
         dataMode,
-        limit: scoutLeadsLimit,
+        limit: peoplePerCompanyLimit(scoutLeadsLimit),
         seniority: activeSeniority,
         departments: activeDepartments,
         cities,
       });
+      applyResolvedCompanyDomain(company.id, resolvedDomain, resolvedWebsite);
       peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
       const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
       allPeople.push(...shaped);
@@ -990,7 +1037,7 @@ export function ScoutingApp() {
                 website: c._raw.website,
               })),
               dataMode,
-              limit: scoutLeadsLimit,
+              limit: peoplePerCompanyLimit(scoutLeadsLimit),
               seniority: activeSeniority,
               departments: activeDepartments,
               cities,
@@ -998,6 +1045,7 @@ export function ScoutingApp() {
             (companyId, batchResult) => {
               const company = selected.find((c) => c.id === companyId);
               if (!company) return;
+              applyResolvedCompanyDomain(company.id, batchResult.resolvedDomain, batchResult.resolvedWebsite);
               peopleWarnings.push(...(batchResult.warnings ?? []), ...(batchResult.errors ?? []));
               const shaped = batchResult.people.map((p, j) => toPersonShape(p, company.id, j));
               allPeople.push(...shaped);
@@ -1023,6 +1071,11 @@ export function ScoutingApp() {
       void leadsDedupePromise.then((leadsData) => {
         if (leadsData) applyLeadsDedupe(leadsData);
       });
+
+      const cappedPeople = capFetchedPeople(allPeople, selected, scoutLeadsLimit);
+      allPeople.length = 0;
+      allPeople.push(...cappedPeople);
+      setPeople(cappedPeople);
 
       if (allPeople[0]) {
         if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
@@ -1186,6 +1239,7 @@ export function ScoutingApp() {
     view,
     cities,
     industries,
+    employeeBands,
     seniority,
     departments,
     selectedCount: view === "companies" ? selectedCompanyIds.size : selectedPersonIds.size,
@@ -1199,6 +1253,7 @@ export function ScoutingApp() {
     companySearchQuery,
     onCitiesChange: handleCitiesChange,
     onIndustryToggle: toggleIndustry,
+    onEmployeeBandToggle: toggleEmployeeBand,
     onSeniorityToggle: toggleSeniority,
     onDepartmentToggle: toggleDepartment,
     onFetchNewCompanies: handleFetchNewCompanies,
@@ -1211,7 +1266,7 @@ export function ScoutingApp() {
     onCompanySearchQueryChange: setCompanySearchQuery,
     onSearchByName: handleSearchByName,
     onFilterPanelChange: setFilterPanelOpen,
-    locationOptions: locationOptions.map((o) => ({ label: o.label, group: o.group })),
+    locationOptions,
   } as const;
 
   const companiesResults = view === "companies" ? (
@@ -1220,6 +1275,9 @@ export function ScoutingApp() {
         hints={[
           cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
           industries.length ? `Filtering ${industries.join(", ")}` : "Matching all industries",
+          employeeBands.length
+            ? `Matching ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
+            : "Any company scale",
           "Ranking by fit for outreach",
         ]}
       />
@@ -1245,6 +1303,9 @@ export function ScoutingApp() {
             {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
             {" · "}{cities.join(", ")}
             {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
+            {employeeBands.length > 0
+              ? ` · ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
+              : ""}
             {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
           </div>
           <button
@@ -1309,7 +1370,12 @@ export function ScoutingApp() {
               ? `Finding decision-makers (${fetchProgress.done} of ${fetchProgress.total} companies)`
               : "Finding decision-makers"
           }
-          hints={["Searching LinkedIn profiles", "Matching seniority & titles", "Ranking key decision-makers"]}
+          progress={fetchProgress.total > 0 ? fetchProgress : undefined}
+          hints={[
+            "Searching LinkedIn for decision-makers",
+            "Matching seniority & titles",
+            "Streaming results as each company finishes",
+          ]}
           compact
         />
       ) : people.length === 0 ? (
@@ -1337,6 +1403,8 @@ export function ScoutingApp() {
 
   const rolePicker = showRolePicker ? (
     <RolePickerModal
+      initialSeniority={seniority}
+      initialDepartments={departments}
       onConfirm={handleRolePickerConfirm}
       onSkip={() => {
         setShowRolePicker(false);

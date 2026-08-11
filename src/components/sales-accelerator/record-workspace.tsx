@@ -21,7 +21,6 @@ import { hasUsableContactEmail } from "@/lib/enrichment/contact-emails";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
 import { WorkspaceLoader } from "@/components/sales-accelerator/workspace-loader";
 import { WriterPlanCard } from "@/components/sales-accelerator/writer-plan-card";
-import { RelatedLeadsPanel } from "@/components/sales-accelerator/related-leads-panel";
 
 type Props = {
   leadId: string;
@@ -95,14 +94,12 @@ function toQueueItem(lead: LeadDetailRecord) {
   };
 }
 
-const TABS = ["Summary", "Email", "Relationship Analytics", "Details", "Related"] as const;
+const TABS = ["Summary", "Email", "Relationship Analytics"] as const;
 
 const TAB_SHORT: Record<(typeof TABS)[number], string> = {
   Summary: "Summary",
   Email: "Email",
   "Relationship Analytics": "Network",
-  Details: "Details",
-  Related: "Related",
 };
 
 const TAB_FROM_SHORT = Object.fromEntries(
@@ -393,15 +390,14 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
         </TabsContent>
 
         <TabsContent value="Relationship Analytics" className="mt-0 animate-brand-tab-in">
-          <RelationshipAnalyticsPanel key={leadId} leadId={leadId} />
-        </TabsContent>
-
-        <TabsContent value="Details" className="px-[22px] py-12 text-center text-brand-ink-soft animate-brand-tab-in">
-            Details view coming soon.
-          </TabsContent>
-
-        <TabsContent value="Related" className="mt-0 animate-brand-tab-in">
-          <RelatedLeadsPanel leadId={leadId} />
+          <RelationshipAnalyticsPanel
+            key={leadId}
+            leadId={leadId}
+            onMessageTarget={() => {
+              setActiveTab("Email");
+              syncTabToUrl("Email");
+            }}
+          />
         </TabsContent>
         </Tabs>
       </div>

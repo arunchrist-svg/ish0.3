@@ -15,11 +15,13 @@ export async function GET() {
     const members = await db
       .select({
         id: orgMembers.id,
+        userId: orgMembers.userId,
         role: orgMembers.role,
         status: orgMembers.status,
         createdAt: orgMembers.createdAt,
         name: users.name,
         email: users.email,
+        linkedIn: users.linkedIn,
       })
       .from(orgMembers)
       .innerJoin(users, eq(users.id, orgMembers.userId))

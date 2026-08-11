@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   compactSearchTermsForScoutLabels,
+  districtGroupsForScoutOptions,
+  isScoutDistrictPicked,
   matchTermsForScoutLabels,
   resolveScoutLabel,
   scoutGeoFromStateAndDistrictPicks,
   searchTermsForScoutLabels,
+  toggleScoutDistrictPick,
 } from "@/lib/geo/india";
 
 describe("scout geo label expansion", () => {
@@ -44,5 +47,35 @@ describe("scout geo label expansion", () => {
     });
     expect(narrowed.stateIds).toEqual([]);
     expect(narrowed.districtIds).toEqual(["TS-hyderabad"]);
+  });
+
+  it("expands a selected state into its districts for the picker", () => {
+    const groups = districtGroupsForScoutOptions([{ label: "Karnataka", kind: "state" }]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.state.id).toBe("KA");
+    expect(groups[0]?.districts.length).toBeGreaterThan(5);
+  });
+
+  it("only lists districts that were added in Settings", () => {
+    const groups = districtGroupsForScoutOptions([
+      { label: "Karnataka", kind: "state" },
+      { label: "Hosur", kind: "district" },
+      { label: "Madras", kind: "district" },
+    ]);
+    const byState = Object.fromEntries(groups.map((g) => [g.state.id, g.districts.map((d) => d.displayName)]));
+    expect(byState.KA?.length).toBeGreaterThan(5);
+    expect(byState.TN?.sort()).toEqual(["Hosur", "Madras"].sort());
+  });
+
+  it("unselecting one Karnataka district keeps Hosur and the other KA districts", () => {
+    const next = toggleScoutDistrictPick(["Karnataka", "Hosur"], "KA-bengaluru-urban");
+    expect(next).toContain("Hosur");
+    expect(next).not.toContain("Karnataka");
+    const bengaluru = resolveScoutLabel("Bengaluru");
+    expect(bengaluru?.kind).toBe("district");
+    if (bengaluru?.kind === "district") {
+      expect(isScoutDistrictPicked(next, bengaluru.district)).toBe(false);
+    }
+    expect(next.length).toBeGreaterThan(2);
   });
 });

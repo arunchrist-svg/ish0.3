@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Check, Mail } from "lucide-react";
+import { Check, Eye, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { BarNode, EmailThread } from "@/lib/api-client";
 
 type Props = {
   thread?: EmailThread;
-  statusSubtitle: string;
   processActions?: ReactNode;
   selectedNodeId?: string;
   onNodeSelect?: (nodeId: string) => void;
@@ -29,18 +28,27 @@ function BarStepper({
   draftReplyLoading?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-nowrap items-center gap-1.5">
       {nodes.map((node, i) => {
         const selected = selectedNodeId === node.id;
         const isDone = node.state === "done";
+        const opened = Boolean(node.openedAt);
         return (
-          <div key={node.id} className="flex items-center gap-2">
+          <div key={node.id} className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => onNodeSelect?.(node.id)}
+              title={
+                opened
+                  ? "Opened"
+                  : isDone && node.kind === "sent"
+                    ? "Sent · Not opened"
+                    : undefined
+              }
               className={cn(
                 "flex h-7 items-center gap-1 rounded-full px-2.5 text-[9px] font-bold uppercase tracking-wide transition-colors",
-                isDone && "border border-brand-stratus-blue/25 bg-brand-green-soft text-brand-stratus-blue",
+                opened && "border border-orange-200 bg-orange-50 text-orange-600",
+                isDone && !opened && "border border-brand-stratus-blue/25 bg-brand-green-soft text-brand-stratus-blue",
                 node.state === "current" && "bg-brand-yellow-soft text-brand-ink ring-2 ring-brand-stratus-yellow/55",
                 node.state === "scheduled" && "border border-dashed border-brand-stratus-blue/35 bg-white text-brand-stratus-blue",
                 node.state === "paused" && "border border-dashed border-brand-stratus-salmon/35 bg-brand-pink-soft/30 text-brand-stratus-salmon",
@@ -48,7 +56,11 @@ function BarStepper({
                 selected && "ring-2 ring-brand-black/15",
               )}
             >
-              {isDone && <Check className="size-3 shrink-0" strokeWidth={2.5} />}
+              {opened ? (
+                <Eye className="size-3 shrink-0" strokeWidth={2.5} />
+              ) : (
+                isDone && <Check className="size-3 shrink-0" strokeWidth={2.5} />
+              )}
               <span>{node.label}</span>
               {node.action === "draft_reply" && (
                 <span
@@ -71,7 +83,7 @@ function BarStepper({
               )}
             </button>
             {i < nodes.length - 1 && (
-              <div className={cn("h-px w-3 rounded-full", isDone ? "bg-brand-stratus-blue/35" : "bg-brand-border")} />
+              <div className={cn("h-px w-3 rounded-full", isDone || opened ? "bg-brand-stratus-blue/35" : "bg-brand-border")} />
             )}
           </div>
         );
@@ -91,18 +103,44 @@ function NodeDetailPanel({ node }: { node: BarNode }) {
           {node.body ?? node.snippet}
         </p>
       )}
-      {node.at && (
-        <p className="mt-3 text-[10px] text-brand-ink-faint">
-          {new Date(node.at).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-        </p>
-      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-brand-ink-faint">
+        {node.at && (
+          <span>
+            {new Date(node.at).toLocaleString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
+        {node.kind === "sent" && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold",
+              node.openedAt
+                ? "bg-orange-50 text-orange-600 ring-1 ring-orange-200/80"
+                : "bg-brand-canvas text-brand-ink-soft ring-1 ring-brand-border",
+            )}
+          >
+            {node.openedAt ? (
+              <>
+                <Eye className="size-2.5" />
+                Opened{" "}
+                {new Date(node.openedAt).toLocaleString("en-IN", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </>
+            ) : (
+              "Not opened"
+            )}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
 export function OutreachJourneyPanel({
   thread,
-  statusSubtitle,
   processActions,
   selectedNodeId,
   onNodeSelect,
@@ -126,23 +164,22 @@ export function OutreachJourneyPanel({
   const selectedNode = thread.barNodes.find((n) => n.id === activeId);
 
   return (
-    <div className="mb-3 lg:mb-4">
-      <div className="border-b border-brand-border/60 bg-white lg:ish-record-card lg:overflow-hidden lg:rounded-[20px] lg:border lg:shadow-[var(--shadow-brand-sm)]">
-        <div className="flex min-w-0 items-center gap-2 overflow-x-auto px-3 py-2 [scrollbar-width:none] lg:gap-3 lg:px-4 lg:py-2.5 [&::-webkit-scrollbar]:hidden">
+    <div className="mb-2 min-w-0 lg:mb-3">
+      <div className="min-w-0 overflow-hidden border-b border-brand-border/60 bg-white lg:ish-record-card lg:rounded-[20px] lg:border lg:shadow-[var(--shadow-brand-sm)]">
+        <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden px-3 py-1.5 lg:gap-2.5 lg:px-4 lg:py-2">
           <div className="flex shrink-0 items-center gap-2">
-            <div className="flex size-7 items-center justify-center rounded-full bg-brand-green-soft">
-              <Mail className="size-3.5 text-brand-stratus-blue" />
+            <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-green-soft">
+              <Mail className="size-3 text-brand-stratus-blue" />
             </div>
-            <div className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap">
-              <span className="text-[13px] font-bold leading-none text-brand-ink">Outreach Queue</span>
-              <span className="text-[10px] text-brand-ink-faint">· {statusSubtitle}</span>
-            </div>
+            <span className="whitespace-nowrap text-[13px] font-bold leading-none text-brand-ink">
+              Outreach Queue
+            </span>
           </div>
 
           {showBar ? (
             <>
               <div className="hidden h-5 w-px shrink-0 bg-brand-border/70 sm:block" aria-hidden />
-              <div className="shrink-0">
+              <div className="min-w-0 shrink overflow-hidden">
                 <BarStepper
                   nodes={thread.barNodes}
                   selectedNodeId={activeId}
@@ -155,9 +192,9 @@ export function OutreachJourneyPanel({
           ) : null}
 
           {processActions ? (
-            <>
-              <div className="ml-auto flex shrink-0 items-center gap-2 pl-2">{processActions}</div>
-            </>
+            <div className="ml-auto flex min-w-0 shrink items-center justify-end gap-1.5 overflow-hidden">
+              {processActions}
+            </div>
           ) : null}
         </div>
 

@@ -122,16 +122,48 @@ const GENERIC_BRAND_TOKENS = new Set([
   "powertrain",
   "pharma",
   "life",
+  "steel",
+  "steels",
+  "foods",
+  "auto",
+  "cement",
+  "mill",
+  "mills",
+  "works",
+  "manufacturing",
+  "industrial",
+  "plant",
+  "energy",
+  "power",
+  "chemical",
+  "chemicals",
+  "metal",
+  "metals",
+  "mining",
+  "textile",
+  "textiles",
+  "construction",
+  "engineering",
+  "logistics",
+  "trading",
+  "holdings",
+  "enterprise",
+  "enterprises",
+  "ventures",
 ]);
+
+export function distinctiveBrandTokens(name: string): string[] {
+  return normalizeCompanyName(name)
+    .split(" ")
+    .filter((token) => token.length >= 3 && !GENERIC_BRAND_TOKENS.has(token));
+}
 
 export function domainBelongsToCompany(domain: string, companyName: string): boolean {
   const slug = domainSlug(domain);
   if (!slug || !companyName.trim()) return false;
   if (nameMatchesQuery(slug, companyName)) return true;
 
-  const tokens = normalizeCompanyName(companyName)
-    .split(" ")
-    .filter((token) => token.length >= 3 && !GENERIC_BRAND_TOKENS.has(token));
+  const tokens = distinctiveBrandTokens(companyName);
   for (const token of tokens) {
     if (token.length >= 4 && (slug.includes(token) || token.includes(slug))) return true;
     if (token.length === 3 && (slug === token || slug.startsWith(token))) return true;
@@ -150,4 +182,20 @@ export function isAcceptableCompanyDomain(domain: string | null | undefined, com
   const tokens = normalizeCompanyName(companyName).split(" ").filter((token) => token.length >= 3);
   if (!tokens[0] || tokens[0].length < 3) return true;
   return domainBelongsToCompany(host, companyName);
+}
+
+export function emailBelongsToCompany(email: string | null | undefined, companyName?: string | null): boolean {
+  const host = email?.split("@")[1]?.trim().toLowerCase();
+  if (!host) return false;
+  return isAcceptableCompanyDomain(host, companyName);
+}
+
+/** Persist only a domain that actually belongs to this company. */
+export function usableStoredDomain(
+  domain: string | null | undefined,
+  companyName: string,
+): string | null {
+  const host = normalizeHost(domain);
+  if (!host || !isAcceptableCompanyDomain(host, companyName)) return null;
+  return host;
 }

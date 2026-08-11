@@ -3,6 +3,7 @@ import { parsePeopleFromSearchResults } from "@/lib/enrichment/people-parser";
 import {
   currentEmployerFromHeadline,
   hitShowsCurrentEmployment,
+  personTitleConflictsWithCompany,
 } from "@/lib/enrichment/person-company-match";
 import {
   isForeignPersonLocation,
@@ -44,6 +45,12 @@ describe("current employer matching", () => {
         "Titan Company",
       ),
     ).toBe(false);
+  });
+
+  it("flags a Tata Steel title on a Hosur Steel / Jindal account", () => {
+    expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Hosur Steel Industries")).toBe(true);
+    expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Tata Steel")).toBe(false);
+    expect(personTitleConflictsWithCompany("Chief Human Resources Officer", "Pavna Industries")).toBe(false);
   });
 
   it("keeps people currently at the target company", () => {

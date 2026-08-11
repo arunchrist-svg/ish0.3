@@ -49,6 +49,7 @@ export const users = pgTable("users", {
   googleId:     text("google_id").unique(),
   platformRole: text("platform_role").notNull().default("user"),
   name:                 text("name").notNull(),
+  linkedIn:             text("linkedin"),
   mustChangePassword:   boolean("must_change_password").notNull().default(false),
   createdAt:            timestamp("created_at").defaultNow().notNull(),
 });
@@ -411,6 +412,7 @@ export const teamMembers = pgTable("team_members", {
   id:              uuid("id").defaultRandom().primaryKey(),
   tenantId:        uuid("tenant_id").notNull().references(() => tenants.id),
   workspaceId:     uuid("workspace_id").notNull().references(() => workspaces.id),
+  userId:          uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   name:            text("name").notNull(),
   email:           text("email"),
   linkedInSub:     text("linkedin_sub").notNull().unique(),
@@ -419,7 +421,9 @@ export const teamMembers = pgTable("team_members", {
   lastImportAt:    timestamp("last_import_at"),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
   updatedAt:       timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: uniqueIndex("team_members_user_id_idx").on(table.userId),
+}));
 
 // ─── LinkedIn Connections (imported 1st-degree network per rep) ───────────────
 export const linkedinConnections = pgTable("linkedin_connections", {

@@ -26,12 +26,18 @@ describe("getWriterFewShotExample", () => {
       "Premium mithai and dry-fruit hampers.",
       "gifting-sweets",
     );
-    expect(example.toLowerCase()).toContain("pure-ghee");
-    expect(example.toLowerCase()).toContain("taste first");
-    expect(example.toLowerCase()).toContain("sampler box");
+    expect(example.toLowerCase()).toContain("forgotten by the next day");
+    expect(example.toLowerCase()).toContain("handcraft authentic traditional sweets");
+    expect(example.toLowerCase()).toContain("sample box to your office on us");
+    expect(example.toLowerCase()).toContain("tasting is believing");
+    expect(example.toLowerCase()).toContain("100% pure ghee");
+    expect(example).toMatch(/^Best,$/m);
+    expect(example.toLowerCase()).toContain("employees and clients");
+    expect(example.toLowerCase()).toContain("organic milk");
+    expect(example.toLowerCase()).toContain("own dairy");
     expect(example).toMatch(/Send happiness this Diwali/i);
     expect(example).toMatch(/No fillers\. No mass production/);
-    expect(example).toMatch(/thank you/);
+    expect(example).toMatch(/zero preservatives/);
     expect(example.toLowerCase()).not.toContain("offers traditional");
     expect(example).not.toMatch(/No worries/i);
   });

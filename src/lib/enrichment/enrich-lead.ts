@@ -2,6 +2,7 @@ import { db, contacts, accounts, leads, enrichmentRuns } from "@/db";
 import { eq } from "drizzle-orm";
 import { enrichContactAccurate, applyVerificationGate } from "./enrich-accurate";
 import { verifyEmail } from "./verify";
+import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
 import { isGenericCompanyEmail, sanitizeEmail, sanitizePhone } from "./validate-contact";
 import {
   shouldAutoAcceptEmail,
@@ -25,9 +26,11 @@ import type { EnrichmentProviderId } from "./enrich-types";
 import {
   type ContactEmailEntry,
   mergeAlternateEmails,
-  withFirstLastSecondaryEmail,
+  refreshPermutationEmails,
 } from "./contact-emails";
 import type { ScoredCandidate } from "./enrich-accurate";
+import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
+import { personTitleConflictsWithCompany } from "@/lib/enrichment/person-company-match";
 
 export type EnrichMode = "free" | "paid";
 
@@ -97,7 +100,8 @@ async function emailsFromCandidates(candidates: ScoredCandidate[]): Promise<Cont
 }
 
 async function fillMissingTitle(input: EnrichmentInput): Promise<string | undefined> {
-  if (input.title?.trim()) return input.title.trim();
+  const existing = sanitizeJobTitle(input.title);
+  if (existing) return existing;
   if (!hasTavilyKey() || !hasLLMKey()) return undefined;
 
   const query = `"${input.name}" "${input.company}" job title role India LinkedIn`;
@@ -120,7 +124,7 @@ Return null if title is not clearly stated. Never invent titles.`,
     });
     const parsed = parseJsonObjectFromLLM(raw);
     const title = typeof parsed.title === "string" ? parsed.title.trim() : "";
-    return title.length >= 3 ? title : undefined;
+    return sanitizeJobTitle(title);
   } catch {
     return undefined;
   }
@@ -140,7 +144,7 @@ export async function enrichPersonContact(params: {
 }): Promise<EnrichContactResult> {
   const input = toEnrichmentInput(params.person, params.company);
   const named = acceptOptions(params.person);
-  let resolvedTitle = params.person.title?.trim() || undefined;
+  let resolvedTitle = sanitizeJobTitle(params.person.title);
 
   if (!resolvedTitle) {
     resolvedTitle = await fillMissingTitle(input);
@@ -149,7 +153,13 @@ export async function enrichPersonContact(params: {
   const existingEmail = sanitizeEmail(params.person.email);
   const existingPhone = sanitizePhone(params.person.phone);
 
-  if (existingEmail && params.mode === "free" && !isGenericCompanyEmail(existingEmail) && !params.refetch) {
+  if (
+    existingEmail &&
+    emailBelongsToCompany(existingEmail, params.company.name) &&
+    params.mode === "free" &&
+    !isGenericCompanyEmail(existingEmail) &&
+    !params.refetch
+  ) {
     const confidence = 60;
     return {
       email: existingEmail,
@@ -176,7 +186,12 @@ export async function enrichPersonContact(params: {
   });
 
   if (!result.contact) {
-    const email = existingEmail && !isGenericCompanyEmail(existingEmail) ? existingEmail : undefined;
+    const email =
+      existingEmail &&
+      !isGenericCompanyEmail(existingEmail) &&
+      emailBelongsToCompany(existingEmail, params.company.name)
+        ? existingEmail
+        : undefined;
     return {
       email,
       phone: existingPhone,
@@ -198,8 +213,16 @@ export async function enrichPersonContact(params: {
   const title = gated.title?.trim() || resolvedTitle || result.contact.title?.trim();
   const score = result.confidence ?? 0;
 
+  if (email && !emailBelongsToCompany(email, params.company.name)) {
+    email = undefined;
+  }
   if (email && isGenericCompanyEmail(email) && named.namedPerson && params.mode === "free") {
-    email = existingEmail && !isGenericCompanyEmail(existingEmail) ? existingEmail : undefined;
+    email =
+      existingEmail &&
+      !isGenericCompanyEmail(existingEmail) &&
+      emailBelongsToCompany(existingEmail, params.company.name)
+        ? existingEmail
+        : undefined;
   }
 
   const tier = email ? confidenceTier(score, email) : "missing";
@@ -277,40 +300,57 @@ export async function enrichLeadById(params: {
   );
 
   let nextEmail = shouldWriteEmail ? enriched.email : contact.email ?? undefined;
+  if (nextEmail && !emailBelongsToCompany(nextEmail, account.name)) {
+    nextEmail = undefined;
+  }
   if (nextEmail && isGenericCompanyEmail(nextEmail) && named.namedPerson && params.mode === "free") {
     nextEmail = currentIsGeneric ? undefined : currentEmail;
   }
+  if (nextEmail && !emailBelongsToCompany(nextEmail, account.name)) {
+    nextEmail = undefined;
+  }
 
   const nextPhone = enriched.phone ?? contact.phone ?? undefined;
-  const nextTitle = enriched.title?.trim() || contact.title || undefined;
-  const nextStatus = nextEmail ? enriched.emailStatus : (contact.emailStatus ?? "missing");
+  const candidateTitle = sanitizeJobTitle(enriched.title) ?? sanitizeJobTitle(contact.title);
+  const existingTitle = sanitizeJobTitle(contact.title);
+  const nextTitle =
+    candidateTitle && personTitleConflictsWithCompany(candidateTitle, account.name)
+      ? existingTitle && !personTitleConflictsWithCompany(existingTitle, account.name)
+        ? existingTitle
+        : null
+      : candidateTitle;
 
   const discovered = mergeAlternateEmails(
     nextEmail,
     (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
-    enriched.discoveredEmails ?? [],
+    (enriched.discoveredEmails ?? []).filter((entry) => emailBelongsToCompany(entry.email, account.name)),
   );
-  const alternateEmails = withFirstLastSecondaryEmail(nextEmail, discovered, {
+  const refreshed = refreshPermutationEmails({
     firstName: contact.firstName,
     lastName: contact.lastName,
     name: contact.name,
     domain: account.domain,
     website: account.website,
     companyName: account.name,
+    primaryEmail: nextEmail,
+    emailStatus: nextEmail ? enriched.emailStatus : "missing",
+    enrichmentProvider: enriched.enrichmentProvider ?? contact.enrichmentProvider,
+    enrichmentSource: enriched.enrichmentSource ?? contact.enrichmentSource,
+    alternateEmails: discovered,
   });
 
   await db
     .update(contacts)
     .set({
-      email: nextEmail ?? null,
+      email: refreshed.email,
       phone: nextPhone ?? null,
       title: nextTitle ?? null,
       linkedIn: enriched.linkedIn ?? contact.linkedIn,
-      emailStatus: nextEmail ? nextStatus : "missing",
+      emailStatus: refreshed.emailStatus,
       emailConfidence: enriched.emailConfidence || contact.emailConfidence,
-      enrichmentSource: enriched.enrichmentSource ?? contact.enrichmentSource,
-      enrichmentProvider: enriched.enrichmentProvider ?? contact.enrichmentProvider,
-      alternateEmails,
+      enrichmentSource: refreshed.enrichmentSource,
+      enrichmentProvider: refreshed.enrichmentProvider,
+      alternateEmails: refreshed.alternateEmails,
       updatedAt: new Date(),
     })
     .where(eq(contacts.id, contact.id));

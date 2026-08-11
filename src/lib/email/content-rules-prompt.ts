@@ -16,7 +16,7 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
   const lines = [
     "CONTENT QUALITY (avoid spam-filter triggers):",
     `- After "Hi {firstName}," add ONE specific, sourced detail (title, verified hook, or intel) in the same breath, not a standalone greeting line`,
-    `- Sign off exactly as:\nThanks & Regards\n${ctx.senderFirstName}\n(use the From name from settings; no Partnerships line, no brand line)`,
+    `- Sign off exactly as:\nThanks & Regards\n${ctx.senderFirstName}\n${ctx.brandName}`,
     '- Email 1: no No worries line. Email 3 carries the close: I won\'t email further / the door is open',
     "- Never: Dear, em dashes, FREE, urgent, guarantee, act now, click here, no pressure, complimentary, generic team sign-offs",
     "- Never use em dashes in subject or body. Use commas, periods, or line breaks instead.",

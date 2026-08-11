@@ -11,7 +11,7 @@ export function hasGeminiKey(): boolean {
 }
 
 export function hasLLMKey(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return !!process.env.ANTHROPIC_API_KEY || hasGeminiKey();
 }
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {

@@ -3,7 +3,7 @@ import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
 
 export type ThreadEventKind = "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
-export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft";
+export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft" | "opened";
 
 export type ThreadPhase =
   | "compose"
@@ -32,6 +32,7 @@ export type BarNode = {
   body?: string;
   snippet?: string;
   at?: string;
+  openedAt?: string;
   action?: "draft_reply";
 };
 
@@ -44,6 +45,7 @@ export type ThreadEvent = {
   body?: string;
   at?: string;
   status: ThreadEventStatus;
+  openedAt?: string;
   sequenceDay?: number;
 };
 
@@ -129,6 +131,7 @@ export function buildEmailThread(params: {
     if (row.status === "cancelled") continue;
     const isScheduled = row.status === "scheduled";
     const body = bodyForRow(row);
+    const openedAt = row.openedAt?.toISOString();
     events.push({
       id: row.id,
       kind: isScheduled ? "scheduled" : kind,
@@ -137,7 +140,8 @@ export function buildEmailThread(params: {
       snippet: kind === "inbound_reply" ? preview(lead.lastReplyContent) : preview(body),
       body: kind === "inbound_reply" ? clip(lead.lastReplyContent) : clip(body),
       at: (row.sentAt ?? (isScheduled ? row.scheduledFor : undefined))?.toISOString(),
-      status: isScheduled ? "scheduled" : "sent",
+      status: openedAt ? "opened" : isScheduled ? "scheduled" : "sent",
+      openedAt,
       sequenceDay: row.sequenceDay,
     });
   }
@@ -270,6 +274,7 @@ function buildBarNodes(params: {
         body: clip(e1Body),
         snippet: preview(e1Body),
         at: e1Row?.sentAt?.toISOString(),
+        openedAt: e1Row?.openedAt?.toISOString(),
       },
       {
         id: "reply",
@@ -300,6 +305,7 @@ function buildBarNodes(params: {
       body: clip(e1Body),
       snippet: preview(e1Body),
       at: e1Row?.sentAt?.toISOString(),
+      openedAt: e1Row?.openedAt?.toISOString(),
     });
 
     const followupSchedules = scheduleRows
@@ -330,6 +336,7 @@ function buildBarNodes(params: {
         body: clip(body ?? linkedDraft?.emailBody),
         snippet: preview(body ?? linkedDraft?.emailBody),
         at: row?.sentAt?.toISOString() ?? (isScheduled ? row?.scheduledFor?.toISOString() : undefined),
+        openedAt: row?.openedAt?.toISOString(),
       });
     }
 

@@ -5,9 +5,9 @@ import { normalizeLinkedInUrl } from "@/lib/utils";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { logAudit } from "@/lib/audit";
-import { withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
+import { refreshPermutationEmails } from "@/lib/enrichment/contact-emails";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
-import { domainFromCompany } from "@/lib/enrichment/provider-utils";
 import { nameCompanyDedupeKey } from "@/lib/leads/duplicates";
 export class LeadNotFoundError extends Error {
   constructor() {
@@ -147,27 +147,32 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     where: eq(accounts.id, accountId),
   });
 
-  const resolvedEmail = sanitizeEmail(input.email);
+  const resolvedEmailRaw = sanitizeEmail(input.email);
+  const resolvedEmail =
+    resolvedEmailRaw && emailBelongsToCompany(resolvedEmailRaw, company) ? resolvedEmailRaw : undefined;
   const emailResult = await verifyEmail(resolvedEmail ?? "");
   const parts = name.split(/\s+/);
   const firstName = parts[0];
   const lastName = parts.slice(1).join(" ") || undefined;
 
-  const companyDomain =
-    resolveAccountDomain({
-      domain: accountRow?.domain,
-      website: accountRow?.website,
-      companyName: company,
-    }) ?? domainFromCompany(company);
+  const companyDomain = resolveAccountDomain({
+    domain: accountRow?.domain,
+    website: accountRow?.website,
+    companyName: company,
+  });
 
-  const alternateEmails = withFirstLastSecondaryEmail(resolvedEmail, [], {
+  const refreshed = refreshPermutationEmails({
     firstName,
     lastName,
     name,
     domain: companyDomain,
     website: accountRow?.website,
     companyName: company,
+    primaryEmail: resolvedEmail,
+    emailStatus: emailResult.status,
+    alternateEmails: [],
   });
+  const alternateEmails = refreshed.alternateEmails;
 
   const [contact] = await db
     .insert(contacts)
@@ -179,8 +184,10 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
       firstName,
       lastName,
       title: input.title?.trim() || null,
-      email: resolvedEmail ?? null,
-      emailStatus: emailResult.status,
+      email: refreshed.email,
+      emailStatus: refreshed.emailStatus,
+      enrichmentSource: refreshed.enrichmentSource,
+      enrichmentProvider: refreshed.enrichmentProvider,
       alternateEmails,
       phone: input.phone?.trim() || null,
       linkedIn: normalizeLinkedInUrl(input.linkedIn) ?? null,

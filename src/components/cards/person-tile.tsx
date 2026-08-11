@@ -31,13 +31,11 @@ export function PersonTile({
   function handleRowClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest("[data-card-action]")) return;
     onTileClick();
-    if (selectable) onCheckboxClick(e);
   }
 
   function handleSelectClick(e: React.MouseEvent) {
     e.stopPropagation();
     onCheckboxClick(e);
-    onTileClick();
   }
 
   return (

@@ -1,7 +1,11 @@
 import type { ScoutPersonResult } from "./types";
 import { computeSeniorityScore } from "./seniority-score";
 import { normalizeLinkedInUrl } from "@/lib/utils";
-import { hitShowsCurrentEmployment } from "@/lib/enrichment/person-company-match";
+import {
+  hitShowsCurrentEmployment,
+  personTitleConflictsWithCompany,
+} from "@/lib/enrichment/person-company-match";
+import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
 
 type SearchHit = { title: string; url: string; content: string };
 
@@ -51,7 +55,7 @@ function parseLinkedInTitle(title: string): { name?: string; title?: string; loc
   const location = extractLocation(cleaned);
   const parts = cleaned.split(/\s*[|\-–—]\s*/).map((p) => p.trim()).filter(Boolean);
   if (parts.length >= 2) {
-    return { name: parts[0], title: parts.slice(1).join(" · "), location };
+    return { name: parts[0], title: sanitizeJobTitle(parts.slice(1).join(" · ")), location };
   }
   return parts[0] ? { name: parts[0], location } : { location };
 }
@@ -88,6 +92,13 @@ function collectLinkedInHits(
         ? fromTitle.name
         : slugToName(slug);
       if (!name || JUNK_NAME.test(name)) continue;
+      if (
+        companyName &&
+        fromTitle.title &&
+        personTitleConflictsWithCompany(fromTitle.title, companyName)
+      ) {
+        continue;
+      }
 
       seen.add(key);
       out.push({

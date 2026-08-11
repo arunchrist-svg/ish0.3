@@ -6,7 +6,7 @@ import { ChevronDown, FileText, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { runWriterSequence, runReplyWriter, runWriterStream, updateLeadStatus, regenerateSequenceStep } from "@/lib/api-client";
+import { runWriterSequence, runReplyWriter, runWriterStream, updateLeadStatus, regenerateSequenceStep, type WriterMode } from "@/lib/api-client";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
@@ -53,6 +53,8 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplateId>(
     (draft?.templateVariant as OutreachTemplateId) ?? templates[0]?.id ?? OUTREACH_TEMPLATES[0].id,
   );
+  const [writerMode, setWriterMode] = useState<WriterMode>("standard");
+  const [writerModeMenuOpen, setWriterModeMenuOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingLabel, setGeneratingLabel] = useState<string | undefined>();
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
@@ -169,26 +171,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const sequenceState = thread?.sequenceState ?? "not_started";
   const showSyncReplies = lead.status === "outreached" || phase === "awaiting_reply";
 
-  const statusSubtitle =
-    generating
-      ? "Writing smart emails…"
-      : phase === "reply_sent"
-        ? "Reply sent in thread"
-        : phase === "awaiting_reply"
-          ? "Awaiting reply"
-          : isReplyDraft || replyDraft
-            ? "Reply draft"
-            : needsReplyDraft
-              ? "Reply received"
-              : thread?.barMode === "drafts"
-              ? "3 drafts ready"
-              : hasDraft
-                ? "Draft ready"
-                : "No draft yet";
-
   async function handleGenerate() {
     setGenerating(true);
-    setGeneratingLabel("Draft 1 of 3");
+      setGeneratingLabel(writerMode === "ai" ? "Writing Email 1 of 3" : "Draft 1 of 3");
     try {
       if (isReplyLead) {
         const newDraft = await runReplyWriter(lead.id);
@@ -204,6 +189,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         setGeneratingLabel(`Regenerating Email ${followUpPosition}`);
         const regen = await regenerateSequenceStep(lead.id, followUpPosition, {
           outreachTemplate: selectedTemplate,
+          writerMode,
         });
         setActiveDraft(regen);
         onDraftUpdated(regen);
@@ -215,7 +201,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
       if (isMobileLayout) {
         setStreamMessage("Starting smart emails...");
-        const draft = await runWriterStream(lead.id, { outreachTemplate: selectedTemplate }, (ev) => {
+        const draft = await runWriterStream(lead.id, { outreachTemplate: selectedTemplate, writerMode }, (ev) => {
           if (ev.type === "progress" && ev.message) setStreamMessage(ev.message);
         });
         setStreamMessage(null);
@@ -229,7 +215,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         return;
       }
 
-      const drafts = await runWriterSequence(lead.id, { outreachTemplate: selectedTemplate });
+      const drafts = await runWriterSequence(lead.id, { outreachTemplate: selectedTemplate, writerMode });
       setGeneratingLabel("Draft 3 of 3");
       const first = drafts[0];
       setActiveDraft(first);
@@ -370,6 +356,42 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
               )}
             >
               {!isReplyLead && showRegenerate ? (
+                <DropdownMenu modal={false} open={writerModeMenuOpen} onOpenChange={setWriterModeMenuOpen}>
+                  <DropdownMenuTrigger
+                    disabled={!canWrite || generating}
+                    className={cn(
+                      "flex h-full items-center gap-1 border-r border-brand-border/80 px-2.5 text-[11px] font-semibold text-brand-ink outline-none",
+                      "hover:bg-brand-canvas focus-visible:ring-2 focus-visible:ring-brand-black/20 disabled:cursor-not-allowed",
+                    )}
+                  >
+                    <span>{writerMode === "ai" ? "AI Writer" : "Standard"}</span>
+                    <ChevronDown className="size-3 text-brand-ink-faint" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[220px]">
+                    <DropdownMenuRadioGroup
+                      value={writerMode}
+                      onValueChange={(v) => {
+                        setWriterMode(v as WriterMode);
+                        setWriterModeMenuOpen(false);
+                      }}
+                    >
+                      <DropdownMenuRadioItem value="standard" className="text-[12px]">
+                        <div>
+                          <div className="font-semibold">Standard</div>
+                          <div className="text-[11px] text-brand-ink-faint">Fills the ISH templates with name and company</div>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="ai" className="text-[12px]">
+                        <div>
+                          <div className="font-semibold">AI Writer</div>
+                          <div className="text-[11px] text-brand-ink-faint">Uses the Smart email plan, then writes with AI</div>
+                        </div>
+                      </DropdownMenuRadioItem>
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              {!isReplyLead && showRegenerate ? (
                 <DropdownMenu modal={false} open={templateMenuOpen} onOpenChange={setTemplateMenuOpen}>
                   <DropdownMenuTrigger
                     disabled={!canWrite || generating}
@@ -440,10 +462,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   );
 
   return (
-    <div className="animate-brand-tab-in space-y-3 px-0 py-1 lg:space-y-4 lg:px-[22px] lg:py-[18px]">
+    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-2 overflow-x-hidden px-0 py-1 lg:space-y-3 lg:px-[22px] lg:py-3">
       <OutreachJourneyPanel
         thread={thread}
-        statusSubtitle={statusSubtitle}
         processActions={processActions}
         selectedNodeId={selectedNodeId}
         onNodeSelect={handleNodeSelect}
@@ -532,13 +553,16 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             onGenerateReply={() => void handleDraftReply()}
             generatingReply={draftingReply}
             onSendFailed={onSilentRefresh}
+            onOpenFirstEmail={() => handleNodeSelect("draft-1")}
           />
         </div>
       ) : isEmptyCompose ? (
         <div className="border-y border-dashed border-brand-stratus-blue/25 bg-brand-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-brand-sm)]">
           <p className="text-[15px] font-bold text-brand-ink">Ready to write smart emails</p>
           <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-            AI will draft a 3-email sequence for {lead.name || "this contact"}. Pick a template above, then click Write smart emails.
+            {writerMode === "ai"
+              ? `AI Writer will use the Smart email plan on Summary, then draft a 3-email sequence for ${lead.name || "this contact"}. Pick a template above, then click Write smart emails.`
+              : `Standard fills the ISH templates for ${lead.name || "this contact"}. Pick a template above, then click Write smart emails.`}
           </p>
           <Button
             type="button"

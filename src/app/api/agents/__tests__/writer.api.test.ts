@@ -5,6 +5,7 @@ const runWriter = vi.fn();
 
 vi.mock("@/lib/agents/writer", () => ({
   runWriter: (...args: unknown[]) => runWriter(...args),
+  resolveWriterMode: (mode?: string | null) => (mode === "ai" ? "ai" : "standard"),
 }));
 
 vi.mock("@/lib/billing/credits", async (importOriginal) => {
@@ -101,7 +102,19 @@ describe("AGENT-API-002 writer route", () => {
     const body = await res.json();
     expect(body.draft).toBeDefined();
     expect(body.draft.subjectA).toBe("Test subject");
-    expect(runWriter).toHaveBeenCalledWith("lead-1", expect.any(Object));
+    expect(runWriter).toHaveBeenCalledWith("lead-1", expect.objectContaining({ writerMode: "standard" }));
+  });
+
+  it("forwards writerMode ai to runWriter", async () => {
+    const res = await POST(
+      new Request("http://localhost/api/agents/writer/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: "lead-1", mode: "single", writerMode: "ai" }),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(runWriter).toHaveBeenCalledWith("lead-1", expect.objectContaining({ writerMode: "ai" }));
   });
 
   it("returns 402 when credits are insufficient", async () => {

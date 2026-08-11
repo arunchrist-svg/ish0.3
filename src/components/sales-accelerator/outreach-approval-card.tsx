@@ -12,8 +12,6 @@ import {
   updateOutreachDraft,
   SenderPreflightApiError,
   EmailSendRejectedError,
-  fetchSenderHealth,
-  type SenderHealthResponse,
 } from "@/lib/api-client";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
@@ -39,6 +37,7 @@ type Props = {
   onSavingChange?: (saving: boolean) => void;
   onSent?: () => void;
   onSendFailed?: () => void;
+  onOpenFirstEmail?: () => void;
   onGenerateReply?: () => void;
   generatingReply?: boolean;
   contentScore?: number;
@@ -86,7 +85,7 @@ function AutoGrowBodyTextarea({
       className={cn(
         "block w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-0",
         text.body,
-        "min-h-[8rem] whitespace-pre-wrap leading-[1.65] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60 lg:min-h-[6rem] lg:leading-[1.7]",
+        "min-h-[5rem] whitespace-pre-wrap leading-[1.55] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60 lg:min-h-[4.5rem] lg:leading-[1.6]",
       )}
     />
   );
@@ -94,7 +93,7 @@ function AutoGrowBodyTextarea({
 
 function EnvelopeRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-center gap-2 border-b border-brand-border/30 px-3 py-2.5 last:border-b-0 lg:grid lg:grid-cols-[52px_1fr] lg:gap-2 lg:px-0 lg:py-2">
+    <div className="flex min-w-0 items-center gap-2 border-b border-brand-border/30 px-3 py-1.5 last:border-b-0 lg:grid lg:grid-cols-[52px_1fr] lg:gap-2 lg:px-0 lg:py-1.5">
       <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-auto")}>{label}</span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
@@ -113,6 +112,7 @@ export function OutreachApprovalCard({
   onSavingChange,
   onSent,
   onSendFailed,
+  onOpenFirstEmail,
   onGenerateReply,
   generatingReply,
   contentScore,
@@ -125,9 +125,6 @@ export function OutreachApprovalCard({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [sending, setSending] = useState(false);
-  const [senderHealth, setSenderHealth] = useState<SenderHealthResponse | null>(null);
-  const [preflightOverrideAck, setPreflightOverrideAck] = useState(false);
-  const [qualityOverrideAck, setQualityOverrideAck] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [outreachPaused, setOutreachPaused] = useState(false);
   const [fromLabel, setFromLabel] = useState<string | null>(null);
@@ -201,16 +198,6 @@ export function OutreachApprovalCard({
   const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
   const isFollowUpReview = Boolean(scheduleIdForFollowUp);
   const canSend = isReplyDraft || isFollowUpReview || !draft.sequencePosition || draft.sequencePosition === 1;
-  const senderBlocked = Boolean(senderHealth?.hasCritical && !preflightOverrideAck);
-  const qualityBlocked =
-    !isReplyDraft &&
-    Boolean(
-      displayDraft.revisionTimeout ||
-        (displayDraft.rubricTotal != null &&
-          displayDraft.rubricTotal < 80) ||
-        (displayDraft.deliverabilityScore != null && displayDraft.deliverabilityScore < 80),
-    ) &&
-    !qualityOverrideAck;
 
   const isDraftLocked =
     ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus) ||
@@ -247,13 +234,6 @@ export function OutreachApprovalCard({
         else if (name) setFromLabel(name);
       })
       .catch(() => {});
-    void fetchSenderHealth()
-      .then((h) => {
-        if (!cancelled) setSenderHealth(h);
-      })
-      .catch(() => {
-        if (!cancelled) setSenderHealth(null);
-      });
     return () => {
       cancelled = true;
     };
@@ -404,8 +384,8 @@ export function OutreachApprovalCard({
 
       if (isFollowUpReview && scheduleIdForFollowUp) {
         const result = await sendFollowUp(scheduleIdForFollowUp, {
-          overridePreflight: preflightOverrideAck,
-          overrideQualityGate: qualityOverrideAck,
+          overridePreflight: true,
+          overrideQualityGate: true,
         });
         toast.success(`Follow-up sent (${result.mode})`);
         onSent?.();
@@ -422,8 +402,8 @@ export function OutreachApprovalCard({
       });
 
       const result = await sendOutreach(approvalId, {
-        overridePreflight: preflightOverrideAck,
-        overrideQualityGate: qualityOverrideAck,
+        overridePreflight: true,
+        overrideQualityGate: true,
         toEmails: selectedEmails,
       });
       const recipient =
@@ -461,52 +441,36 @@ export function OutreachApprovalCard({
   return (
     <div
       id="approval-card"
-      className="overflow-hidden bg-white lg:ish-record-card lg:rounded-[20px] lg:border lg:border-brand-border/60 lg:shadow-[var(--shadow-brand-sm)]"
+      className="ish-email-compose min-w-0 overflow-x-hidden overflow-y-hidden bg-white lg:rounded-[20px] lg:border lg:border-brand-border/60 lg:shadow-[var(--shadow-brand-sm)]"
     >
-      <div className="flex flex-col p-0 lg:p-5">
-
-        {!isDraftLocked && qualityBlocked ? (
-          <div className="mx-3 mb-2 mt-2 rounded-[10px] border border-amber-300/60 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 lg:mx-0 lg:mb-3 lg:mt-0 lg:rounded-[14px] lg:px-3.5 lg:py-2.5">
-            {displayDraft.revisionTimeout
-              ? "This draft did not pass automated quality checks after revision."
-              : "Inbox or rubric score is below the recommended threshold."}
-            {" "}
-            <button
-              type="button"
-              className="font-semibold underline"
-              onClick={() => setQualityOverrideAck(true)}
-            >
-              Send anyway
-            </button>
-          </div>
-        ) : null}
+      <div className="flex min-w-0 flex-col p-0 lg:p-3">
 
         {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet && (
-          <div className="mx-3 mb-3 mt-1 rounded-[10px] border border-brand-stratus-blue/22 bg-brand-green-soft px-3 py-2.5 lg:mx-0 lg:mb-3 lg:mt-0 lg:rounded-[14px] lg:px-3.5 lg:py-2.5">
-            <div className="mb-1 text-[9px] font-bold uppercase tracking-widest text-brand-stratus-blue">They said</div>
-            <p className="text-[11px] leading-relaxed text-brand-ink-soft">{emailThread.inboundSnippet}</p>
+          <div className="mx-3 mb-2 mt-1 rounded-[10px] border border-brand-stratus-blue/22 bg-brand-green-soft px-2.5 py-1.5 lg:mx-0 lg:mb-2 lg:mt-0 lg:rounded-[12px] lg:px-3 lg:py-1.5">
+            <div className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-stratus-blue">They said</div>
+            <p className="text-[11px] leading-snug text-brand-ink-soft">{emailThread.inboundSnippet}</p>
           </div>
         )}
 
-        <div className="border-b border-brand-border/40 lg:rounded-[14px] lg:border lg:border-brand-stratus-blue/15 lg:bg-brand-canvas/25 lg:px-3.5 lg:py-1">
-          <div className="flex flex-col border-b border-brand-border/30 lg:flex-row lg:items-center">
-            <div className="flex min-w-0 items-center gap-2 px-3 py-2.5 lg:flex-1 lg:gap-2 lg:px-0 lg:py-2">
+        <div className="min-w-0 border-b border-brand-border/40 lg:rounded-[12px] lg:border lg:border-brand-stratus-blue/15 lg:bg-brand-canvas/25 lg:px-3 lg:py-0.5">
+          <div className="flex min-w-0 flex-col border-b border-brand-border/30 lg:flex-row lg:items-center">
+            <div className="flex min-w-0 items-center gap-2 px-3 py-1.5 lg:min-w-0 lg:flex-1 lg:gap-2 lg:px-0 lg:py-1.5">
               <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-[52px]")}>To</span>
-              <p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-brand-ink break-all lg:truncate lg:text-[12px]">{toDetail}</p>
+              <p className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug text-brand-ink lg:truncate lg:text-[12px]">{toDetail}</p>
             </div>
             {fromLabel ? (
-              <div className="flex min-w-0 items-center gap-2 border-t border-brand-border/30 px-3 py-2.5 lg:flex-1 lg:gap-2 lg:border-t-0 lg:border-l lg:px-0 lg:py-2 lg:pl-4">
+              <div className="flex min-w-0 items-center gap-2 border-t border-brand-border/30 px-3 py-1.5 lg:min-w-0 lg:flex-1 lg:gap-2 lg:border-t-0 lg:border-l lg:px-0 lg:py-1.5 lg:pl-3">
                 <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-[52px]")}>From</span>
-                <p className="min-w-0 flex-1 text-[13px] leading-snug text-brand-ink-soft break-all lg:truncate lg:text-[12px]">{fromLabel}</p>
+                <p className="min-w-0 flex-1 break-words text-[13px] leading-snug text-brand-ink-soft lg:truncate lg:text-[12px]">{fromLabel}</p>
               </div>
             ) : null}
           </div>
           {canChooseMultiple && !isDraftLocked ? (
-            <div className="border-t border-brand-border/30 px-3 py-2.5 lg:px-0 lg:py-2">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft">
+            <div className="border-t border-brand-border/30 px-3 py-1.5 lg:px-0 lg:py-1.5">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft">
                 Send to
               </p>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-0.5">
                 {selectableEmails.map((entry) => {
                   const checked = selectedEmails.some(
                     (e) => e.toLowerCase() === entry.email.toLowerCase(),
@@ -514,20 +478,20 @@ export function OutreachApprovalCard({
                   return (
                     <label
                       key={entry.email}
-                      className="flex cursor-pointer items-start gap-2 rounded-[10px] px-1 py-1 hover:bg-white/60"
+                      className="flex cursor-pointer items-center gap-2 rounded-[8px] px-1 py-0.5 hover:bg-white/60"
                     >
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleRecipient(entry.email)}
-                        className="mt-0.5 size-3.5 shrink-0 rounded border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
+                        className="size-3.5 shrink-0 rounded border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
                       />
-                      <span className="min-w-0 flex-1">
+                      <span className="min-w-0 flex-1 leading-tight">
                         <span className="block break-all text-[12px] font-medium text-brand-ink">
                           {entry.email}
                         </span>
                         {entry.label ? (
-                          <span className="text-[10px] text-brand-ink-faint">{entry.label}</span>
+                          <span className="text-[10px] leading-none text-brand-ink-faint">{entry.label}</span>
                         ) : null}
                       </span>
                     </label>
@@ -541,49 +505,72 @@ export function OutreachApprovalCard({
               <p className="truncate text-[12px] font-semibold text-brand-stratus-blue">{threadSubject}</p>
             </EnvelopeRow>
           ) : (
-            <div className="border-t border-brand-border/30 px-3 py-2.5 lg:px-0 lg:py-2">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft">
+            <div className="border-t border-brand-border/30 px-3 py-1.5 lg:px-0 lg:py-1.5">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft">
                 Subject (pick 1)
               </p>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1" role="radiogroup" aria-label="Subject options">
                 {(subjectOptions.length ? subjectOptions : [{ key: "A" as const, value: activeSubject }]).map(
                   (option) => {
                     const checked = option.key === safeSubjectKey;
                     return (
-                      <label
+                      <div
                         key={option.key}
-                        className={cn(
-                          "flex cursor-pointer items-start gap-2 rounded-[10px] border px-2 py-1.5",
-                          checked
-                            ? "border-brand-stratus-blue/40 bg-white"
-                            : "border-transparent hover:bg-white/60",
-                        )}
-                      >
-                        <input
-                          type="radio"
-                          name={`subject-${draft.id}`}
-                          checked={checked}
-                          disabled={isDraftLocked}
-                          onChange={() => {
+                        role="radio"
+                        aria-checked={checked}
+                        tabIndex={isDraftLocked ? -1 : 0}
+                        onClick={() => {
+                          if (isDraftLocked) return;
+                          setSubjectKey(option.key);
+                          setDirty(true);
+                        }}
+                        onKeyDown={(e) => {
+                          if (isDraftLocked) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
                             setSubjectKey(option.key);
                             setDirty(true);
-                          }}
-                          className="mt-1.5 size-3.5 shrink-0 border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
-                        />
+                          }
+                        }}
+                        className={cn(
+                          "ish-email-choice flex min-w-0 cursor-pointer items-center gap-2 rounded-[10px] border px-2.5 py-1.5 transition-colors",
+                          checked
+                            ? "border-brand-stratus-blue/45 bg-brand-stratus-blue/8"
+                            : "border-brand-border/40 bg-white/70 hover:border-brand-stratus-blue/25 hover:bg-white",
+                          isDraftLocked && "cursor-default opacity-60",
+                        )}
+                      >
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "flex size-4 shrink-0 items-center justify-center rounded-full border-2",
+                            checked
+                              ? "border-brand-stratus-blue bg-brand-stratus-blue"
+                              : "border-brand-border bg-white",
+                          )}
+                        >
+                          {checked ? <span className="size-1.5 rounded-full bg-white" /> : null}
+                        </span>
                         <input
                           type="text"
                           value={option.value}
                           onChange={(e) => handleSubjectChange(option.key, e.target.value)}
+                          onFocus={() => {
+                            if (isDraftLocked) return;
+                            setSubjectKey(option.key);
+                            setDirty(true);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
                           placeholder={`Subject ${option.key}`}
                           disabled={isDraftLocked}
                           className={cn(
-                            "min-w-0 flex-1 border-0 bg-transparent px-0 py-0",
+                            "min-w-0 flex-1 border-0 bg-transparent px-0 py-0 leading-normal",
                             text.body,
                             "text-[13px] placeholder:text-brand-ink-faint lg:text-[12px]",
                             "focus:outline-none focus:ring-0 disabled:opacity-60",
                           )}
                         />
-                      </label>
+                      </div>
                     );
                   },
                 )}
@@ -593,12 +580,12 @@ export function OutreachApprovalCard({
         </div>
 
         {isReplyDraft && !isDraftLocked && onGenerateReply ? (
-          <div className="flex justify-end px-3 py-2 lg:mt-3 lg:px-0 lg:py-0">
+          <div className="flex justify-end px-3 py-1.5 lg:mt-2 lg:px-0 lg:py-0">
             <button
               type="button"
               disabled={generatingReply || saving || sending}
               onClick={() => onGenerateReply()}
-              className="inline-flex items-center gap-2 rounded-full border border-brand-border bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-opacity hover:bg-brand-canvas disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-full border border-brand-border bg-white px-3 py-1.5 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-opacity hover:bg-brand-canvas disabled:opacity-50"
             >
               {generatingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
               {generatingReply ? "Writing smart emails…" : "Regenerate reply"}
@@ -606,41 +593,68 @@ export function OutreachApprovalCard({
           </div>
         ) : null}
 
-        <div className="relative mt-2 border-t border-brand-border/40 pt-2 lg:mt-3 lg:rounded-[16px] lg:border lg:border-brand-border/50 lg:bg-white lg:pt-3 lg:shadow-[var(--shadow-brand-sm)]">
-          <p className="px-3 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft lg:px-5">
+        <div className="ish-email-body relative mt-1.5 min-w-0 overflow-x-hidden border-t border-brand-border/40 pt-1.5 lg:mt-2 lg:rounded-[14px] lg:border lg:border-brand-border/50 lg:bg-white lg:pt-2 lg:shadow-[var(--shadow-brand-sm)]">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-soft lg:px-3.5">
             Body (pick 1)
           </p>
-          <div className="mt-2 flex flex-col gap-2 px-3 pb-2 lg:px-5">
+          <div className="mt-1 flex flex-col gap-1 px-3 pb-1.5 lg:px-3.5" role="radiogroup" aria-label="Body options">
             {(bodyOptions.length ? bodyOptions : [{ key: "A" as const, value: bodyText }]).map((option) => {
               const checked = option.key === safeBodyKey;
               return (
                 <div
                   key={option.key}
-                  className={cn(
-                    "flex items-start gap-2 rounded-[12px] border px-2.5 py-2",
-                    checked
-                      ? "border-brand-stratus-blue/40 bg-brand-canvas/40"
-                      : "border-brand-border/40 hover:bg-brand-canvas/25",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name={`body-${draft.id}`}
-                    checked={checked}
-                    disabled={isDraftLocked}
-                    onChange={() => {
+                  role="radio"
+                  aria-checked={checked}
+                  tabIndex={isDraftLocked ? -1 : 0}
+                  onClick={() => {
+                    if (isDraftLocked) return;
+                    setBodyKey(option.key);
+                    setDirty(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (isDraftLocked) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
                       setBodyKey(option.key);
                       setDirty(true);
-                    }}
-                    className="mt-1 size-3.5 shrink-0 cursor-pointer border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                    }
+                  }}
+                  className={cn(
+                    "ish-email-choice flex min-w-0 items-start gap-2 rounded-[10px] border px-2.5 py-1.5 transition-colors",
+                    checked
+                      ? "border-brand-stratus-blue/45 bg-brand-stratus-blue/8"
+                      : "border-brand-border/40 bg-white/70 hover:border-brand-stratus-blue/25 hover:bg-white",
+                    isDraftLocked ? "cursor-default opacity-60" : "cursor-pointer",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border-2",
+                      checked
+                        ? "border-brand-stratus-blue bg-brand-stratus-blue"
+                        : "border-brand-border bg-white",
+                    )}
+                  >
+                    {checked ? <span className="size-1.5 rounded-full bg-white" /> : null}
+                  </span>
+                  <div
+                    className="min-w-0 flex-1"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
                       Option {option.key}
                     </p>
                     <AutoGrowBodyTextarea
                       value={option.value}
-                      onChange={(value) => handleBodyChange(option.key, value)}
+                      onChange={(value) => {
+                        if (!checked) {
+                          setBodyKey(option.key);
+                          setDirty(true);
+                        }
+                        handleBodyChange(option.key, value);
+                      }}
                       disabled={isDraftLocked}
                       placeholder="Write your message…"
                     />
@@ -660,13 +674,13 @@ export function OutreachApprovalCard({
               }
             />
           )}
-          <div className="pointer-events-none absolute right-3 top-2 text-[9px] text-brand-ink-faint/80">
+          <div className="pointer-events-none absolute right-2.5 top-1.5 text-[9px] text-brand-ink-faint/80">
             {displayDraft.draftSource} · {displayDraft.revisionCount ?? 0} rev
             {displayDraft.rubricTotal != null ? ` · rubric ${displayDraft.rubricTotal}` : ""}
           </div>
         </div>
 
-        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t border-brand-border/50 bg-white/95 px-3 py-2.5 backdrop-blur-sm lg:static lg:mt-3 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
+        <div className="ish-email-actions sticky bottom-0 z-10 flex min-w-0 flex-wrap items-center justify-end gap-2 border-t border-brand-border/50 bg-white/95 px-3 py-2 backdrop-blur-sm lg:static lg:mt-2 lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
           {isDraftLocked ? (
             <Link
               href="/email?tab=active"
@@ -701,34 +715,31 @@ export function OutreachApprovalCard({
                 {saving ? "Saving…" : "Save draft"}
               </button>
               {!canSend ? (
-                <p className="text-[11px] text-brand-ink-faint">Follow-ups send on schedule</p>
-              ) : (
-                <div className="flex flex-col items-end gap-1.5">
-                  {senderBlocked && senderHealth ? (
-                    <div className="max-w-sm text-right text-[10px] text-red-600">
-                      {senderHealth.issues
-                        .filter((i) => i.severity === "critical")
-                        .map((i) => i.label)
-                        .join(" · ")}
-                      <button
-                        type="button"
-                        className="ml-2 font-semibold underline"
-                        onClick={() => setPreflightOverrideAck(true)}
-                      >
-                        Send anyway
-                      </button>
-                    </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[11px] text-brand-ink-faint">
+                    This is Email {draft.sequencePosition}. Send Email 1 to start. Follow-ups go out on schedule.
+                  </p>
+                  {onOpenFirstEmail ? (
+                    <button
+                      type="button"
+                      onClick={onOpenFirstEmail}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] hover:opacity-90"
+                    >
+                      <Send className="size-3.5" />
+                      Go to Email 1
+                    </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void handleSendToOutreach()}
-                    disabled={sending || saving || outreachPaused || senderBlocked || qualityBlocked}
-                    className="inline-flex items-center gap-2 rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-                    {sending ? "Sending…" : isFollowUpReview ? "Send follow-up" : isReplyDraft ? "Send Reply" : "Send & start sequence"}
-                  </button>
                 </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleSendToOutreach()}
+                  disabled={sending || saving || outreachPaused}
+                  className="inline-flex items-center gap-2 rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                  {sending ? "Sending…" : isFollowUpReview ? "Send follow-up" : isReplyDraft ? "Send Reply" : "Send & start sequence"}
+                </button>
               )}
             </>
           )}

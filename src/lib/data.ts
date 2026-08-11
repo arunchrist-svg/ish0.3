@@ -51,6 +51,8 @@ export type LeadRecord = {
     email?: string;
     linkedIn?: string;
     strength?: 1 | 2 | 3 | 4;
+    degree?: "1st" | "2nd" | "3rd";
+    headline?: string;
     relationship?: string;
     connectorName?: string;
     path?: string[];

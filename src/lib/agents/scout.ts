@@ -3,6 +3,7 @@ import { discoverCompanies, discoverPeople } from "@/lib/enrichment/waterfall";
 import { saveScoutLeads } from "@/lib/scout/save-leads";
 import { logAudit } from "@/lib/audit";
 import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/config";
+import { peoplePerCompanyLimit } from "@/lib/enrichment/people-diversity";
 import {
   getResolvedEnrichmentConfigForWorkspace,
   getResolvedWorkspaceEnrichmentConfig,
@@ -127,7 +128,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
         companyDomain: company.domain,
         companyWebsite: company.website,
         dataMode,
-        limit: getScoutLeadsLimit(),
+        limit: peoplePerCompanyLimit(getScoutLeadsLimit()),
         seniority: seniority.length ? seniority : undefined,
         departments: departments.length ? departments : undefined,
         cities,
@@ -141,7 +142,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
       }
 
       const result = await saveScoutLeads({
-        people: candidates.slice(0, getScoutLeadsLimit()),
+        people: candidates.slice(0, peoplePerCompanyLimit(getScoutLeadsLimit())),
         company: {
           ...company,
           domain: resolvedDomain ?? company.domain,

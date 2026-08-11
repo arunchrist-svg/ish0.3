@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
 import { MapPin, Users, Check, ChevronRight } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
+import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { scoutCardSurface } from "./scout-card-surface";
 
@@ -35,14 +36,12 @@ export function CompanyTile({
       return;
     }
     onView();
-    if (selectable) onToggleSelect();
   }
 
   function handleSelectClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (!selectable) return;
     onToggleSelect();
-    if (!compact) onView();
   }
 
   function handleDetailsClick(e: React.MouseEvent) {
@@ -100,6 +99,9 @@ export function CompanyTile({
         <div className="min-w-0 flex-1">
           <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-brand-ink">{company.name}</div>
           <div className="mt-1 flex items-center gap-1 text-[10px] text-brand-ink-soft">
+            <Users className="size-3 shrink-0" />
+            <span className="min-w-0 truncate">{formatScoutSizeLine(company.employees)}</span>
+            <span className="text-brand-border">·</span>
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">{company.city}</span>
           </div>
@@ -188,7 +190,7 @@ export function CompanyTile({
 
       <div className="mb-3 flex items-center gap-1.5 text-[11px] text-brand-ink-faint">
         <Users className="size-3 shrink-0" />
-        <span>{company.employees}</span>
+        <span>{formatScoutSizeLine(company.employees)}</span>
         <span className="text-brand-border">·</span>
         <MapPin className="size-3 shrink-0" />
         <span className="max-w-[120px] truncate">{company.city}</span>

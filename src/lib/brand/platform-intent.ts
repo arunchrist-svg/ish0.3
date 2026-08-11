@@ -137,6 +137,14 @@ export function scoutDefaultsForIntent(intent: PlatformIntent): IntentScoutDefau
   }
 }
 
+/**
+ * Brand Intelligence tracks which product a company currently buys from a competitor.
+ * That signal is strong for physical goods, weak for software.
+ */
+export function brandIntelRecommendedForIntent(intent: PlatformIntent | null | undefined): boolean {
+  return intent === "corporate_gifting" || intent === "appliances";
+}
+
 export function resolvePlatformIntent(
   explicit?: PlatformIntent | string | null,
   packId?: VerticalPackId | string | null,

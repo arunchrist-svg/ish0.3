@@ -9,6 +9,7 @@ import {
   getResolvedWorkspaceEnrichmentConfig,
   loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
+import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
@@ -25,7 +26,11 @@ export async function POST(req: Request) {
       fetchSeed = 0,
       limit: requestedLimit,
       companyName,
+      employeeBands: rawEmployeeBands = [],
     } = body;
+    const employeeBands = normalizeEmployeeBandIds(
+      Array.isArray(rawEmployeeBands) ? rawEmployeeBands.map(String) : [],
+    );
 
     if (!cities.length) {
       return NextResponse.json({ error: "Select at least one city." }, { status: 400 });
@@ -73,6 +78,7 @@ export async function POST(req: Request) {
       skipInternal,
       fetchSeed,
       ...(companyName ? { companyName } : {}),
+      employeeBands,
     });
 
     const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));

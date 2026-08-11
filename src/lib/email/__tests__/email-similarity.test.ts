@@ -18,14 +18,15 @@ const baseline = getBaselineEmail({
 
 const VIJETHA_NOUN_SWAP = `Hi Vijetha,
 
-Most corporate hampers get opened and forgotten. Ours get opened and remembered: pure-ghee mithai, handcrafted, the taste of an actual festival.
+Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and authentic for your team this year.
 
-Don't take our word for it. Let us send Acme Auto a taste first.
+At India Sweet House, we handcraft authentic traditional sweets. We go straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. It is just fresh milk, 100% pure ghee, and a taste that stands out.
 
-Want a sampler box on your desk this week?
+Since tasting is believing, I would love to send a sample box to your office on us. What is the best address to ship your sample box?
 
-Thanks & Regards
-Srilaksha`;
+Best,
+Srilaksha
+India Sweet House`;
 
 describe("email similarity", () => {
   it("flags a light BASE_TEXT noun swap as a near paraphrase", () => {

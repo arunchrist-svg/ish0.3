@@ -1,4 +1,4 @@
-import { runWriter } from "@/lib/agents/writer";
+import { resolveWriterMode, runWriter } from "@/lib/agents/writer";
 import { db, leads, leadOutreach } from "@/db";
 import { eq } from "drizzle-orm";
 import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadId, outreachTemplate } = await req.json();
+    const { leadId, outreachTemplate, writerMode } = await req.json();
     if (!leadId) {
       return new Response(JSON.stringify({ error: "leadId required" }), { status: 400 });
     }
@@ -38,6 +38,7 @@ export async function POST(req: Request) {
 
           const outreachId = await runWriter(leadId, {
             outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
+            writerMode: resolveWriterMode(writerMode),
           });
 
           send({ type: "progress", message: "Scoring deliverability..." });

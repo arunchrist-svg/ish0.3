@@ -21,7 +21,6 @@ function worstSeverity(health: SenderHealthResponse | null) {
 
 function pillLabel(health: SenderHealthResponse | null, severity: string) {
   if (!health) return "Sender · …";
-  if (health.domainAuth.status === "unsupported") return "Personal inbox";
   if (severity === "ok") return "Sender OK";
   if (severity === "warn") return "Sender · Review";
   return "Sender · Blocked";
@@ -43,6 +42,8 @@ export function SenderHealthMeter({ className }: Props) {
       cancelled = true;
     };
   }, []);
+
+  if (health?.domainAuth.status === "unsupported") return null;
 
   const severity = worstSeverity(health);
   const Icon = severity === "ok" ? ShieldCheck : severity === "warn" ? Shield : ShieldAlert;

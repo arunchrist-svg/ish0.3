@@ -6,8 +6,8 @@ const KNOWN_DOMAINS: Record<string, string> = {
   "toyota kirloskar": "toyotabharat.com",
   "toyota": "toyota.com",
   "prestige group": "prestigeconstructions.com",
-  "titan company": "titan.co.in",
-  "titan": "titan.co.in",
+  "titan company": "titancompany.in",
+  "titan": "titancompany.in",
   "biocon limited": "biocon.com",
   "biocon": "biocon.com",
   "reliance retail": "relianceretail.com",
@@ -33,6 +33,16 @@ export function normalizeDomain(raw: string): string {
     .split("?")[0];
 }
 
+export function knownDomainForCompanyName(name?: string | null): string | undefined {
+  if (!name?.trim()) return undefined;
+  const key = name.trim().toLowerCase();
+  if (KNOWN_DOMAINS[key]) return KNOWN_DOMAINS[key];
+  for (const [brand, domain] of Object.entries(KNOWN_DOMAINS)) {
+    if (key.includes(brand)) return domain;
+  }
+  return undefined;
+}
+
 export function extractCompanyDomain(input: {
   domain?: string | null;
   website?: string | null;
@@ -54,15 +64,7 @@ export function extractCompanyDomain(input: {
     }
   }
 
-  if (input.name) {
-    const key = input.name.trim().toLowerCase();
-    if (KNOWN_DOMAINS[key]) return KNOWN_DOMAINS[key];
-    for (const [name, domain] of Object.entries(KNOWN_DOMAINS)) {
-      if (key.includes(name)) return domain;
-    }
-  }
-
-  return undefined;
+  return knownDomainForCompanyName(input.name);
 }
 
 export function isLogoUrl(value?: string | null): boolean {
@@ -77,10 +79,14 @@ export function getCompanyLogoSources(input: {
   logo?: string | null;
 }): string[] {
   const sources: string[] = [];
-  const domain = extractCompanyDomain(input);
+  const domains = [...new Set(
+    [knownDomainForCompanyName(input.name), extractCompanyDomain(input)].filter(
+      (d): d is string => Boolean(d),
+    ),
+  )];
 
   if (isLogoUrl(input.logo)) sources.push(input.logo!);
-  if (domain) {
+  for (const domain of domains) {
     sources.push(`https://logo.clearbit.com/${domain}`);
     sources.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
     sources.push(`https://icons.duckduckgo.com/ip3/${domain}.ico`);

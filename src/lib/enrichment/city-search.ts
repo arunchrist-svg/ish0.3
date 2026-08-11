@@ -178,3 +178,28 @@ export function rankPeopleByCityMatch<T extends { location?: string | null; matc
     return (b.matchScore ?? 0) - (a.matchScore ?? 0);
   });
 }
+
+/**
+ * Prefer people in the scout cities. If every located person is elsewhere in India
+ * (common for plant-city scouts vs HQ DMs), keep India-based people instead of wiping.
+ */
+export function selectPeopleForScoutCities<T extends { location?: string | null; matchScore?: number }>(
+  people: T[],
+  selectedCities: string[],
+): { people: T[]; relaxedToIndia: boolean } {
+  if (!selectedCities.length || isNationwideSelection(selectedCities)) {
+    return { people, relaxedToIndia: false };
+  }
+
+  const local = people.filter((p) => personLocationMatchesSelection(p.location, selectedCities));
+  if (local.some((p) => p.location?.trim())) {
+    return { people: rankPeopleByCityMatch(local, selectedCities), relaxedToIndia: false };
+  }
+
+  const inIndia = people.filter((p) => !isForeignPersonLocation(p.location));
+  if (inIndia.length > 0) {
+    return { people: rankPeopleByCityMatch(inIndia, selectedCities), relaxedToIndia: true };
+  }
+
+  return { people: rankPeopleByCityMatch(local, selectedCities), relaxedToIndia: false };
+}

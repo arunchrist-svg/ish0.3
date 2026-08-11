@@ -12,6 +12,7 @@ import { buildSavedEmailCandidates } from "@/lib/enrichment/email-candidate-queu
 import { formatEnrichmentSourceWithPattern } from "@/lib/enrichment/contact-emails";
 import { verifyEmail } from "@/lib/enrichment/verify";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -52,7 +53,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const uniqueEmails = [...new Set(emails)];
     for (const email of uniqueEmails) {
-      if (!isValidPermutationForContact(email, contactInput)) {
+      if (
+        !isValidPermutationForContact(email, contactInput) ||
+        !emailBelongsToCompany(email, account.name)
+      ) {
         return NextResponse.json({ error: `Invalid email candidate: ${email}` }, { status: 400 });
       }
     }

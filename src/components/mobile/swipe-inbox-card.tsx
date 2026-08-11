@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, Check, ChevronRight, Send, Sparkles } from "lucide-react";
+import { Check, ChevronRight, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IshAvatar } from "@/design-system";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
-import { draftFailsQualityGate } from "@/lib/outreach/outreach-quality";
 
 type SwipeInboxCardProps = {
   row: LeadEmailRow;
@@ -27,9 +26,8 @@ function isActionableReview(row: LeadEmailRow): boolean {
 }
 
 export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }: SwipeInboxCardProps) {
-  const href = `/leads?lead=${row.leadId}&tab=Email`;
+  const href = `/leads?lead=${row.leadId}&tab=email`;
   const followUp = Boolean(row.pendingFollowUpScheduleId || row.isFollowUpReview);
-  const qualityBlocked = tab === "needs_review" && draftFailsQualityGate(row);
   const showActions = tab === "needs_review" && isActionableReview(row);
   const isReply = tab === "replies";
 
@@ -97,18 +95,6 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
           </p>
         </div>
 
-        {qualityBlocked ? (
-          <div className="mt-3 flex items-start gap-2.5 rounded-2xl border border-brand-stratus-yellow/40 bg-gradient-to-br from-brand-yellow-soft/90 to-white px-3.5 py-3 shadow-brand-yellow-sm">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
-            <p className="text-[13px] font-medium leading-snug text-brand-ink">
-              {row.revisionTimeout
-                ? "Smart emails timed out before quality passed."
-                : `Quality scores are low (inbox ${row.deliverabilityScore ?? "?"}, rubric ${row.rubricTotal ?? "?"}).`}
-              {" "}Tap Send to confirm anyway.
-            </p>
-          </div>
-        ) : null}
-
         {showActions ? (
           <div className="mt-4 grid grid-cols-2 gap-2.5">
             <button
@@ -124,10 +110,7 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
               type="button"
               disabled={busy}
               onClick={() => onSend?.(row)}
-              className={cn(
-                "ish-touch-target flex h-12 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold active:scale-[0.98] disabled:opacity-50",
-                qualityBlocked ? "bg-amber-600 text-white shadow-md" : "ish-inbox-btn-send",
-              )}
+              className="ish-inbox-btn-send ish-touch-target flex h-12 items-center justify-center gap-2 rounded-2xl text-[15px] font-bold active:scale-[0.98] disabled:opacity-50"
             >
               <Send className="size-4" />
               {followUp ? "Send follow-up" : "Send"}

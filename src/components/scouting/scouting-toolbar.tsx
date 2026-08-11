@@ -41,16 +41,20 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getCurrentPosition } from "@/lib/capacitor/geolocation";
-import { findNearestScoutLocation } from "@/lib/scouting/near-me";
-import { toast } from "sonner";
 import { BottomSheet } from "@/design-system";
+import {
+  districtGroupsForScoutOptions,
+  isScoutDistrictPicked,
+  setScoutStateDistricts,
+  toggleScoutDistrictPick,
+  type ScoutLocationOption,
+} from "@/lib/geo/india";
 import {
   SCOUT_CITY_GROUPS,
   SCOUT_DEPARTMENTS,
+  SCOUT_EMPLOYEE_BANDS,
   SCOUT_INDUSTRIES,
   SCOUT_SENIORITY,
-  getCityMeta,
 } from "@/lib/scouting-data";
 
 /* ─────────────────────────────────────────────
@@ -65,6 +69,7 @@ type Props = {
   view: "companies" | "people";
   cities: string[];
   industries: string[];
+  employeeBands: string[];
   seniority: string[];
   departments: string[];
   selectedCount: number;
@@ -78,6 +83,7 @@ type Props = {
   companySearchQuery?: string;
   onCitiesChange: (cities: string[]) => void;
   onIndustryToggle: (industry: string) => void;
+  onEmployeeBandToggle: (bandId: string) => void;
   onSeniorityToggle: (s: string) => void;
   onDepartmentToggle: (d: string) => void;
   onFetchNewCompanies: () => void;
@@ -94,7 +100,7 @@ type Props = {
   onExpandFilters?: () => void;
   hideActions?: boolean;
   onFilterPanelChange?: (open: boolean) => void;
-  locationOptions?: { label: string; group: string }[];
+  locationOptions?: ScoutLocationOption[] | { label: string; group: string }[];
 };
 
 /* ─────────────────────────────────────────────
@@ -107,29 +113,36 @@ function cityLabel(cities: string[]): string {
   return `${cities[0]} +${cities.length - 1}`;
 }
 
-function defaultLocationOptions(): { label: string; group: string }[] {
-  return SCOUT_CITY_GROUPS.flatMap((g) => g.cities.map((c) => ({ label: c, group: g.label })));
-}
-
-function groupLocationOptions(options: { label: string; group: string }[]) {
-  const groups: { label: string; cities: string[] }[] = [];
-  const index = new Map<string, string[]>();
-  for (const option of options) {
-    let list = index.get(option.group);
-    if (!list) {
-      list = [];
-      index.set(option.group, list);
-      groups.push({ label: option.group, cities: list });
-    }
-    list.push(option.label);
-  }
-  return groups;
+function defaultLocationOptions(): ScoutLocationOption[] {
+  return SCOUT_CITY_GROUPS.flatMap((g) =>
+    g.cities.map((c) => ({
+      id: c,
+      label: c,
+      group: g.label,
+      kind: "district" as const,
+      searchTerms: [c],
+    })),
+  );
 }
 
 function industryLabel(industries: string[]): string {
   if (industries.length === 0) return "Any industry";
   if (industries.length === 1) return industries[0];
   return `${industries.length} industries`;
+}
+
+function sizeLabel(employeeBands: string[]): string {
+  if (employeeBands.length === 0) return "Any scale";
+  const labels = SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label);
+  if (labels.length === 1) return labels[0];
+  return `${labels.length} scales`;
+}
+
+function industryScaleLabel(industries: string[], employeeBands: string[]): string {
+  if (industries.length === 0 && employeeBands.length === 0) return "Any industry";
+  if (employeeBands.length === 0) return industryLabel(industries);
+  if (industries.length === 0) return sizeLabel(employeeBands);
+  return `${industryLabel(industries)} · ${sizeLabel(employeeBands)}`;
 }
 
 function peopleLabel(seniority: string[], departments: string[]): string {
@@ -263,6 +276,13 @@ function Popover({
    Mobile filter sheet primitives
 ───────────────────────────────────────────── */
 
+const SCALE_ICONS: Record<string, LucideIcon> = {
+  micro: Package,
+  small: Factory,
+  medium: Building2,
+  large: Landmark,
+};
+
 const INDUSTRY_ICONS: Record<string, LucideIcon> = {
   Manufacturing: Factory,
   "Real Estate": Building,
@@ -354,6 +374,51 @@ function MobileFilterGridChip({
   );
 }
 
+function ScaleDsCard({
+  band,
+  selected,
+  onToggle,
+}: {
+  band: (typeof SCOUT_EMPLOYEE_BANDS)[number];
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const Icon = SCALE_ICONS[band.id] ?? Factory;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={selected}
+      className={cn(
+        "relative flex items-center gap-2.5 rounded-xl border bg-white px-2.5 py-2 text-left transition-colors",
+        selected
+          ? "border-brand-stratus-blue bg-brand-stratus-blue/10 shadow-[var(--shadow-brand-sm)]"
+          : "border-brand-border/60 hover:border-brand-stratus-blue/40 hover:bg-brand-canvas/50",
+      )}
+    >
+      {selected ? (
+        <span className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-brand-stratus-blue text-white">
+          <Check className="size-3" strokeWidth={3} />
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "flex size-7 shrink-0 items-center justify-center rounded-lg",
+          selected
+            ? "bg-brand-stratus-blue/20 text-brand-stratus-blue"
+            : "bg-brand-canvas text-brand-ink-faint",
+        )}
+      >
+        <Icon className="size-3.5" />
+      </span>
+      <span className="min-w-0 pr-4">
+        <span className="block truncate text-[13px] font-semibold text-brand-ink">{band.label}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-brand-ink-faint">{band.sublabel}</span>
+      </span>
+    </button>
+  );
+}
+
 function MobileSheetPrimaryButton({
   label,
   onClick,
@@ -383,6 +448,162 @@ function MobileSheetPrimaryButton({
   );
 }
 
+function districtHaystack(district: { displayName: string; name: string; aliases: string[] }): string {
+  return [district.displayName, district.name, ...district.aliases].join(" ").toLowerCase();
+}
+
+function LocationDistrictPicker({
+  cities,
+  onCitiesChange,
+  locationOptions,
+  compact,
+}: {
+  cities: string[];
+  onCitiesChange: (c: string[]) => void;
+  locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
+  compact?: boolean;
+}) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const q = query.trim().toLowerCase();
+  const groups = districtGroupsForScoutOptions(locationOptions);
+
+  const filtered = groups
+    .map((group) => ({
+      ...group,
+      districts: group.districts.filter(
+        (d) =>
+          !q ||
+          districtHaystack(d).includes(q) ||
+          group.state.name.toLowerCase().includes(q),
+      ),
+    }))
+    .filter((group) => group.districts.length > 0);
+
+  if (!groups.length) {
+    return (
+      <p className={cn("text-center text-[12px] text-brand-ink-faint", compact ? "px-4 py-8" : "py-6")}>
+        Set locations in Settings → Enrichment (India, region, state, or district).
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      <div className={cn("border-b border-brand-border", compact ? "px-3 py-2" : "p-3")}>
+        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-app px-3 py-2.5">
+          <Search className="size-3.5 shrink-0 text-brand-ink-faint" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search districts or states…"
+            className="min-w-0 flex-1 bg-transparent text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                inputRef.current?.focus();
+              }}
+              className="text-brand-ink-faint hover:text-brand-ink"
+            >
+              <X className="size-3" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className={cn("overflow-y-auto", compact ? "max-h-[min(70vh,560px)] px-3 py-2" : "max-h-[min(62vh,480px)] p-3")}>
+        {filtered.length === 0 ? (
+          <p className="py-8 text-center text-[12px] text-brand-ink-faint">No districts match.</p>
+        ) : (
+          filtered.map((group) => {
+            const allowedIds = group.districts.map((d) => d.id);
+            const selectedCount = group.districts.filter((d) => isScoutDistrictPicked(cities, d)).length;
+            const allOn = selectedCount === group.districts.length && group.districts.length > 0;
+            return (
+              <div key={group.state.id} className="mb-4 last:mb-0">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
+                    {group.state.name}
+                    <span className="ml-1.5 font-semibold normal-case tracking-normal text-brand-ink-soft">
+                      {selectedCount}/{group.districts.length}
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => onCitiesChange(setScoutStateDistricts(cities, group.state.id, !allOn, allowedIds))}
+                    className="text-[11px] font-semibold text-brand-stratus-blue"
+                  >
+                    {allOn ? "Clear state" : "All districts"}
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {group.districts.map((district) => {
+                    const selected = isScoutDistrictPicked(cities, district);
+                    return (
+                      <button
+                        key={district.id}
+                        type="button"
+                        onClick={() => onCitiesChange(toggleScoutDistrictPick(cities, district.id, allowedIds))}
+                        aria-pressed={selected}
+                        className={cn(
+                          "relative min-h-[52px] rounded-xl border px-2.5 py-2 text-left transition-colors",
+                          selected
+                            ? "border-brand-stratus-blue bg-brand-stratus-blue/10 shadow-[var(--shadow-brand-sm)]"
+                            : "border-brand-border/70 bg-white hover:border-brand-stratus-blue/40 hover:bg-brand-canvas/50",
+                        )}
+                      >
+                        {selected ? (
+                          <span className="absolute right-1.5 top-1.5 flex size-4 items-center justify-center rounded-full bg-brand-stratus-blue text-white">
+                            <Check className="size-3" strokeWidth={3} />
+                          </span>
+                        ) : null}
+                        <span className="block pr-4 text-[12.5px] font-semibold leading-snug text-brand-ink">
+                          {district.displayName}
+                        </span>
+                        {district.name.toLowerCase() !== district.displayName.toLowerCase() ? (
+                          <span className="mt-0.5 block truncate text-[10.5px] text-brand-ink-faint">
+                            {district.name}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {cities.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
+          {cities.map((c) => (
+            <span
+              key={c}
+              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
+            >
+              {c}
+              <button
+                type="button"
+                disabled={cities.length <= 1}
+                onClick={() => onCitiesChange(cities.filter((x) => x !== c))}
+                className="disabled:opacity-40"
+              >
+                <X className="size-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MobileCitySheetContent({
   cities,
   onCitiesChange,
@@ -390,68 +611,32 @@ function MobileCitySheetContent({
 }: {
   cities: string[];
   onCitiesChange: (c: string[]) => void;
-  locationOptions: { label: string; group: string }[];
+  locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
 }) {
-  function toggle(city: string) {
-    if (cities.includes(city)) {
-      if (cities.length <= 1) return;
-      onCitiesChange(cities.filter((c) => c !== city));
-    } else {
-      onCitiesChange([...cities, city]);
-    }
-  }
-
-  const groups = groupLocationOptions(locationOptions);
-
-  if (!groups.length) {
-    return (
-      <p className="px-4 py-8 text-center text-[12px] text-brand-ink-faint">
-        No locations enabled. An admin can set India / region / state / district in Settings → Enrichment.
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col px-1 py-2">
-      {groups.map((group) => (
-        <div key={group.label} className="mb-2 last:mb-0">
-          <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
-            {group.label}
-          </p>
-          <div className="grid grid-cols-2 gap-2 px-3">
-            {group.cities.map((city) => {
-              const meta = getCityMeta(city);
-              const selected = cities.includes(city);
-              const locked = selected && cities.length <= 1;
-              return (
-                <MobileFilterGridChip
-                  key={city}
-                  icon={<span className="text-lg leading-none">{meta.icon}</span>}
-                  label={city}
-                  sublabel={meta.tagline}
-                  selected={selected}
-                  disabled={locked}
-                  onClick={() => toggle(city)}
-                />
-              );
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
+    <LocationDistrictPicker
+      cities={cities}
+      onCitiesChange={onCitiesChange}
+      locationOptions={locationOptions}
+      compact
+    />
   );
 }
 
 function MobileIndustrySheetContent({
   industries,
-  onToggle,
+  onIndustryToggle,
+  employeeBands,
+  onScaleToggle,
 }: {
   industries: string[];
-  onToggle: (i: string) => void;
+  onIndustryToggle: (i: string) => void;
+  employeeBands: string[];
+  onScaleToggle: (bandId: string) => void;
 }) {
   return (
     <div className="flex flex-col px-1 py-2">
-      <div className="mb-2 last:mb-0">
+      <div className="mb-3">
         <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
           Industries
         </p>
@@ -464,10 +649,36 @@ function MobileIndustrySheetContent({
                 icon={<Icon className="size-4" />}
                 label={ind}
                 selected={industries.includes(ind)}
-                onClick={() => onToggle(ind)}
+                onClick={() => onIndustryToggle(ind)}
               />
             );
           })}
+        </div>
+      </div>
+      <div className="mb-2">
+        <div className="mb-1.5 flex items-center justify-between px-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
+            Scale
+          </p>
+          {employeeBands.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => employeeBands.forEach(onScaleToggle)}
+              className="text-[12px] font-semibold text-brand-stratus-blue"
+            >
+              Any scale
+            </button>
+          ) : null}
+        </div>
+        <div className="grid grid-cols-1 gap-1.5 px-3 sm:grid-cols-2">
+          {SCOUT_EMPLOYEE_BANDS.map((band) => (
+            <ScaleDsCard
+              key={band.id}
+              band={band}
+              selected={employeeBands.includes(band.id)}
+              onToggle={() => onScaleToggle(band.id)}
+            />
+          ))}
         </div>
       </div>
     </div>
@@ -559,149 +770,14 @@ function CityPopoverContent({
 }: {
   cities: string[];
   onCitiesChange: (c: string[]) => void;
-  locationOptions: { label: string; group: string }[];
+  locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
 }) {
-  const [query, setQuery] = useState("");
-  const [locating, setLocating] = useState(false);
-
-  async function useNearMe() {
-    setLocating(true);
-    try {
-      const pos = await getCurrentPosition();
-      const city = findNearestScoutLocation(
-        pos.latitude,
-        pos.longitude,
-        locationOptions.map((o) => o.label),
-      );
-      if (!city) {
-        toast.error("No nearby location in your Settings list.");
-        return;
-      }
-      onCitiesChange([city]);
-      toast.success(`Scouting near ${city}`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not get location");
-    } finally {
-      setLocating(false);
-    }
-  }
-  const inputRef = useRef<HTMLInputElement>(null);
-  const q = query.trim().toLowerCase();
-
-  const filtered = groupLocationOptions(locationOptions)
-    .map((g) => ({
-      ...g,
-      cities: g.cities.filter((c) => !q || c.toLowerCase().includes(q)),
-    }))
-    .filter((g) => g.cities.length > 0);
-
-  function toggle(city: string) {
-    if (cities.includes(city)) {
-      if (cities.length <= 1) return;
-      onCitiesChange(cities.filter((c) => c !== city));
-    } else {
-      onCitiesChange([...cities, city]);
-    }
-  }
-
   return (
-    <div className="flex flex-col">
-      <div className="border-b border-brand-border p-3">
-        <button
-          type="button"
-          disabled={locating}
-          onClick={() => void useNearMe()}
-          className="mb-2 flex w-full min-h-[40px] items-center justify-center gap-2 rounded-xl bg-brand-black text-[12px] font-semibold text-white active:scale-[0.98] disabled:opacity-50"
-        >
-          {locating ? "Locating..." : "Near me"}
-        </button>
-      </div>
-      <div className="border-b border-brand-border p-3 pt-0">
-        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-app px-3 py-2">
-          <Search className="size-3.5 shrink-0 text-brand-ink-faint" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search location…"
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
-          />
-          {query && (
-            <button
-              type="button"
-              onClick={() => { setQuery(""); inputRef.current?.focus(); }}
-              className="text-brand-ink-faint hover:text-brand-ink"
-            >
-              <X className="size-3" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* City groups */}
-      <div className="p-3">
-        {locationOptions.length === 0 ? (
-          <p className="py-4 text-center text-[12px] text-brand-ink-faint">
-            Set locations in Settings → Enrichment (India, region, state, or district).
-          </p>
-        ) : filtered.length === 0 ? (
-          <p className="py-4 text-center text-[12px] text-brand-ink-faint">No locations match.</p>
-        ) : (
-          filtered.map((group) => (
-            <div key={group.label} className="mb-3 last:mb-0">
-              <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-                {group.label}
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {group.cities.map((city) => {
-                  const meta = getCityMeta(city);
-                  const selected = cities.includes(city);
-                  return (
-                    <button
-                      key={city}
-                      type="button"
-                      onClick={() => toggle(city)}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150",
-                        selected
-                          ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
-                          : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
-                      )}
-                    >
-                      <span className="leading-none">{meta.icon}</span>
-                      {city}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Footer: selected chips + clear */}
-      {cities.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
-          {cities.map((c) => (
-            <span
-              key={c}
-              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
-            >
-              {c}
-              <button
-                type="button"
-                disabled={cities.length <= 1}
-                onClick={() => onCitiesChange(cities.filter((x) => x !== c))}
-                className="disabled:opacity-40"
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
+    <LocationDistrictPicker
+      cities={cities}
+      onCitiesChange={onCitiesChange}
+      locationOptions={locationOptions}
+    />
   );
 }
 
@@ -711,10 +787,14 @@ function CityPopoverContent({
 
 function IndustryPopoverContent({
   industries,
-  onToggle,
+  onIndustryToggle,
+  employeeBands,
+  onScaleToggle,
 }: {
   industries: string[];
-  onToggle: (i: string) => void;
+  onIndustryToggle: (i: string) => void;
+  employeeBands: string[];
+  onScaleToggle: (bandId: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -723,6 +803,8 @@ function IndustryPopoverContent({
   const filtered = SCOUT_INDUSTRIES.filter(
     (ind) => !q || ind.toLowerCase().includes(q),
   );
+  const selectedScales = SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id));
+  const hasFooter = industries.length > 0 || selectedScales.length > 0;
 
   return (
     <div className="flex flex-col">
@@ -752,7 +834,10 @@ function IndustryPopoverContent({
         </div>
       </div>
 
-      <div className="p-3">
+      <div className="max-h-[min(70vh,440px)] overflow-y-auto p-3">
+        <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
+          Industry
+        </p>
         {filtered.length === 0 ? (
           <p className="py-4 text-center text-[12px] text-brand-ink-faint">No industries match.</p>
         ) : (
@@ -764,7 +849,7 @@ function IndustryPopoverContent({
                 <button
                   key={ind}
                   type="button"
-                  onClick={() => onToggle(ind)}
+                  onClick={() => onIndustryToggle(ind)}
                   className={cn(
                     "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150",
                     selected
@@ -779,9 +864,36 @@ function IndustryPopoverContent({
             })}
           </div>
         )}
+
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
+              Scale
+            </p>
+            {employeeBands.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => employeeBands.forEach(onScaleToggle)}
+                className="text-[11px] font-semibold text-brand-ink-faint hover:text-brand-ink"
+              >
+                Any scale
+              </button>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {SCOUT_EMPLOYEE_BANDS.map((band) => (
+              <ScaleDsCard
+                key={band.id}
+                band={band}
+                selected={employeeBands.includes(band.id)}
+                onToggle={() => onScaleToggle(band.id)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
-      {industries.length > 0 && (
+      {hasFooter && (
         <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
           {industries.map((ind) => (
             <span
@@ -791,9 +903,24 @@ function IndustryPopoverContent({
               {ind}
               <button
                 type="button"
-                onClick={() => onToggle(ind)}
+                onClick={() => onIndustryToggle(ind)}
                 className="disabled:opacity-40"
                 aria-label={`Remove ${ind}`}
+              >
+                <X className="size-2.5" />
+              </button>
+            </span>
+          ))}
+          {selectedScales.map((band) => (
+            <span
+              key={band.id}
+              className="flex items-center gap-1 rounded-full border border-brand-stratus-blue/30 bg-brand-stratus-blue/10 px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
+            >
+              {band.label}
+              <button
+                type="button"
+                onClick={() => onScaleToggle(band.id)}
+                aria-label={`Remove ${band.label}`}
               >
                 <X className="size-2.5" />
               </button>
@@ -1109,6 +1236,7 @@ export function ScoutingToolbar({
   view,
   cities,
   industries,
+  employeeBands,
   seniority,
   departments,
   selectedCount,
@@ -1122,6 +1250,7 @@ export function ScoutingToolbar({
   companySearchQuery = "",
   onCitiesChange,
   onIndustryToggle,
+  onEmployeeBandToggle,
   onSeniorityToggle,
   onDepartmentToggle,
   onFetchNewCompanies,
@@ -1191,7 +1320,7 @@ export function ScoutingToolbar({
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">Filters</p>
               <p className="truncate text-[13px] font-semibold text-brand-ink">
-                {cityLabel(cities)} · {industryLabel(industries)}
+                {cityLabel(cities)} · {industryScaleLabel(industries, employeeBands)}
                 {!isSearchMode && seniority.length + departments.length > 0
                   ? ` · ${peopleLabel(seniority, departments)}`
                   : ""}
@@ -1225,7 +1354,7 @@ export function ScoutingToolbar({
             />
             <CompactFilterChip
               icon={<Building2 className="size-3.5" />}
-              label={industryLabel(industries)}
+              label={industryScaleLabel(industries, employeeBands)}
               active={mobileSheet === "industry"}
               onClick={() => setMobileSheet(cities.length === 0 ? "city" : "industry")}
             />
@@ -1236,7 +1365,6 @@ export function ScoutingToolbar({
                 active={mobileSheet === "people"}
                 onClick={() => {
                   if (cities.length === 0) setMobileSheet("city");
-                  else if (industries.length === 0) setMobileSheet("industry");
                   else setMobileSheet("people");
                 }}
               />
@@ -1263,18 +1391,22 @@ export function ScoutingToolbar({
         <BottomSheet
           open={mobileSheet === "industry"}
           onClose={() => setMobileSheet(null)}
-          title="Industry"
+          title="Industry & scale"
           contentClassName="px-0 py-0"
           footer={
             <MobileSheetPrimaryButton
               label={isSearchMode ? "Apply filters" : "Continue"}
               icon={isSearchMode ? undefined : <ArrowRight className="size-4" />}
-              disabled={!isSearchMode && industries.length === 0}
               onClick={() => setMobileSheet(isSearchMode ? null : "people")}
             />
           }
         >
-          <MobileIndustrySheetContent industries={industries} onToggle={onIndustryToggle} />
+          <MobileIndustrySheetContent
+            industries={industries}
+            onIndustryToggle={onIndustryToggle}
+            employeeBands={employeeBands}
+            onScaleToggle={onEmployeeBandToggle}
+          />
         </BottomSheet>
         {!isSearchMode ? (
           <BottomSheet
@@ -1344,7 +1476,7 @@ export function ScoutingToolbar({
               hasSelection={cities.length > 0}
               onClick={() => toggle("city")}
             />
-            <Popover open={active === "city"} onClose={() => setActive(null)} width="w-[360px]">
+            <Popover open={active === "city"} onClose={() => setActive(null)} width="w-[min(640px,calc(100vw-2rem))]">
               <CityPopoverContent cities={cities} onCitiesChange={onCitiesChange} locationOptions={resolvedLocationOptions} />
             </Popover>
           </div>
@@ -1357,13 +1489,18 @@ export function ScoutingToolbar({
             <PillSegment
               icon={<Building2 className="size-3.5" />}
               label="Industry"
-              value={industryLabel(industries)}
+              value={industryScaleLabel(industries, employeeBands)}
               active={active === "industry"}
-              hasSelection={industries.length > 0}
+              hasSelection={industries.length + employeeBands.length > 0}
               onClick={() => toggle("industry")}
             />
-            <Popover open={active === "industry"} onClose={() => setActive(null)} width="w-[360px]">
-              <IndustryPopoverContent industries={industries} onToggle={onIndustryToggle} />
+            <Popover open={active === "industry"} onClose={() => setActive(null)} width="w-[400px]">
+              <IndustryPopoverContent
+                industries={industries}
+                onIndustryToggle={onIndustryToggle}
+                employeeBands={employeeBands}
+                onScaleToggle={onEmployeeBandToggle}
+              />
             </Popover>
           </div>
 

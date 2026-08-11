@@ -1,4 +1,4 @@
-import { callLLM } from "@/lib/llm";
+import { callLLM, type LLMProvider } from "@/lib/llm";
 import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { retrieveRelevantRules } from "@/lib/rag";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
@@ -34,6 +34,7 @@ import {
 } from "@/lib/agents/personalization-context";
 import { getBaselineEmail, TRANSFORMATION_RULES } from "@/lib/email/baseline-templates";
 import { fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 import {
   isNearParaphrase,
   BASELINE_PARAPHRASE_THRESHOLD,
@@ -50,6 +51,8 @@ const SEQUENCE_REWRITE_INSTRUCTION =
   "Previous draft was too similar to Email 1. Use Email 2 structure: seasonal urgency (Diwali window, tasting slots filling) plus a sampler CTA. Do not reuse Email 1 hook wording. Never say just following up or circling back.";
 
 
+export type WriterMode = "standard" | "ai";
+
 export type WriterOptions = {
   outreachTemplate?: OutreachTemplateId;
   followUpMode?: "follow_up" | "final_reminder";
@@ -58,7 +61,12 @@ export type WriterOptions = {
   sequencePosition?: number;
   skipStatusUpdate?: boolean;
   forceNewAngle?: boolean;
+  writerMode?: WriterMode;
 };
+
+export function resolveWriterMode(mode?: string | null): WriterMode {
+  return mode === "ai" ? "ai" : "standard";
+}
 
 export async function runWriter(leadId: string, options?: WriterOptions): Promise<string> {
   const lead = await db.query.leads.findFirst({
@@ -77,12 +85,15 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
   const { brandConfig, campaignMode, emailStyle, fromName } = emailConfig;
   const senderFirstName = fromName.split(" ")[0] || fromName;
-  const senderName = fromName.trim() || senderFirstName;
+  const senderName = fromName.trim() || senderFirstName || "Srilaksha";
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
+  const companyDisplayName = companyNameForEmail(account.name);
   const isFollowUp = !!options?.followUpMode;
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);
 
-  if (packIdFromBrand(brandConfig) === "gifting-sweets") {
+  const writerMode = resolveWriterMode(options?.writerMode);
+  const llmProvider: LLMProvider | undefined = writerMode === "ai" ? "openrouter" : undefined;
+  if (writerMode !== "ai" && packIdFromBrand(brandConfig) === "gifting-sweets") {
     return persistIshTemplateDraft({
       lead,
       leadId,
@@ -91,6 +102,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
       emailConfig,
       senderFirstName: senderName,
       contactFirstName,
+      companyDisplayName,
       sequencePosition,
       templateId: options?.followUpMode ?? options?.outreachTemplate ?? "gift_sampling",
       isFollowUp,
@@ -143,7 +155,9 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const confidenceTier = research?.confidenceTier ?? "low";
   const outreachHook = research?.outreachHook ?? "";
 
-  const writerPlan = !isFollowUp ? await ensureWriterPlan(leadId) : null;
+  const writerPlan = !isFollowUp
+    ? await ensureWriterPlan(leadId, llmProvider ? { llmProvider } : undefined)
+    : null;
   const template = getOutreachTemplate(
     options?.followUpMode ?? options?.outreachTemplate,
     packIdFromBrand(brandConfig),
@@ -166,7 +180,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     contactFirstName,
     senderFirstName: senderName,
     brandName: brandConfig.brandName,
-    companyName: account.name,
+    companyName: companyDisplayName,
   });
   const extraHooks = (research?.outreachHooks ?? []).filter(
     (h) => h && h !== outreachHook,
@@ -177,7 +191,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     brandConfig.brandName,
     senderName,
     contactFirstName,
-    account.name,
+    companyDisplayName,
     brandConfig.productSummary,
     brandConfig.verticalPackId,
   );
@@ -205,6 +219,7 @@ ${keywordRule}
 - Subject A: punchy, under 50 characters, include first name OR company (e.g. Send happiness this Diwali, ${contactFirstName}); never use em dashes (—) or " - Company" suffix
 - Email 2 and 3 subject A must be exactly Re: plus the Email 1 subject${options?.originalEmailSubject ? ` (${options.originalEmailSubject.replace(/^re:\s*/i, "")})` : ""}
 - Never use em dashes (—) in subject or body
+- In subject and body, use the short company name only (e.g. "${companyDisplayName}"). Never write Pvt Ltd, Private Limited, India Pvt Ltd, Ltd, LLP, or similar legal suffixes.
 - ${EMAIL_BODY_FORMAT_RULE}
 ${antiSpamRules}
 `;
@@ -251,7 +266,7 @@ ${jsonShape}`;
 ${baseline}
 </BASE_TEXT>
 
-Company: ${account.name}, ${account.city ?? "India"}
+Company: ${companyDisplayName}, ${account.city ?? "India"}
 Contact: ${contactFirstName}, ${contact.title ?? "unknown role"}
 Campaign: ${campaignMode}
 Confidence tier: ${confidenceTier}
@@ -263,7 +278,8 @@ ${template.ctaInstruction}
 ${isFollowUp ? `\nEmail #${options?.followUpMode === "follow_up" ? "2" : "3"} of 3.\nEmail 1 subject: ${options?.originalEmailSubject ?? "unknown"}\nOriginal email (do not repeat hook wording):\n"""\n${options?.originalEmailBody ?? ""}\n"""\n` : ""}
 ${options?.forceNewAngle ? `\n${SEQUENCE_REWRITE_INSTRUCTION}\n` : ""}
 ${isFollowUp && extraHooks.length ? `Unused angles for a new value line: ${extraHooks.slice(0, 2).join(" | ")}\n` : ""}
-Sign off with Thanks & Regards then "${senderName}"
+Sign off with Thanks & Regards, then "${senderName}", then ${brandConfig.brandName}
+Use company name "${companyDisplayName}" only. Never append India Pvt Ltd, Pvt Ltd, or other legal suffixes.
 Return ONLY the rewritten email fields in JSON.`;
 
   let emailBody = "";
@@ -295,7 +311,7 @@ Return ONLY the rewritten email fields in JSON.`;
     recentSubjects,
     baselineBody: baseline,
   };
-  const maxRevisions = isFollowUp ? 1 : MAX_REVISIONS;
+  const maxRevisions = writerMode === "ai" ? 0 : isFollowUp ? 1 : MAX_REVISIONS;
 
   for (let attempt = 0; attempt <= maxRevisions; attempt++) {
     let retrySuffix = "";
@@ -318,7 +334,8 @@ Return ONLY the rewritten email fields in JSON.`;
       tier: tierForAgentStep("writer.write"),
       system: systemPrompt,
       prompt: `${userPrompt}${retrySuffix}`,
-      maxTokens: isFollowUp ? 2048 : 4096,
+      maxTokens: writerMode === "ai" ? 2048 : isFollowUp ? 2048 : 4096,
+      provider: llmProvider,
     });
 
     const { data: parsed, valid: writerJsonValid } = parseWriterOutput(raw);
@@ -328,7 +345,7 @@ Return ONLY the rewritten email fields in JSON.`;
       throw new Error("Writer returned incomplete JSON instead of an email. Try Write again.");
     }
     const parsedWithFallback = {
-      subjectA: parsed.subjectA ?? `Outreach for ${account.name}`,
+      subjectA: parsed.subjectA ?? `Outreach for ${companyDisplayName}`,
       subjectB: parsed.subjectB ?? `Note for ${contactFirstName}`,
       subjectC: parsed.subjectC ?? `A taste of Diwali, ${contactFirstName}`,
       emailBody: parsed.emailBody,
@@ -341,7 +358,7 @@ Return ONLY the rewritten email fields in JSON.`;
     emailBody = normalizeEmailBody(parsedWithFallback.emailBody ?? "");
     emailBodyB = parsedWithFallback.emailBodyB ? normalizeEmailBody(parsedWithFallback.emailBodyB) : "";
     emailBodyC = parsedWithFallback.emailBodyC ? normalizeEmailBody(parsedWithFallback.emailBodyC) : "";
-    subjectA = parsedWithFallback.subjectA ?? `Outreach for ${account.name}`;
+    subjectA = parsedWithFallback.subjectA ?? `Outreach for ${companyDisplayName}`;
     subjectB = parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`;
     subjectC = parsedWithFallback.subjectC ?? `A taste of Diwali, ${contactFirstName}`;
     templateVariant = options?.followUpMode ?? template.id;
@@ -438,17 +455,31 @@ async function persistIshTemplateDraft(params: {
   emailConfig: Awaited<ReturnType<typeof getResolvedEmailConfig>>;
   senderFirstName: string;
   contactFirstName: string;
+  companyDisplayName: string;
   sequencePosition: number;
   templateId: string;
   isFollowUp: boolean;
   skipStatusUpdate?: boolean;
 }): Promise<string> {
-  const { lead, leadId, contact, account, emailConfig, senderFirstName, contactFirstName, sequencePosition, templateId, isFollowUp, skipStatusUpdate } = params;
+  const {
+    lead,
+    leadId,
+    contact,
+    account,
+    emailConfig,
+    senderFirstName,
+    contactFirstName,
+    companyDisplayName,
+    sequencePosition,
+    templateId,
+    isFollowUp,
+    skipStatusUpdate,
+  } = params;
   const { brandConfig, emailStyle, fromName } = emailConfig;
   const copy = fillIshDraftVariants({
     contactFirstName,
-    companyName: account.name,
-    senderFirstName: fromName.trim() || senderFirstName,
+    companyName: companyDisplayName,
+    senderFirstName: fromName.trim() || senderFirstName || "Srilaksha",
     brandName: brandConfig.brandName,
     sequencePosition,
     templateId,

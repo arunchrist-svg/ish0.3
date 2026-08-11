@@ -2,6 +2,7 @@ import type { ScoutCompanyResult } from "./types";
 import { expandCitySearchTerms } from "./city-search";
 import { isGeographicEntity } from "./company-name-match";
 import { isBroadGeoLabel } from "@/lib/geo/india";
+import { extractEmployeesFromText } from "./employee-size";
 
 type DirectoryHit = { title: string; url: string; content: string };
 
@@ -32,6 +33,70 @@ const SENTENCE_STARTERS =
 
 const COMPANY_SUFFIX =
   /\b(ltd|limited|pvt|private|llp|inc|corp|corporation|plc|gmbh|llc|co\.?|company|group|technologies|technology|systems|solutions|labs?|software|networks?|ventures?)\b/i;
+
+/** Strong legal / industry markers that keep a name even if a place word appears (e.g. "… Pvt Ltd Sipcot"). */
+const STRONG_COMPANY_MARKER =
+  /\b(ltd|limited|pvt\.?\s*ltd\.?|private\s+limited|llp|inc|corp|corporation|plc|gmbh|llc|technologies|technology|systems|solutions|electronics|automobiles?|components?|industries|manufactur(?:ing|ers?)?|motors?|textiles?|pharma(?:ceuticals?)?|chemicals?|engineering|services)\b/i;
+
+/** Addresses, estates, roads, layouts, PIN codes mistaken for companies. */
+const ADDRESS_OR_PLACE_NAME =
+  /\b(sipcot|sidco|midc|gidc|rieco|ricco|riico|sez|epip|indl\.?|industrial\s+(area|estate|complex|park|zone|township)|phase[- ]*[ivx\d]+|plot\s*no\.?|survey\s*no\.?|door\s*no\.?|shed\s*no\.?|unit\s*no\.?|shop\s*no\.?|flat\s*no\.?|sector\s*\d+|block\s*[a-z0-9]|agraharam|village|taluk|taluka|district|pincode|pin\s*code|postal\s*code|layout|colony|extension|extn\.?|nagar|compound|bypass|highway|main\s+road|\brd\.?\b|\broad\b|\bstreet\b|\bcross\b|\bpost\b|\bestate\b|\barea\b|\bcomplex\b|\bpark\b|\bzone\b|\bphase\b)\b/i;
+
+const PIN_OR_PLOT_SHAPE =
+  /\b\d{6}\b|^\s*[A-Za-z][A-Za-z\s.-]{2,30}[\s-]*\d{5,6}\s*$|^\s*[A-Za-z]+\s*(no\.?\s*)?\d{1,4}[A-Za-z]?\s*$|^\s*[A-Za-z]+\d{1,4}\/\d*[A-Za-z]*\s*$|\bno\.?\s*\d{1,4}\b/i;
+
+const PLACE_NAME_SUFFIX =
+  /(palli|halli|puram|pet|kere|nagar|layout|colony|road|rd|estate|compound|post|area|complex|park|zone|village)$/i;
+
+function looksLikeAddressOrPlace(name: string): boolean {
+  const words = name.split(/[\s,/]+/).filter(Boolean);
+  const hasStrongCompany = STRONG_COMPANY_MARKER.test(name);
+
+  // PHASE-I / Phase II / Phase 1
+  if (/^phase[- ]*[ivx\d]+$/i.test(name.trim())) return true;
+
+  // "HOSUR TO THALLY ROAD"
+  if (/\bto\b.+\b(road|rd)\b/i.test(name)) return true;
+
+  if (ADDRESS_OR_PLACE_NAME.test(name) && !hasStrongCompany) return true;
+  if (PIN_OR_PLOT_SHAPE.test(name) && !hasStrongCompany) return true;
+
+  // City glued to plot / pin: "HosurPlot No 63", "Hosur-635126", "Hosur20/2d"
+  if (
+    /^[A-Za-z]{3,}[\s-]?(plot|phase|sector|no\.?|door|shed)?[\s-]?\d/i.test(name) &&
+    !hasStrongCompany
+  ) {
+    return true;
+  }
+
+  // Bare estate labels
+  if (/^(industrial|corporate|business)\s+(area|estate|complex|park|zone)$/i.test(name)) return true;
+
+  // Ends with place vocabulary and no strong company marker
+  if (PLACE_NAME_SUFFIX.test(name.replace(/[.\s]+$/g, "")) && !hasStrongCompany) return true;
+
+  // Single-token Indian locality-style names (Hanumapalli, KARNOOR)
+  if (words.length === 1) {
+    const token = words[0].replace(/[.-]/g, "");
+    if (PLACE_NAME_SUFFIX.test(token)) return true;
+    if (/(oor|alli|palli|halli|puram|pet|kere)$/i.test(token) && token.length >= 6 && !hasStrongCompany) {
+      return true;
+    }
+  }
+
+  // Multi-word ALL CAPS place lines without a real company marker
+  if (
+    !hasStrongCompany &&
+    words.length >= 2 &&
+    words.length <= 6 &&
+    words.every((w) => /^[A-Z0-9][A-Z0-9.&'-]*$/.test(w)) &&
+    ADDRESS_OR_PLACE_NAME.test(name)
+  ) {
+    return true;
+  }
+
+  return false;
+}
 
 function inferIndustryFromTitle(title: string): string | undefined {
   const t = title.toLowerCase();
@@ -138,6 +203,7 @@ export function cleanCompanyName(raw: string): string | null {
   if (/justdial|indiamart|zauba|tradeindia|sulekha|linkedin|glassdoor|indeed/i.test(name)) return null;
   if (/^[\d\s·•,.-]+$/.test(name)) return null;
   if (isGeographicEntity(name)) return null;
+  if (looksLikeAddressOrPlace(name)) return null;
   if (LISTING_TITLE.test(name)) return null;
   if (/^(companies|businesses|firms|offices)\s+in\b/i.test(name)) return null;
   if (/\bincluding\b/i.test(name)) return null;
@@ -285,6 +351,7 @@ export function parseCompaniesFromDirectoryResults(
     industry: string | undefined,
     city: string | undefined,
     host: string,
+    employees?: string,
   ) => {
     const name = cleanCompanyName(raw);
     if (!name) return;
@@ -296,6 +363,7 @@ export function parseCompaniesFromDirectoryResults(
       name,
       city: inferCityFromSegment(raw, cities) ?? city,
       industry,
+      employees: employees ?? extractEmployeesFromText(raw),
       intelNotes: `Directory listing (${host}) — verify before outreach`,
       fitScore: 62,
       dataSource: "india_directories_heuristic",
@@ -313,6 +381,7 @@ export function parseCompaniesFromDirectoryResults(
     ];
     const industry = inferIndustryFromTitle(hit.title);
     const city = inferCityFromHit(hit, cities);
+    const employees = extractEmployeesFromText(`${hit.title} ${hit.content}`);
     let host = "directory";
     try {
       host = new URL(hit.url).hostname.replace(/^www\./, "");
@@ -321,7 +390,7 @@ export function parseCompaniesFromDirectoryResults(
     }
 
     for (const raw of candidates) {
-      push(raw, industry, city, host);
+      push(raw, industry, city, host, employees);
       if (out.length >= limit) return out;
     }
   }

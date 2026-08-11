@@ -14,6 +14,7 @@ type Props = {
 const DEFAULT_HINTS = [
   "Pulling company intel & gifting hooks",
   "Matching brand tone & campaign rules",
+  "Drafting Email 2 and 3 together",
   "Checking inbox safety",
 ];
 

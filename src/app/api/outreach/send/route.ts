@@ -98,20 +98,6 @@ export async function POST(req: Request) {
     });
     if (!outreach) return NextResponse.json({ error: "Outreach not found" }, { status: 404 });
 
-    if (draftFailsQualityGate(outreach) && !overrideQualityGate) {
-      return NextResponse.json(
-        {
-          code: "QUALITY_GATE_FAILED",
-          error: "Draft did not pass the quality gate. Revise the copy or confirm override to send.",
-          canOverride: true,
-          revisionTimeout: outreach.revisionTimeout ?? false,
-          deliverabilityScore: outreach.deliverabilityScore,
-          rubricTotal: outreach.rubricTotal,
-        },
-        { status: 422 },
-      );
-    }
-
     if (overrideQualityGate && draftFailsQualityGate(outreach)) {
       await logAudit({
         tenantId: ctx.tenantId,
@@ -191,7 +177,7 @@ export async function POST(req: Request) {
     const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();
 
-    const sentResults: { to: string; messageId?: string; mode: string }[] = [];
+    const sentResults: { to: string; messageId?: string; mode: string; trackingToken: string }[] = [];
 
     try {
       for (let i = 0; i < recipients.length; i++) {
@@ -215,7 +201,7 @@ export async function POST(req: Request) {
           inReplyTo: isPrimarySend ? threadHeaders.inReplyTo : undefined,
           references: isPrimarySend ? threadHeaders.references : undefined,
         });
-        sentResults.push({ to: result.to, messageId, mode: result.mode });
+        sentResults.push({ to: result.to, messageId, mode: result.mode, trackingToken });
       }
     } catch (sendError) {
       if (shouldHandleSendFailure(contact) && sentResults.length === 0) {
@@ -334,7 +320,7 @@ export async function POST(req: Request) {
           rfcMessageId: extra.messageId ?? null,
           subjectSent: subject,
           bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
-          trackingToken: crypto.randomUUID(),
+          trackingToken: extra.trackingToken,
           emailKind: "initial",
         });
       }

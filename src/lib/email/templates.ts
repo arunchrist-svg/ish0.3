@@ -14,6 +14,11 @@ function buildTrackingPixel(token: string, appUrl: string): string {
   return `<img src="${base}/api/track/open?t=${encodeURIComponent(token)}" width="1" height="1" style="display:none;border:0;outline:0;" alt="" />`;
 }
 
+function trackingPixelHtml(trackingToken: string | undefined, appUrl: string): string {
+  if (!trackingToken || !isPublicAppUrl(appUrl)) return "";
+  return buildTrackingPixel(trackingToken, appUrl);
+}
+
 export function buildEmailHtml(params: {
   body: string;
   senderName?: string;
@@ -24,24 +29,20 @@ export function buildEmailHtml(params: {
   const body = normalizeEmailBody(params.body);
   const emailStyle = params.emailStyle ?? getDefaultEmailConfig().emailStyle ?? "primary";
   const appUrl = params.appUrl ?? getDefaultEmailConfig().appUrl;
+  const pixel = trackingPixelHtml(params.trackingToken, appUrl);
 
   if (emailStyle === "primary") {
     const escaped = body
       .split(/\n\n+/)
       .map((p) => `<p style="font-size:14px;line-height:1.6;color:#222;margin:0 0 14px;">${p.replace(/\n/g, "<br/>")}</p>`)
       .join("\n");
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head><body style="font-family:Arial,sans-serif;max-width:600px;margin:0;padding:16px 20px;">${escaped}</body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head><body style="font-family:Arial,sans-serif;max-width:600px;margin:0;padding:16px 20px;">${escaped}${pixel}</body></html>`;
   }
 
   const paragraphs = body
     .split(/\n\n+/)
     .map((p) => `<p style="font-size:14px;line-height:1.6;color:#222;margin:0 0 16px;">${p.replace(/\n/g, "<br/>")}</p>`)
     .join("\n");
-
-  const pixel =
-    params.trackingToken && isPublicAppUrl(appUrl)
-      ? buildTrackingPixel(params.trackingToken, appUrl)
-      : "";
 
   return `<!DOCTYPE html>
 <html>

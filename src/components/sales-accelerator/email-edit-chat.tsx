@@ -94,7 +94,7 @@ export function EmailEditChat({
     }
   }
 
-  const pad = "px-4 sm:px-5";
+  const pad = embedded ? "px-3 lg:px-3.5" : "px-4 sm:px-5";
 
   return (
     <div className={cn("flex flex-col", embedded && "bg-transparent")}>
@@ -136,11 +136,11 @@ export function EmailEditChat({
         <div
           className={cn(
             pad,
-            "pb-4",
-            embedded ? "border-t border-brand-border/50 bg-brand-canvas/30 pt-2.5" : "border-t border-brand-border/50 bg-white/70 py-3 backdrop-blur-sm",
+            "pb-3",
+            embedded ? "border-t border-brand-border/50 bg-brand-canvas/30 pt-2" : "border-t border-brand-border/50 bg-white/70 py-3 backdrop-blur-sm",
           )}
         >
-          <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
             {embedded ? (
               <Sparkles className="size-3.5 shrink-0 text-brand-ink-faint" aria-hidden />
             ) : (

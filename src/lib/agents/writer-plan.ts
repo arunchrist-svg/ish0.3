@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { callLLM } from "@/lib/llm";
+import { callLLM, type LLMProvider } from "@/lib/llm";
 import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { db, leadResearch, leads, contacts, accounts } from "@/db";
 import { eq } from "drizzle-orm";
@@ -120,7 +120,10 @@ function brandAwareFallbackPlan(
   };
 }
 
-export async function generateWriterPlan(leadId: string): Promise<WriterPlan> {
+export async function generateWriterPlan(
+  leadId: string,
+  options?: { llmProvider?: LLMProvider },
+): Promise<WriterPlan> {
   const lead = await db.query.leads.findFirst({
     where: eq(leads.id, leadId),
     with: { contact: true, account: true },
@@ -183,6 +186,7 @@ Output ONLY JSON:
     system: "You output only valid JSON. No markdown.",
     prompt,
     maxTokens: 256,
+    provider: options?.llmProvider,
     trace: {
       agent: "writer-plan",
       tenantId: lead.tenantId,
@@ -218,7 +222,10 @@ Output ONLY JSON:
   return writerPlan;
 }
 
-export async function ensureWriterPlan(leadId: string): Promise<WriterPlan | null> {
+export async function ensureWriterPlan(
+  leadId: string,
+  options?: { llmProvider?: LLMProvider },
+): Promise<WriterPlan | null> {
   const research = await db.query.leadResearch.findFirst({
     where: eq(leadResearch.leadId, leadId),
   });
@@ -229,7 +236,11 @@ export async function ensureWriterPlan(leadId: string): Promise<WriterPlan | nul
     return existing;
   }
 
-  return generateWriterPlan(leadId);
+  if (options?.llmProvider === "openrouter") {
+    return null;
+  }
+
+  return generateWriterPlan(leadId, options);
 }
 
 export async function updateWriterPlan(leadId: string, plan: ParsedWriterPlan): Promise<WriterPlan> {

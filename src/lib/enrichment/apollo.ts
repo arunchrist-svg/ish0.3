@@ -1,6 +1,7 @@
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { computeSeniorityScore } from "./seniority-score";
+import { apolloEmployeeRanges } from "./employee-size";
 
 const BASE = "https://api.apollo.io/v1";
 
@@ -42,10 +43,13 @@ export async function apolloSearchCompanies(params: {
   cities: string[];
   industries: string[];
   limit?: number;
+  employeeBands?: string[];
 }): Promise<ScoutCompanyResult[]> {
+  const employeeRanges = apolloEmployeeRanges(params.employeeBands);
   const data = await apolloPost("/accounts/search", {
     q_organization_city_locations: params.cities,
     organization_industry_tag_ids: params.industries,
+    ...(employeeRanges.length ? { organization_num_employees_ranges: employeeRanges } : {}),
     per_page: params.limit ?? 25,
   });
 
@@ -63,46 +67,70 @@ export async function apolloSearchCompanies(params: {
   }));
 }
 
+function mapApolloPerson(p: Record<string, unknown>): ScoutPersonResult {
+  const email = p.email as string | undefined;
+  const locationParts = [p.city, p.state, p.country].filter(
+    (part): part is string => typeof part === "string" && Boolean(part.trim()),
+  );
+  return {
+    name: p.name as string,
+    firstName: p.first_name as string | undefined,
+    lastName: p.last_name as string | undefined,
+    title: p.title as string | undefined,
+    department: (p.departments as string[] | undefined)?.[0],
+    seniority: p.seniority as string | undefined,
+    email,
+    emailStatus: email ? classifyEmail(email) : "missing",
+    phone: (p.phone_numbers as Record<string, string>[] | undefined)?.[0]?.["sanitized_number"],
+    linkedIn: normalizeLinkedInUrl(p.linkedin_url as string | undefined),
+    location: locationParts.length ? locationParts.join(", ") : undefined,
+    bio: p.headline as string | undefined,
+    isKeyDM: isKeyDecisionMaker(p.title as string | undefined),
+    matchScore: computeMatchScore(p),
+    dataSource: "apollo",
+    externalId: p.id as string | undefined,
+  };
+}
+
 export async function apolloSearchPeople(params: {
   companyDomain: string;
+  companyDomains?: string[];
   titles: string[];
   limit?: number;
-  cities?: string[];
 }): Promise<ScoutPersonResult[]> {
-  const body: Record<string, unknown> = {
-    q_organization_domains: [params.companyDomain],
-    person_titles: params.titles,
-    per_page: params.limit ?? 10,
-  };
-  if (params.cities?.length) {
-    body.person_locations = params.cities;
-  }
-  const data = await apolloPost("/mixed_people/search", body);
+  const domains = [
+    ...new Set(
+      [params.companyDomain, ...(params.companyDomains ?? [])]
+        .map((d) => d.trim().toLowerCase().replace(/^www\./, ""))
+        .filter(Boolean),
+    ),
+  ];
 
-  return (data.people ?? []).map((p: Record<string, unknown>) => {
-    const email = p.email as string | undefined;
-    const locationParts = [p.city, p.state, p.country].filter(
-      (part): part is string => typeof part === "string" && Boolean(part.trim()),
-    );
-    return {
-      name: p.name as string,
-      firstName: p.first_name as string | undefined,
-      lastName: p.last_name as string | undefined,
-      title: p.title as string | undefined,
-      department: (p.departments as string[] | undefined)?.[0],
-      seniority: p.seniority as string | undefined,
-      email,
-      emailStatus: email ? classifyEmail(email) : "missing",
-      phone: (p.phone_numbers as Record<string, string>[] | undefined)?.[0]?.["sanitized_number"],
-      linkedIn: normalizeLinkedInUrl(p.linkedin_url as string | undefined),
-      location: locationParts.length ? locationParts.join(", ") : undefined,
-      bio: p.headline as string | undefined,
-      isKeyDM: isKeyDecisionMaker(p.title as string | undefined),
-      matchScore: computeMatchScore(p),
-      dataSource: "apollo",
-      externalId: p.id as string | undefined,
+  async function search(domainList: string[], titles?: string[]): Promise<Record<string, unknown>[]> {
+    const body: Record<string, unknown> = {
+      // Current Apollo People API field. Keep the legacy key for older mixed_people/search.
+      q_organization_domains_list: domainList,
+      q_organization_domains: domainList,
+      include_similar_titles: true,
+      per_page: params.limit ?? 10,
     };
-  });
+    if (titles?.length) body.person_titles = titles;
+    const data = await apolloPost("/mixed_people/search", body);
+    return (data.people ?? []) as Record<string, unknown>[];
+  }
+
+  let raw = await search(domains, params.titles);
+  if (!raw.length && params.titles.length) {
+    raw = await search(domains);
+  }
+  if (!raw.length && domains.length > 1) {
+    for (const domain of domains.slice(0, 3)) {
+      raw = await search([domain], params.titles.length ? params.titles : undefined);
+      if (raw.length) break;
+    }
+  }
+
+  return raw.map(mapApolloPerson);
 }
 
 function classifyEmail(email: string): "verified" | "unverified" | "generic" {
@@ -171,6 +199,7 @@ export async function apolloSearchPersonByName(params: {
   limit?: number;
 }): Promise<ScoutPersonResult[]> {
   const data = await apolloPost("/mixed_people/search", {
+    q_organization_domains_list: [params.domain],
     q_organization_domains: [params.domain],
     q_keywords: params.name,
     per_page: params.limit ?? 5,

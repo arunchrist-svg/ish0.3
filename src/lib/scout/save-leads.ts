@@ -14,10 +14,16 @@ import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
-import { isAcceptableCompanyDomain } from "@/lib/enrichment/company-domain-quality";
+import {
+  emailBelongsToCompany,
+  isAcceptableCompanyDomain,
+  usableStoredDomain,
+} from "@/lib/enrichment/company-domain-quality";
 import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-company-domain";
 import { resolveContactName } from "@/lib/enrichment/email-permutations";
-import { withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import { refreshPermutationEmails } from "@/lib/enrichment/contact-emails";
+import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
+import { personTitleConflictsWithCompany } from "@/lib/enrichment/person-company-match";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
@@ -84,12 +90,12 @@ async function findExistingAccount(
   tenantId: string,
   company: ScoutCompanyResult,
 ): Promise<typeof accounts.$inferSelect | undefined> {
-  const domain = normalizeDomain(company.domain);
+  const domain = usableStoredDomain(company.domain, company.name);
   if (domain) {
     const byDomain = await db.query.accounts.findFirst({
       where: (a, { eq: eqFn, and: andFn }) => andFn(eqFn(a.tenantId, tenantId), eqFn(a.domain, domain)),
     });
-    if (byDomain) return byDomain;
+    if (byDomain && isAcceptableCompanyDomain(byDomain.domain, company.name)) return byDomain;
   }
 
   return db.query.accounts.findFirst({
@@ -123,7 +129,7 @@ export async function saveScoutLeads(params: {
   });
   const resolvedCompany: ScoutCompanyResult = {
     ...company,
-    domain: domainResolution.domain ?? company.domain,
+    domain: usableStoredDomain(domainResolution.domain, company.name) ?? undefined,
     website: domainResolution.website ?? company.website,
   };
 
@@ -134,7 +140,7 @@ export async function saveScoutLeads(params: {
       tenantId,
       workspaceId,
       name: resolvedCompany.name,
-      domain: normalizeDomain(resolvedCompany.domain) ?? null,
+      domain: usableStoredDomain(resolvedCompany.domain, resolvedCompany.name),
       website: resolvedCompany.website,
       industry: resolvedCompany.industry,
       city: resolvedCompany.city,
@@ -161,9 +167,9 @@ export async function saveScoutLeads(params: {
     await db
       .update(accounts)
       .set({
-        domain: isAcceptableCompanyDomain(existing.domain, resolvedCompany.name)
-          ? existing.domain
-          : normalizeDomain(resolvedCompany.domain) ?? null,
+        domain:
+          usableStoredDomain(existing.domain, resolvedCompany.name) ??
+          usableStoredDomain(resolvedCompany.domain, resolvedCompany.name),
         website: isAcceptableCompanyDomain(
           normalizeDomain(existing.website) ?? existing.domain,
           resolvedCompany.name,
@@ -183,13 +189,21 @@ export async function saveScoutLeads(params: {
   const skipped: SaveLeadsResult["skipped"] = [];
 
   for (const person of people) {
+    if (personTitleConflictsWithCompany(person.title, resolvedCompany.name)) {
+      skipped.push({ name: person.name, reason: "title names a different employer" });
+      continue;
+    }
+
     let resolvedEmail = sanitizeEmail(person.email);
+    if (resolvedEmail && !emailBelongsToCompany(resolvedEmail, resolvedCompany.name)) {
+      resolvedEmail = undefined;
+    }
     let resolvedPhone = person.phone;
     let emailConfidence = 0;
     let enrichmentSource: string | undefined;
     let enrichmentProvider: string | undefined;
     let enrichAttempts: unknown;
-    let resolvedTitle = person.title;
+    let resolvedTitle = sanitizeJobTitle(person.title);
 
     if (shouldEnrich) {
       const enriched = await enrichPersonContact({
@@ -204,9 +218,10 @@ export async function saveScoutLeads(params: {
       });
       enrichAttempts = enriched.attempts;
       const named = isNamedPerson(person.name);
-      resolvedTitle = enriched.title ?? person.title;
+      resolvedTitle = sanitizeJobTitle(enriched.title) ?? sanitizeJobTitle(person.title);
       if (
         enriched.email &&
+        emailBelongsToCompany(enriched.email, resolvedCompany.name) &&
         shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
       ) {
         resolvedEmail = enriched.email;
@@ -223,6 +238,10 @@ export async function saveScoutLeads(params: {
       }
     } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && isNamedPerson(person.name)) {
       resolvedEmail = undefined;
+    }
+
+    if (resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)) {
+      resolvedTitle = null;
     }
 
     const emailResult = await verifyEmail(resolvedEmail ?? "");
@@ -286,24 +305,29 @@ export async function saveScoutLeads(params: {
     };
 
     if (existingContact) {
-      const nextEmail = resolvedEmail ?? existingContact.email;
-      const alternateEmails = withFirstLastSecondaryEmail(
-        nextEmail,
-        (existingContact.alternateEmails as ContactEmailEntry[] | null) ?? [],
-        secondaryIdentity,
-      );
+      const nextEmail =
+        resolvedEmail ??
+        (emailBelongsToCompany(existingContact.email, resolvedCompany.name) ? existingContact.email : undefined);
+      const refreshed = refreshPermutationEmails({
+        ...secondaryIdentity,
+        primaryEmail: nextEmail,
+        emailStatus: emailResult.status,
+        enrichmentProvider: enrichmentSource ? enrichmentProvider : existingContact.enrichmentProvider,
+        enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
+        alternateEmails: (existingContact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+      });
       await db
         .update(contacts)
         .set({
           title: resolvedTitle ?? existingContact.title,
           firstName: existingContact.firstName || resolvedFirstName || null,
           lastName: existingContact.lastName || resolvedLastName || null,
-          email: nextEmail,
-          emailStatus: emailResult.status,
+          email: refreshed.email,
+          emailStatus: refreshed.emailStatus,
           emailConfidence: emailConfidence || existingContact.emailConfidence,
-          enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
-          enrichmentProvider: enrichmentProvider ?? existingContact.enrichmentProvider,
-          alternateEmails,
+          enrichmentSource: refreshed.enrichmentSource,
+          enrichmentProvider: refreshed.enrichmentProvider,
+          alternateEmails: refreshed.alternateEmails,
           phone: resolvedPhone ?? existingContact.phone,
           linkedIn: normalizeLinkedInUrl(person.linkedIn) ?? existingContact.linkedIn,
           matchScore: person.matchScore ?? existingContact.matchScore,
@@ -328,11 +352,14 @@ export async function saveScoutLeads(params: {
         continue;
       }
     } else {
-      const alternateEmails = withFirstLastSecondaryEmail(
-        resolvedEmail,
-        [],
-        secondaryIdentity,
-      );
+      const refreshed = refreshPermutationEmails({
+        ...secondaryIdentity,
+        primaryEmail: resolvedEmail,
+        emailStatus: emailResult.status,
+        enrichmentProvider,
+        enrichmentSource,
+        alternateEmails: [],
+      });
       const [contact] = await db
         .insert(contacts)
         .values({
@@ -342,15 +369,18 @@ export async function saveScoutLeads(params: {
           name: person.name,
           firstName: resolvedFirstName || person.firstName || null,
           lastName: resolvedLastName || person.lastName || null,
-          title: resolvedTitle ?? person.title,
+          title:
+            resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)
+              ? null
+              : resolvedTitle ?? person.title,
           department: person.department,
           seniority: person.seniority,
-          email: resolvedEmail ?? null,
-          emailStatus: emailResult.status,
+          email: refreshed.email,
+          emailStatus: refreshed.emailStatus,
           emailConfidence: emailConfidence || null,
-          enrichmentSource: enrichmentSource ?? null,
-          enrichmentProvider: enrichmentProvider ?? null,
-          alternateEmails,
+          enrichmentSource: refreshed.enrichmentSource,
+          enrichmentProvider: refreshed.enrichmentProvider,
+          alternateEmails: refreshed.alternateEmails,
           phone: resolvedPhone,
           linkedIn: normalizeLinkedInUrl(person.linkedIn),
           bio: person.bio,

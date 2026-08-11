@@ -12,7 +12,17 @@ export type ScheduledFollowUp = {
   sequenceDay: number;
   scheduledFor: string | null;
   status: "scheduled" | "sent" | "cancelled" | "paused";
+  openedAt: string | null;
   outreachId: string | null;
+  scheduleId: string | null;
+};
+
+export type SequenceEmailStatus = {
+  sequenceDay: number;
+  label: string;
+  status: "scheduled" | "sent" | "cancelled" | "paused" | "upcoming";
+  openedAt: string | null;
+  scheduledFor: string | null;
   scheduleId: string | null;
 };
 
@@ -28,6 +38,8 @@ export type LeadEmailRow = {
   nextEmailDay: number | null;
   nextEmailDue: string | null;
   openedAt: string | null;
+  /** Per-step open/send status for E1 + cadence follow-ups */
+  sequenceEmails: SequenceEmailStatus[];
   queueStatus:
     | "needs_review"
     | "active"
@@ -127,14 +139,35 @@ function buildLeadRow(
       sequenceDay: day,
       scheduledFor: row?.scheduledFor ? new Date(row.scheduledFor).toISOString() : null,
       status: (row?.scheduleStatus as ScheduledFollowUp["status"]) ?? "scheduled",
+      openedAt: row?.openedAt ? new Date(row.openedAt).toISOString() : null,
       outreachId: row?.draftLeadOutreachId ?? null,
+      scheduleId: row?.scheduleId ?? null,
+    };
+  });
+
+  const stepDays = [0, ...opts.cadenceDays];
+  const sequenceEmails: SequenceEmailStatus[] = stepDays.map((day, idx) => {
+    const row =
+      leadRows.find((r) => r.sequenceDay === day && r.scheduleStatus === "sent") ??
+      leadRows.find((r) => r.sequenceDay === day && r.scheduleStatus === "scheduled") ??
+      leadRows.find((r) => r.sequenceDay === day && r.scheduleStatus === "paused") ??
+      leadRows.find((r) => r.sequenceDay === day);
+    const status: SequenceEmailStatus["status"] = row
+      ? ((row.scheduleStatus as SequenceEmailStatus["status"]) || "upcoming")
+      : "upcoming";
+    return {
+      sequenceDay: day,
+      label: `E${idx + 1}`,
+      status: ["scheduled", "sent", "cancelled", "paused"].includes(status) ? status : "upcoming",
+      openedAt: row?.openedAt ? new Date(row.openedAt).toISOString() : null,
+      scheduledFor: row?.scheduledFor ? new Date(row.scheduledFor).toISOString() : null,
       scheduleId: row?.scheduleId ?? null,
     };
   });
 
   // Also include day 0 if present in schedule
   if (leadRows.some((r) => r.sequenceDay === 0)) {
-    // already tracked via emailsSent
+    // already tracked via emailsSent / sequenceEmails
   }
 
   let queueStatus: LeadEmailRow["queueStatus"];
@@ -182,6 +215,7 @@ function buildLeadRow(
     nextEmailDay: nextScheduled?.sequenceDay ?? null,
     nextEmailDue: nextScheduled ? new Date(nextScheduled.scheduledFor).toISOString() : null,
     openedAt: lastOpenedAt ? new Date(lastOpenedAt).toISOString() : null,
+    sequenceEmails,
     queueStatus,
     status: legacyStatus,
     leadStatus: first.leadStatus,

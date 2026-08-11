@@ -55,14 +55,12 @@ export function LeadCard({
       return;
     }
     onView();
-    if (selectable) onToggleSelect();
   }
 
   function handleSelectClick(e: React.MouseEvent) {
     e.stopPropagation();
     if (alreadyAdded || !selectable) return;
     onToggleSelect();
-    if (!compact) onView();
   }
 
   function handleDetailsClick(e: React.MouseEvent) {

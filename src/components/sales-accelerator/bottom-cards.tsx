@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { GitBranch } from "lucide-react";
 import { CircleButton, IshAvatar, PanelCard, SectionHeader } from "@/design-system";
+import type { ConnectionDegree } from "@/lib/network/degree";
 
 type NetworkItem = {
   name: string;
   email?: string;
   linkedIn?: string;
   strength?: 1 | 2 | 3 | 4;
+  degree?: ConnectionDegree;
+  headline?: string;
   relationship?: string;
   connectorName?: string;
   path?: string[];
@@ -20,17 +23,12 @@ type Props = {
   onOpenAnalytics?: () => void;
 };
 
-function StrengthDots({ strength = 1 }: { strength?: number }) {
-  return (
-    <span className="flex gap-0.5" title={`Strength ${strength}/4`}>
-      {[1, 2, 3, 4].map((n) => (
-        <span
-          key={n}
-          className={`size-1 rounded-full ${n <= strength ? "bg-brand-green" : "bg-brand-green/25"}`}
-        />
-      ))}
-    </span>
-  );
+function degreeFromItem(person: NetworkItem): ConnectionDegree | undefined {
+  if (person.degree) return person.degree;
+  if (person.strength && person.strength >= 4) return "1st";
+  if (person.strength && person.strength >= 2) return "2nd";
+  if (person.strength === 1) return "3rd";
+  return undefined;
 }
 
 export function BottomCards({ record, onOpenAnalytics }: Props) {
@@ -44,7 +42,7 @@ export function BottomCards({ record, onOpenAnalytics }: Props) {
       </PanelCard>
       <PanelCard tone="yellow">
         <SectionHeader title="Timeline" size="card" className="mb-3" />
-        <div className="text-xs text-brand-ink-soft">No activity logged yet — sequence starts on first contact.</div>
+        <div className="text-xs text-brand-ink-soft">No activity logged yet. Sequence starts on first contact.</div>
       </PanelCard>
       <PanelCard tone="green">
         <SectionHeader
@@ -68,21 +66,25 @@ export function BottomCards({ record, onOpenAnalytics }: Props) {
             </Link>
           </div>
         ) : (
-          record.network.map((person, i) => (
-            <div key={`${person.name}-${i}`} className="mb-2.5 flex items-center gap-2.5">
-              <IshAvatar name={person.name} index={i + 1} size={34} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-bold text-brand-ink">{person.name}</div>
-                <div className="truncate text-[11px] text-brand-ink-faint">
-                  {person.relationship ?? person.email ?? "—"}
+          record.network.map((person, i) => {
+            const degree = degreeFromItem(person);
+            return (
+              <div key={`${person.name}-${i}`} className="mb-2.5 flex items-center gap-2.5">
+                <IshAvatar name={person.name} index={i + 1} size={34} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-bold text-brand-ink">
+                    {person.name}
+                    {degree ? (
+                      <span className="font-semibold text-brand-ink-faint"> · {degree}</span>
+                    ) : null}
+                  </div>
+                  <div className="truncate text-[11px] text-brand-ink-faint">
+                    {person.headline || person.relationship || person.email || "—"}
+                  </div>
                 </div>
-                {person.connectorName && person.connectorName !== "CRM" && (
-                  <div className="truncate text-[10px] text-brand-ink-faint">via {person.connectorName}</div>
-                )}
               </div>
-              <StrengthDots strength={person.strength} />
-            </div>
-          ))
+            );
+          })
         )}
       </PanelCard>
     </>

@@ -7,7 +7,7 @@ import { logAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
-import { buildContactEmails, hasUsableContactEmail, withFirstLastSecondaryEmail } from "@/lib/enrichment/contact-emails";
+import { buildContactEmails, hasUsableContactEmail, refreshPermutationEmails } from "@/lib/enrichment/contact-emails";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { buildEmailThread } from "@/lib/email/email-thread";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
@@ -40,22 +40,40 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const existingAlternates =
       (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
-    const ensuredAlternates = withFirstLastSecondaryEmail(contact.email, existingAlternates, {
+    const refreshed = refreshPermutationEmails({
       firstName: contact.firstName,
       lastName: contact.lastName,
       name: contact.name,
       domain: account.domain,
       website: account.website,
       companyName: account.name,
+      primaryEmail: contact.email,
+      emailStatus: contact.emailStatus,
+      enrichmentProvider: contact.enrichmentProvider,
+      enrichmentSource: contact.enrichmentSource,
+      alternateEmails: existingAlternates,
     });
-    const alternateEmailsChanged =
-      JSON.stringify(existingAlternates) !== JSON.stringify(ensuredAlternates);
-    if (alternateEmailsChanged) {
+    const emailsChanged =
+      (contact.email ?? null) !== refreshed.email ||
+      (contact.emailStatus ?? "missing") !== refreshed.emailStatus ||
+      JSON.stringify(existingAlternates) !== JSON.stringify(refreshed.alternateEmails);
+    if (emailsChanged) {
       await db
         .update(contacts)
-        .set({ alternateEmails: ensuredAlternates, updatedAt: new Date() })
+        .set({
+          email: refreshed.email,
+          emailStatus: refreshed.emailStatus,
+          enrichmentProvider: refreshed.enrichmentProvider,
+          enrichmentSource: refreshed.enrichmentSource,
+          alternateEmails: refreshed.alternateEmails,
+          updatedAt: new Date(),
+        })
         .where(eq(contacts.id, contact.id));
-      contact.alternateEmails = ensuredAlternates;
+      contact.email = refreshed.email;
+      contact.emailStatus = refreshed.emailStatus as typeof contact.emailStatus;
+      contact.enrichmentProvider = refreshed.enrichmentProvider;
+      contact.enrichmentSource = refreshed.enrichmentSource;
+      contact.alternateEmails = refreshed.alternateEmails;
     }
 
     const [research, outreach, scheduleRows, sequenceDraftRows, emailConfig] = await Promise.all([

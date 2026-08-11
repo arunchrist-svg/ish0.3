@@ -70,12 +70,7 @@ export function WriterPlanCard({ lead, onUpdated }: Props) {
   return (
     <div className="mb-4 rounded-[16px] border border-brand-border/60 bg-white p-4 shadow-[var(--shadow-brand-sm)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="text-[13px] font-semibold text-brand-ink">Smart email plan</h3>
-          <p className="text-[11px] text-brand-ink-soft">
-            Email 1 follows this hook, value, and CTA. Edit before drafting.
-          </p>
-        </div>
+        <h3 className="text-[13px] font-semibold text-brand-ink">Smart email plan</h3>
         <div className="flex items-center gap-2">
           <VoiceMicButton
             size="sm"

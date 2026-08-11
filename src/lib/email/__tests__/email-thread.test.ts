@@ -76,8 +76,43 @@ describe("buildEmailThread", () => {
     expect(thread.barMode).toBe("sequence");
     expect(thread.barNodes[0].label).toBe("E1");
     expect(thread.barNodes[0].state).toBe("done");
+    expect(thread.barNodes[0].openedAt).toBeUndefined();
     expect(thread.barNodes[1].label).toMatch(/^E2/);
     expect(thread.barNodes[1].state).toBe("scheduled");
+  });
+
+  it("marks opened emails on bar nodes and thread events", () => {
+    const openedAt = new Date("2026-06-25T12:00:00Z");
+    const thread = buildEmailThread({
+      lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s1",
+          leadId: "lead-1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          scheduledFor: new Date("2026-06-25T10:00:00Z"),
+          sentAt: new Date("2026-06-25T10:00:00Z"),
+          openedAt,
+          subjectSent: "Diwali gifting for Acme",
+          bodySnippet: "Hi there",
+        },
+        {
+          id: "s2",
+          leadId: "lead-1",
+          sequenceDay: 3,
+          emailKind: "followup",
+          status: "scheduled",
+          scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      cadenceDays: [3, 7],
+    });
+
+    expect(thread.barNodes[0].openedAt).toBe(openedAt.toISOString());
+    expect(thread.events[0].status).toBe("opened");
+    expect(thread.events[0].openedAt).toBe(openedAt.toISOString());
   });
 
   it("shows reply bar with draft_reply action when no reply draft", () => {

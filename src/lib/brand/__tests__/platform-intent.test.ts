@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  brandIntelRecommendedForIntent,
   campaignModesForIntent,
   inferPlatformIntent,
   scoutDefaultsForIntent,
@@ -27,6 +28,14 @@ describe("platform intent", () => {
       }),
     ).toBe("corporate_gifting");
     expect(campaignModesForIntent("corporate_gifting")).toContain("diwali_gifting");
+  });
+
+  it("recommends Brand Intelligence for physical goods, not software", () => {
+    expect(brandIntelRecommendedForIntent("corporate_gifting")).toBe(true);
+    expect(brandIntelRecommendedForIntent("appliances")).toBe(true);
+    expect(brandIntelRecommendedForIntent("b2b_saas")).toBe(false);
+    expect(brandIntelRecommendedForIntent("general_b2b")).toBe(false);
+    expect(brandIntelRecommendedForIntent(null)).toBe(false);
   });
 
   it("uses leadership scout defaults for saas", () => {

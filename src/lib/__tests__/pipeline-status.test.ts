@@ -20,22 +20,26 @@ describe("FUNNEL-UNIT-001 pipeline status mapping", () => {
     expect(statusToPipelineIndex("researched")).toBe(0);
   });
 
-  it("maps email-stage statuses to index 1", () => {
+  it("maps draft and approved to Email stage", () => {
     expect(statusToPipelineIndex("draft_ready")).toBe(1);
     expect(statusToPipelineIndex("approved")).toBe(1);
-    expect(statusToPipelineIndex("outreached")).toBe(1);
   });
 
-  it("maps replied to Open stage", () => {
-    expect(statusToPipelineIndex("replied")).toBe(2);
-    expect(statusToDisplayLabel("replied")).toBe("Open");
+  it("maps outreached to Email Sent stage", () => {
+    expect(statusToPipelineIndex("outreached")).toBe(2);
+    expect(statusToDisplayLabel("outreached")).toBe("Email Sent");
+  });
+
+  it("maps replied to Replied stage", () => {
+    expect(statusToPipelineIndex("replied")).toBe(3);
+    expect(statusToDisplayLabel("replied")).toBe("Replied");
   });
 
   it("maps manual stages correctly", () => {
-    expect(statusToPipelineIndex("tasting_sent")).toBe(3);
-    expect(statusToPipelineIndex("negotiate")).toBe(4);
-    expect(statusToPipelineIndex("closed")).toBe(5);
-    expect(statusToPipelineIndex("po_closed")).toBe(5);
+    expect(statusToPipelineIndex("tasting_sent")).toBe(4);
+    expect(statusToPipelineIndex("negotiate")).toBe(5);
+    expect(statusToPipelineIndex("closed")).toBe(6);
+    expect(statusToPipelineIndex("po_closed")).toBe(6);
   });
 
   it("defaults unknown status to index 0", () => {
@@ -95,7 +99,15 @@ describe("FUNNEL-UNIT-003 stage helpers", () => {
     expect(parseDealAmount("")).toBeNull();
   });
 
-  it("defines six pipeline stage labels", () => {
-    expect(PIPELINE_STAGES).toHaveLength(6);
+  it("defines seven pipeline stage labels", () => {
+    expect(PIPELINE_STAGES).toEqual([
+      "Contact Ready",
+      "Email",
+      "Email Sent",
+      "Replied",
+      "Tasting Sent",
+      "Negotiate",
+      "Closed",
+    ]);
   });
 });

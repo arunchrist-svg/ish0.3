@@ -118,6 +118,11 @@ export const SCOUT_DEPARTMENTS = [
 ] as const;
 export type ScoutDepartment = (typeof SCOUT_DEPARTMENTS)[number];
 
+export {
+  EMPLOYEE_SIZE_BANDS as SCOUT_EMPLOYEE_BANDS,
+  type EmployeeSizeBandId,
+} from "@/lib/enrichment/employee-size";
+
 export const COMPANIES: Company[] = [
   {
     id: "c1", logo: "🔧", domain: "bosch.com", name: "Bosch India", type: "Manufacturing", city: "Hosur",
@@ -159,7 +164,7 @@ export const COMPANIES: Company[] = [
     intelligenceNotes: "VP HR is a decision-maker who follows gifting trends on LinkedIn. Repeat buyer potential.",
   },
   {
-    id: "c5", logo: "⌚", domain: "titan.co.in", name: "Titan Company", type: "Consumer Goods", city: "Hosur",
+    id: "c5", logo: "⌚", domain: "titancompany.in", name: "Titan Company", type: "Consumer Goods", city: "Hosur",
     industry: "Manufacturing", employees: "7,100", revenue: "₹40,000 Cr", founded: 1984,
     fitScore: 64, budgetBand: "₹4–6L / year",
     pastGifting: [

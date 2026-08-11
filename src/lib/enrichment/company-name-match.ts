@@ -38,6 +38,9 @@ const MAJOR_METROS = [
   "Mangalore",
   "Mangaluru",
   "Hosur",
+  "Hoskote",
+  "Hosakote",
+  "Krishnagiri",
   "Hubli",
   "Hubballi",
 ];

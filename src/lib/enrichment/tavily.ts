@@ -2,6 +2,7 @@ import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause } from "./city-search";
+import { employeeSizeSearchClause, extractEmployeesFromText } from "./employee-size";
 import {
   companyMatchesNameQuery,
   filterCompaniesMatchingQuery,
@@ -97,7 +98,10 @@ export function filterLookupLlmCompanies(
         website: (c.website as string | null) ?? undefined,
         industry: (c.industry as string | null) ?? undefined,
         city: (c.city as string | null) ?? undefined,
-        employees: (c.employees as string | null) ?? undefined,
+        employees:
+          (c.employees as string | null)?.trim() ||
+          extractEmployeesFromText(`${c.name ?? ""} ${c.intelNotes ?? ""}`) ||
+          undefined,
         intelNotes: (c.intelNotes as string | null) ?? undefined,
         fitScore: 70,
         dataSource: "tavily+llm",
@@ -168,10 +172,12 @@ async function tavilyDiscoverCompanies(params: {
   industries: string[];
   limit: number;
   meta?: DirectorySearchMeta;
+  employeeBands?: string[];
 }): Promise<ScoutCompanyResult[]> {
   const cityStr = citySearchClause(params.cities);
   const indStr = params.industries.length > 0 ? params.industries.join(" OR ") : "corporate";
-  const query = `${indStr} companies ${cityStr} India`;
+  const sizeStr = employeeSizeSearchClause(params.employeeBands);
+  const query = `${indStr} companies ${cityStr}${sizeStr ? ` ${sizeStr}` : ""} India`;
   const meta = params.meta;
 
   const results = await tavilySearch(query, params.limit);
@@ -200,8 +206,9 @@ Never use job-post titles, document blurbs, report titles, review-site section h
 If a result is a hiring or reviews page for Acme, return "Acme" only. Do NOT invent companies.
 Do not score or filter for corporate gifting.`;
       const prompt = `Extract companies from these search results.
-Target: ${indStr} companies in ${cityStr}, India.
+Target: ${indStr} companies in ${cityStr}, India${sizeStr ? `. Scale target: ${sizeStr}` : ""}.
 Prefer established businesses; include manufacturers and corporate offices when listed.
+Always fill "employees" with a headcount or one of: Micro Industries, Small scale, Medium scale, Large scale. Use null if unknown.
 Skip any result that is not clearly a company name.
 
 ${context}
@@ -225,7 +232,10 @@ Return up to ${params.limit} companies.`;
           domain: (c.domain as string | null) ?? undefined,
           industry: (c.industry as string | null) ?? undefined,
           city: (c.city as string | null) ?? undefined,
-          employees: (c.employees as string | null) ?? undefined,
+          employees:
+            (c.employees as string | null)?.trim() ||
+            extractEmployeesFromText(`${c.name ?? ""} ${c.intelNotes ?? ""}`) ||
+            undefined,
           intelNotes: (c.intelNotes as string | null) ?? undefined,
           fitScore: 65,
           dataSource: "tavily+llm",
@@ -249,6 +259,7 @@ export async function tavilySearchCompanies(params: {
   limit?: number;
   meta?: DirectorySearchMeta;
   nameQuery?: string;
+  employeeBands?: string[];
 }): Promise<ScoutCompanyResult[]> {
   const limit = params.limit ?? 10;
 
@@ -269,6 +280,7 @@ export async function tavilySearchCompanies(params: {
     industries: params.industries,
     limit,
     meta: params.meta,
+    employeeBands: params.employeeBands,
   });
 }
 

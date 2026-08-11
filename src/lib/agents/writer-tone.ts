@@ -55,31 +55,33 @@ Subject A: Send happiness this Diwali, ${contactFirstName}
 Body A:
 Hi ${contactFirstName},
 
-Most corporate gifts get opened and forgotten. Ours get opened and remembered: pure-ghee sweets, handcrafted, the taste of an actual festival.
+Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and authentic for your team this year.
 
-Don't take our word for it. Let us send ${companyName} a taste first.
+At ${brandName}, we handcraft authentic traditional sweets. We go straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. It is just fresh milk, 100% pure ghee, and a taste that stands out.
 
-Want a sampler box on your desk this week?
+Since tasting is believing, I would love to send a sample box to your office on us. What is the best address to ship your sample box?
 
-Thanks & Regards
+Best,
 ${senderFirstName}
+${brandName}
 
 Subject B: ${companyName}, make someone's Diwali better
 Body B:
 Hi ${contactFirstName},
 
-A good gift doesn't just say "thank you." It makes someone genuinely happy. That's what ${brandName} delivers this festive season, every single box.
+A good Diwali gift for employees and clients should feel authentic. ${brandName} can bring that to ${companyName}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy rather than outsourced supply.
 
 Taste it before you trust it. Send me an address and I'll ship a sampler this week.
 
 Thanks & Regards
 ${senderFirstName}
+${brandName}
 
 Subject C: Happiness, handcrafted
 Body C:
 Hi ${contactFirstName},
 
-No fillers. No mass production. Just pure-ghee sweets made to make people happy, the way Diwali gifting used to feel.
+No fillers. No mass production. For Diwali gifting to employees and clients, ${brandName} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.
 
 Happy to send a small sampler your way, no obligation, just proof.
 
@@ -87,6 +89,7 @@ Want it sent to ${companyName} this week?
 
 Thanks & Regards
 ${senderFirstName}
+${brandName}
 
 ---
 `;
@@ -113,6 +116,7 @@ No worries if the timing is off.
 
 Thanks & Regards
 ${senderFirstName}
+${brandName}
 
 ---
 `;

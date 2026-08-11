@@ -15,6 +15,7 @@ import { useSlidingHighlight } from "@/design-system/hooks/use-sliding-highlight
 import { text } from "@/design-system/tokens";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { CreditBalanceChip } from "@/components/sales-accelerator/credit-balance-chip";
+import { NotificationBell } from "@/components/sales-accelerator/notification-bell";
 
 type NavItemEntry = {
   icon: React.ElementType;
@@ -256,8 +257,17 @@ export function SideNav() {
 
         <div className="mt-2">
           <div className="mb-2 border-t border-brand-border" />
-          <div className={cn("mb-2", collapsed ? "flex justify-center" : "px-0.5")}>
-            <CreditBalanceChip compact={collapsed} className={collapsed ? "px-1.5" : "w-full justify-center"} />
+          <div
+            className={cn(
+              "mb-2 flex items-center gap-1.5",
+              collapsed ? "flex-col justify-center" : "px-0.5",
+            )}
+          >
+            <CreditBalanceChip
+              compact={collapsed}
+              className={collapsed ? "px-1.5" : "min-w-0 flex-1 justify-center"}
+            />
+            <NotificationBell compact={collapsed} />
           </div>
           {isSuperadmin ? (
             <NavItemRow

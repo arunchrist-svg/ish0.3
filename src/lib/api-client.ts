@@ -65,6 +65,7 @@ export async function scoutCompanies(params: {
   fetchSeed?: number;
   limit?: number;
   companyName?: string;
+  employeeBands?: string[];
 }): Promise<ScoutCompaniesResponse> {
   return post<ScoutCompaniesResponse>("/api/scout/companies", params);
 }
@@ -73,6 +74,8 @@ export type ScoutPeopleResponse = {
   people: ScoutPersonResult[];
   warnings?: string[];
   errors?: string[];
+  resolvedDomain?: string;
+  resolvedWebsite?: string;
 };
 
 export async function scoutPeople(params: {
@@ -198,14 +201,17 @@ export async function fetchLead(id: string): Promise<LeadDetailRecord> {
   return data.lead;
 }
 
+export type WriterMode = "standard" | "ai";
+
 export async function runWriter(
   leadId: string,
-  options?: { outreachTemplate?: string; mode?: "sequence" | "single" },
+  options?: { outreachTemplate?: string; mode?: "sequence" | "single"; writerMode?: WriterMode },
 ): Promise<WriterDraft> {
   const data = await post<{ draft: WriterDraft; drafts?: WriterDraft[] }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
     mode: options?.mode ?? "sequence",
+    writerMode: options?.writerMode,
   });
   return data.draft;
 }
@@ -214,13 +220,17 @@ export async function runWriter(
 
 export async function runWriterStream(
   leadId: string,
-  options?: { outreachTemplate?: string },
+  options?: { outreachTemplate?: string; writerMode?: WriterMode },
   onEvent?: (event: { type: string; message?: string; draft?: WriterDraft; code?: string }) => void,
 ): Promise<WriterDraft> {
   const res = await fetch("/api/agents/writer/run/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ leadId, outreachTemplate: options?.outreachTemplate }),
+    body: JSON.stringify({
+      leadId,
+      outreachTemplate: options?.outreachTemplate,
+      writerMode: options?.writerMode,
+    }),
   });
   if (!res.ok || !res.body) {
     const data = await res.json().catch(() => ({}));
@@ -254,11 +264,12 @@ export async function runWriterStream(
 
 export async function runWriterSequence(
   leadId: string,
-  options?: { outreachTemplate?: string },
+  options?: { outreachTemplate?: string; writerMode?: WriterMode },
 ): Promise<WriterDraft[]> {
   const data = await post<{ drafts: WriterDraft[]; draft: WriterDraft }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
+    writerMode: options?.writerMode,
     mode: "sequence",
   });
   return data.drafts ?? [data.draft];
@@ -267,11 +278,12 @@ export async function runWriterSequence(
 export async function regenerateSequenceStep(
   leadId: string,
   sequencePosition: 2 | 3,
-  options?: { outreachTemplate?: string },
+  options?: { outreachTemplate?: string; writerMode?: WriterMode },
 ): Promise<WriterDraft> {
   const data = await post<{ draft: WriterDraft }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
+    writerMode: options?.writerMode,
     mode: "single",
     sequencePosition,
   });
@@ -579,6 +591,7 @@ export type LeadQueueItem = {
   action: string;
   emailStatus: string;
   nextActionDate?: string;
+  createdAt?: string;
 };
 
 export type EmailTestStatus = "saved" | "sent" | "rejected";
@@ -646,6 +659,8 @@ export type LeadDetailRecord = {
     email?: string;
     linkedIn?: string;
     strength: 1 | 2 | 3 | 4;
+    degree?: "1st" | "2nd" | "3rd";
+    headline?: string;
     relationship: string;
     connectorName: string;
     path: string[];
@@ -724,6 +739,7 @@ export type BarNode = {
   body?: string;
   snippet?: string;
   at?: string;
+  openedAt?: string;
   action?: "draft_reply";
 };
 
@@ -735,7 +751,8 @@ export type ThreadEvent = {
   snippet?: string;
   body?: string;
   at?: string;
-  status: "sent" | "scheduled" | "cancelled" | "draft";
+  status: "sent" | "scheduled" | "cancelled" | "draft" | "opened";
+  openedAt?: string;
   sequenceDay?: number;
 };
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runWriter } from "@/lib/agents/writer";
+import { resolveWriterMode, runWriter } from "@/lib/agents/writer";
 import { runWriterSequence, regenerateSequenceStep } from "@/lib/agents/writer-sequence";
 import { db, leadOutreach, leads } from "@/db";
 import { eq } from "drizzle-orm";
@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadId, outreachTemplate, mode, sequencePosition } = await req.json();
+    const { leadId, outreachTemplate, mode, sequencePosition, writerMode } = await req.json();
+    const resolvedWriterMode = resolveWriterMode(writerMode);
     if (!leadId) return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
     const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
       await assertCredits(ctx.tenantId, "writer.draft", 1);
       const outreachId = await regenerateSequenceStep(leadId, sequencePosition as 2 | 3, {
         outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
+        writerMode: resolvedWriterMode,
       });
       await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
       void checkLowBalanceAlerts(ctx.tenantId);
@@ -43,7 +45,10 @@ export async function POST(req: Request) {
 
     if (useSequence) {
       await assertCredits(ctx.tenantId, "writer.draft", 3);
-      const ids = await runWriterSequence(leadId, { outreachTemplate: requestedTemplate });
+      const ids = await runWriterSequence(leadId, {
+        outreachTemplate: requestedTemplate,
+        writerMode: resolvedWriterMode,
+      });
       for (const id of ids) {
         await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: id });
       }
@@ -59,7 +64,10 @@ export async function POST(req: Request) {
     }
 
     await assertCredits(ctx.tenantId, "writer.draft", 1);
-    const outreachId = await runWriter(leadId, { outreachTemplate: requestedTemplate });
+    const outreachId = await runWriter(leadId, {
+      outreachTemplate: requestedTemplate,
+      writerMode: resolvedWriterMode,
+    });
     await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
     void checkLowBalanceAlerts(ctx.tenantId);
 

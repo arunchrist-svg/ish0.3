@@ -24,11 +24,40 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
       "Salary",
       "Reviews",
       "Work Life Balance",
+      "Hosur-635126",
+      "Hosur 635126",
+      "Hosur No 122",
+      "HosurPlot No 63",
+      "Hosur20/2d",
+      "Sipcot Industrial Complex",
+      "Industrial Complex",
+      "Hoskote Industrial Area",
+      "Anumepalli Agraharam Village",
+      "Krishnagiri",
+      "Hosur",
+      "PHASE-I",
+      "PHASE-II",
+      "VENKATESA NAGAR KRISHNAGIRI ROAD",
+      "KARNOOR",
+      "HOSUR TO THALLY ROAD",
+      "KRISHNA GROUP COMPOUND",
+      "SIPCOT POST",
+      "SIDCO INDL. ESTATE",
+      "Rajeshwari Layout",
+      "Hanumapalli",
+      "Begapalli Road",
+      "KRISHNAGIRI ROAD",
     ];
     for (const name of junk) {
       expect(isPlausibleCompanyName(name), name).toBe(false);
       expect(cleanCompanyName(name), name).toBeNull();
     }
+  });
+
+  it("keeps real plant companies even when SIPCOT appears in the title", () => {
+    expect(isPlausibleCompanyName("Maryland Mechanical India PVT LTD Sipcot")).toBe(true);
+    expect(isPlausibleCompanyName("VERTEX AUTO COMPONENTS")).toBe(true);
+    expect(isPlausibleCompanyName("Delta Electronics India Pvt Ltd")).toBe(true);
   });
 
   it("accepts real company names", () => {
@@ -84,6 +113,22 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
     expect(names.some((n) => /is Hiring|View 295|This document|India in 2026/i.test(n))).toBe(
       false,
     );
+  });
+
+  it("extracts employee counts from listing text", () => {
+    const results = parseCompaniesFromDirectoryResults(
+      [
+        {
+          title: "Hikal Ltd | Company Profile",
+          url: "https://www.indiamart.com/hikal-ltd",
+          content: "API manufacturer in Bengaluru with 1,200 employees and a corporate office.",
+        },
+      ],
+      ["Bengaluru"],
+      10,
+    );
+    expect(results[0]?.name).toBe("Hikal Ltd");
+    expect(results[0]?.employees).toMatch(/1,200/i);
   });
 
   it("does not treat AmbitionBox review headings as companies", () => {

@@ -22,6 +22,7 @@ export async function GET(req: Request) {
         id: leads.id,
         status: leads.status,
         score: leads.score,
+        createdAt: leads.createdAt,
         researcherEligible: leads.researcherEligible,
         name: contacts.name,
         title: contacts.title,
@@ -53,6 +54,7 @@ export async function GET(req: Request) {
       action: deriveQueueAction(r.status),
       emailStatus: r.emailStatus ?? "missing",
       nextActionDate: undefined,
+      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt ?? undefined,
     }));
 
     return NextResponse.json({ leads: queue });

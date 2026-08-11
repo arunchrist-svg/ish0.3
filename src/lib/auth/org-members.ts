@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { hashPassword } from "@/lib/auth/password";
 import { assertSeatAvailable } from "@/lib/auth/invites";
 import { countActiveOwners } from "@/lib/auth/invites";
+import { parseTeamLinkedIn } from "@/lib/linkedin/profile-url";
 import type { TenantRole } from "@/lib/tenant";
 import { ForbiddenError } from "@/lib/tenant";
 
@@ -17,12 +18,14 @@ export async function createOrgUser(params: {
   name: string;
   role: TenantRole;
   password?: string;
+  linkedIn?: string | null;
 }): Promise<{ userId: string; tempPassword?: string }> {
   await assertSeatAvailable(params.tenantId);
 
   const normalizedEmail = params.email.trim().toLowerCase();
   const tempPassword = params.password ?? generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
+  const linkedIn = params.linkedIn !== undefined ? parseTeamLinkedIn(params.linkedIn) : undefined;
 
   const [existingUser] = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
 
@@ -35,8 +38,14 @@ export async function createOrgUser(params: {
       .limit(1);
     if (existingMember) throw new ForbiddenError("User is already a member of this organization");
     userId = existingUser.id;
+    const existingUpdates: { passwordHash?: string; mustChangePassword?: boolean; linkedIn?: string | null } = {};
     if (!existingUser.passwordHash) {
-      await db.update(users).set({ passwordHash, mustChangePassword: true }).where(eq(users.id, userId));
+      existingUpdates.passwordHash = passwordHash;
+      existingUpdates.mustChangePassword = true;
+    }
+    if (linkedIn !== undefined) existingUpdates.linkedIn = linkedIn;
+    if (Object.keys(existingUpdates).length > 0) {
+      await db.update(users).set(existingUpdates).where(eq(users.id, userId));
     }
   } else {
     const [user] = await db
@@ -46,6 +55,7 @@ export async function createOrgUser(params: {
         name: params.name.trim(),
         passwordHash,
         mustChangePassword: true,
+        ...(linkedIn !== undefined ? { linkedIn } : {}),
       })
       .returning();
     userId = user.id;

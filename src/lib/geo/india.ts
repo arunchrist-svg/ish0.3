@@ -548,6 +548,201 @@ export function isDistrictSelected(geo: ScoutGeoSelection, districtId: string): 
   return geo.districtIds.includes(districtId);
 }
 
+export type ScoutDistrictGroup = {
+  state: IndiaState;
+  districts: IndiaDistrict[];
+};
+
+function addDistrictsToGroup(
+  stateMap: Map<string, IndiaDistrict[]>,
+  state: IndiaState,
+  districts: IndiaDistrict[],
+) {
+  const existing = stateMap.get(state.id) ?? [];
+  const seen = new Set(existing.map((d) => d.id));
+  for (const district of districts) {
+    if (seen.has(district.id)) continue;
+    existing.push(district);
+    seen.add(district.id);
+  }
+  stateMap.set(state.id, existing);
+}
+
+/** Expand Settings locations into per-state district lists for the Scout picker. */
+export function districtGroupsForScoutOptions(
+  options: Array<{ label: string; kind?: ScoutLocationOption["kind"] }>,
+): ScoutDistrictGroup[] {
+  if (!options.length) return [];
+  const stateMap = new Map<string, IndiaDistrict[]>();
+
+  for (const option of options) {
+    const resolved = resolveScoutLabel(option.label);
+    if (!resolved) continue;
+    if (resolved.kind === "india") {
+      return INDIA_STATES.map((state) => ({ state, districts: state.districts }));
+    }
+    if (resolved.kind === "region") {
+      for (const state of resolved.region.states) addDistrictsToGroup(stateMap, state, state.districts);
+    }
+    if (resolved.kind === "state") {
+      addDistrictsToGroup(stateMap, resolved.state, resolved.state.districts);
+    }
+    if (resolved.kind === "district") {
+      addDistrictsToGroup(stateMap, resolved.state, [resolved.district]);
+    }
+  }
+
+  return INDIA_STATES.filter((state) => stateMap.has(state.id)).map((state) => ({
+    state,
+    districts: stateMap.get(state.id) ?? [],
+  }));
+}
+
+export function scoutPickerAllowedLabels(
+  options: Array<{ label: string; kind?: ScoutLocationOption["kind"] }>,
+): Set<string> {
+  const allowed = new Set<string>();
+  for (const option of options) allowed.add(option.label);
+  for (const group of districtGroupsForScoutOptions(options)) {
+    if (group.districts.length === group.state.districts.length) {
+      allowed.add(group.state.name);
+    }
+    for (const district of group.districts) {
+      allowed.add(district.displayName);
+      allowed.add(district.name);
+      for (const alias of district.aliases) allowed.add(alias);
+    }
+  }
+  return allowed;
+}
+
+export function isScoutDistrictPicked(cities: string[], district: IndiaDistrict): boolean {
+  return cities.some((label) => {
+    const resolved = resolveScoutLabel(label);
+    if (!resolved) return false;
+    if (resolved.kind === "india") return true;
+    if (resolved.kind === "region") return resolved.region.id === district.regionId;
+    if (resolved.kind === "state") return resolved.state.id === district.stateId;
+    return resolved.district.id === district.id;
+  });
+}
+
+function uniqueKeepLabels(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const key = value.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function labelsCoveringState(cities: string[], state: IndiaState): boolean {
+  return cities.some((label) => {
+    const resolved = resolveScoutLabel(label);
+    if (!resolved) return false;
+    if (resolved.kind === "india") return true;
+    if (resolved.kind === "region") return resolved.region.id === state.regionId;
+    if (resolved.kind === "state") return resolved.state.id === state.id;
+    return false;
+  });
+}
+
+function explodeCitiesForState(cities: string[], state: IndiaState): string[] {
+  const region = REGION_BY_ID.get(state.regionId);
+  const coversIndia = cities.some(isNationwideLabel);
+  const coversRegion = cities.some((label) => {
+    const resolved = resolveScoutLabel(label);
+    return resolved?.kind === "region" && resolved.region.id === state.regionId;
+  });
+
+  const kept: string[] = [];
+  for (const label of cities) {
+    const resolved = resolveScoutLabel(label);
+    if (!resolved) {
+      kept.push(label);
+      continue;
+    }
+    if (resolved.kind === "india") continue;
+    if (resolved.kind === "region" && resolved.region.id === state.regionId) continue;
+    if (resolved.kind === "state" && resolved.state.id === state.id) continue;
+    if (resolved.kind === "district" && resolved.state.id === state.id) continue;
+    kept.push(label);
+  }
+
+  if (coversIndia) {
+    for (const other of INDIA_STATES) {
+      if (other.id !== state.id) kept.push(other.name);
+    }
+  } else if (coversRegion && region) {
+    for (const other of region.states) {
+      if (other.id !== state.id) kept.push(other.name);
+    }
+  }
+
+  return uniqueKeepLabels(kept);
+}
+
+function districtsInPool(state: IndiaState, allowedDistrictIds?: string[]): IndiaDistrict[] {
+  if (!allowedDistrictIds?.length) return state.districts;
+  const allowed = new Set(allowedDistrictIds);
+  return state.districts.filter((d) => allowed.has(d.id));
+}
+
+export function toggleScoutDistrictPick(
+  cities: string[],
+  districtId: string,
+  allowedDistrictIds?: string[],
+): string[] {
+  const district = DISTRICT_BY_ID.get(districtId);
+  if (!district) return cities;
+  const state = STATE_BY_ID.get(district.stateId);
+  if (!state) return cities;
+
+  const pool = districtsInPool(state, allowedDistrictIds);
+  if (!pool.some((d) => d.id === district.id)) return cities;
+
+  const kept = explodeCitiesForState(cities, state);
+  const coversState = labelsCoveringState(cities, state);
+  const selected = new Set(
+    coversState
+      ? pool.map((d) => d.id)
+      : pool.filter((d) => isScoutDistrictPicked(cities, d)).map((d) => d.id),
+  );
+
+  if (selected.has(district.id)) selected.delete(district.id);
+  else selected.add(district.id);
+
+  if (selected.size === 0) return kept.length ? kept : cities;
+  const canUseStateLabel = pool.length === state.districts.length;
+  if (canUseStateLabel && selected.size === pool.length) {
+    return uniqueKeepLabels([...kept, state.name]);
+  }
+  return uniqueKeepLabels([
+    ...kept,
+    ...pool.filter((d) => selected.has(d.id)).map((d) => d.displayName),
+  ]);
+}
+
+export function setScoutStateDistricts(
+  cities: string[],
+  stateId: string,
+  selectAll: boolean,
+  allowedDistrictIds?: string[],
+): string[] {
+  const state = STATE_BY_ID.get(stateId);
+  if (!state) return cities;
+  const pool = districtsInPool(state, allowedDistrictIds);
+  const kept = explodeCitiesForState(cities, state);
+  if (!selectAll) return kept.length ? kept : cities;
+  if (pool.length === state.districts.length) {
+    return uniqueKeepLabels([...kept, state.name]);
+  }
+  return uniqueKeepLabels([...kept, ...pool.map((d) => d.displayName)]);
+}
+
 export function getState(stateId: string): IndiaState | undefined {
   return STATE_BY_ID.get(stateId);
 }

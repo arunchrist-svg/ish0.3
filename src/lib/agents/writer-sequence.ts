@@ -1,6 +1,6 @@
 import { db, leadOutreach, leads, yieldFunnel } from "@/db";
 import { eq, and, inArray, isNotNull } from "drizzle-orm";
-import { runWriter } from "@/lib/agents/writer";
+import { runWriter, resolveWriterMode, type WriterMode } from "@/lib/agents/writer";
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { isNearParaphrase, SEQUENCE_CLONE_THRESHOLD } from "@/lib/email/email-similarity";
@@ -8,6 +8,7 @@ import { isNearParaphrase, SEQUENCE_CLONE_THRESHOLD } from "@/lib/email/email-si
 export type WriterSequenceOptions = {
   outreachTemplate?: OutreachTemplateId;
   forceNewAngle?: boolean;
+  writerMode?: WriterMode;
 };
 
 export async function runWriterSequence(
@@ -25,33 +26,31 @@ export async function runWriterSequence(
   );
 
   const template = options?.outreachTemplate;
+  const writerMode = resolveWriterMode(options?.writerMode);
 
   const id1 = await runWriter(leadId, {
     outreachTemplate: template,
     sequencePosition: 1,
     skipStatusUpdate: false,
+    writerMode,
   });
 
   const draft1 = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, id1) });
   const e1Body = draft1?.emailBody ?? "";
   const e1Subject = draft1?.subjectA ?? undefined;
 
-  let id2 = await runWriter(leadId, {
-    followUpMode: "follow_up",
+  const followUp = {
     originalEmailBody: e1Body,
     originalEmailSubject: e1Subject,
-    sequencePosition: 2,
     skipStatusUpdate: true,
-  });
-  id2 = await ensureDistinctSequenceStep(leadId, 2, e1Body, id2, options);
+    writerMode,
+  } as const;
 
-  let id3 = await runWriter(leadId, {
-    followUpMode: "final_reminder",
-    originalEmailBody: e1Body,
-    originalEmailSubject: e1Subject,
-    sequencePosition: 3,
-    skipStatusUpdate: true,
-  });
+  let [id2, id3] = await Promise.all([
+    runWriter(leadId, { ...followUp, followUpMode: "follow_up", sequencePosition: 2 }),
+    runWriter(leadId, { ...followUp, followUpMode: "final_reminder", sequencePosition: 3 }),
+  ]);
+  id2 = await ensureDistinctSequenceStep(leadId, 2, e1Body, id2, options);
   id3 = await ensureDistinctSequenceStep(leadId, 3, e1Body, id3, options);
 
   await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
@@ -91,6 +90,7 @@ export async function regenerateSequenceStep(
     skipStatusUpdate: true,
     outreachTemplate: options?.outreachTemplate,
     forceNewAngle: options?.forceNewAngle,
+    writerMode: resolveWriterMode(options?.writerMode),
   });
 }
 

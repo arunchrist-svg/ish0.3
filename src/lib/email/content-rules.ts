@@ -151,7 +151,7 @@ export function applyContentRules(
   const signOff = signOffBlock(body);
   const e1IshShape =
     sequencePosition === 1 &&
-    /sampler|tasting|taste first|desk this week/i.test(lowerBody) &&
+    /sampler|tasting|taste first|desk this week|reply 'yes'|where to ship/i.test(lowerBody) &&
     (/partnerships/i.test(signOff) || /thanks\s*(&|and)\s*regards/i.test(signOff));
   if (questionIdx >= 0 && wordCount > 30 && !hasSoftExit && !e1IshShape) {
     const beforeQuestion = body.slice(0, questionIdx);
@@ -197,7 +197,7 @@ export function applyContentRules(
   const fromFirst = ctx.fromName?.split(" ")[0]?.trim();
   if (fromFirst && signOff.toLowerCase().includes(fromFirst.toLowerCase())) {
     const hasRoleOrContact =
-      /\b(manager|director|head|founder|ceo|vp|lead|partnerships|sales|account)\b/i.test(signOff) ||
+      /\b(manager|director|head|founder|ceo|vp|lead|partnerships|sales|account|franchise)\b/i.test(signOff) ||
       /thanks\s*(&|and)\s*regards/i.test(signOff) ||
       /linkedin|phone|\+91|\(\d{3}\)|\b\d{10}\b/i.test(signOff);
     if (!hasRoleOrContact) {

@@ -77,10 +77,6 @@ export async function sendScheduledFollowUp(params: {
     sequencePosition: generatedOutreach.sequencePosition ?? 2,
   });
 
-  if (!quality.passes && !params.overrideQualityGate) {
-    throw new FollowUpQualityError(quality.delivScore, quality.rubricTotal);
-  }
-
   try {
     await assertSenderPreflight(emailConfig, params.workspaceId, {
       override: Boolean(params.overridePreflight),

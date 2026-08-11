@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     const limit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25);
     await assertCredits(ctx.tenantId, "scout.contact", limit);
 
-    const { people, warnings, errors } = await discoverPeople({
+    const { people, warnings, errors, resolvedDomain, resolvedWebsite } = await discoverPeople({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
       companyName,
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     if (people.length > 0) {
       await deductCredits({ tenantId: ctx.tenantId, action: "scout.contact", quantity: people.length, referenceId: `scout-people-${Date.now()}` });
     }
-    return NextResponse.json({ people, warnings, errors });
+    return NextResponse.json({ people, warnings, errors, resolvedDomain, resolvedWebsite });
   } catch (e) {
     console.error("[api/scout/people]", e);
     return NextResponse.json({ error: "People discovery failed" }, { status: 500 });

@@ -34,11 +34,16 @@ export async function GET(req: Request) {
 
   try {
     const user = await exchangeCodeForUser(code);
-    const { tenantId, workspaceId } = await requireTenantContext();
+    const { tenantId, workspaceId, userId } = await requireTenantContext();
 
     const existing = await db.query.teamMembers.findFirst({
       where: eq(teamMembers.linkedInSub, user.sub),
     });
+
+    await db
+      .update(teamMembers)
+      .set({ userId: null, updatedAt: new Date() })
+      .where(eq(teamMembers.userId, userId));
 
     let memberId: string;
     if (existing) {
@@ -48,6 +53,7 @@ export async function GET(req: Request) {
           name: user.name,
           email: user.email ?? existing.email,
           linkedInPicture: user.picture ?? existing.linkedInPicture,
+          userId,
           updatedAt: new Date(),
         })
         .where(eq(teamMembers.id, existing.id));
@@ -58,6 +64,7 @@ export async function GET(req: Request) {
         .values({
           tenantId,
           workspaceId,
+          userId,
           name: user.name,
           email: user.email ?? null,
           linkedInSub: user.sub,

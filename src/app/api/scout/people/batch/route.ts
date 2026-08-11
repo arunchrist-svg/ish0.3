@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       seniority,
       departments,
       cities,
-      concurrency: Math.min(parseInt(process.env.SCOUT_PEOPLE_CONCURRENCY ?? "5", 10) || 5, 8),
+      concurrency: Math.min(parseInt(process.env.SCOUT_PEOPLE_CONCURRENCY ?? "8", 10) || 8, 10),
     };
 
     if (stream) {

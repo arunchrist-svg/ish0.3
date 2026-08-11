@@ -14,11 +14,12 @@ export async function POST(req: Request) {
       throw new ForbiddenError("Only admins can create users");
     }
 
-    const { email, name, role = "member", password } = (await req.json()) as {
+    const { email, name, role = "member", password, linkedIn } = (await req.json()) as {
       email?: string;
       name?: string;
       role?: TenantRole;
       password?: string;
+      linkedIn?: string | null;
     };
 
     if (!email?.trim() || !name?.trim()) {
@@ -29,13 +30,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Cannot direct-create owner role" }, { status: 400 });
     }
 
-    const result = await createOrgUser({
-      tenantId: ctx.tenantId,
-      email: email.trim(),
-      name: name.trim(),
-      role: role as TenantRole,
-      password,
-    });
+    let result;
+    try {
+      result = await createOrgUser({
+        tenantId: ctx.tenantId,
+        email: email.trim(),
+        name: name.trim(),
+        role: role as TenantRole,
+        password,
+        linkedIn,
+      });
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("LinkedIn profile URL")) {
+        return NextResponse.json({ error: e.message }, { status: 400 });
+      }
+      throw e;
+    }
 
     const [user] = await db.select({ id: users.id, email: users.email, name: users.name }).from(users).where(eq(users.id, result.userId)).limit(1);
     const [member] = await db

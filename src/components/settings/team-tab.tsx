@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Loader2, Mail, UserPlus, Users } from "lucide-react";
+import { Copy, ExternalLink, Loader2, Mail, UserPlus } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type Member = { id: string; name: string; email: string; role: string; status?: string };
+type Member = { id: string; name: string; email: string; role: string; status?: string; linkedIn?: string | null };
 type Invite = { id: string; email: string; role: string; expiresAt: string };
 
 const ROLES = ["admin", "member", "viewer"] as const;
@@ -17,6 +17,8 @@ export function TeamTab() {
   const [invites, setInvites] = useState<Invite[]>([]);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [linkedIn, setLinkedIn] = useState("");
+  const [memberLinkedIn, setMemberLinkedIn] = useState<Record<string, string>>({});
   const [role, setRole] = useState<(typeof ROLES)[number]>("member");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +28,11 @@ export function TeamTab() {
   async function load() {
     setLoading(true);
     const [mRes, iRes] = await Promise.all([fetch("/api/team/members"), fetch("/api/team/invites")]);
-    if (mRes.ok) setMembers((await mRes.json()).members ?? []);
+    if (mRes.ok) {
+      const next = ((await mRes.json()).members ?? []) as Member[];
+      setMembers(next);
+      setMemberLinkedIn(Object.fromEntries(next.map((m) => [m.id, m.linkedIn ?? ""])));
+    }
     if (iRes.ok) setInvites((await iRes.json()).invites ?? []);
     setLoading(false);
   }
@@ -41,7 +47,7 @@ export function TeamTab() {
     const res = await fetch("/api/team/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name, role }),
+      body: JSON.stringify({ email, name, role, linkedIn: linkedIn.trim() || undefined }),
     });
     const data = await res.json();
     setSubmitting(false);
@@ -52,6 +58,7 @@ export function TeamTab() {
     setLastTempPassword(data.tempPassword ?? "");
     setEmail("");
     setName("");
+    setLinkedIn("");
     toast.success("User created");
     void load();
   }
@@ -73,6 +80,24 @@ export function TeamTab() {
     setLastInviteUrl(data.inviteUrl);
     setEmail("");
     toast.success("Invite created");
+    void load();
+  }
+
+  async function saveMemberLinkedIn(memberId: string) {
+    const value = memberLinkedIn[memberId] ?? "";
+    const current = members.find((m) => m.id === memberId)?.linkedIn ?? "";
+    if (value.trim() === (current ?? "").trim()) return;
+    const res = await fetch(`/api/team/members/${memberId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ linkedIn: value }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error ?? "Could not save LinkedIn");
+      return;
+    }
+    toast.success("LinkedIn saved");
     void load();
   }
 
@@ -125,7 +150,7 @@ export function TeamTab() {
         <button type="button" onClick={() => setMode("invite")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "invite" ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft")}>Invite link</button>
       </div>
 
-      <SettingsGroup title={mode === "create" ? "Create User" : "Invite Teammate"} footer={mode === "create" ? "Share the temporary password with the user. They must change it on first login." : "Copy the link and send it. They sign up and join your workspace."}>
+      <SettingsGroup title={mode === "create" ? "Create User" : "Invite Teammate"} footer={mode === "create" ? "Add each teammate's LinkedIn profile URL. Share the temporary password. They must change it on first login." : "Copy the link and send it. They sign up and join your workspace."}>
         <form onSubmit={mode === "create" ? handleCreate : handleInvite} className="px-4 py-4">
           <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-brand-ink">
             <UserPlus className="size-4 text-brand-stratus-blue" /> {mode === "create" ? "Direct create" : "Invite by email"}
@@ -135,6 +160,9 @@ export function TeamTab() {
               <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className="flex-1 min-w-[140px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
             ) : null}
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required className="flex-1 min-w-[180px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
+            {mode === "create" ? (
+              <input type="url" value={linkedIn} onChange={(e) => setLinkedIn(e.target.value)} placeholder="linkedin.com/in/username" className="flex-1 min-w-[200px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
+            ) : null}
             <select value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])} className="rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none">
               {ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
             </select>
@@ -163,9 +191,24 @@ export function TeamTab() {
           <div key={m.id}>
             {i > 0 && <SettingsGroupDivider />}
             <SettingsRow className="justify-between gap-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-medium text-brand-ink">{m.name}</p>
                 <p className="text-[12px] text-brand-ink-soft">{m.email}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="url"
+                    value={memberLinkedIn[m.id] ?? ""}
+                    onChange={(e) => setMemberLinkedIn((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                    onBlur={() => void saveMemberLinkedIn(m.id)}
+                    placeholder="linkedin.com/in/username"
+                    className="min-w-0 flex-1 rounded-lg border border-brand-border/60 bg-white/80 px-3 py-1.5 text-[12px] outline-none focus:border-brand-stratus-blue/50"
+                  />
+                  {m.linkedIn ? (
+                    <a href={m.linkedIn} target="_blank" rel="noreferrer" className="shrink-0 text-brand-stratus-blue hover:underline" aria-label={`Open ${m.name} on LinkedIn`}>
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  ) : null}
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 {m.role !== "owner" ? (

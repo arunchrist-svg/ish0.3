@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFirstLastSecondaryEmail,
   hasUsableContactEmail,
+  refreshPermutationEmails,
   shouldSuggestWriteEmail,
   withFirstLastSecondaryEmail,
 } from "@/lib/enrichment/contact-emails";
@@ -59,6 +60,77 @@ describe("first.last secondary email", () => {
       expect.arrayContaining(["jane.doe@acme.com", "other@acme.com"]),
     );
     expect(alternates.some((e) => e.email === "ceo@acme.com")).toBe(false);
+  });
+});
+
+describe("refreshPermutationEmails", () => {
+  it("drops a competitor-domain guess for Tata Steel", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Sandeep",
+      lastName: "Yadav",
+      companyName: "Tata Steel",
+      domain: "jindalsteel.in",
+      website: "https://www.jindalsteel.in",
+      primaryEmail: null,
+      alternateEmails: [
+        {
+          email: "sandeep.yadav@jindalsteel.in",
+          emailStatus: "unverified",
+          enrichmentProvider: "permutation",
+          enrichmentSource: "name_domain_guess",
+          pattern: "first.last",
+        },
+      ],
+    });
+
+    expect(next.email).toBe("sandeep.yadav@tatasteel.com");
+    expect(next.alternateEmails.some((entry) => entry.email.includes("jindalsteel"))).toBe(false);
+  });
+
+  it("drops a verified competitor email, not only permutation guesses", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Sandeep",
+      lastName: "Yadav",
+      companyName: "Tata Steel",
+      domain: "tatasteel.com",
+      primaryEmail: "sandeep.yadav@jindalsteel.in",
+      emailStatus: "verified",
+      enrichmentProvider: "hunter",
+      enrichmentSource: "hunter",
+      alternateEmails: [
+        {
+          email: "sandeep.yadav@jindalsteel.in",
+          emailStatus: "verified",
+          enrichmentProvider: "hunter",
+        },
+      ],
+    });
+
+    expect(next.email).toBe("sandeep.yadav@tatasteel.com");
+    expect(next.alternateEmails.some((entry) => entry.email.includes("jindalsteel"))).toBe(false);
+  });
+
+  it("replaces publisher-domain guesses with the company domain", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Pallavi",
+      lastName: "Gupta",
+      companyName: "Pavna Industries",
+      domain: "pavnagroup.com",
+      website: "https://www.pavna.in",
+      primaryEmail: null,
+      alternateEmails: [
+        {
+          email: "pallavi.gupta@manufacturingtodayindia.com",
+          emailStatus: "unverified",
+          enrichmentProvider: "permutation",
+          enrichmentSource: "name_domain_guess",
+          pattern: "first.last",
+        },
+      ],
+    });
+
+    expect(next.email).toBe("pallavi.gupta@pavnagroup.com");
+    expect(next.alternateEmails.some((entry) => entry.email.includes("manufacturingtodayindia"))).toBe(false);
   });
 });
 

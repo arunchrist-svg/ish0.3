@@ -1,7 +1,49 @@
 import type { ScoutCompanyResult } from "./types";
+import { employeeSizeSearchClause } from "./employee-size";
+import { isPlausibleCompanyName } from "./directory-parser";
+import { isGeographicEntity } from "./company-name-match";
 
 const NEW_API = "https://places.googleapis.com/v1/places:searchText";
 const LEGACY_BASE = "https://maps.googleapis.com/maps/api/place";
+
+const NON_BUSINESS_PLACE_TYPES = new Set([
+  "route",
+  "street_address",
+  "premise",
+  "subpremise",
+  "neighborhood",
+  "sublocality",
+  "sublocality_level_1",
+  "sublocality_level_2",
+  "locality",
+  "administrative_area_level_1",
+  "administrative_area_level_2",
+  "administrative_area_level_3",
+  "country",
+  "postal_code",
+  "plus_code",
+  "geocode",
+  "political",
+  "park",
+  "parking",
+  "intersection",
+  "landmark",
+  "natural_feature",
+  "town_square",
+]);
+
+function isBusinessPlace(place: { types?: string[]; name?: string }): boolean {
+  const types = place.types ?? [];
+  if (types.some((t) => NON_BUSINESS_PLACE_TYPES.has(t)) && !types.some((t) => /establishment|store|factory|point_of_interest|company/i.test(t))) {
+    return false;
+  }
+  if (types.includes("route") || types.includes("street_address") || types.includes("premise")) {
+    return false;
+  }
+  const name = place.name ?? "";
+  if (!isPlausibleCompanyName(name) || isGeographicEntity(name)) return false;
+  return true;
+}
 
 type PlacesResult = {
   place_id: string;
@@ -193,6 +235,7 @@ export async function googlePlacesSearchCompanies(params: {
   cities: string[];
   industries: string[];
   limit?: number;
+  employeeBands?: string[];
 }): Promise<ScoutCompanyResult[]> {
   if (!process.env.GOOGLE_PLACES_API_KEY) return [];
 
@@ -205,7 +248,8 @@ export async function googlePlacesSearchCompanies(params: {
 
     const industryStr =
       params.industries.length > 0 ? params.industries.slice(0, 2).join(" ") : "corporate";
-    const query = `${industryStr} companies ${city} India`;
+    const sizeStr = employeeSizeSearchClause(params.employeeBands);
+    const query = `${industryStr} companies ${city}${sizeStr ? ` ${sizeStr}` : ""} India`;
 
     try {
       const places = await placesTextSearch(query);
@@ -213,6 +257,7 @@ export async function googlePlacesSearchCompanies(params: {
       for (const place of places.slice(0, Math.ceil(limit / params.cities.length))) {
         if (results.length >= limit) break;
         if (place.business_status === "CLOSED_PERMANENTLY") continue;
+        if (!isBusinessPlace(place)) continue;
 
         let merged = place;
         if (!place.website && place.place_id && !place.place_id.startsWith("Ch")) {

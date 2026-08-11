@@ -1,7 +1,6 @@
 import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "./types";
-import { sortPeopleByScore } from "./seniority-score";
 import type { EnrichmentConfig } from "./config";
-import { resolveEnrichmentConfig } from "./config";
+import { hasApolloKey, resolveEnrichmentConfig } from "./config";
 import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
@@ -11,9 +10,11 @@ import {
   expandCityMatchTerms,
   expandCitySearchTerms,
   isNationwideSelection,
-  personLocationMatchesSelection,
-  rankPeopleByCityMatch,
+  selectPeopleForScoutCities,
 } from "./city-search";
+import { companyDomainAliases } from "./company-domain-aliases";
+import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
+import { rankPeopleSeniorFirst } from "./people-diversity";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -24,6 +25,12 @@ import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
 import { resolveCompanyDomain } from "./resolve-company-domain";
 import { filterCompaniesMatchingQuery, isGeographicEntity } from "./company-name-match";
+import { isPlausibleCompanyName } from "./directory-parser";
+import {
+  extractEmployeesFromText,
+  normalizeEmployeeBandIds,
+  rankAndFilterByEmployeeBands,
+} from "./employee-size";
 
 const BUYING_TITLES = [
   "Director", "Manager", "Head", "VP", "Vice President",
@@ -67,9 +74,20 @@ function filterBySelectedCities(
 }
 
 function filterExcluded<T extends { name: string }>(results: T[], excludeNames: string[]): T[] {
-  if (!excludeNames.length) return results;
   const excluded = new Set(excludeNames.map(normalizeName));
-  return results.filter((r) => !excluded.has(normalizeName(r.name)));
+  return results.filter((r) => {
+    if (!isPlausibleCompanyName(r.name) || isGeographicEntity(r.name)) return false;
+    if (excluded.size && excluded.has(normalizeName(r.name))) return false;
+    return true;
+  });
+}
+
+function hydrateEmployees(company: ScoutCompanyResult): ScoutCompanyResult {
+  if (company.employees?.trim()) return company;
+  const extracted = extractEmployeesFromText(
+    [company.name, company.intelNotes].filter(Boolean).join(" "),
+  );
+  return extracted ? { ...company, employees: extracted } : company;
 }
 
 export async function discoverCompanies(params: {
@@ -84,9 +102,11 @@ export async function discoverCompanies(params: {
   skipInternal?: boolean;
   fetchSeed?: number;
   companyName?: string;
+  employeeBands?: string[];
 }): Promise<DiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = params.limit ?? parseInt(process.env.PROSPECTING_MAX_RESULTS ?? "25", 10);
+  const employeeBands = normalizeEmployeeBandIds(params.employeeBands);
   const useAI = process.env.SCOUT_USE_AI_PROSPECTING !== "false";
   const excludeNames = params.excludeNames ?? [];
   const warnings: string[] = [];
@@ -213,52 +233,60 @@ export async function discoverCompanies(params: {
   }
 
   const dbMapped = filterExcluded(dbResults.map(dbToResult), excludeNames);
+  const rankedDb = rankAndFilterByEmployeeBands(dbMapped, employeeBands);
+  const knownDbMatches = rankedDb.companies.length - rankedDb.unknownCount;
 
-  if (dbMapped.length >= limit) {
+  if (!employeeBands.length && dbMapped.length >= limit) {
     return { companies: dbMapped.slice(0, limit), warnings, errors };
   }
+  if (employeeBands.length && knownDbMatches >= limit) {
+    return { companies: rankedDb.companies.slice(0, limit), warnings, errors };
+  }
 
-  const remaining = limit - dbMapped.length;
+  const remaining = Math.max(limit - (employeeBands.length ? knownDbMatches : dbMapped.length), 0) || limit;
+  const stepLimit = Math.min(Math.max(remaining * 2, remaining + 8), 120);
   const external: ScoutCompanyResult[] = [];
+  const providerParams = {
+    cities: queryCities,
+    industries: params.industries,
+    limit: stepLimit,
+    employeeBands,
+  };
 
   // ── Step 2: Primary search provider (resolved from dataMode) ─────────────
   switch (cfg.searchProvider) {
     case "india_directories":
       await runStep("india_directories", () =>
         indiaDirectoriesSearchCompanies({
-          cities: queryCities,
-          industries: params.industries,
-          limit: remaining,
+          ...providerParams,
           meta: searchMeta,
           fetchSeed: params.fetchSeed,
         }),
-        external, remaining, excludeNames, warnings, errors,
+        external, stepLimit, excludeNames, warnings, errors,
       );
       break;
 
     case "google_places":
       await runStep("google_places", () =>
-        googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
-        external, remaining, excludeNames, warnings, errors,
+        googlePlacesSearchCompanies(providerParams),
+        external, stepLimit, excludeNames, warnings, errors,
       );
       break;
 
     case "apollo":
       await runStep("apollo", () =>
-        apolloSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
-        external, remaining, excludeNames, warnings, errors,
+        apolloSearchCompanies(providerParams),
+        external, stepLimit, excludeNames, warnings, errors,
       );
       break;
 
     case "tavily_ai":
       await runStep("tavily_ai", () =>
         tavilySearchCompanies({
-          cities: queryCities,
-          industries: params.industries,
-          limit: remaining,
+          ...providerParams,
           meta: searchMeta,
         }),
-        external, remaining, excludeNames, warnings, errors,
+        external, stepLimit, excludeNames, warnings, errors,
       );
       break;
   }
@@ -272,9 +300,9 @@ export async function discoverCompanies(params: {
     if (hasGooglePlacesKey()) {
       await runStep(
         "google_places_fallback",
-        () => googlePlacesSearchCompanies({ cities: queryCities, industries: params.industries, limit: remaining }),
+        () => googlePlacesSearchCompanies({ ...providerParams, limit: stepLimit }),
         external,
-        remaining,
+        stepLimit,
         excludeNames,
         warnings,
         errors,
@@ -306,19 +334,65 @@ export async function discoverCompanies(params: {
       tavilySearchCompanies({
         cities: queryCities,
         industries: params.industries,
-        limit: remaining - external.length,
+        limit: Math.max(stepLimit - external.length, 1),
         meta: searchMeta,
+        employeeBands,
       }),
-      external, remaining, excludeNames, warnings, errors,
+      external, stepLimit, excludeNames, warnings, errors,
     );
     appendTavilyKeySwitchWarning(warnings);
   }
 
-  const merged = [...dbMapped, ...external];
-  const companies = filterBySelectedCities(merged, selectionLabels).slice(0, limit);
-  if (merged.length > 0 && companies.length === 0 && selectionLabels.length > 0 && !nationwide) {
+  const merged = [...dbMapped, ...external]
+    .filter((c) => isPlausibleCompanyName(c.name) && !isGeographicEntity(c.name))
+    .map(hydrateEmployees);
+  const cityFiltered = filterBySelectedCities(merged, selectionLabels);
+  const ranked = rankAndFilterByEmployeeBands(cityFiltered, employeeBands);
+  let companies = ranked.companies.slice(0, limit);
+
+  if (companies.length < limit && cfg.searchProvider === "india_directories" && !tavilyQuotaHit([...warnings, ...errors])) {
+    const extra: ScoutCompanyResult[] = [];
+    await runStep(
+      "india_directories_more",
+      () =>
+        indiaDirectoriesSearchCompanies({
+          cities: queryCities,
+          industries: params.industries,
+          limit: Math.min((limit - companies.length) * 2, 80),
+          meta: searchMeta,
+          fetchSeed: (params.fetchSeed ?? 0) + 1,
+          employeeBands,
+        }),
+      extra,
+      Math.min((limit - companies.length) * 2, 80),
+      [...excludeNames, ...companies.map((c) => c.name)],
+      warnings,
+      errors,
+    );
+    const extraRanked = rankAndFilterByEmployeeBands(
+      filterBySelectedCities(
+        [...companies, ...extra]
+          .filter((c) => isPlausibleCompanyName(c.name) && !isGeographicEntity(c.name))
+          .map(hydrateEmployees),
+        selectionLabels,
+      ),
+      employeeBands,
+    );
+    companies = extraRanked.companies.slice(0, limit);
+    appendTavilyKeySwitchWarning(warnings);
+  }
+
+  if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide) {
     warnings.push(
       `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
+    );
+  } else if (employeeBands.length && cityFiltered.length > 0 && companies.length === 0) {
+    warnings.push(
+      `Found ${cityFiltered.length} candidate${cityFiltered.length === 1 ? "" : "s"} but none matched the selected company scale. Try a wider scale range.`,
+    );
+  } else if (companies.length < limit && companies.length > 0) {
+    warnings.push(
+      `Found ${companies.length} of ${limit} companies for these filters. Load more or widen city or scale.`,
     );
   }
   return {
@@ -349,91 +423,6 @@ function accountNameMatches(stored: string, target: string): boolean {
   return a === b || a.includes(b) || b.includes(a);
 }
 
-function domainFromWebsite(website?: string): string | undefined {
-  if (!website) return undefined;
-  try {
-    return new URL(website.startsWith("http") ? website : `https://${website}`).hostname.replace(/^www\./, "");
-  } catch {
-    return undefined;
-  }
-}
-
-// Maps UI seniority labels → search title keywords
-const SENIORITY_TITLES: Record<string, string[]> = {
-  "C-Level": ["CEO", "COO", "CHRO", "CPO", "CXO", "Chief"],
-  "Founders": ["Founder", "Co-Founder", "Co-founder", "Founding"],
-  "VP": ["VP", "Vice President"],
-  "Director": ["Director"],
-  "Manager": ["Manager", "Head"],
-};
-
-// Maps UI department labels → search title keywords
-const DEPARTMENT_TITLES: Record<string, string[]> = {
-  "HR": ["HR", "Human Resources", "People", "CHRO", "CPO"],
-  "Admin": ["Admin", "Administration"],
-  "Procurement": ["Procurement", "Purchase", "Sourcing"],
-  "Facilities": ["Facilities", "Facility"],
-  "Marketing": ["Marketing"],
-  "Operations": ["Operations"],
-  "Leadership": ["CEO", "MD", "Managing Director", "COO", "CXO"],
-};
-
-function buildRoleTitleHints(seniority: string[], departments: string[]): string[] {
-  const hints = new Set<string>();
-  for (const s of seniority) {
-    for (const t of SENIORITY_TITLES[s] ?? []) hints.add(t);
-  }
-  for (const d of departments) {
-    for (const t of DEPARTMENT_TITLES[d] ?? []) hints.add(t);
-  }
-  return [...hints];
-}
-
-const NON_SENIOR_TITLE_PATTERNS = [
-  /\bjunior\b/i,
-  /\bintern\b/i,
-  /\btrainee\b/i,
-  /\bassociate\b/i,
-  /\bentry[- ]level\b/i,
-  /\bgraduate\b/i,
-  /\bassistant\b/i,
-];
-
-function isNonSeniorTitle(title: string): boolean {
-  return NON_SENIOR_TITLE_PATTERNS.some((re) => re.test(title));
-}
-
-function filterPeopleByRoles(
-  people: ScoutPersonResult[],
-  seniority: string[],
-  departments: string[],
-): ScoutPersonResult[] {
-  if (!seniority.length && !departments.length) return people;
-  return people.filter((p) => personMatchesRoles(p, seniority, departments));
-}
-
-function personMatchesRoles(person: ScoutPersonResult, seniority: string[], departments: string[]): boolean {
-  if (!seniority.length && !departments.length) return true;
-  const titleLower = (person.title ?? "").toLowerCase();
-  if (seniority.length > 0 && titleLower && isNonSeniorTitle(titleLower)) return false;
-  const senLower = (person.seniority ?? "").toLowerCase();
-  const deptLower = (person.department ?? "").toLowerCase();
-
-  const senMatch = seniority.length === 0 || seniority.some((s) => {
-    const keywords = SENIORITY_TITLES[s] ?? [s];
-    return keywords.some((k) => titleLower.includes(k.toLowerCase()) || senLower.includes(k.toLowerCase()));
-  });
-
-  const deptMatch = departments.length === 0 || departments.some((d) => {
-    const keywords = DEPARTMENT_TITLES[d] ?? [d];
-    return keywords.some((k) => titleLower.includes(k.toLowerCase()) || deptLower.includes(k.toLowerCase()));
-  });
-
-  // Both must match if both filters are active; either if only one is
-  if (seniority.length > 0 && departments.length > 0) return senMatch && deptMatch;
-  return senMatch || deptMatch;
-}
-
 export async function discoverPeople(params: {
   tenantId: string;
   workspaceId: string;
@@ -449,13 +438,18 @@ export async function discoverPeople(params: {
   tenantAccounts?: (typeof accounts.$inferSelect)[];
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
-  const limit = params.limit ?? 15;
+  const limit = Math.max(1, Math.min(params.limit ?? 15, 25));
+  // Small headroom for role filters — avoid 3x over-fetch (each hit costs Tavily/LLM time).
+  const fetchLimit = Math.min(10, Math.max(limit + 2, limit));
   const warnings: string[] = [];
   const errors: string[] = [];
+  const hasDomainHint = Boolean(params.companyDomain || params.companyWebsite);
   const domainResolution = await resolveCompanyDomain({
     companyName: params.companyName,
     domain: params.companyDomain,
     website: params.companyWebsite,
+    // Skip Apollo/Tavily domain lookups unless Apollo search needs a domain.
+    allowExternal: cfg.searchProvider === "apollo" && !hasDomainHint,
   });
   const resolvedDomain = domainResolution.domain;
   const resolvedWebsite = domainResolution.website ?? params.companyWebsite;
@@ -481,47 +475,64 @@ export async function discoverPeople(params: {
         .select()
         .from(contacts)
         .where(and(eq(contacts.tenantId, params.tenantId), eq(contacts.accountId, account.id)))
-        .limit(limit);
+        .limit(fetchLimit);
     }
   } catch (e) {
     console.error("[waterfall:internal_contacts] failed:", e);
     warnings.push("Could not read saved contacts from the database.");
   }
 
-  if (companyContacts.length >= limit) {
+  if (companyContacts.length >= fetchLimit) {
     const filtered = filterPeopleByRoles(
       companyContacts.map(contactToResult),
       activeSeniority,
       activeDepartments,
     );
-    if (filtered.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
+    if (filtered.people.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
       warnings.push("No contacts match the selected seniority and department filters for this company.");
     }
-    return { people: filtered.slice(0, limit), resolvedDomain, resolvedWebsite, warnings, errors };
+    return {
+      people: rankPeopleSeniorFirst(filtered.people).slice(0, limit),
+      resolvedDomain,
+      resolvedWebsite,
+      warnings,
+      errors,
+    };
   }
 
-  const remaining = limit - companyContacts.length;
+  const remaining = fetchLimit - companyContacts.length;
   const external: ScoutPersonResult[] = [];
+  const domainAliases = companyDomainAliases({
+    companyName: params.companyName,
+    domain: resolvedDomain,
+    extraDomains: domainResolution.aliases,
+  });
+  const apolloDomain = resolvedDomain ?? domainAliases[0];
 
   // ── Step 2: Primary people search ────────────────────────────────────────
   const effectiveTitles = roleHints.length > 0 ? roleHints : BUYING_TITLES;
 
-  if (cfg.searchProvider === "apollo" && resolvedDomain) {
+  const pullApolloPeople = async () => {
+    if (!apolloDomain) return;
+    const apolloPeople = await apolloSearchPeople({
+      companyDomain: apolloDomain,
+      companyDomains: domainAliases,
+      titles: effectiveTitles,
+      limit: remaining,
+    });
+    const seen = new Set(external.map((p) => normalizeName(p.name)));
+    for (const person of apolloPeople) {
+      if (external.length >= remaining) break;
+      const key = normalizeName(person.name);
+      if (seen.has(key)) continue;
+      external.push(person);
+      seen.add(key);
+    }
+  };
+
+  if (cfg.searchProvider === "apollo" && apolloDomain) {
     try {
-      const apolloPeople = await apolloSearchPeople({
-        companyDomain: resolvedDomain,
-        titles: effectiveTitles,
-        limit: remaining,
-        cities: params.cities,
-      });
-      const seen = new Set(external.map((p) => normalizeName(p.name)));
-      for (const person of apolloPeople) {
-        if (external.length >= remaining) break;
-        const key = normalizeName(person.name);
-        if (seen.has(key)) continue;
-        external.push(person);
-        seen.add(key);
-      }
+      await pullApolloPeople();
     } catch (e) {
       if (isApolloAuthError(e)) {
         warnings.push("Apollo key invalid, using web search.");
@@ -533,7 +544,7 @@ export async function discoverPeople(params: {
 
   if (external.length === 0) {
     if (cfg.searchProvider === "apollo" && !resolvedDomain) {
-      warnings.push(`No website domain for ${params.companyName} — searching LinkedIn instead of Apollo.`);
+      warnings.push(`No website domain for ${params.companyName}. Searching LinkedIn instead of Apollo.`);
     }
     await runStep(
       "people_search",
@@ -554,6 +565,18 @@ export async function discoverPeople(params: {
     appendTavilyKeySwitchWarning(warnings);
   }
 
+  if (external.length === 0 && hasApolloKey() && cfg.searchProvider !== "apollo" && apolloDomain) {
+    try {
+      await pullApolloPeople();
+    } catch (e) {
+      if (isApolloAuthError(e)) {
+        warnings.push("Apollo key invalid, using web search.");
+      } else {
+        errors.push(stepFailureMessage("apollo_people", e));
+      }
+    }
+  }
+
   if (external.length === 0) {
     const combined = [...warnings, ...errors];
     const quotaHit = tavilyQuotaHit(combined);
@@ -561,7 +584,10 @@ export async function discoverPeople(params: {
       /missing|failed|quota|usage limit|exhausted|rejected|people search needs tavily|switched to backup key/i.test(m),
     );
 
-    const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
+    // Only hit Tavily usage API when we actually saw a quota error — otherwise this
+    // adds multi-second stalls on every empty company during a 20-company fetch.
+    const tavilyAccount =
+      quotaHit && hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
 
     if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
       const allExhaustedMsg =
@@ -595,7 +621,8 @@ export async function discoverPeople(params: {
   const allPeople = [...companyContacts.map(contactToResult), ...external];
   let finalPeople: ScoutPersonResult[];
   if (activeSeniority.length > 0 || activeDepartments.length > 0) {
-    finalPeople = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments);
+    const filtered = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments);
+    finalPeople = filtered.people;
     if (finalPeople.length === 0 && allPeople.length > 0) {
       warnings.push("No contacts match the selected seniority and department filters for this company.");
     }
@@ -605,26 +632,21 @@ export async function discoverPeople(params: {
 
   const scoutCities = params.cities ?? [];
   if (scoutCities.length) {
-    const withKnownLocation = finalPeople.filter((person) => Boolean(person.location?.trim()));
-    const localPeople = finalPeople.filter((person) =>
-      personLocationMatchesSelection(person.location, scoutCities),
-    );
-    // Prefer city matches. If every located person is in the wrong city, drop them.
-    if (localPeople.some((person) => person.location?.trim())) {
-      finalPeople = localPeople;
-    } else if (withKnownLocation.length > 0 && localPeople.length === 0) {
+    const selected = selectPeopleForScoutCities(finalPeople, scoutCities);
+    if (selected.relaxedToIndia && selected.people.length > 0) {
+      warnings.push(
+        `No decision-makers found in ${scoutCities.join(", ")} for ${params.companyName}. Showing people at this company in other Indian cities.`,
+      );
+    } else if (selected.people.length === 0 && finalPeople.length > 0) {
       warnings.push(
         `No decision-makers found in ${scoutCities.join(", ")} for ${params.companyName}. Try another company or nearby city.`,
       );
-      finalPeople = [];
-    } else {
-      finalPeople = localPeople;
     }
-    finalPeople = rankPeopleByCityMatch(finalPeople, scoutCities);
+    finalPeople = selected.people;
   }
 
   return {
-    people: sortPeopleByScore(finalPeople).slice(0, limit),
+    people: rankPeopleSeniorFirst(finalPeople).slice(0, limit),
     resolvedDomain,
     resolvedWebsite,
     warnings: [...new Set(warnings)],
@@ -663,7 +685,7 @@ export async function discoverPeopleBatch(params: {
   }
 
   const results: Record<string, PeopleDiscoveryResult> = {};
-  const { companies, concurrency = 5, ...discoverParams } = params;
+  const { companies, concurrency = 8, ...discoverParams } = params;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
     results[company.id] = await discoverPeople({
@@ -703,7 +725,7 @@ export async function discoverPeopleBatchStream(
     console.error("[waterfall:batch_accounts] failed:", e);
   }
 
-  const { companies, concurrency = 5, ...discoverParams } = params;
+  const { companies, concurrency = 8, ...discoverParams } = params;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
     const result = await discoverPeople({

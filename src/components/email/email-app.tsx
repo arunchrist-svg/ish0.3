@@ -30,7 +30,6 @@ import {
   type CadenceDays,
   sequenceStepDays,
   emailStepLabel,
-  cadenceSummary,
   isEmailSentForStep,
   normalizeCadenceDays,
 } from "@/lib/email/cadence";
@@ -202,11 +201,24 @@ function KpiTile({
 function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDays }) {
   const normalized = normalizeCadenceDays(cadence);
   const [d0, d1, d2] = sequenceStepDays(normalized);
-  const sequenceSteps = [
+  const fallbackSteps = [
     { day: d0, short: "E1" },
     { day: d1, short: "E2" },
     { day: d2, short: "E3" },
   ];
+  const sequenceSteps =
+    row.sequenceEmails?.length > 0
+      ? row.sequenceEmails.map((e) => ({
+          day: e.sequenceDay,
+          short: e.label,
+          status: e.status,
+          openedAt: e.openedAt,
+        }))
+      : fallbackSteps.map((s) => ({
+          ...s,
+          status: isEmailSentForStep(row.lastEmailDay, s.day) ? ("sent" as const) : ("upcoming" as const),
+          openedAt: null as string | null,
+        }));
 
   const replySteps: { id: string; label: string; done: boolean; active: boolean }[] = [];
   if (row.hasInboundReply || row.threadStage !== "sequence") {
@@ -223,26 +235,37 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
   return (
     <div className="flex flex-wrap items-center gap-1">
       {sequenceSteps.map((step, i) => {
-        const done = isEmailSentForStep(row.lastEmailDay, step.day);
+        const done = step.status === "sent";
+        const opened = Boolean(step.openedAt);
         const active = row.nextEmailDay === step.day && !done;
         const label = emailStepLabel(step.day, normalized);
+        const title = opened
+          ? `${label}: Opened ${timeAgo(step.openedAt!)}`
+          : done
+            ? `${label}: Sent · Not opened`
+            : active
+              ? `${label}: Next`
+              : label;
         return (
           <div key={step.day} className="flex items-center gap-1">
             <div
-              title={label}
+              title={title}
               className={cn(
-                "flex h-6 min-w-[44px] items-center justify-center rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
-                done
-                  ? "bg-brand-black text-white"
-                  : active
-                    ? "bg-brand-yellow text-brand-ink ring-2 ring-brand-yellow/50"
-                    : "bg-brand-canvas text-brand-ink-faint",
+                "flex h-6 min-w-[44px] items-center justify-center gap-0.5 rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
+                opened
+                  ? "bg-orange-500 text-white"
+                  : done
+                    ? "bg-brand-black text-white"
+                    : active
+                      ? "bg-brand-yellow text-brand-ink ring-2 ring-brand-yellow/50"
+                      : "bg-brand-canvas text-brand-ink-faint",
               )}
             >
+              {opened && <Eye className="size-2.5 shrink-0" strokeWidth={2.5} />}
               {step.short}
             </div>
             {i < sequenceSteps.length - 1 && (
-              <div className={cn("h-px w-2", done ? "bg-brand-black/30" : "bg-brand-border")} />
+              <div className={cn("h-px w-2", done || opened ? "bg-brand-black/30" : "bg-brand-border")} />
             )}
           </div>
         );
@@ -329,17 +352,24 @@ function StatusPill({ row }: { row: LeadEmailRow }) {
       </span>
     );
   }
-  if (row.openedAt && row.queueStatus === "hot") {
+  if (row.queueStatus === "replies") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-soft px-2.5 py-1 text-[10px] font-bold text-brand-green ring-1 ring-brand-green/20">
+        <MessageSquare className="size-3" /> Sequence paused
+      </span>
+    );
+  }
+  if (row.openedAt) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-600 ring-1 ring-orange-200/80">
         <Eye className="size-3" /> Opened {timeAgo(row.openedAt)}
       </span>
     );
   }
-  if (row.queueStatus === "replies") {
+  if (row.emailsSent > 0 && (row.queueStatus === "active" || row.queueStatus === "hot" || row.threadStage === "awaiting_reply")) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-soft px-2.5 py-1 text-[10px] font-bold text-brand-green ring-1 ring-brand-green/20">
-        <MessageSquare className="size-3" /> Sequence paused
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-canvas px-2.5 py-1 text-[10px] font-bold text-brand-ink-soft ring-1 ring-brand-border">
+        <Mail className="size-3" /> Not opened
       </span>
     );
   }
@@ -416,7 +446,7 @@ function LeadCard({
           onNavigate(row.leadId);
         }
       }}
-      className="group w-full cursor-pointer rounded-[18px] border border-brand-border/60 bg-white p-4 text-left shadow-[var(--shadow-brand-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-stratus-blue/25 hover:shadow-[var(--shadow-brand)] active:scale-[0.995]"
+      className="ish-email-card group w-full cursor-pointer rounded-[18px] border border-brand-border/60 bg-white p-4 text-left shadow-[var(--shadow-brand-sm)] transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-stratus-blue/25 hover:shadow-[var(--shadow-brand)] active:scale-[0.995]"
     >
       <div className="flex items-start gap-3.5">
         <div
@@ -663,16 +693,11 @@ export function EmailApp() {
   }
 
   return (
-    <div className="settings-ambient min-h-0 min-w-0 flex-1 overflow-y-auto">
+    <div className="settings-ambient ish-email-page min-h-0 min-w-0 flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10 animate-brand-page-in">
         <SettingsHero
           icon={ListChecks}
           title="Outreach Queue"
-          subtitle={
-            data
-              ? `${cadenceSummary(cadence)}. Review drafts, track sequences, and respond from one place.`
-              : "Review drafts, track sequences, and respond from one place."
-          }
           action={
             <div className="flex flex-wrap items-center gap-2">
               <SyncRepliesButton onSynced={load} />
@@ -758,7 +783,7 @@ export function EmailApp() {
                         "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-all",
                         activeTab === id
                           ? "bg-brand-black text-white shadow-[var(--shadow-brand-sm)]"
-                          : "border border-brand-border bg-white text-brand-ink-soft hover:border-brand-ink/20 hover:text-brand-ink",
+                          : "ish-email-chip border border-brand-border bg-white text-brand-ink-soft hover:border-brand-ink/20 hover:text-brand-ink",
                       )}
                     >
                       <Icon className={cn("size-3", activeTab === id ? "text-white" : accent)} />
@@ -783,7 +808,7 @@ export function EmailApp() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search contact or company…"
-                  className="w-full rounded-full border border-brand-border bg-white py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none shadow-[var(--shadow-brand-sm)] placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/10"
+                  className="ish-email-search w-full rounded-full border border-brand-border bg-white py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none shadow-[var(--shadow-brand-sm)] placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/10"
                 />
               </div>
             </div>

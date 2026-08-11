@@ -19,10 +19,6 @@ import { toast } from "sonner";
 import { SwipeInboxCard } from "@/components/mobile/swipe-inbox-card";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { hapticLight } from "@/lib/capacitor/platform";
-import {
-  describeQualityBlock,
-  draftFailsQualityGate,
-} from "@/lib/outreach/outreach-quality";
 
 type InboxTab = "needs_review" | "replies";
 
@@ -33,11 +29,6 @@ const TABS: { id: InboxTab; label: string; icon: React.ElementType }[] = [
 
 function isFollowUpRow(row: LeadEmailRow): boolean {
   return Boolean(row.pendingFollowUpScheduleId || row.isFollowUpReview);
-}
-
-async function confirmQualityOverride(row: LeadEmailRow): Promise<boolean> {
-  if (!draftFailsQualityGate(row)) return false;
-  return window.confirm(describeQualityBlock(row));
 }
 
 export function MobileInboxApp() {
@@ -115,13 +106,13 @@ export function MobileInboxApp() {
       return;
     }
 
-    const overrideQualityGate = await confirmQualityOverride(row);
-    if (draftFailsQualityGate(row) && !overrideQualityGate) return;
-
     setBusyId(row.leadId);
     try {
       if (followUp && row.pendingFollowUpScheduleId) {
-        await sendFollowUp(row.pendingFollowUpScheduleId, { overrideQualityGate });
+        await sendFollowUp(row.pendingFollowUpScheduleId, {
+          overridePreflight: true,
+          overrideQualityGate: true,
+        });
         void hapticLight();
         toast.success(`Follow-up sent to ${row.contactName}`);
       } else if (row.draftOutreachId) {
@@ -131,7 +122,10 @@ export function MobileInboxApp() {
           channel: "email",
           status: "approved",
         });
-        await sendOutreach(approvalId, { overrideQualityGate });
+        await sendOutreach(approvalId, {
+          overridePreflight: true,
+          overrideQualityGate: true,
+        });
         void hapticLight();
         toast.success(`Sent to ${row.contactName}`);
       }

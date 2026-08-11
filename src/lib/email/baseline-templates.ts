@@ -27,4 +27,5 @@ export const TRANSFORMATION_RULES = `TRANSFORMATION RULES:
 3. Never write "before vendors lock in", "before Hosur vendors lock in", or any "vendors lock in" urgency.
 4. Never mention employee count, headcount, or revenue.
 5. Ban brochure lines: do not write "{brand} offers..." or "{brand} specializes in...".
-6. Sign off with Thanks & Regards, then the From name from settings. No Partnerships line. No No worries line on Email 1.`;
+6. Sign off with Thanks & Regards, then the From name from settings, then brand. No No worries line on Email 1.
+7. Company mentions use the short trading name only. Never write Pvt Ltd, Private Limited, India Pvt Ltd, Ltd, or LLP after the company name.`;

@@ -203,7 +203,7 @@ export function EnrichmentTab({
 
       <SettingsGroup
         title="Brand Intelligence"
-        footer="Configured during Setup. Corporate Gift Tracker uses the product category and competitor list below. Add or delete competitors anytime; pick sweep targets on the Brand Intelligence page."
+        footer="Finds companies that currently buy a competitor's product. Works best for physical goods (sweets, appliances, gifting), not SaaS. You can skip this during setup and turn it on here anytime."
       >
         <div className="px-4 py-3">
           <BrandIntelligenceSetup

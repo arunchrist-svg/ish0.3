@@ -147,13 +147,13 @@ export const EMAIL_STYLE_OPTIONS: {
   {
     value: "primary",
     label: "Primary inbox (1:1)",
-    desc: "Personal sales email — no bulk headers or marketing footer. Best for cold outreach.",
+    desc: "Personal sales email: no bulk headers or marketing footer. Open tracking uses a quiet 1×1 pixel when App URL is public.",
     badge: "Recommended",
   },
   {
     value: "marketing",
     label: "Marketing",
-    desc: "Includes unsubscribe footer and tracking pixel. May land in Promotions/Forums.",
+    desc: "Includes unsubscribe footer and open tracking. May land in Promotions/Forums.",
   },
 ];
 

@@ -18,6 +18,7 @@ import { classifyReplyIntent, extractPriorCta } from "@/lib/email/reply-intent";
 import { pickOriginalEmailContext } from "@/lib/email/reply-context";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { getAntiSpamWritingRules, getRevisionInstruction, getStyleOnlyRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
 import {
@@ -224,6 +225,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
   const senderFirstName = emailConfig.fromName.trim() || emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
+  const companyDisplayName = companyNameForEmail(account.name);
   const isReplyDraft = outreach.templateVariant === "reply";
   const sequencePosition = isReplyDraft
     ? REPLY_SEQUENCE_POSITION
@@ -338,12 +340,12 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     subjectB: originalSubjectB,
     emailBody: originalBody,
     contactLine: `${contact.firstName ?? contact.name}, ${contact.title ?? "HR/Admin"}`,
-    companyLine: `${account.name}, ${account.city ?? "India"}`,
+    companyLine: `${companyDisplayName}, ${account.city ?? "India"}`,
     templateGoal,
     history: formatHistory(priorMessages),
     effectiveMessage,
     contactFirstName: contactFirstName ?? contact.name,
-    companyName: account.name,
+    companyName: companyDisplayName,
     intent,
     styleOnly,
   });

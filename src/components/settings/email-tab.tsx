@@ -744,7 +744,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
 
       <SettingsGroup
         title="Open tracking"
-        footer="Public URL where your app is hosted. Used for the 1×1 tracking pixel in emails."
+        footer="Public HTTPS URL for your app. Required for the open-tracking pixel in sent emails. Localhost disables tracking."
       >
         <SettingsTextRow
           label="App URL"

@@ -60,7 +60,6 @@ export function LeadsBoardApp() {
   return (
     <MobilePageLayout
       title="Lead Board"
-      subtitle="Pipeline view by status"
       largeTitle
       className="ish-board-page"
       contentClassName="flex flex-col !overflow-hidden"
@@ -75,7 +74,6 @@ export function LeadsBoardApp() {
             </div>
             <div className="min-w-0">
               <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Lead Board</h1>
-              <p className="text-[12.5px] text-brand-ink-soft">Pipeline view by status</p>
             </div>
           </div>
 

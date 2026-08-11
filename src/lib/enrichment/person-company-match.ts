@@ -1,4 +1,10 @@
-import { nameMatchesQuery, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
+import { distinctiveBrandTokens } from "@/lib/enrichment/company-domain-quality";
+import {
+  compactCompanyName,
+  isGeographicEntity,
+  nameMatchesQuery,
+  normalizeCompanyName,
+} from "@/lib/enrichment/company-name-match";
 
 const FORMER_RE = /\b(ex|former|formerly|previously|past|alumni|alumnus|alumna)\b/i;
 
@@ -78,5 +84,100 @@ export function personFieldsShowCurrentEmployment(
   return hitShowsCurrentEmployment(
     { title: person.title ?? "", content: person.bio ?? "" },
     companyName,
+  );
+}
+
+const TITLE_ROLE_TOKENS = new Set([
+  "plant",
+  "head",
+  "director",
+  "manager",
+  "chief",
+  "officer",
+  "president",
+  "vice",
+  "senior",
+  "junior",
+  "executive",
+  "assistant",
+  "associate",
+  "consultant",
+  "engineer",
+  "analyst",
+  "specialist",
+  "coordinator",
+  "supervisor",
+  "general",
+  "human",
+  "resources",
+  "people",
+  "talent",
+  "ops",
+  "operations",
+  "sales",
+  "marketing",
+  "finance",
+  "admin",
+  "administration",
+  "legal",
+  "site",
+  "lead",
+  "leader",
+  "partner",
+  "business",
+  "global",
+  "regional",
+  "national",
+  "division",
+  "process",
+  "engineering",
+  "npd",
+  "chro",
+  "cpo",
+  "ceo",
+  "cfo",
+  "cto",
+  "cmo",
+  "coo",
+  "hrbp",
+  "hr",
+]);
+
+/**
+ * True when the job title names a different employer brand than the account
+ * (e.g. "Plant Head Tata Steel" on a Hosur Steel / Jindal account).
+ */
+export function personTitleConflictsWithCompany(
+  title: string | null | undefined,
+  companyName: string,
+): boolean {
+  if (!title?.trim() || !companyName.trim()) return false;
+
+  const headlineEmployer = currentEmployerFromHeadline(title);
+  if (headlineEmployer && !nameMatchesQuery(headlineEmployer, companyName)) {
+    const employerBrands = distinctiveBrandTokens(headlineEmployer);
+    const companyBrands = distinctiveBrandTokens(companyName);
+    if (
+      employerBrands.some(
+        (token) =>
+          token.length >= 4 &&
+          !companyBrands.includes(token) &&
+          !compactCompanyName(companyName).includes(token),
+      )
+    ) {
+      return true;
+    }
+  }
+
+  const titleBrands = distinctiveBrandTokens(title).filter(
+    (token) => !TITLE_ROLE_TOKENS.has(token) && !isGeographicEntity(token),
+  );
+  const companyBrands = distinctiveBrandTokens(companyName);
+  const companyCompact = compactCompanyName(companyName);
+  return titleBrands.some(
+    (token) =>
+      token.length >= 4 &&
+      !companyBrands.includes(token) &&
+      !companyCompact.includes(token),
   );
 }

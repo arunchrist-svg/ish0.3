@@ -9,7 +9,11 @@ import { Button, text } from "@/design-system";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
 import { SUBSCRIPTION_PLANS, formatPlanPriceMonthly, getPlanBySlug } from "@/lib/billing/plan-catalog";
 import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
-import { PLATFORM_INTENT_OPTIONS, type PlatformIntent } from "@/lib/brand/platform-intent";
+import {
+  PLATFORM_INTENT_OPTIONS,
+  brandIntelRecommendedForIntent,
+  type PlatformIntent,
+} from "@/lib/brand/platform-intent";
 import { isSweetsOnlyOperator, platformIntentOptionsForUser } from "@/lib/brand/vertical-catalog";
 import { getIndustryByLabel } from "@/lib/brand-intel/industry-catalog";
 import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
@@ -84,6 +88,7 @@ export default function OnboardingPage() {
   const [categoryFromWebsite, setCategoryFromWebsite] = useState(false);
   const [productWriteup, setProductWriteup] = useState("");
   const [emailKeywords, setEmailKeywords] = useState<string[]>([]);
+  const [brandIntelWanted, setBrandIntelWanted] = useState<boolean | null>(null);
   const intentOptions = platformIntentOptionsForUser(operatorEmail);
   const sweetsOnly = isSweetsOnlyOperator(operatorEmail);
   const websiteAnalysed =
@@ -129,6 +134,14 @@ export default function OnboardingPage() {
         }
         if (Array.isArray(data.competitorBrands) && data.competitorBrands.length) {
           setCompetitorBrands(data.competitorBrands);
+        }
+        if (data.brandReady) {
+          setBrandIntelWanted(
+            data.brandIntelConfigured === true ||
+              (Boolean(data.productCategory?.trim()) &&
+                Array.isArray(data.competitorBrands) &&
+                data.competitorBrands.length > 0),
+          );
         }
         if (data.platformIntent) {
           setPlatformIntent(data.platformIntent as PlatformIntent);
@@ -300,13 +313,19 @@ export default function OnboardingPage() {
       setError("Select what you will use Nebula for, or add a website to auto-detect.");
       return;
     }
-    if (!category) {
-      setError("Product category is required. Add a website to auto-select, or pick one below.");
+    if (brandIntelWanted === null) {
+      setError("Choose whether you need Brand Intelligence.");
       return;
     }
-    if (competitorBrands.length === 0) {
-      setError("Add at least one competitor brand");
-      return;
+    if (brandIntelWanted) {
+      if (!category) {
+        setError("Product category is required for Brand Intelligence. Add a website to auto-select, or pick one below.");
+        return;
+      }
+      if (competitorBrands.length === 0) {
+        setError("Add at least one competitor brand, or skip Brand Intelligence.");
+        return;
+      }
     }
     const hasWebsite = Boolean(websiteUrl.trim());
     const alreadyAnalyzed = hasWebsite && websiteKey(analyzedWebsiteUrl) === websiteKey(websiteUrl);
@@ -321,10 +340,19 @@ export default function OnboardingPage() {
       websiteUrl: websiteUrl.trim() || undefined,
       skipWebsiteAnalyze,
       platformIntent,
-      enrichmentConfig: {
-        giftIntelProductCategory: category,
-        giftIntelCompetitorBrands: competitorBrands,
-      },
+      enrichmentConfig: brandIntelWanted
+        ? {
+            giftIntelProductCategory: category,
+            giftIntelCompetitorBrands: competitorBrands,
+            brandIntelProductCategory: category,
+            brandIntelCompetitorBrands: competitorBrands,
+          }
+        : {
+            giftIntelProductCategory: "",
+            giftIntelCompetitorBrands: [],
+            brandIntelProductCategory: "",
+            brandIntelCompetitorBrands: [],
+          },
     });
     setAnalyzingWebsite(false);
     if (!data) return;
@@ -495,7 +523,7 @@ export default function OnboardingPage() {
         <form onSubmit={handlePrefsSubmit} className="ish-onboarding-card space-y-8 rounded-2xl border border-brand-border bg-white p-8">
           <div>
             <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-brand-stratus-blue")}>
-              Brand Intelligence
+              Brand
             </p>
             <h2 className="text-lg font-semibold text-brand-ink">Your company website</h2>
             <p className="mt-1 text-sm text-brand-ink-soft">
@@ -611,20 +639,75 @@ export default function OnboardingPage() {
                 </div>
               ) : null}
 
-              <BrandIntelligenceSetup
-                productCategory={productCategory}
-                competitorBrands={competitorBrands}
-                onProductCategoryChange={(value) => {
-                  setProductCategory(value);
-                  setCategoryFromWebsite(false);
-                }}
-                onCompetitorBrandsChange={setCompetitorBrands}
-                categoryDesc={
-                  categoryFromWebsite
-                    ? "Auto-selected from your website. Change it if this is wrong."
-                    : "Used for Corporate Gift Tracker OSINT sweeps."
-                }
-              />
+              <div>
+                <label className="mb-1.5 block text-[13px] font-semibold text-brand-ink">
+                  Do you need Brand Intelligence?
+                </label>
+                <p className="mb-2 text-[11.5px] leading-relaxed text-brand-ink-soft">
+                  It tracks which product a company currently buys from your competitors (for example,
+                  who already orders a rival sweet brand or appliance). Works best for physical,
+                  non-software products. Most SaaS teams skip this.
+                </p>
+                {platformIntent ? (
+                  <p className="mb-2 text-[11.5px] font-medium text-brand-ink-soft">
+                    {brandIntelRecommendedForIntent(platformIntent)
+                      ? "Recommended for your product type."
+                      : "Usually skip this for software or digital services."}
+                  </p>
+                ) : null}
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    data-selected={brandIntelWanted === true}
+                    onClick={() => setBrandIntelWanted(true)}
+                    className={cn(
+                      "ish-onboarding-choice rounded-xl border p-3 text-left transition",
+                      brandIntelWanted === true
+                        ? "border-brand-stratus-blue bg-brand-green-soft/50 ring-2 ring-brand-stratus-blue/20"
+                        : "border-brand-border hover:border-brand-stratus-blue/40",
+                    )}
+                  >
+                    <div className="text-[13px] font-semibold text-brand-ink">Yes, set it up</div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-brand-ink-soft">
+                      Pick a product category and competitor brands to sweep.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    data-selected={brandIntelWanted === false}
+                    onClick={() => setBrandIntelWanted(false)}
+                    className={cn(
+                      "ish-onboarding-choice rounded-xl border p-3 text-left transition",
+                      brandIntelWanted === false
+                        ? "border-brand-stratus-blue bg-brand-green-soft/50 ring-2 ring-brand-stratus-blue/20"
+                        : "border-brand-border hover:border-brand-stratus-blue/40",
+                    )}
+                  >
+                    <div className="text-[13px] font-semibold text-brand-ink">No, skip for now</div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-brand-ink-soft">
+                      You can turn this on later in Settings → Enrichment.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {brandIntelWanted ? (
+                <BrandIntelligenceSetup
+                  productCategory={productCategory}
+                  competitorBrands={competitorBrands}
+                  onProductCategoryChange={(value) => {
+                    setProductCategory(value);
+                    setCategoryFromWebsite(false);
+                  }}
+                  onCompetitorBrandsChange={setCompetitorBrands}
+                  categoryDesc={
+                    categoryFromWebsite
+                      ? "Auto-selected from your website. Change it if this is wrong."
+                      : "Product type we look for when a company already buys from a competitor."
+                  }
+                  competitorsDesc="We look for public signals that a company currently uses these brands."
+                />
+              ) : null}
 
               <Button
                 type="submit"
@@ -632,8 +715,9 @@ export default function OnboardingPage() {
                   loading ||
                   analyzingWebsite ||
                   !platformIntent ||
-                  !productCategory.trim() ||
-                  competitorBrands.length === 0
+                  brandIntelWanted === null ||
+                  (brandIntelWanted === true &&
+                    (!productCategory.trim() || competitorBrands.length === 0))
                 }
                 className={cn("w-full", SETUP_CTA)}
               >
@@ -681,7 +765,7 @@ export default function OnboardingPage() {
               </div>
             </div>
             <p>
-              Optional: update competitors under{" "}
+              Optional: Brand Intelligence (competitor product tracking, best for non-software) lives under{" "}
               <Link href="/settings?tab=enrichment" className="font-medium text-brand-stratus-blue underline">
                 Settings → Enrichment
               </Link>

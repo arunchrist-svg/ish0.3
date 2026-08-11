@@ -74,16 +74,24 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
     tried.add(keyEntry.id);
 
     try {
-      const res = await fetch("https://api.tavily.com/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          api_key: keyEntry.key,
-          query,
-          ...SEARCH_BODY_OPTS,
-          max_results: maxResults,
-        }),
-      });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8_000);
+      let res: Response;
+      try {
+        res = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            api_key: keyEntry.key,
+            query,
+            ...SEARCH_BODY_OPTS,
+            max_results: maxResults,
+          }),
+        });
+      } finally {
+        clearTimeout(timer);
+      }
 
       const data = await res.json().catch(() => ({}));
       const quotaResponse =

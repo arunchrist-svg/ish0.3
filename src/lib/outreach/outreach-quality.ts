@@ -23,12 +23,9 @@ export function draftFailsQualityGate(outreach: OutreachQualityFields): boolean 
 
 export function describeQualityBlock(outreach: OutreachQualityFields): string {
   if (outreach.revisionTimeout) {
-    return "Writer could not improve this draft in time. Send anyway?";
+    return "Writer could not improve this draft in time.";
   }
   const deliv = outreach.deliverabilityScore ?? 0;
   const rubric = outreach.rubricTotal ?? 0;
-  return (
-    `This draft scored below quality thresholds (inbox ${deliv}, rubric ${rubric}). ` +
-    "Send anyway?"
-  );
+  return `This draft scored below quality thresholds (inbox ${deliv}, rubric ${rubric}).`;
 }

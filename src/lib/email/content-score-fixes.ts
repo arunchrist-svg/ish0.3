@@ -20,7 +20,7 @@ const FIX_TIPS: [RegExp | string, string][] = [
   [/Do not cite employee counts/i, "Remove employee counts and numeric company stats. Say \"your team\" instead"],
   [/specific detail.*opener/i, "Add one sourced detail in the opening paragraph — not just Hi + name on its own line"],
   [/soft exit/i, 'Email 1: sampler CTA plus Thanks & Regards sign-off is enough. Email 3: use "I won\'t email further" or "the door is open"'],
-  [/sign.?off/i, "Sign off with Thanks & Regards, then the From name from settings"],
+  [/sign.?off/i, "Sign off with Thanks & Regards, then From name, then brand"],
   [/subject.*pattern/i, "Vary the subject. Avoid only \"[Holiday] gifts for [Company]\""],
 ];
 

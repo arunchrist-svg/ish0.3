@@ -234,10 +234,17 @@ async function seed() {
     },
   ]).onConflictDoNothing();
 
+  const [demoOwner] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.email, "cm@indiasweethouse.com"))
+    .limit(1);
+
   await db.insert(schema.teamMembers).values({
     id: TEAM_MEMBER_ID,
     tenantId: TENANT_ID,
     workspaceId: WORKSPACE_ID,
+    userId: demoOwner?.id ?? null,
     name: "Account Owner",
     email: "cm@indiasweethouse.com",
     linkedInSub: "sample-ish-cluster-mgr",

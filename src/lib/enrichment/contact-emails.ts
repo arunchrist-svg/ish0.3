@@ -1,8 +1,8 @@
 import { isEmailOutreachStarted } from "@/lib/pipeline-status";
 import { isGenericCompanyEmail } from "@/lib/enrichment/validate-contact";
+import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
 import {
   generateEmailPermutations,
-  normalizeDomain,
   resolveAccountDomain,
   resolveContactName,
 } from "@/lib/enrichment/email-permutations";
@@ -164,13 +164,11 @@ export function buildFirstLastSecondaryEmail(input: {
   companyName?: string | null;
   primaryEmail?: string | null;
 }): ContactEmailEntry | null {
-  const domain =
-    normalizeDomain(input.domain) ??
-    resolveAccountDomain({
-      domain: input.domain,
-      website: input.website,
-      companyName: input.companyName,
-    });
+  const domain = resolveAccountDomain({
+    domain: input.domain,
+    website: input.website,
+    companyName: input.companyName,
+  });
   if (!domain) return null;
 
   const { firstName, lastName } = resolveContactName(input);
@@ -182,6 +180,95 @@ export function buildFirstLastSecondaryEmail(input: {
   if (primaryKey && firstLast.email.toLowerCase() === primaryKey) return null;
 
   return buildPermutationEmailEntry(firstLast.email, "first.last");
+}
+
+function isPermutationGuess(entry: {
+  enrichmentProvider?: string | null;
+  enrichmentSource?: string | null;
+}): boolean {
+  return (
+    entry.enrichmentProvider === "permutation" ||
+    Boolean(entry.enrichmentSource?.startsWith("name_domain_guess"))
+  );
+}
+
+function emailDomain(email?: string | null): string | undefined {
+  const host = email?.split("@")[1]?.trim().toLowerCase();
+  return host || undefined;
+}
+
+export function refreshPermutationEmails(input: {
+  firstName?: string | null;
+  lastName?: string | null;
+  name?: string | null;
+  domain?: string | null;
+  website?: string | null;
+  companyName?: string | null;
+  primaryEmail?: string | null;
+  emailStatus?: string | null;
+  enrichmentProvider?: string | null;
+  enrichmentSource?: string | null;
+  alternateEmails?: ContactEmailEntry[] | null;
+}): {
+  email: string | null;
+  emailStatus: string;
+  enrichmentProvider: string | null;
+  enrichmentSource: string | null;
+  alternateEmails: ContactEmailEntry[];
+} {
+  const identity = {
+    firstName: input.firstName,
+    lastName: input.lastName,
+    name: input.name,
+    domain: input.domain,
+    website: input.website,
+    companyName: input.companyName,
+  };
+  const resolvedDomain = resolveAccountDomain(identity);
+  const keptAlts = (input.alternateEmails ?? []).filter((entry) =>
+    emailBelongsToCompany(entry.email, input.companyName),
+  );
+
+  let email = input.primaryEmail?.trim() || null;
+  let emailStatus = input.emailStatus ?? (email ? "unverified" : "missing");
+  let enrichmentProvider = input.enrichmentProvider ?? null;
+  let enrichmentSource = input.enrichmentSource ?? null;
+
+  const primaryIsGuess = isPermutationGuess({ enrichmentProvider, enrichmentSource });
+  const primaryHost = emailDomain(email);
+  const primaryMismatched =
+    Boolean(email) &&
+    (
+      !emailBelongsToCompany(email, input.companyName) ||
+      (primaryIsGuess && (!resolvedDomain || primaryHost !== resolvedDomain))
+    );
+  if (primaryMismatched) {
+    email = null;
+    emailStatus = "missing";
+    enrichmentProvider = null;
+    enrichmentSource = null;
+  }
+
+  if (!email && resolvedDomain) {
+    const { firstName, lastName } = resolveContactName(identity);
+    const firstLast = generateEmailPermutations({ firstName, lastName, domain: resolvedDomain }).find(
+      (item) => item.pattern === "first.last",
+    );
+    if (firstLast) {
+      email = firstLast.email;
+      emailStatus = "unverified";
+      enrichmentProvider = "permutation";
+      enrichmentSource = formatEnrichmentSourceWithPattern("first.last");
+    }
+  }
+
+  return {
+    email,
+    emailStatus,
+    enrichmentProvider,
+    enrichmentSource,
+    alternateEmails: withFirstLastSecondaryEmail(email, keptAlts, identity),
+  };
 }
 
 export function withFirstLastSecondaryEmail(
