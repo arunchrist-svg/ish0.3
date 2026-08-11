@@ -56,7 +56,7 @@ describe("employee search helpers", () => {
     expect(formatCompanyScale("40")).toBe("Small scale");
     expect(formatCompanyScale("180")).toBe("Medium scale");
     expect(formatCompanyScale("8,500")).toBe("Large scale");
-    expect(formatCompanyScale("—")).toBe("-");
+    expect(formatCompanyScale("—")).toBe("Unknown scale");
   });
 
   it("shows total employees next to scale on scout cards", () => {
@@ -64,7 +64,7 @@ describe("employee search helpers", () => {
     expect(formatEmployeeCount("Small scale")).toBeNull();
     expect(formatScoutSizeLine("8,500")).toBe("Large scale · 8,500");
     expect(formatScoutSizeLine("Small scale")).toBe("Small scale");
-    expect(formatScoutSizeLine("—")).toBe("-");
+    expect(formatScoutSizeLine("—")).toBe("Unknown scale");
   });
 
   it("ranks known matches ahead of unknown and drops mismatches", () => {

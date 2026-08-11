@@ -79,19 +79,21 @@ export async function listActiveMemberships(userId: string) {
     .where(and(eq(orgMembers.userId, userId), eq(orgMembers.status, "active")));
 }
 
+const TENANT_CTX_TTL_MS = 8_000;
+const tenantCtxCache = new Map<string, { ctx: TenantContext; expiresAt: number }>();
+
 export async function requireTenantContext(): Promise<TenantContext> {
   const token = await getSessionTokenFromCookies();
+  if (token) {
+    const cached = tenantCtxCache.get(token);
+    if (cached && cached.expiresAt > Date.now()) return cached.ctx;
+  }
+
   const session = await getSessionRecord(token);
   if (!session) throw new UnauthorizedError();
 
-  const [platformUser] = await db
-    .select({ platformRole: users.platformRole, mustChangePassword: users.mustChangePassword })
-    .from(users)
-    .where(eq(users.id, session.id))
-    .limit(1);
-
-  const platformRole = platformUser?.platformRole ?? "user";
-  const mustChangePassword = platformUser?.mustChangePassword ?? false;
+  const platformRole = session.platformRole ?? "user";
+  const mustChangePassword = session.mustChangePassword;
 
   let tenantId = session.tenantId;
   if (!tenantId) {
@@ -108,18 +110,19 @@ export async function requireTenantContext(): Promise<TenantContext> {
     }
   }
 
-  const membership = await loadMembership(session.id, tenantId);
+  const [membership, workspaceRows] = await Promise.all([
+    loadMembership(session.id, tenantId),
+    db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.tenantId, tenantId))
+      .limit(1),
+  ]);
   if (!membership) throw new UnauthorizedError("No organization membership");
-
-  const [workspace] = await db
-    .select({ id: workspaces.id })
-    .from(workspaces)
-    .where(eq(workspaces.tenantId, membership.tenantId))
-    .limit(1);
-
+  const workspace = workspaceRows[0];
   if (!workspace) throw new UnauthorizedError("No workspace found");
 
-  return {
+  const ctx: TenantContext = {
     userId: session.id,
     tenantId: membership.tenantId,
     workspaceId: workspace.id,
@@ -132,6 +135,10 @@ export async function requireTenantContext(): Promise<TenantContext> {
     tenantSlug: membership.tenantSlug,
     mustChangePassword,
   };
+  if (token) {
+    tenantCtxCache.set(token, { ctx, expiresAt: Date.now() + TENANT_CTX_TTL_MS });
+  }
+  return ctx;
 }
 
 export async function requireSuperadmin(): Promise<{ userId: string; email: string }> {

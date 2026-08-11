@@ -40,6 +40,7 @@ export type SessionUser = {
 
 export type SessionRecord = SessionUser & {
   tenantId: string | null;
+  platformRole: string;
 };
 
 export async function getSessionRecord(token: string | undefined): Promise<SessionRecord | null> {
@@ -51,6 +52,7 @@ export async function getSessionRecord(token: string | undefined): Promise<Sessi
       email: users.email,
       name: users.name,
       mustChangePassword: users.mustChangePassword,
+      platformRole: users.platformRole,
       tenantId: sessions.tenantId,
       expiresAt: sessions.expiresAt,
     })
@@ -65,6 +67,7 @@ export async function getSessionRecord(token: string | undefined): Promise<Sessi
     email: row.email,
     name: row.name,
     mustChangePassword: row.mustChangePassword,
+    platformRole: row.platformRole ?? "user",
     tenantId: row.tenantId,
   };
 }

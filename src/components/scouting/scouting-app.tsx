@@ -24,6 +24,7 @@ import {
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Compass, MapPin, MoreVertical, Search, Users } from "lucide-react";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS } from "@/lib/scouting-data";
+import { extractEmployeesFromText } from "@/lib/enrichment/employee-size";
 import {
   companyPeopleBucket,
   peoplePerCompanyLimit,
@@ -164,7 +165,10 @@ function toCompanyShape(c: ScoutCompanyResult, index = 0) {
     type: c.industry ?? "Corporate",
     city: c.city ?? "",
     industry: c.industry ?? "",
-    employees: c.employees ?? "—",
+    employees:
+      c.employees?.trim() && c.employees !== "—"
+        ? c.employees
+        : extractEmployeesFromText(`${c.intelNotes ?? ""} ${c.name}`) ?? c.employees ?? "—",
     revenue: c.revenue ?? "—",
     founded: 0,
     fitScore: c.fitScore ?? 60,
@@ -582,26 +586,6 @@ export function ScoutingApp() {
       .catch(() => {
         applyLocationOptions(locationOptionsFromSelection());
       });
-  }, []);
-
-  // Prefill Scout filters from website-derived brand insights (onboarding / Settings)
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (!res.ok) return;
-        const data = await res.json();
-        const defaults = data.scoutBrandDefaults as
-          | { industries?: string[]; departments?: string[]; seniority?: string[] }
-          | null
-          | undefined;
-        if (!defaults) return;
-        setDepartments((prev) => (prev.length ? prev : defaults.departments ?? []));
-        setSeniority((prev) => (prev.length ? prev : defaults.seniority ?? []));
-      } catch {
-        // non-critical
-      }
-    })();
   }, []);
 
   useEffect(() => {

@@ -8,7 +8,6 @@ import {
   getResolvedEnrichmentConfigForWorkspace,
   getResolvedWorkspaceEnrichmentConfig,
 } from "@/lib/settings/workspace-settings";
-import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { locationOptionsFromSelection } from "@/lib/geo/india";
 import type { DataMode } from "@/lib/enrichment/types";
 import { mapWithConcurrency } from "@/lib/async";
@@ -33,11 +32,6 @@ export type ScoutBatchResult = {
   leadsSaved: number;
   leadsSkipped: number;
   errors: string[];
-  appliedBrandDefaults?: {
-    industries: string[];
-    departments: string[];
-    seniority: string[];
-  };
 };
 
 const AGENT_COMPANY_CONCURRENCY = 4;
@@ -51,36 +45,9 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
   const companyLimit = params.companyLimit ?? getScoutCompaniesLimit();
   const maxCompanies = params.maxCompaniesToProcess ?? 20;
 
-  // Prefer caller filters; otherwise use website-derived scout targets from brand setup
-  let industries = params.industries ?? [];
-  let seniority = params.seniority ?? [];
-  let departments = params.departments ?? [];
-  let appliedBrandDefaults: ScoutBatchResult["appliedBrandDefaults"];
-
-  if (!industries.length || !seniority.length || !departments.length) {
-    try {
-      const emailConfig = await getResolvedEmailConfig(params.workspaceId);
-      const insights = emailConfig.brandConfig?.websiteInsights;
-      if (insights) {
-        if (!industries.length && insights.scoutIndustries.length) {
-          industries = [...insights.scoutIndustries];
-        }
-        if (!departments.length && insights.scoutDepartments.length) {
-          departments = [...insights.scoutDepartments];
-        }
-        if (!seniority.length && insights.scoutSeniority.length) {
-          seniority = [...insights.scoutSeniority];
-        }
-        appliedBrandDefaults = {
-          industries: insights.scoutIndustries,
-          departments: insights.scoutDepartments,
-          seniority: insights.scoutSeniority,
-        };
-      }
-    } catch (e) {
-      console.warn("[scout] brand defaults load failed:", e);
-    }
-  }
+  const industries = params.industries ?? [];
+  const seniority = params.seniority ?? [];
+  const departments = params.departments ?? [];
 
   const errors: string[] = [];
   let leadsSaved = 0;
@@ -183,6 +150,5 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     leadsSaved,
     leadsSkipped,
     errors,
-    appliedBrandDefaults,
   };
 }

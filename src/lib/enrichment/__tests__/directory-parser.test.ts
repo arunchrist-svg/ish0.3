@@ -47,6 +47,19 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
       "Hanumapalli",
       "Begapalli Road",
       "KRISHNAGIRI ROAD",
+      "100 INR (Approx.)",
+      "1.2mm Metal Name Plate",
+      "Air Purifiers",
+      "Sharp Air Purifier",
+      "Solar Water Pumping Systems 1HP to 20HP",
+      "Company SubCategory",
+      "Indian Non-Government Company",
+      "Company Class",
+      "Private Company",
+      "Filing Status For Last 2 Years",
+      "Email ID",
+      "Address",
+      "Tax",
     ];
     for (const name of junk) {
       expect(isPlausibleCompanyName(name), name).toBe(false);

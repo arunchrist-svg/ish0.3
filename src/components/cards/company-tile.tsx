@@ -66,13 +66,12 @@ export function CompanyTile({
         })}
       >
         <div className="mb-2.5 flex items-start justify-between gap-2">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-canvas">
+          <div className="flex size-10 shrink-0 items-center justify-center">
             <CompanyLogo
               name={company.name}
               domain={company.domain}
               logo={company.logo}
               size="sm"
-              className="bg-brand-canvas ring-0"
               rounded="rounded-lg"
             />
           </div>
@@ -152,13 +151,12 @@ export function CompanyTile({
       )}
 
       <div className="mb-3.5 flex items-start justify-between">
-        <div className="relative flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand-canvas">
+        <div className="relative flex size-12 shrink-0 items-center justify-center">
           <CompanyLogo
             name={company.name}
             domain={company.domain}
             logo={company.logo}
             size="md"
-            className="bg-brand-canvas ring-0"
             rounded="rounded-xl"
           />
         </div>

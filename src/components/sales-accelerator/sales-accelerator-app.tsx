@@ -86,16 +86,11 @@ export function SalesAcceleratorApp() {
   }, [pathname, router]);
 
   const selectLead = useCallback(
-    async (id: string) => {
+    (id: string) => {
       activeLeadIdRef.current = id;
+      setPrefetchedLead((prev) => (prev?.id === id ? prev : null));
       setActiveLeadId(id);
       syncLeadToUrl(id);
-      try {
-        const detail = await fetchLead(id);
-        setPrefetchedLead(detail);
-      } catch {
-        setPrefetchedLead(null);
-      }
     },
     [syncLeadToUrl],
   );
@@ -278,9 +273,6 @@ export function SalesAcceleratorApp() {
 
     activeLeadIdRef.current = leadFromUrl;
     setActiveLeadId(leadFromUrl);
-    fetchLead(leadFromUrl)
-      .then((detail) => setPrefetchedLead(detail))
-      .catch(() => setPrefetchedLead(null));
   }, [leadFromUrl]);
 
   const filteredLeads = useMemo(
@@ -344,7 +336,7 @@ export function SalesAcceleratorApp() {
     <QueuePanel
       leads={leads}
       activeId={activeLeadId ?? ""}
-      onSelect={(id) => void selectLead(id)}
+      onSelect={selectLead}
       onRefresh={() => refreshLeadList({ silent: true })}
       onAddLead={openCreateLead}
       canWrite={canWritePipeline}
@@ -364,7 +356,7 @@ export function SalesAcceleratorApp() {
           <LeadSwitcherRail
             leads={filteredLeads}
             activeId={activeLeadId}
-            onSelect={(id) => void selectLead(id)}
+            onSelect={selectLead}
             onBack={handleBackToList}
           />
         </div>

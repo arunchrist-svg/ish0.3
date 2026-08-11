@@ -179,6 +179,7 @@ Each item MUST have: { "name": string, "city": string, "industry": string, "empl
 Only include REAL named Indian companies. Do NOT invent companies.
 Never use job-post titles, document blurbs, report titles, or review-site headings (Work Satisfaction, Company Culture, Salary) as company names.
 Never use addresses, plot numbers, PIN codes, villages, SIPCOT/MIDC/SEZ estates, or "Industrial Area/Complex" labels as company names (e.g. Hosur-635126, Sipcot Industrial Complex).
+Never use product titles, prices (INR / Approx), catalog items (name plates, air purifiers), or registry form fields (Company Class, Email ID, Address, Tax) as company names.
 If a listing is a hiring or reviews page for Acme, return "Acme" only.
 Minimum confidence score: ${threshold}.`,
         prompt: `Extract companies from these directory results.

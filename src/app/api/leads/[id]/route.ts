@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
-import { eq, desc, asc, and, inArray, isNotNull } from "drizzle-orm";
+import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { canManuallyAdvance, isEmailOutreachStarted, parseDealAmount } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api-errors";
@@ -53,32 +53,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       enrichmentSource: contact.enrichmentSource,
       alternateEmails: existingAlternates,
     });
-    const emailsChanged =
-      (contact.email ?? null) !== refreshed.email ||
-      (contact.emailStatus ?? "missing") !== refreshed.emailStatus ||
-      JSON.stringify(existingAlternates) !== JSON.stringify(refreshed.alternateEmails);
-    if (emailsChanged) {
-      await db
-        .update(contacts)
-        .set({
-          email: refreshed.email,
-          emailStatus: refreshed.emailStatus,
-          enrichmentProvider: refreshed.enrichmentProvider,
-          enrichmentSource: refreshed.enrichmentSource,
-          alternateEmails: refreshed.alternateEmails,
-          updatedAt: new Date(),
-        })
-        .where(eq(contacts.id, contact.id));
-      contact.email = refreshed.email;
-      contact.emailStatus = refreshed.emailStatus as typeof contact.emailStatus;
-      contact.enrichmentProvider = refreshed.enrichmentProvider;
-      contact.enrichmentSource = refreshed.enrichmentSource;
-      contact.alternateEmails = refreshed.alternateEmails;
-    }
+    contact.email = refreshed.email;
+    contact.emailStatus = refreshed.emailStatus as typeof contact.emailStatus;
+    contact.enrichmentProvider = refreshed.enrichmentProvider;
+    contact.enrichmentSource = refreshed.enrichmentSource;
+    contact.alternateEmails = refreshed.alternateEmails;
 
-    const [research, outreach, scheduleRows, sequenceDraftRows, emailConfig] = await Promise.all([
+    const [research, outreachRows, scheduleRows, emailConfig, repliedFunnel] = await Promise.all([
       db.query.leadResearch.findFirst({ where: eq(leadResearch.leadId, id) }),
-      db.query.leadOutreach.findFirst({
+      db.query.leadOutreach.findMany({
         where: eq(leadOutreach.leadId, id),
         orderBy: [desc(leadOutreach.createdAt)],
       }),
@@ -87,50 +70,37 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .from(outreachSchedule)
         .where(eq(outreachSchedule.leadId, id))
         .orderBy(outreachSchedule.scheduledFor),
-      db.query.leadOutreach.findMany({
-        where: and(eq(leadOutreach.leadId, id), isNotNull(leadOutreach.sequencePosition)),
-        orderBy: [asc(leadOutreach.sequencePosition)],
-      }),
       getResolvedEmailConfig(lead.workspaceId),
+      db.query.yieldFunnel.findFirst({
+        where: and(eq(yieldFunnel.leadId, id), eq(yieldFunnel.stage, "replied")),
+        orderBy: [desc(yieldFunnel.enteredAt)],
+      }),
     ]);
 
+    const outreach = outreachRows[0] ?? null;
+    const sequenceDraftRows = [...outreachRows]
+      .filter((row) => row.sequencePosition != null)
+      .sort((a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0));
     const replyDraftRow = outreach?.templateVariant === "reply" ? outreach : null;
     const activeOutreach = replyDraftRow ?? (sequenceDraftRows[0] ?? outreach ?? null);
 
-    const [approval, editMessages, replySentRow] = activeOutreach
-      ? await Promise.all([
-          db.query.outreachApprovals.findFirst({
+    const approvalIds = scheduleRows.map((r) => r.approvalId).filter((id): id is string => Boolean(id));
+
+    const [approval, editMessages, approvalOutreachRows] = await Promise.all([
+      activeOutreach
+        ? db.query.outreachApprovals.findFirst({
             where: eq(outreachApprovals.leadOutreachId, activeOutreach.id),
             orderBy: [desc(outreachApprovals.createdAt)],
-          }),
-          db.query.outreachEditMessages.findMany({
+          })
+        : Promise.resolve(null),
+      activeOutreach
+        ? db.query.outreachEditMessages.findMany({
             where: eq(outreachEditMessages.leadOutreachId, activeOutreach.id),
             orderBy: [asc(outreachEditMessages.createdAt)],
-          }),
-          activeOutreach.templateVariant === "reply"
-            ? db.query.outreachApprovals
-                .findFirst({
-                  where: eq(outreachApprovals.leadOutreachId, activeOutreach.id),
-                  orderBy: [desc(outreachApprovals.createdAt)],
-                })
-                .then(async (latestApproval) => {
-                  if (!latestApproval) return null;
-                  return db.query.outreachSchedule.findFirst({
-                    where: and(
-                      eq(outreachSchedule.approvalId, latestApproval.id),
-                      eq(outreachSchedule.status, "sent"),
-                    ),
-                  });
-                })
-            : Promise.resolve(null),
-        ])
-      : [null, [], null];
-
-
-    const approvalIds = scheduleRows.map((r) => r.approvalId).filter((id): id is string => Boolean(id));
-    const approvalOutreachRows =
+          })
+        : Promise.resolve([]),
       approvalIds.length > 0
-        ? await db
+        ? db
             .select({
               approvalId: outreachApprovals.id,
               emailBody: leadOutreach.emailBody,
@@ -138,17 +108,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             .from(outreachApprovals)
             .innerJoin(leadOutreach, eq(leadOutreach.id, outreachApprovals.leadOutreachId))
             .where(inArray(outreachApprovals.id, approvalIds))
-        : [];
+        : Promise.resolve([]),
+    ]);
+
+    const replySentRow =
+      activeOutreach?.templateVariant === "reply" && approval
+        ? scheduleRows.find((row) => row.approvalId === approval.id && row.status === "sent") ?? null
+        : null;
+
     const outreachBodiesByApprovalId = Object.fromEntries(
       approvalOutreachRows
         .filter((r) => r.emailBody)
         .map((r) => [r.approvalId, r.emailBody as string]),
     );
-
-    const repliedFunnel = await db.query.yieldFunnel.findFirst({
-      where: and(eq(yieldFunnel.leadId, id), eq(yieldFunnel.stage, "replied")),
-      orderBy: [desc(yieldFunnel.enteredAt)],
-    });
 
     const replyDraftSent = Boolean(replySentRow);
     const outreachSequence = sequenceDraftRows.map((d) => toWriterDraft(d, { sequencePosition: d.sequencePosition ?? undefined }));

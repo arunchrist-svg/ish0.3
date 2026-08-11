@@ -48,6 +48,27 @@ const PIN_OR_PLOT_SHAPE =
 const PLACE_NAME_SUFFIX =
   /(palli|halli|puram|pet|kere|nagar|layout|colony|road|rd|estate|compound|post|area|complex|park|zone|village)$/i;
 
+const REGISTRY_OR_FORM_FIELD =
+  /^(company\s+(subcategory|class|category|status|type|name)|indian non-government company|private company|public company|one person company|email id|e-?mail|address|tax|cin|din|roc(\s+code)?|directors?|charges?)$/i;
+
+const REGISTRY_FIELD_PHRASE =
+  /\b(filing status|status under cirp|authorised capital|paid[- ]?up capital|date of incorporation|company subcategory|company class)\b/i;
+
+const PRODUCT_LISTING =
+  /\b(inr|rs\.?)\b|\bapprox\.?\b|₹|\bname\s*plates?\b|\bsign\s*plates?\b|\bair\s*purifiers?\b|\bwater\s*pumping\b|\bsolar\s+water\b|\bled\s+name\b|\bz\s*clamp\b|\bdtf\s+air\b|\bnegative\s+pressure\s+hood\b|\btoxic\s+gas\s+removal\b/i;
+
+const PRODUCT_SPEC =
+  /\b\d+(\.\d+)?\s*(mm|cm|hp|kw|kg|ml|ltr|litre|inch|ft)\b/i;
+
+function looksLikeProductOrField(name: string): boolean {
+  const hasLegalEntity = /\b(ltd|limited|pvt|private|llp|inc|corp|corporation|plc|gmbh|llc)\b/i.test(name);
+  if (REGISTRY_OR_FORM_FIELD.test(name) || REGISTRY_FIELD_PHRASE.test(name)) return true;
+  if (PRODUCT_LISTING.test(name) && !hasLegalEntity) return true;
+  if (PRODUCT_SPEC.test(name) && !hasLegalEntity) return true;
+  if (/^\d/.test(name) && !hasLegalEntity && !/^[0-9][a-z]/i.test(name)) return true;
+  return false;
+}
+
 function looksLikeAddressOrPlace(name: string): boolean {
   const words = name.split(/[\s,/]+/).filter(Boolean);
   const hasStrongCompany = STRONG_COMPANY_MARKER.test(name);
@@ -204,6 +225,7 @@ export function cleanCompanyName(raw: string): string | null {
   if (/^[\d\s·•,.-]+$/.test(name)) return null;
   if (isGeographicEntity(name)) return null;
   if (looksLikeAddressOrPlace(name)) return null;
+  if (looksLikeProductOrField(name)) return null;
   if (LISTING_TITLE.test(name)) return null;
   if (/^(companies|businesses|firms|offices)\s+in\b/i.test(name)) return null;
   if (/\bincluding\b/i.test(name)) return null;

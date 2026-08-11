@@ -111,7 +111,7 @@ export function scaleBandFromEmployees(raw?: string | null): (typeof EMPLOYEE_SI
 
 /** Card / filter display: Micro Industries, Small scale, Medium scale, Large scale. */
 export function formatCompanyScale(raw?: string | null): string {
-  return scaleBandFromEmployees(raw)?.label ?? "-";
+  return scaleBandFromEmployees(raw)?.label ?? "Unknown scale";
 }
 
 /** Numeric headcount for scout cards. Scale-only labels (no digits) return null. */
@@ -130,7 +130,7 @@ export function formatScoutSizeLine(raw?: string | null): string {
   const scale = formatCompanyScale(raw);
   const count = formatEmployeeCount(raw);
   if (!count) return scale;
-  if (scale === "-") return count;
+  if (scale === "Unknown scale") return count;
   return `${scale} · ${count}`;
 }
 
@@ -168,9 +168,11 @@ export function apolloEmployeeRanges(bandIds?: string[]): string[] {
 
 export function extractEmployeesFromText(blob: string): string | undefined {
   const numeric = blob.match(
-    /(\d{1,3}(?:,\d{3})+|\d+)\s*(?:\+|[-–]\s*(?:\d{1,3}(?:,\d{3})+|\d+))?\s*(?:employees?|staff|headcount)\b/i,
+    /(\d{1,3}(?:,\d{3})+|\d+)\s*(?:\+|[-–]\s*(?:\d{1,3}(?:,\d{3})+|\d+))?\s*(?:employees?|staff|headcount|people|workforce|workers)\b/i,
   );
   if (numeric?.[0]) return numeric[0].trim();
+  const team = blob.match(/\b(?:team|workforce|staff)\s+(?:of|size)\s+(\d{1,3}(?:,\d{3})+|\d+)/i);
+  if (team?.[1]) return `${team[1]} employees`;
   const scaleId = matchScaleId(blob);
   return scaleId ? BAND_BY_ID.get(scaleId)!.label : undefined;
 }

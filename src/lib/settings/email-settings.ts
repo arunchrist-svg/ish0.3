@@ -68,6 +68,13 @@ function toPublicResponse(
   };
 }
 
+const EMAIL_CONFIG_TTL_MS = 30_000;
+const emailConfigCache = new Map<string, { config: EmailConfig; expiresAt: number }>();
+
+export function clearResolvedEmailConfigCache() {
+  emailConfigCache.clear();
+}
+
 async function persistEmailConfig(config: EmailConfig, workspaceId?: string): Promise<void> {
   const resolvedWorkspaceId = workspaceId ?? (await requireTenantContext()).workspaceId;
   await db
@@ -85,6 +92,7 @@ async function persistEmailConfig(config: EmailConfig, workspaceId?: string): Pr
       },
     });
   invalidateEmailConfigCache();
+  clearResolvedEmailConfigCache();
 }
 
 async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfigResponse> {
@@ -145,8 +153,14 @@ export async function saveWorkspaceEmailOverrides(
 }
 
 export async function getResolvedEmailConfig(workspaceId?: string): Promise<EmailConfig> {
+  const cacheKey = workspaceId ?? "_default";
+  const cached = emailConfigCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.config;
+
   const stored = await loadWorkspaceEmailOverrides(workspaceId);
-  return resolveEmailConfig(stored);
+  const config = resolveEmailConfig(stored);
+  emailConfigCache.set(cacheKey, { config, expiresAt: Date.now() + EMAIL_CONFIG_TTL_MS });
+  return config;
 }
 
 /** Merge brand fields without re-running SMTP/send-mode validation (onboarding / website analyse). */

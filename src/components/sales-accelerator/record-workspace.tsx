@@ -223,17 +223,16 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
 
   useEffect(() => {
     if (!lead || lead.network.length > 0) return;
-    let cancelled = false;
-    void fetchLeadNetworkSummary(leadId)
-      .then((network) => {
-        if (!cancelled && network.length > 0) {
-          setLead((prev) => (prev ? { ...prev, network } : prev));
-        }
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+    const timer = window.setTimeout(() => {
+      void fetchLeadNetworkSummary(leadId)
+        .then((network) => {
+          if (network.length > 0) {
+            setLead((prev) => (prev?.id === leadId ? { ...prev, network } : prev));
+          }
+        })
+        .catch(() => {});
+    }, 400);
+    return () => window.clearTimeout(timer);
   }, [leadId, lead]);
 
   if (loading) {

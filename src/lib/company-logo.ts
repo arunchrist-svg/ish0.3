@@ -69,6 +69,7 @@ export function extractCompanyDomain(input: {
 
 export function isLogoUrl(value?: string | null): boolean {
   if (!value) return false;
+  if (/[\u{1F300}-\u{1FAFF}]/u.test(value)) return false;
   return /^https?:\/\//i.test(value) || value.startsWith("//");
 }
 
