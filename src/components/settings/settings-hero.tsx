@@ -6,24 +6,47 @@ type SettingsHeroProps = {
   subtitle?: string;
   action?: React.ReactNode;
   className?: string;
+  compact?: boolean;
 };
 
-export function SettingsHero({ icon: Icon, title, subtitle, action, className }: SettingsHeroProps) {
+export function SettingsHero({ icon: Icon, title, subtitle, action, className, compact }: SettingsHeroProps) {
   return (
-    <header className={cn("settings-hero mb-8 overflow-hidden rounded-[22px] border border-brand-border/40 bg-brand-yellow-gradient p-6 shadow-[var(--shadow-brand-yellow-sm)]", className)}>
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-4">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/70 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm">
-            <Icon className="size-5 text-brand-ink" strokeWidth={2} />
+    <header
+      className={cn(
+        "settings-hero overflow-hidden rounded-[22px] border border-brand-border/40 bg-brand-yellow-gradient shadow-[var(--shadow-brand-yellow-sm)]",
+        compact ? "mb-3 rounded-[16px] px-3.5 py-2.5" : "mb-8 p-6",
+        className,
+      )}
+    >
+      <div className={cn("flex justify-between gap-3", compact ? "items-center" : "items-start gap-4")}>
+        <div className={cn("flex min-w-0", compact ? "items-center gap-2.5" : "items-start gap-4")}>
+          <div
+            className={cn(
+              "flex shrink-0 items-center justify-center bg-white/70 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm",
+              compact ? "size-8 rounded-xl" : "size-11 rounded-2xl",
+            )}
+          >
+            <Icon className={cn(compact ? "size-4" : "size-5", "text-brand-ink")} strokeWidth={2} />
           </div>
           <div className="min-w-0">
-            <h1 className="text-[28px] font-bold leading-tight tracking-tight text-brand-ink">{title}</h1>
-            {subtitle ? <p className="mt-1 text-[14px] leading-snug text-brand-ink-soft">{subtitle}</p> : null}
+            <h1
+              className={cn(
+                "font-bold leading-tight tracking-tight text-brand-ink",
+                compact ? "text-[16px]" : "text-[28px]",
+              )}
+            >
+              {title}
+            </h1>
+            {subtitle ? (
+              <p className={cn("text-brand-ink-soft", compact ? "mt-0 text-[12px] leading-snug" : "mt-1 text-[14px] leading-snug")}>
+                {subtitle}
+              </p>
+            ) : null}
           </div>
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
+        {action ? <div className="min-w-0 shrink">{action}</div> : null}
       </div>
-      <div className="settings-hero-stripe mt-5 h-1 w-full rounded-full" aria-hidden />
+      {compact ? null : <div className="settings-hero-stripe mt-5 h-1 w-full rounded-full" aria-hidden />}
     </header>
   );
 }

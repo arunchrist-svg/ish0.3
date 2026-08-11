@@ -174,23 +174,23 @@ function KpiTile({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "flex flex-col gap-3 rounded-[20px] p-5 text-left shadow-[var(--shadow-brand-sm)] transition-all duration-200",
+        "flex min-w-0 items-center gap-2 rounded-[14px] px-2.5 py-2 text-left shadow-[var(--shadow-brand-sm)] transition-all duration-200",
         cardClass,
-        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-[var(--shadow-brand)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/30",
-        active && "ring-2 ring-brand-black/80 ring-offset-2 ring-offset-[var(--ish-canvas)]",
+        onClick && "cursor-pointer hover:shadow-[var(--shadow-brand)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/30",
+        active && "ring-2 ring-brand-black/80 ring-offset-1 ring-offset-[var(--ish-canvas)]",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest opacity-70">{label}</span>
-        <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", iconClass)}>
-          <Icon className="size-4" />
-        </div>
+      <div className={cn("flex size-7 shrink-0 items-center justify-center rounded-full", iconClass)}>
+        <Icon className="size-3.5" />
       </div>
-      <div>
-        <div className={cn("text-[30px] font-extrabold leading-none tabular-nums", valueClass ?? "text-brand-ink")}>
-          {value}
+      <div className="min-w-0 flex-1">
+        <span className="block text-[9px] font-bold uppercase tracking-widest opacity-70">{label}</span>
+        <div className="flex items-baseline gap-1.5">
+          <span className={cn("text-[18px] font-extrabold leading-none tabular-nums", valueClass ?? "text-brand-ink")}>
+            {value}
+          </span>
+          {sub ? <span className="truncate text-[10px] font-medium opacity-65">{sub}</span> : null}
         </div>
-        {sub && <div className="mt-1.5 text-[11px] font-medium opacity-65">{sub}</div>}
       </div>
     </Comp>
   );
@@ -513,15 +513,13 @@ function TabEmptyState({ tab }: { tab: QueueTab }) {
 
 function LoadingSkeleton() {
   return (
-    <div className="animate-pulse space-y-6">
-      <div className="h-36 rounded-[22px] bg-brand-border/60" />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
+    <div className="animate-pulse space-y-3">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
         {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-28 rounded-[20px] bg-brand-border/60" />
+          <div key={i} className="h-12 rounded-[14px] bg-brand-border/60" />
         ))}
       </div>
-      <div className="h-12 rounded-full bg-brand-border/60" />
-      <div className="h-64 rounded-[20px] bg-brand-border/60" />
+      <div className="h-48 rounded-[16px] bg-brand-border/60" />
     </div>
   );
 }
@@ -694,20 +692,21 @@ export function EmailApp() {
 
   return (
     <div className="settings-ambient ish-email-page min-h-0 min-w-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-6 py-8 sm:px-10 animate-brand-page-in">
+      <div className="mx-auto w-full max-w-5xl px-5 py-4 sm:px-8 animate-brand-page-in">
         <SettingsHero
+          compact
           icon={ListChecks}
           title="Outreach Queue"
           action={
-            <div className="flex flex-wrap items-center gap-2">
-              <SyncRepliesButton onSynced={load} />
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <SyncRepliesButton compact onSynced={load} />
               {data && (
                 <button
                   type="button"
                   onClick={() => void handleToggleSending()}
                   disabled={togglingSend}
                   className={cn(
-                    "inline-flex items-center gap-2 rounded-[14px] border px-4 py-2.5 text-[12px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all disabled:opacity-60",
+                    "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all disabled:opacity-60",
                     data.outreachPaused
                       ? "border-brand-green/40 bg-brand-green/10 text-brand-green hover:bg-brand-green/15"
                       : "border-brand-stratus-salmon/40 bg-brand-pink-soft/50 text-brand-stratus-salmon hover:bg-brand-pink-soft",
@@ -731,7 +730,7 @@ export function EmailApp() {
                 onClick={() => void load()}
                 disabled={loading}
                 title="Refresh queue"
-                className="inline-flex items-center gap-2 rounded-[14px] bg-brand-black px-4 py-2.5 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-black/90 disabled:opacity-60"
+                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-black px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-black/90 disabled:opacity-60"
               >
                 <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
                 Refresh
@@ -741,10 +740,10 @@ export function EmailApp() {
         />
 
         {data?.outreachPaused && (
-          <div className="mb-6 rounded-[16px] border border-brand-stratus-salmon/35 bg-brand-pink-soft/45 px-4 py-3.5">
-            <p className="text-[13px] font-semibold text-brand-ink">Outreach sending is paused</p>
-            <p className="mt-1 text-[12px] leading-relaxed text-brand-ink-soft">
-              No Email 1 sends or automated follow-ups will go out. Scheduled emails stay queued until you click Start sending.
+          <div className="mb-3 rounded-[12px] border border-brand-stratus-salmon/35 bg-brand-pink-soft/45 px-3 py-2">
+            <p className="text-[12px] font-semibold text-brand-ink">Outreach sending is paused</p>
+            <p className="text-[11px] leading-snug text-brand-ink-soft">
+              No Email 1 sends or automated follow-ups will go out until you click Start sending.
             </p>
           </div>
         )}
@@ -753,67 +752,36 @@ export function EmailApp() {
           <LoadingSkeleton />
         ) : data ? (
           <>
-            <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
-              {kpiConfig.map((kpi) => (
-                <KpiTile
-                  key={kpi.tab}
-                  label={kpi.label}
-                  value={kpi.value}
-                  sub={kpi.sub}
-                  icon={kpi.icon}
-                  cardClass={kpi.cardClass}
-                  iconClass={kpi.iconClass}
-                  valueClass={kpi.valueClass}
-                  active={activeTab === kpi.tab}
-                  onClick={() => setTab(kpi.tab)}
-                />
-              ))}
-            </div>
-
-            <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-1.5">
-                {QUEUE_TABS.map(({ id, label, icon: Icon, accent }) => {
-                  const count = tabCount(data, id);
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setTab(id)}
-                      className={cn(
-                        "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition-all",
-                        activeTab === id
-                          ? "bg-brand-black text-white shadow-[var(--shadow-brand-sm)]"
-                          : "ish-email-chip border border-brand-border bg-white text-brand-ink-soft hover:border-brand-ink/20 hover:text-brand-ink",
-                      )}
-                    >
-                      <Icon className={cn("size-3", activeTab === id ? "text-white" : accent)} />
-                      {label}
-                      <span
-                        className={cn(
-                          "ml-0.5 min-w-[18px] rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums",
-                          activeTab === id ? "bg-white/20 text-white" : "bg-brand-canvas text-brand-ink-soft",
-                        )}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                })}
+            <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+              <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
+                {kpiConfig.map((kpi) => (
+                  <KpiTile
+                    key={kpi.tab}
+                    label={kpi.label}
+                    value={kpi.value}
+                    sub={kpi.sub}
+                    icon={kpi.icon}
+                    cardClass={kpi.cardClass}
+                    iconClass={kpi.iconClass}
+                    valueClass={kpi.valueClass}
+                    active={activeTab === kpi.tab}
+                    onClick={() => setTab(kpi.tab)}
+                  />
+                ))}
               </div>
-
-              <div className="relative min-w-[200px] flex-1 sm:w-[260px] sm:flex-none">
+              <div className="relative w-full shrink-0 lg:w-[220px]">
                 <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
                 <input
                   type="search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search contact or company…"
-                  className="ish-email-search w-full rounded-full border border-brand-border bg-white py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none shadow-[var(--shadow-brand-sm)] placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/10"
+                  className="ish-email-search w-full rounded-full border border-brand-border bg-white py-1.5 pl-9 pr-3 text-[12px] text-brand-ink outline-none shadow-[var(--shadow-brand-sm)] placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/10"
                 />
               </div>
             </div>
 
-            <div className="space-y-3 pb-8">
+            <div className="space-y-2.5 pb-6">
               {visibleRows.length === 0 ? (
                 search.trim() ? (
                   <PanelCard className="flex flex-col items-center justify-center py-14 text-center">
