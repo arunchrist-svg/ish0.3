@@ -211,7 +211,7 @@ export function refreshPermutationEmails(input: {
   alternateEmails?: ContactEmailEntry[] | null;
 }): {
   email: string | null;
-  emailStatus: string;
+  emailStatus: ContactEmailEntry["emailStatus"];
   enrichmentProvider: string | null;
   enrichmentSource: string | null;
   alternateEmails: ContactEmailEntry[];
@@ -230,7 +230,7 @@ export function refreshPermutationEmails(input: {
   );
 
   let email = input.primaryEmail?.trim() || null;
-  let emailStatus = input.emailStatus ?? (email ? "unverified" : "missing");
+  let emailStatus = normalizeEmailStatus(email, input.emailStatus);
   let enrichmentProvider = input.enrichmentProvider ?? null;
   let enrichmentSource = input.enrichmentSource ?? null;
 
