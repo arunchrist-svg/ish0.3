@@ -377,11 +377,11 @@ export async function enrichLeadById(params: {
     contactId: contact.id,
     success: Boolean(nextEmail || nextPhone || nextTitle),
     ...enriched,
-    email: nextEmail,
+    email: refreshed.email ?? undefined,
     phone: nextPhone ?? undefined,
-    title: nextTitle,
-    emailStatus: nextEmail ? nextStatus : "missing",
-    alternateEmails,
+    title: nextTitle ?? undefined,
+    emailStatus: refreshed.emailStatus,
+    alternateEmails: refreshed.alternateEmails,
   };
 }
 

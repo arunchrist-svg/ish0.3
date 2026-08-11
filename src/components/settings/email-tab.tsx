@@ -217,6 +217,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
   const smtpEmail = config.smtpUser || "";
 
   function patchWebsiteInsights(partial: Partial<WebsiteBrandInsights>) {
+    if (!config) return;
     const current = config.brandConfig as BrandConfig;
     const base: WebsiteBrandInsights = current.websiteInsights ?? {
       analyzedAt: new Date().toISOString(),

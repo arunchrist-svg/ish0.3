@@ -9,6 +9,7 @@ function person(partial: Partial<ScoutPersonResult> & { name: string; title?: st
     department: partial.department,
     seniority: partial.seniority,
     dataSource: "test",
+    emailStatus: "missing",
   };
 }
 

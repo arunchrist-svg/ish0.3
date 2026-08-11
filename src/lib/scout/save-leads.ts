@@ -241,7 +241,7 @@ export async function saveScoutLeads(params: {
     }
 
     if (resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)) {
-      resolvedTitle = null;
+      resolvedTitle = undefined;
     }
 
     const emailResult = await verifyEmail(resolvedEmail ?? "");

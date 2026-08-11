@@ -150,14 +150,14 @@ export function employeeMatchesBands(
   });
 }
 
-export function employeeSizeSearchClause(bandIds: string[]): string {
+export function employeeSizeSearchClause(bandIds?: string[]): string {
   const bands = normalizeEmployeeBandIds(bandIds);
   if (!bands.length) return "";
   return bands.map((id) => BAND_BY_ID.get(id)!.searchHint).join(" OR ");
 }
 
 /** Apollo organization_num_employees_ranges values for the selected UI bands. */
-export function apolloEmployeeRanges(bandIds: string[]): string[] {
+export function apolloEmployeeRanges(bandIds?: string[]): string[] {
   const bands = normalizeEmployeeBandIds(bandIds);
   const ranges = new Set<string>();
   for (const id of bands) {

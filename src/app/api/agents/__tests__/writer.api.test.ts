@@ -70,6 +70,8 @@ const tenantCtx = {
   onboardingStatus: "complete",
   onboardingStep: 5,
   demoMode: true,
+  tenantSlug: "test",
+  mustChangePassword: false,
 };
 
 describe("AGENT-API-002 writer route", () => {

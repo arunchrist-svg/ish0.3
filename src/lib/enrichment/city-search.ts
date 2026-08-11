@@ -60,8 +60,8 @@ export function expandCityMatchTerms(cities: string[]): string[] {
   return applyCityAliases(matchTermsForScoutLabels(cities));
 }
 
-export function citySearchClause(cities: string[], max = 6): string {
-  return expandCitySearchTerms(cities).slice(0, max).join(" OR ");
+export function citySearchClause(cities?: string[], max = 6): string {
+  return expandCitySearchTerms(cities ?? []).slice(0, max).join(" OR ");
 }
 
 const UNVERIFIED_CITY_LABELS = new Set(["", "india", "unknown"]);

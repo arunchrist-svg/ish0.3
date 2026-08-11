@@ -50,6 +50,8 @@ describe("AGENT-API-001 scout route", () => {
       onboardingStatus: "complete",
       onboardingStep: 5,
       demoMode: true,
+      tenantSlug: "test",
+      mustChangePassword: false,
     });
 
     const res = await POST(
@@ -84,6 +86,8 @@ describe("AGENT-API-001 scout route", () => {
       onboardingStatus: "complete",
       onboardingStep: 5,
       demoMode: true,
+      tenantSlug: "test",
+      mustChangePassword: false,
     });
 
     await POST(
