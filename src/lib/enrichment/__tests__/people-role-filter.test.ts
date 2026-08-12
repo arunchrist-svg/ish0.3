@@ -45,14 +45,14 @@ describe("personMatchesRoles", () => {
 });
 
 describe("filterPeopleByRoles", () => {
-  it("stays strict when nobody matches both filters", () => {
+  it("relaxes to department matches when nobody hits both filters", () => {
     const people = [
       person({ name: "Meera", title: "Plant HR Manager" }),
       person({ name: "Arjun", title: "Finance Director" }),
     ];
     const result = filterPeopleByRoles(people, ["Director"], ["HR"]);
-    expect(result.relaxed).toBe(false);
-    expect(result.people).toEqual([]);
+    expect(result.relaxed).toBe(true);
+    expect(result.people.map((p) => p.name)).toEqual(["Meera"]);
   });
 
   it("keeps the strict match when someone hits both filters", () => {

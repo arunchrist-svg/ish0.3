@@ -2,20 +2,25 @@ import { normalizeCompanyName } from "@/lib/enrichment/company-name-match";
 import { computeSeniorityScore, sortPeopleByScore } from "@/lib/enrichment/seniority-score";
 import type { ScoutPersonResult } from "@/lib/enrichment/types";
 
-export const MAX_PEOPLE_PER_COMPANY = 3;
+/** Matches Settings → Scout Volume "Leads per company" max. */
+export const MAX_PEOPLE_PER_COMPANY = 25;
 
 export function peoplePerCompanyLimit(scoutLeadsLimit: number): number {
   const n = Number.isFinite(scoutLeadsLimit) ? Math.round(scoutLeadsLimit) : 1;
   return Math.min(MAX_PEOPLE_PER_COMPANY, Math.max(1, n));
 }
 
-/** Group Taurus CG / Taurus Group B.V. under the same cap bucket. */
+/**
+ * Stable bucket for a scouted company.
+ * Prefer company id so distinct selected companies are never merged by shared brand words
+ * (e.g. Tata Steel vs Tata Motors, Infosys vs Infosys BPM).
+ */
 export function companyPeopleBucket(companyName: string, fallbackId?: string): string {
+  const id = (fallbackId ?? "").trim().toLowerCase();
+  if (id) return `id:${id}`;
   const normalized = normalizeCompanyName(companyName);
-  const first = normalized.split(/\s+/).filter(Boolean)[0] ?? "";
-  if (first.length >= 4) return first;
-  if (normalized) return normalized;
-  return (fallbackId ?? "").trim().toLowerCase() || "unknown";
+  if (normalized) return `name:${normalized}`;
+  return "unknown";
 }
 
 export function selectPeopleByCompanyCap<
@@ -61,4 +66,23 @@ export function rankPeopleSeniorFirst(people: ScoutPersonResult[]): ScoutPersonR
   return sortPeopleByScore(
     people.map((person) => ({ ...person, matchScore: computeSeniorityScore(person).total })),
   );
+}
+
+export function scoutPeopleCoverage(params: {
+  selectedCompanyIds: string[];
+  people: { companyId: string }[];
+}): {
+  companiesWithPeople: number;
+  companiesWithoutPeople: number;
+  totalCompanies: number;
+  emptyCompanyIds: string[];
+} {
+  const withPeople = new Set(params.people.map((p) => p.companyId));
+  const emptyCompanyIds = params.selectedCompanyIds.filter((id) => !withPeople.has(id));
+  return {
+    companiesWithPeople: withPeople.size,
+    companiesWithoutPeople: emptyCompanyIds.length,
+    totalCompanies: params.selectedCompanyIds.length,
+    emptyCompanyIds,
+  };
 }

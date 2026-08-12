@@ -2,7 +2,7 @@ import { knownDomainForCompanyName } from "@/lib/company-logo";
 import { apolloSearchOrganizationByName } from "./apollo";
 import { companyDomainAliases, pickBestOrganizationMatch } from "./company-domain-aliases";
 import { isAcceptableCompanyDomain, normalizeHost } from "./company-domain-quality";
-import { domainFromWebsite } from "./provider-utils";
+import { domainFromCompany, domainFromWebsite } from "./provider-utils";
 import { hasTavilyKeys } from "./tavily-keys";
 import { tavilySearch } from "./tavily-client";
 
@@ -45,23 +45,39 @@ export async function resolveCompanyDomain(params: {
   /** When false, skip Apollo/Tavily lookups (LinkedIn name search does not need a domain). */
   allowExternal?: boolean;
 }): Promise<ResolvedCompanyDomain> {
+  const known = normalizeDomain(knownDomainForCompanyName(params.companyName));
+  const naiveGuess = domainFromCompany(params.companyName);
   const provided = normalizeDomain(params.domain);
   if (isUsableForCompany(provided, params.companyName)) {
+    // Prefer curated domains over naive slug guesses stored on the account.
+    if (known && provided === naiveGuess && known !== naiveGuess) {
+      return withAliases(
+        { domain: known, website: params.website ?? `https://www.${known}`, source: "provided" },
+        params.companyName,
+        [provided],
+      );
+    }
     return withAliases({ domain: provided, website: params.website, source: "provided" }, params.companyName);
   }
 
   const fromWebsite = domainFromWebsite(params.website);
   if (isUsableForCompany(fromWebsite, params.companyName)) {
+    if (known && fromWebsite === naiveGuess && known !== naiveGuess) {
+      return withAliases(
+        { domain: known, website: `https://www.${known}`, source: "provided" },
+        params.companyName,
+        [fromWebsite],
+      );
+    }
     return withAliases(
       { domain: fromWebsite, website: params.website, source: "website" },
       params.companyName,
     );
   }
 
-  const knownEarly = normalizeDomain(knownDomainForCompanyName(params.companyName));
-  if (isUsableForCompany(knownEarly, params.companyName)) {
+  if (isUsableForCompany(known, params.companyName)) {
     return withAliases(
-      { domain: knownEarly, website: params.website ?? `https://${knownEarly}`, source: "provided" },
+      { domain: known, website: params.website ?? `https://www.${known}`, source: "provided" },
       params.companyName,
     );
   }
@@ -104,14 +120,6 @@ export async function resolveCompanyDomain(params: {
     } catch (e) {
       console.warn("[resolveCompanyDomain] Tavily domain search failed", e);
     }
-  }
-
-  const known = normalizeDomain(knownDomainForCompanyName(params.companyName));
-  if (isUsableForCompany(known, params.companyName)) {
-    return withAliases(
-      { domain: known, website: params.website ?? `https://${known}`, source: "provided" },
-      params.companyName,
-    );
   }
 
   return { domain: undefined, website: params.website, source: "unresolved" };

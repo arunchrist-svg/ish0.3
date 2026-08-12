@@ -9,8 +9,13 @@ import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause, expandCitySearchTerms } from "./city-search";
-import { employeeSizeSearchClause, extractEmployeesFromText } from "./employee-size";
-import { isPlausibleCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
+import {
+  employeeSizeSearchClause,
+  extractEmployeesFromHits,
+  extractEmployeesFromText,
+  normalizeEmployeeField,
+} from "./employee-size";
+import { cleanCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { searchPeopleViaTavily } from "./people-search";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, tavilySearch } from "./tavily-client";
@@ -71,15 +76,33 @@ export function directoryQueryBatchCount(limit: number, available: number): numb
 }
 
 function dedupeCompaniesByName(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
-  const seen = new Set<string>();
-  const out: ScoutCompanyResult[] = [];
+  const seen = new Map<string, ScoutCompanyResult>();
+  const order: string[] = [];
   for (const company of companies) {
     const key = company.name.trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(company);
+    if (!key) continue;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, company);
+      order.push(key);
+      continue;
+    }
+    if (!normalizeEmployeeField(existing.employees) && normalizeEmployeeField(company.employees)) {
+      seen.set(key, { ...existing, employees: company.employees });
+    }
   }
-  return out;
+  return order.map((key) => seen.get(key)!);
+}
+
+function fillEmployeesFromHits(
+  companies: ScoutCompanyResult[],
+  hits: Array<{ title: string; content: string }>,
+): ScoutCompanyResult[] {
+  return companies.map((company) => {
+    if (normalizeEmployeeField(company.employees)) return company;
+    const extracted = extractEmployeesFromHits(company.name, hits);
+    return extracted ? { ...company, employees: extracted } : company;
+  });
 }
 
 function parseLLMCompanies(
@@ -87,23 +110,27 @@ function parseLLMCompanies(
   limit: number,
 ): ScoutCompanyResult[] {
   const parsed = parseJsonArrayFromLLM(raw);
-  return parsed
-    .filter((c) => typeof c.name === "string" && isPlausibleCompanyName(c.name.trim()))
-    .slice(0, limit)
-    .map((c) => ({
-    name: (c.name as string).trim(),
-    website: (c.website as string | null) ?? undefined,
-    domain: c.website ? extractDomain(c.website as string) : undefined,
-    industry: (c.industry as string | null) ?? undefined,
-    city: (c.city as string | null) ?? undefined,
-    employees:
-      (c.employees as string | null)?.trim() ||
-      extractEmployeesFromText(`${c.name ?? ""} ${c.industry ?? ""}`) ||
-      undefined,
-    intelNotes: buildIntelNotes(c),
-    fitScore: estimateFitScore(c),
-    dataSource: "india_directories",
-  }));
+  const companies: ScoutCompanyResult[] = [];
+  for (const c of parsed) {
+    const name = typeof c.name === "string" ? cleanCompanyName(c.name.trim()) : null;
+    if (!name) continue;
+    companies.push({
+      name,
+      website: (c.website as string | null) ?? undefined,
+      domain: c.website ? extractDomain(c.website as string) : undefined,
+      industry: (c.industry as string | null) ?? undefined,
+      city: (c.city as string | null) ?? undefined,
+      employees:
+        normalizeEmployeeField(c.employees as string | null) ||
+        extractEmployeesFromText(`${c.name ?? ""} ${c.industry ?? ""} ${c.intelNotes ?? ""}`) ||
+        undefined,
+      intelNotes: buildIntelNotes(c),
+      fitScore: estimateFitScore(c),
+      dataSource: "india_directories",
+    });
+    if (companies.length >= limit) break;
+  }
+  return companies;
 }
 
 export async function indiaDirectoriesSearchCompanies(params: {
@@ -129,13 +156,14 @@ export async function indiaDirectoriesSearchCompanies(params: {
 
   const fetchSeed = params.fetchSeed ?? 0;
   const queries = buildQueries(params.cities, params.industries, fetchSeed, params.employeeBands);
-  const queryBatch = queries.slice(0, directoryQueryBatchCount(limit, queries.length));
+  // Cap at 2 queries for Scout speed (was up to ceil(limit/8)).
+  const queryBatch = queries.slice(0, Math.min(2, directoryQueryBatchCount(limit, queries.length)));
   const perQueryLimit = optimizedMaxResults(Math.ceil(limit / Math.max(queryBatch.length, 1)));
 
   let quotaExceeded = false;
   const searchErrors: Error[] = [];
 
-  const batches = await mapWithConcurrency(queryBatch, 2, async (q) => {
+  const batches = await mapWithConcurrency(queryBatch, 3, async (q) => {
     try {
       return await tavilySearch(q, perQueryLimit);
     } catch (e) {
@@ -161,6 +189,12 @@ export async function indiaDirectoriesSearchCompanies(params: {
   }
 
   const heuristic = parseCompaniesFromDirectoryResults(allResults, params.cities, limit);
+  const heuristicReady = fillEmployeesFromHits(heuristic, allResults);
+  // Heuristic-first: skip LLM extract when directory parse already has enough companies.
+  const heuristicFloor = Math.max(1, Math.ceil(limit / 2));
+  if (heuristicReady.length >= heuristicFloor) {
+    return heuristicReady.slice(0, limit);
+  }
 
   const threshold = aiConfidenceThreshold();
 
@@ -180,6 +214,7 @@ Only include REAL named Indian companies. Do NOT invent companies.
 Never use job-post titles, document blurbs, report titles, or review-site headings (Work Satisfaction, Company Culture, Salary) as company names.
 Never use addresses, plot numbers, PIN codes, villages, SIPCOT/MIDC/SEZ estates, or "Industrial Area/Complex" labels as company names (e.g. Hosur-635126, Sipcot Industrial Complex).
 Never use product titles, prices (INR / Approx), catalog items (name plates, air purifiers), or registry form fields (Company Class, Email ID, Address, Tax) as company names.
+Never use UI labels, job categories, neighborhoods, building blocks, or NIC activity lines as company names (Quotations, Contact Number, BPO jobs, Bellandur, Flipkart B Block, LIMITED TECHNOLOGIES).
 If a listing is a hiring or reviews page for Acme, return "Acme" only.
 Minimum confidence score: ${threshold}.`,
         prompt: `Extract companies from these directory results.
@@ -197,7 +232,10 @@ Return up to ${limit} companies.`,
 
       try {
         const llmResults = parseLLMCompanies(raw, limit);
-        const merged = dedupeCompaniesByName([...llmResults, ...heuristic]).slice(0, limit);
+        const merged = fillEmployeesFromHits(
+          dedupeCompaniesByName([...llmResults, ...heuristic]),
+          allResults,
+        ).slice(0, limit);
         if (merged.length) return merged;
         meta?.warnings.push("AI extraction returned no companies — using directory parsing fallback.");
       } catch {
@@ -217,7 +255,7 @@ Return up to ${limit} companies.`,
       "Directory pages were found but no company names could be parsed. Try different cities or industries.",
     );
   }
-  return heuristic;
+  return fillEmployeesFromHits(heuristic, allResults);
 }
 
 export async function indiaDirectoriesSearchPeople(params: {

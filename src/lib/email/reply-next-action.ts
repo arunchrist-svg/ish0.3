@@ -16,7 +16,7 @@ export function suggestReplyNextAction(params: {
     return {
       action: "book_tasting",
       title: "Reply sent. Move the deal forward.",
-      description: "They are in thread. Mark tasting sent or continue the conversation from Lead Accelerator.",
+      description: "They are in thread. Mark tasting sent or continue the conversation from Leads.",
       cta: "Open lead",
     };
   }

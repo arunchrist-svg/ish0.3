@@ -166,15 +166,53 @@ export function apolloEmployeeRanges(bandIds?: string[]): string[] {
   return [...ranges];
 }
 
+const NUM = String.raw`(?:\d{1,3}(?:,\d{3})+|\d+)`;
+
+export function normalizeEmployeeField(raw?: string | null): string | undefined {
+  if (!raw?.trim()) return undefined;
+  const t = raw.trim();
+  if (/^null$|^undefined$|^n\/?a$|^unknown$|^none$|^—$|^-$/i.test(t)) return undefined;
+  return t;
+}
+
 export function extractEmployeesFromText(blob: string): string | undefined {
+  const labeled = blob.match(
+    new RegExp(
+      String.raw`(?:no\.?\s*of\s+employees|number\s+of\s+employees|employee(?:s)?\s*(?:strength|count|size)?|headcount|staff(?:\s+strength)?)\s*[:\-]?\s*(${NUM})(?:\s*(?:to|[-–])\s*(${NUM}))?`,
+      "i",
+    ),
+  );
+  if (labeled?.[1]) {
+    return labeled[2] ? `${labeled[1]}-${labeled[2]} employees` : `${labeled[1]} employees`;
+  }
   const numeric = blob.match(
-    /(\d{1,3}(?:,\d{3})+|\d+)\s*(?:\+|[-–]\s*(?:\d{1,3}(?:,\d{3})+|\d+))?\s*(?:employees?|staff|headcount|people|workforce|workers)\b/i,
+    new RegExp(
+      String.raw`(${NUM})(?:\s*(?:\+|to|[-–])\s*(${NUM})?)?\s*(?:employees?|staff|headcount|people|workforce|workers)\b`,
+      "i",
+    ),
   );
   if (numeric?.[0]) return numeric[0].trim();
-  const team = blob.match(/\b(?:team|workforce|staff)\s+(?:of|size)\s+(\d{1,3}(?:,\d{3})+|\d+)/i);
+  const employs = blob.match(new RegExp(String.raw`\bemploys\s+(${NUM})`, "i"));
+  if (employs?.[1]) return `${employs[1]} employees`;
+  const team = blob.match(new RegExp(String.raw`\b(?:team|workforce|staff)\s+(?:of|size)\s+(${NUM})`, "i"));
   if (team?.[1]) return `${team[1]} employees`;
   const scaleId = matchScaleId(blob);
   return scaleId ? BAND_BY_ID.get(scaleId)!.label : undefined;
+}
+
+export function extractEmployeesFromHits(
+  companyName: string,
+  hits: Array<{ title?: string; content?: string }>,
+): string | undefined {
+  const needle = companyName.trim().toLowerCase();
+  if (!needle) return undefined;
+  for (const hit of hits) {
+    const blob = `${hit.title ?? ""} ${hit.content ?? ""}`;
+    if (!blob.toLowerCase().includes(needle)) continue;
+    const extracted = extractEmployeesFromText(blob);
+    if (extracted) return extracted;
+  }
+  return undefined;
 }
 
 export function rankAndFilterByEmployeeBands<T extends { employees?: string | null }>(

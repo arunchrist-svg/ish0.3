@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
 import { MobilePageLayout, SearchBar } from "@/design-system";
+import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 
 function matchesQuery(item: LeadQueueItem, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -59,22 +60,27 @@ export function LeadsBoardApp() {
 
   return (
     <MobilePageLayout
-      title="Lead Board"
+      title="Leads"
       largeTitle
       className="ish-board-page"
       contentClassName="flex flex-col !overflow-hidden"
     >
+      <div className="flex items-center justify-between gap-2 px-4 pb-2 lg:hidden">
+        <LeadsViewToggle />
+      </div>
       <SearchBar value={search} onChange={setSearch} placeholder="Search leads" sticky className="lg:hidden" />
-      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
+      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-4 lg:block">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
-        <div className="relative flex flex-wrap items-center gap-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
-              <Columns3 className="size-5 text-brand-ink" />
+        <div className="relative flex flex-wrap items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
+              <Columns3 className="size-4 text-brand-ink" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Lead Board</h1>
+              <h1 className="text-[18px] font-extrabold tracking-tight text-brand-ink">Leads</h1>
+              <p className="text-[11px] text-brand-ink-soft">Board view</p>
             </div>
+            <LeadsViewToggle className="ml-1" />
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -101,7 +107,7 @@ export function LeadsBoardApp() {
         </div>
 
         {!loading && !isEmpty && (
-          <div className="relative mt-4 flex flex-wrap gap-2">
+          <div className="relative mt-3 flex flex-wrap gap-2">
             {PIPELINE_STAGES.map((stage) => (
               <span
                 key={stage}

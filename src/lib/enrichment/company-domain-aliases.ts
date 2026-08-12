@@ -4,6 +4,7 @@ import {
   normalizeHost,
 } from "@/lib/enrichment/company-domain-quality";
 import { compactCompanyName, nameMatchesQuery, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
+import { knownDomainForCompanyName } from "@/lib/company-logo";
 import { domainFromWebsite } from "@/lib/enrichment/provider-utils";
 
 const COMMON_TLDS = [".co.in", ".in", ".com"];
@@ -44,6 +45,9 @@ export function companyDomainAliases(params: {
 
   push(params.domain);
   for (const extra of params.extraDomains ?? []) push(extra);
+
+  const known = normalizeHost(knownDomainForCompanyName(params.companyName));
+  push(known);
 
   for (const slug of brandDomainSlugs(params.companyName)) {
     for (const tld of COMMON_TLDS) {

@@ -1,6 +1,11 @@
 import type { ScoutCompanyResult } from "./types";
 import { expandCitySearchTerms } from "./city-search";
-import { isGeographicEntity } from "./company-name-match";
+import {
+  isCityInLocalityPhrase,
+  isGeographicEntity,
+  isGluedOrStatePlaceName,
+  stripLeadingMetroFromName,
+} from "./company-name-match";
 import { isBroadGeoLabel } from "@/lib/geo/india";
 import { extractEmployeesFromText } from "./employee-size";
 
@@ -16,6 +21,21 @@ const LISTING_JUNK =
   /^(top|popular|corporate companies|leading businesses|professional services|name|page \d|find business|near |in |the hudson$)/i;
 const GENERIC_JUNK =
   /^(star office|softinu|sandyrtr|embassy icon|newtimes group|vdrone|cuem \(head office\)|careers?|jobs?|hiring|about|home|contact|blog|news|press)$/i;
+
+const FORM_OR_CATALOG_LABEL =
+  /^(quotations?|contact\s*(number|no\.?|info|details?|us)?|phone(\s*number)?|mobile(\s*number)?|fax|toll[\s-]?free|enquiry|inquiry|get\s+a?\s*quote|request\s+quote|price\s*list|catalogue|catalog|n\/?a|nil|none|bank|shipping\s+lines?|canteen)$/i;
+
+const GENERIC_FRAGMENT_JUNK =
+  /\b(canteen|shipping\s+lines?|,?\s*etc\.?\b)\b/i;
+
+const ADMIN_UNIT_PLACE =
+  /\b(hobli|taluk|taluka|tehsil|mandal|panchayat|municipality)\b|taluk$|hobli$/i;
+
+const JOB_OR_DEGREE_JUNK =
+  /\b(jobs?|openings?|vacancies|hiring|careers?)\s*$/i;
+
+const DEGREE_FRAGMENT =
+  /^(be|b\.?e\.?|btech|b\.?tech\.?|mtech|mba|bsc|msc)\s+(mech|mechanical|civil|ece|cse|it|eee)\b/i;
 
 /** AmbitionBox / Glassdoor section headings that are not company names. */
 const PAGE_SECTION_NAME =
@@ -40,7 +60,23 @@ const STRONG_COMPANY_MARKER =
 
 /** Addresses, estates, roads, layouts, PIN codes mistaken for companies. */
 const ADDRESS_OR_PLACE_NAME =
-  /\b(sipcot|sidco|midc|gidc|rieco|ricco|riico|sez|epip|indl\.?|industrial\s+(area|estate|complex|park|zone|township)|phase[- ]*[ivx\d]+|plot\s*no\.?|survey\s*no\.?|door\s*no\.?|shed\s*no\.?|unit\s*no\.?|shop\s*no\.?|flat\s*no\.?|sector\s*\d+|block\s*[a-z0-9]|agraharam|village|taluk|taluka|district|pincode|pin\s*code|postal\s*code|layout|colony|extension|extn\.?|nagar|compound|bypass|highway|main\s+road|\brd\.?\b|\broad\b|\bstreet\b|\bcross\b|\bpost\b|\bestate\b|\barea\b|\bcomplex\b|\bpark\b|\bzone\b|\bphase\b)\b/i;
+  /\b(sipcot|sidco|midc|gidc|rieco|ricco|riico|sez|epip|indl\.?|industrial\s+(area|estate|complex|park|zone|township)|phase[- ]*[ivx\d]+|plot\s*no\.?|survey\s*no\.?|door\s*no\.?|shed\s*no\.?|unit\s*no\.?|shop\s*no\.?|flat\s*no\.?|sector\s*\d+|block\s*[a-z0-9]|[a-z]\s+block|agraharam|village|taluk|taluka|hobli|district|pincode|pin\s*code|postal\s*code|layout|colony|extension|extn\.?|nagar|compound|bypass|highway|main\s+road|\brd\.?\b|\broad\b|\bstreet\b|\bcross\b|\bpost\b|\bestate\b|\barea\b|\bcomplex\b|\bpark\b|\bzone\b|\bphase\b)\b/i;
+
+const BUILDING_BLOCK =
+  /\b(?:[a-z]\s+block|block\s*[a-z0-9]|tower[\s-]*[a-z0-9]?|wing\s*[a-z0-9]?)\b/i;
+
+const FLOOR_OR_LEVEL =
+  /\b(\d+(st|nd|rd|th)\s+floor|floor\s*\d+|level\s*\d+|basement|mezzanine)\b/i;
+
+const BUILDING_OR_PARK =
+  /\b(building|biulding|tower|technostar|tech\s*park|it\s*park|sezs?|campus)\b/i;
+
+const TITLE_PREFIX = /^title\s*:\s*/i;
+
+const LEGAL_ENTITY_TAIL =
+  /^(.+?\b(?:pvt\.?\s*ltd\.?|private\s+limited|ltd\.?|limited|llp|inc\.?|corp(?:oration)?)\b)\s+(.+)$/i;
+
+const TRAILING_IN_PLACE = /\s+in\s+[A-Za-z][A-Za-z\s.-]{2,40}$/i;
 
 const PIN_OR_PLOT_SHAPE =
   /\b\d{6}\b|^\s*[A-Za-z][A-Za-z\s.-]{2,30}[\s-]*\d{5,6}\s*$|^\s*[A-Za-z]+\s*(no\.?\s*)?\d{1,4}[A-Za-z]?\s*$|^\s*[A-Za-z]+\d{1,4}\/\d*[A-Za-z]*\s*$|\bno\.?\s*\d{1,4}\b/i;
@@ -60,9 +96,29 @@ const PRODUCT_LISTING =
 const PRODUCT_SPEC =
   /\b\d+(\.\d+)?\s*(mm|cm|hp|kw|kg|ml|ltr|litre|inch|ft)\b/i;
 
+function looksLikeNicOrShellName(name: string): boolean {
+  if (/\b(computer|software|business|manufacturing)\s+and\s+related\s+activities\b/i.test(name)) {
+    return true;
+  }
+  if (/^(manufacture|trading|wholesale|retail)\s+of\b/i.test(name)) return true;
+  if (/^(private\s+)?limited\b/i.test(name)) {
+    const rest = name.replace(/^(private\s+)?limited\b/i, "").trim();
+    if (!rest) return true;
+    if (
+      /^(technologies|technology|systems|solutions|services|company|computer|software|business)\b/i.test(
+        rest,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function looksLikeProductOrField(name: string): boolean {
   const hasLegalEntity = /\b(ltd|limited|pvt|private|llp|inc|corp|corporation|plc|gmbh|llc)\b/i.test(name);
   if (REGISTRY_OR_FORM_FIELD.test(name) || REGISTRY_FIELD_PHRASE.test(name)) return true;
+  if (looksLikeNicOrShellName(name)) return true;
   if (PRODUCT_LISTING.test(name) && !hasLegalEntity) return true;
   if (PRODUCT_SPEC.test(name) && !hasLegalEntity) return true;
   if (/^\d/.test(name) && !hasLegalEntity && !/^[0-9][a-z]/i.test(name)) return true;
@@ -72,6 +128,13 @@ function looksLikeProductOrField(name: string): boolean {
 function looksLikeAddressOrPlace(name: string): boolean {
   const words = name.split(/[\s,/]+/).filter(Boolean);
   const hasStrongCompany = STRONG_COMPANY_MARKER.test(name);
+  const hasLegalEntity = /\b(ltd|limited|pvt|private|llp|inc|corp|corporation|plc|gmbh|llc)\b/i.test(name);
+
+  if (BUILDING_BLOCK.test(name) && !hasStrongCompany) return true;
+  if (FLOOR_OR_LEVEL.test(name) && !hasLegalEntity) return true;
+  if (BUILDING_OR_PARK.test(name) && !hasLegalEntity) return true;
+  if (isGluedOrStatePlaceName(name)) return true;
+  if (ADMIN_UNIT_PLACE.test(name) && !hasLegalEntity) return true;
 
   // PHASE-I / Phase II / Phase 1
   if (/^phase[- ]*[ivx\d]+$/i.test(name.trim())) return true;
@@ -200,20 +263,75 @@ export function isPlausibleCompanyName(raw: string): boolean {
   return cleanCompanyName(raw) !== null;
 }
 
+export function withCleanedCompanyName<T extends { name: string }>(item: T): T | null {
+  const name = cleanCompanyName(item.name);
+  if (!name) return null;
+  return name === item.name ? item : { ...item, name };
+}
+
+/** Prefer legal entities when LLM filter is unavailable (directory fallback mode). */
+export function looksLikeStrictCompanyName(raw: string): boolean {
+  const name = cleanCompanyName(raw);
+  if (!name) return false;
+  return /\b(ltd|limited|pvt|private|llp|inc|corp|corporation|plc|gmbh|llc)\b/i.test(name);
+}
+
+export function keepStrictCompaniesOnly<T extends { name: string }>(companies: T[]): T[] {
+  return companies
+    .map(withCleanedCompanyName)
+    .filter((c): c is T => c != null && looksLikeStrictCompanyName(c.name));
+}
+
+/** Strip "Title:" and trailing address after a legal entity (… Pvt Ltd Industrial Area). */
+function normalizeScrapedCompanyName(raw: string): string {
+  let name = raw.replace(TITLE_PREFIX, "").trim();
+  const legal = name.match(LEGAL_ENTITY_TAIL);
+  if (legal) {
+    const brand = legal[1].trim();
+    const tail = legal[2].trim();
+    if (
+      looksLikeAddressOrPlace(tail) ||
+      ADDRESS_OR_PLACE_NAME.test(tail) ||
+      FLOOR_OR_LEVEL.test(tail) ||
+      BUILDING_OR_PARK.test(tail) ||
+      isGeographicEntity(tail) ||
+      /\b(industrial|area|circle|layout|nagar|floor|level|tower|building|hobli)\b/i.test(tail)
+    ) {
+      name = brand;
+    }
+  }
+  if (LEGAL_ENTITY_TAIL.test(name) === false && TRAILING_IN_PLACE.test(name)) {
+    const withoutPlace = name.replace(TRAILING_IN_PLACE, "").trim();
+    if (/\b(ltd|limited|pvt|llp|inc|corp)\b/i.test(withoutPlace)) {
+      name = withoutPlace;
+    }
+  }
+  return name.replace(/\s+/g, " ").trim();
+}
+
 export function cleanCompanyName(raw: string): string | null {
-  const name = raw
-    .replace(/\(\s*corporate office\s*\)/gi, "(Corporate Office)")
-    .replace(/\(\s*head office\s*\)/gi, "(Head Office)")
-    .replace(/\(\s*regional office\s*\)/gi, "(Regional Office)")
-    .replace(/[#!*|]+/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/\.{2,}$/g, "")
-    .trim();
+  const name = normalizeScrapedCompanyName(
+    raw
+      .replace(/\(\s*corporate office\s*\)/gi, "(Corporate Office)")
+      .replace(/\(\s*head office\s*\)/gi, "(Head Office)")
+      .replace(/\(\s*regional office\s*\)/gi, "(Regional Office)")
+      .replace(/[#!*|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .replace(/\.{2,}$/g, "")
+      .trim(),
+  );
 
   if (name.length < 2 || name.length > 70) return null;
   if (name.startsWith("#")) return null;
+  if (isCityInLocalityPhrase(name)) return null;
+  const strippedMetro = stripLeadingMetroFromName(name);
+  if (strippedMetro && strippedMetro !== name) return cleanCompanyName(strippedMetro);
   if (LISTING_JUNK.test(name)) return null;
   if (GENERIC_JUNK.test(name)) return null;
+  if (FORM_OR_CATALOG_LABEL.test(name)) return null;
+  if (GENERIC_FRAGMENT_JUNK.test(name) && !STRONG_COMPANY_MARKER.test(name)) return null;
+  if (JOB_OR_DEGREE_JUNK.test(name)) return null;
+  if (DEGREE_FRAGMENT.test(name)) return null;
   if (PAGE_SECTION_NAME.test(name)) return null;
   if (WEEKDAYS.test(name)) return null;
   if (REGISTRY_JUNK.test(name)) return null;

@@ -45,6 +45,79 @@ const MAJOR_METROS = [
   "Hubballi",
 ];
 
+const INDIA_LOCALITIES = [
+  "Bellandur",
+  "Whitefield",
+  "Brookefield",
+  "Brooke Field",
+  "Koramangala",
+  "Indiranagar",
+  "HSR Layout",
+  "Electronic City",
+  "Marathahalli",
+  "Hebbal",
+  "Manyata",
+  "Outer Ring Road",
+  "ORR",
+  "Sarjapur",
+  "JP Nagar",
+  "Jayanagar",
+  "Yelahanka",
+  "Banashankari",
+  "MG Road",
+  "Brigade Road",
+  "Dairy Circle",
+  "Krishnarajapura",
+  "KR Puram",
+  "Doddakannelli",
+  "Doddakakundi",
+  "Hobli",
+  "Mahadevapura",
+  "Bagmane",
+  "Domlur",
+  "Ulsoor",
+  "Attibele",
+  "Anekal",
+  "Ramnagaram",
+  "Ramanagaram",
+  "S.T. Bed",
+  "ST Bed",
+  "St Bed",
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const METRO_ALT = [...MAJOR_METROS]
+  .sort((a, b) => b.length - a.length)
+  .map(escapeRegExp)
+  .join("|");
+
+const LEADING_METRO_COMMA = new RegExp(`^(?:${METRO_ALT})\\s*,\\s*(.+)$`, "i");
+const METRO_IN_PLACE = new RegExp(`^(?:${METRO_ALT})\\s+in\\s+\\S`, "i");
+const GLUED_METRO_LOCALITY = new RegExp(`^(?:${METRO_ALT})[A-Za-z]{4,}`, "i");
+const STATE_DOT_PLACE =
+  /^(karnataka|tamil\s*nadu|maharashtra|telangana|andhra\s*pradesh|kerala|delhi|gujarat|rajasthan|west\s*bengal)\.\s*.+/i;
+
+/** "Bengaluru, Chai Point" -> "Chai Point". */
+export function stripLeadingMetroFromName(name: string): string | null {
+  const match = name.trim().match(LEADING_METRO_COMMA);
+  const rest = match?.[1]?.trim();
+  return rest || null;
+}
+
+/** "Bengaluru in Bellandur" style place phrases. */
+export function isCityInLocalityPhrase(name: string): boolean {
+  return METRO_IN_PLACE.test(name.trim());
+}
+
+/** "BangaloreBrookefield", "Karnataka. Level 4". */
+export function isGluedOrStatePlaceName(name: string): boolean {
+  const trimmed = name.trim();
+  return GLUED_METRO_LOCALITY.test(trimmed) || STATE_DOT_PLACE.test(trimmed);
+}
+
 function buildGeoNameSet(): Set<string> {
   const names = new Set<string>();
   const add = (value: string) => {
@@ -56,6 +129,14 @@ function buildGeoNameSet(): Set<string> {
   for (const state of INDIA_STATES) add(state.name);
   for (const region of INDIA_REGIONS) add(region.name);
   for (const metro of MAJOR_METROS) add(metro);
+  for (const locality of INDIA_LOCALITIES) add(locality);
+  for (const state of INDIA_STATES) {
+    for (const district of state.districts) {
+      add(district.name);
+      add(district.displayName);
+      for (const alias of district.aliases) add(alias);
+    }
+  }
   return names;
 }
 

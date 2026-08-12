@@ -1,5 +1,6 @@
 import { db, outreachSchedule, leads, contacts, accounts, leadOutreach, leadResearch } from "@/db";
 import { eq } from "drizzle-orm";
+import { hasUsableEmail } from "@/lib/enrichment/contact-emails";
 import { sendEmail } from "@/lib/email/email-sender";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { logAudit } from "@/lib/audit";
@@ -50,6 +51,13 @@ export async function sendScheduledFollowUp(params: {
   if (!lead || lead.tenantId !== params.tenantId) throw new Error("Lead not found");
   if (lead.status !== "outreached") throw new Error("Lead is not in outreached status");
 
+  const prior = await db.query.outreachSchedule.findMany({
+    where: eq(outreachSchedule.leadId, sched.leadId),
+  });
+  if (prior.some((row) => row.bouncedAt && row.sendMode !== "test")) {
+    throw new Error("Sequence paused: an earlier email bounced");
+  }
+
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
   const research = lead.research as typeof leadResearch.$inferSelect | null;
@@ -99,12 +107,17 @@ export async function sendScheduledFollowUp(params: {
     referencesChain: thread.referencesChain,
   });
 
+  const to = contact.email?.trim() ?? "";
+  if (!hasUsableEmail(to, contact.emailStatus)) {
+    throw new Error("Contact has no usable email address");
+  }
+
   const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@localhost";
   const rfcMessageId = generateRfcMessageId(fromAddress);
 
   const result = await sendEmail({
     workspaceId: params.workspaceId,
-    to: contact.email ?? "",
+    to,
     subject: threadedSubject,
     html: buildEmailHtml({
       body,
@@ -123,8 +136,9 @@ export async function sendScheduledFollowUp(params: {
     .set({
       status: "sent",
       sentAt: new Date(),
-      resendId: result.messageId,
+      resendId: result.providerMessageId ?? result.messageId ?? null,
       rfcMessageId,
+      recipientEmail: to,
       inReplyTo: threadHeaders.inReplyTo ?? null,
       referencesChain: threadHeaders.references ?? null,
       subjectSent: threadedSubject,

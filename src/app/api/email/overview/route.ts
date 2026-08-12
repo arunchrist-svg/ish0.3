@@ -22,6 +22,9 @@ export type SequenceEmailStatus = {
   label: string;
   status: "scheduled" | "sent" | "cancelled" | "paused" | "upcoming";
   openedAt: string | null;
+  bouncedAt: string | null;
+  bounceReason: string | null;
+  recipientEmail: string | null;
   scheduledFor: string | null;
   scheduleId: string | null;
 };
@@ -86,6 +89,9 @@ function buildLeadRow(
     scheduledFor: Date;
     sentAt: Date | null;
     openedAt: Date | null;
+    bouncedAt: Date | null;
+    bounceReason: string | null;
+    recipientEmail: string | null;
     emailKind: string | null;
     draftLeadOutreachId: string | null;
   }[],
@@ -160,6 +166,9 @@ function buildLeadRow(
       label: `E${idx + 1}`,
       status: ["scheduled", "sent", "cancelled", "paused"].includes(status) ? status : "upcoming",
       openedAt: row?.openedAt ? new Date(row.openedAt).toISOString() : null,
+      bouncedAt: row?.bouncedAt ? new Date(row.bouncedAt).toISOString() : null,
+      bounceReason: row?.bounceReason ?? null,
+      recipientEmail: row?.recipientEmail ?? null,
       scheduledFor: row?.scheduledFor ? new Date(row.scheduledFor).toISOString() : null,
       scheduleId: row?.scheduleId ?? null,
     };
@@ -269,6 +278,9 @@ export async function GET(req: Request) {
         scheduledFor: outreachSchedule.scheduledFor,
         sentAt: outreachSchedule.sentAt,
         openedAt: outreachSchedule.openedAt,
+        bouncedAt: outreachSchedule.bouncedAt,
+        bounceReason: outreachSchedule.bounceReason,
+        recipientEmail: outreachSchedule.recipientEmail,
         emailKind: outreachSchedule.emailKind,
         draftLeadOutreachId: outreachSchedule.draftLeadOutreachId,
         leadStatus: leads.status,
@@ -381,6 +393,9 @@ export async function GET(req: Request) {
             scheduledFor: r.scheduledFor,
             sentAt: r.sentAt,
             openedAt: r.openedAt,
+            bouncedAt: r.bouncedAt,
+            bounceReason: r.bounceReason,
+            recipientEmail: r.recipientEmail,
             emailKind: r.emailKind,
             draftLeadOutreachId: r.draftLeadOutreachId,
           })),

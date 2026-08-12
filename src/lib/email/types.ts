@@ -15,6 +15,8 @@ export type SendResult = {
   mode: "dry_run" | "test" | "live";
   provider: EmailProvider;
   messageId?: string;
+  /** Provider delivery id (Resend email_id). Used to match bounce webhooks. */
+  providerMessageId?: string;
   to: string;
   subject: string;
   timestamp: string;

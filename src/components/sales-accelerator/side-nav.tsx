@@ -6,7 +6,7 @@ import { useSession } from "@/components/providers/session-provider";
 import { useEffect, useState } from "react";
 import {
   ChevronLeft, Contact, Home,
-  Columns3, Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
+  Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CircleButton } from "@/design-system";
@@ -32,8 +32,7 @@ const mainNav: NavItemEntry[] = [
 
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
-  { icon: Rocket, label: "Lead Accelerator", href: "/leads", key: "lead-accelerator" },
-  { icon: Columns3, label: "Lead Board", href: "/leads/board", key: "lead-board" },
+  { icon: Rocket, label: "Leads", href: "/leads", key: "leads" },
   { icon: Mail, label: "Outreach", href: "/email", key: "email" },
   { icon: Radar, label: "Brand Intelligence", href: "/brand-intelligence", key: "brand-intelligence" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
@@ -64,6 +63,9 @@ function isActive(pathname: string, href?: string) {
 }
 
 function getActiveKey(pathname: string) {
+  if (pathname === "/leads" || pathname.startsWith("/leads/") || pathname.startsWith("/leads?")) {
+    return "leads";
+  }
   const matches = allLinkedItems
     .filter((item) => item.href && isActive(pathname, item.href))
     .sort((a, b) => (b.href?.length ?? 0) - (a.href?.length ?? 0));

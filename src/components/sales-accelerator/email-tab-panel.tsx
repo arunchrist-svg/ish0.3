@@ -351,7 +351,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           {showWriterControl ? (
             <div
               className={cn(
-                "inline-flex h-7 shrink-0 overflow-hidden rounded-full border border-brand-border bg-white shadow-[var(--shadow-brand-sm)]",
+                "inline-flex h-6 shrink-0 overflow-hidden rounded-full border border-brand-stratus-blue/25 bg-white",
                 (!canWrite || generating) && "opacity-40",
               )}
             >
@@ -360,7 +360,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   <DropdownMenuTrigger
                     disabled={!canWrite || generating}
                     className={cn(
-                      "flex h-full items-center gap-1 border-r border-brand-border/80 px-2.5 text-[11px] font-semibold text-brand-ink outline-none",
+                      "flex h-full items-center gap-0.5 border-r border-brand-stratus-blue/15 px-2 text-[11px] font-semibold text-brand-ink outline-none",
                       "hover:bg-brand-canvas focus-visible:ring-2 focus-visible:ring-brand-black/20 disabled:cursor-not-allowed",
                     )}
                   >
@@ -396,7 +396,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   <DropdownMenuTrigger
                     disabled={!canWrite || generating}
                     className={cn(
-                      "flex h-full items-center gap-1 border-r border-brand-border/80 px-2.5 text-[11px] font-semibold text-brand-ink outline-none",
+                      "flex h-full items-center gap-0.5 border-r border-brand-stratus-blue/15 px-2 text-[11px] font-semibold text-brand-ink outline-none",
                       "hover:bg-brand-canvas focus-visible:ring-2 focus-visible:ring-brand-black/20 disabled:cursor-not-allowed",
                     )}
                   >
@@ -427,7 +427,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                 type="button"
                 disabled={!canWrite || generating}
                 onClick={() => void handleGenerate()}
-                className="flex h-full items-center gap-1.5 bg-brand-black px-3 text-[11px] font-semibold text-white hover:bg-brand-black/90 disabled:cursor-not-allowed"
+                className="flex h-full items-center gap-1 bg-brand-black px-2.5 text-[11px] font-semibold text-white hover:bg-brand-black/90 disabled:cursor-not-allowed"
               >
                 <FileText className="size-3" />
                 {regenerateLabel}
@@ -454,7 +454,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             href="/email?tab=active"
             className="shrink-0 text-[11px] font-semibold text-brand-stratus-blue underline-offset-2 hover:underline lg:inline-flex lg:h-7 lg:items-center lg:rounded-full lg:border lg:border-brand-border lg:bg-white lg:px-3 lg:text-brand-ink lg:no-underline lg:hover:bg-brand-canvas"
           >
-            View in Outreach Queue
+            View in Email
           </Link>
         </>
       ) : null}
@@ -462,7 +462,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   );
 
   return (
-    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-2 overflow-x-hidden px-0 py-1 lg:space-y-3 lg:px-[22px] lg:py-3">
+    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-3 overflow-hidden px-0 py-1 lg:space-y-4 lg:px-[22px] lg:py-3">
       <OutreachJourneyPanel
         thread={thread}
         processActions={processActions}
@@ -532,7 +532,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           <WritingLoader contactName={lead.name} companyName={lead.company} sequenceLabel="Drafting reply" />
         </div>
       ) : showComposeZone && isEditableNode && resolvedDraft ? (
-        <div ref={composeRef} className="pt-1">
+        <div ref={composeRef} className="pt-3">
           <OutreachApprovalCard
             key={resolvedDraft.id}
             draft={resolvedDraft}
@@ -553,7 +553,10 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             onGenerateReply={() => void handleDraftReply()}
             generatingReply={draftingReply}
             onSendFailed={onSilentRefresh}
-            onOpenFirstEmail={() => handleNodeSelect("draft-1")}
+            startSequenceDraft={
+              sequence.find((d) => d.sequencePosition === 1) ??
+              (resolvedDraft.sequencePosition === 1 ? resolvedDraft : undefined)
+            }
           />
         </div>
       ) : isEmptyCompose ? (

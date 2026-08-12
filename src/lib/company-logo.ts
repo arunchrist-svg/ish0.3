@@ -21,6 +21,13 @@ const KNOWN_DOMAINS: Record<string, string> = {
   "swiggy": "swiggy.com",
   "zomato": "zomato.com",
   "razorpay": "razorpay.com",
+  // CUMI (Murugappa) trades as Carborundum Universal; email/web is cumi-murugappa.com
+  "carborundum universal limited": "cumi-murugappa.com",
+  "carborundum universal ltd": "cumi-murugappa.com",
+  "carborundum universal": "cumi-murugappa.com",
+  "carborundum": "cumi-murugappa.com",
+  "cumi murugappa": "cumi-murugappa.com",
+  "cumi": "cumi-murugappa.com",
 };
 
 export function normalizeDomain(raw: string): string {

@@ -52,9 +52,30 @@ describe("isGeographicEntity", () => {
     }
   });
 
+  it("rejects Bengaluru localities used as company names", () => {
+    for (const name of [
+      "Bellandur",
+      "Whitefield",
+      "Koramangala",
+      "HSR Layout",
+      "Electronic City",
+      "Brookefield",
+      "Krishnarajapura",
+      "Dairy Circle",
+      "Hobli",
+      "Mandya",
+      "Tumkur",
+      "Hassan",
+      "Ramanagara",
+    ]) {
+      expect(isGeographicEntity(name), name).toBe(true);
+    }
+  });
+
   it("allows real company names that mention India", () => {
     expect(isGeographicEntity("Bosch India")).toBe(false);
     expect(isGeographicEntity("Moneyview")).toBe(false);
+    expect(isGeographicEntity("Chai Point")).toBe(false);
   });
 });
 

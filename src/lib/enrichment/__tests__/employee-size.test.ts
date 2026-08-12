@@ -3,6 +3,7 @@ import {
   apolloEmployeeRanges,
   employeeMatchesBands,
   employeeSizeSearchClause,
+  extractEmployeesFromHits,
   extractEmployeesFromText,
   formatCompanyScale,
   formatEmployeeCount,
@@ -49,6 +50,14 @@ describe("employee search helpers", () => {
   it("extracts headcount or scale from directory text", () => {
     expect(extractEmployeesFromText("Hikal Ltd, 1,200 employees, Bengaluru")).toMatch(/1,200/i);
     expect(extractEmployeesFromText("ABC Polymers, small scale industry, Hosur")).toBe("Small scale");
+    expect(extractEmployeesFromText("Number of Employees 51 to 100 People")).toMatch(/51/i);
+    expect(extractEmployeesFromText("Acme employs 220 workers in Hosur")).toMatch(/220/i);
+    expect(
+      extractEmployeesFromHits("Hikal Ltd", [
+        { title: "Other Co", content: "500 employees" },
+        { title: "Hikal Ltd", content: "Number of Employees 51 to 100 People" },
+      ]),
+    ).toMatch(/51/i);
   });
 
   it("formats card scale from a numeric headcount", () => {

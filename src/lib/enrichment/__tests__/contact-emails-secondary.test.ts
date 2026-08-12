@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFirstLastSecondaryEmail,
   hasUsableContactEmail,
+  hasUsableEmail,
   refreshPermutationEmails,
   shouldSuggestWriteEmail,
   withFirstLastSecondaryEmail,
@@ -132,6 +133,28 @@ describe("refreshPermutationEmails", () => {
     expect(next.email).toBe("pallavi.gupta@pavnagroup.com");
     expect(next.alternateEmails.some((entry) => entry.email.includes("manufacturingtodayindia"))).toBe(false);
   });
+
+  it("does not revive a bounced first.last address", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Priya",
+      lastName: "Sharma",
+      companyName: "Acme",
+      domain: "acme.com",
+      primaryEmail: null,
+      alternateEmails: [
+        {
+          email: "priya.sharma@acme.com",
+          emailStatus: "bounced",
+          enrichmentProvider: "permutation",
+          testStatus: "rejected",
+          pattern: "first.last",
+        },
+      ],
+    });
+
+    expect(next.email).toBeNull();
+    expect(next.alternateEmails.some((entry) => entry.email === "priya.sharma@acme.com" && entry.testStatus === "rejected")).toBe(true);
+  });
 });
 
 describe("hasUsableContactEmail", () => {
@@ -157,6 +180,17 @@ describe("hasUsableContactEmail", () => {
         ],
       }),
     ).toBe(true);
+  });
+
+  it("does not treat bounced emails as usable", () => {
+    expect(hasUsableEmail("priya.sharma@acme.com", "bounced")).toBe(false);
+    expect(
+      hasUsableContactEmail({
+        email: null,
+        emailStatus: "missing",
+        emails: [{ email: "priya.sharma@acme.com", emailStatus: "bounced", testStatus: "rejected" }],
+      }),
+    ).toBe(false);
   });
 
   it("does not treat generic-only emails as usable", () => {

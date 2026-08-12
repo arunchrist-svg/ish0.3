@@ -78,7 +78,8 @@ export function personMatchesRoles(person: ScoutPersonResult, seniority: string[
     });
 
   if (seniority.length > 0 && departments.length > 0) return senMatch && deptMatch;
-  return senMatch || deptMatch;
+  if (seniority.length > 0) return senMatch;
+  return deptMatch;
 }
 
 export function filterPeopleByRoles(
@@ -89,5 +90,24 @@ export function filterPeopleByRoles(
   if (!seniority.length && !departments.length) return { people, relaxed: false };
 
   const strict = people.filter((p) => personMatchesRoles(p, seniority, departments));
-  return { people: strict, relaxed: false };
+  if (strict.length > 0 || seniority.length === 0 || departments.length === 0) {
+    return { people: strict, relaxed: false };
+  }
+
+  // Both filters set but nobody hit AND: keep department matches first (still drop
+  // juniors / off-dept), then seniority-only, so scout is not empty on close misses.
+  const deptOnly = people.filter((p) => {
+    if (isNonSeniorTitle(p.title ?? "")) return false;
+    if (isOffDepartmentTitle(p.title ?? "", departments)) return false;
+    return personMatchesRoles(p, [], departments);
+  });
+  if (deptOnly.length > 0) return { people: deptOnly, relaxed: true };
+
+  const senOnly = people.filter((p) => {
+    if (isOffDepartmentTitle(p.title ?? "", departments)) return false;
+    return personMatchesRoles(p, seniority, []);
+  });
+  if (senOnly.length > 0) return { people: senOnly, relaxed: true };
+
+  return { people: [], relaxed: false };
 }

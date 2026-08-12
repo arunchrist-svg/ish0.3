@@ -9,6 +9,22 @@ import {
 
 export type EmailTestStatus = "saved" | "sent" | "rejected";
 
+export function isRejectedEmailEntry(entry: {
+  testStatus?: EmailTestStatus | null;
+  emailStatus?: string | null;
+}): boolean {
+  return entry.testStatus === "rejected" || entry.emailStatus === "bounced";
+}
+
+export function rejectedEmailKeys(entries?: ContactEmailEntry[] | null): Set<string> {
+  return new Set(
+    (entries ?? [])
+      .filter(isRejectedEmailEntry)
+      .map((entry) => entry.email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
 export function parsePatternFromEnrichmentSource(source?: string | null): string | undefined {
   if (!source?.startsWith("name_domain_guess:")) return undefined;
   return source.slice("name_domain_guess:".length) || undefined;
@@ -20,7 +36,7 @@ export function formatEnrichmentSourceWithPattern(pattern: string): string {
 
 export type ContactEmailEntry = {
   email: string;
-  emailStatus: "verified" | "unverified" | "generic" | "missing";
+  emailStatus: "verified" | "unverified" | "generic" | "missing" | "bounced";
   emailConfidence?: number;
   enrichmentSource?: string;
   enrichmentProvider?: string;
@@ -28,13 +44,31 @@ export type ContactEmailEntry = {
   pattern?: string;
 };
 
+export type DbEmailStatus = "verified" | "unverified" | "generic" | "missing";
+
+/** Map contact email status to the Postgres email_status enum (no bounced). */
+export function toDbEmailStatus(
+  emailStatus?: string | null,
+): DbEmailStatus {
+  if (emailStatus === "verified" || emailStatus === "unverified" || emailStatus === "generic") {
+    return emailStatus;
+  }
+  if (emailStatus === "bounced") return "unverified";
+  return "missing";
+}
+
 export function normalizeEmailStatus(
   email?: string | null,
   emailStatus?: string | null,
 ): ContactEmailEntry["emailStatus"] {
   const normalized = email?.trim();
   if (!normalized || normalized === "—") return "missing";
-  if (emailStatus === "verified" || emailStatus === "unverified" || emailStatus === "generic") {
+  if (
+    emailStatus === "verified" ||
+    emailStatus === "unverified" ||
+    emailStatus === "generic" ||
+    emailStatus === "bounced"
+  ) {
     return emailStatus;
   }
   if (isGenericCompanyEmail(normalized)) return "generic";
@@ -44,13 +78,16 @@ export function normalizeEmailStatus(
 export function hasUsableEmail(email?: string | null, emailStatus?: string | null): boolean {
   const normalized = email?.trim();
   if (!normalized || normalized === "—" || !normalized.includes("@")) return false;
-  if (emailStatus === "generic" || isGenericCompanyEmail(normalized)) return false;
+  if (emailStatus === "generic" || emailStatus === "bounced" || isGenericCompanyEmail(normalized)) {
+    return false;
+  }
   return true;
 }
 
 export type EmailCandidate = {
   email?: string | null;
   emailStatus?: string | null;
+  testStatus?: EmailTestStatus | null;
 };
 
 /** True when the primary field or any listed contact email can be used for outreach. */
@@ -60,7 +97,9 @@ export function hasUsableContactEmail(input: {
   emails?: EmailCandidate[] | null;
 }): boolean {
   if (hasUsableEmail(input.email, input.emailStatus)) return true;
-  return (input.emails ?? []).some((entry) => hasUsableEmail(entry.email, entry.emailStatus));
+  return (input.emails ?? []).some(
+    (entry) => !isRejectedEmailEntry(entry) && hasUsableEmail(entry.email, entry.emailStatus),
+  );
 }
 
 export function buildContactEmails(params: {
@@ -118,6 +157,14 @@ export function mergeAlternateEmails(
     const key = entry.email.trim().toLowerCase();
     if (!key || key === primaryKey) continue;
     const prev = map.get(key);
+    if (prev && isRejectedEmailEntry(prev)) {
+      map.set(key, prev);
+      continue;
+    }
+    if (isRejectedEmailEntry(entry)) {
+      map.set(key, entry);
+      continue;
+    }
     if (!prev || (entry.emailConfidence ?? 0) > (prev.emailConfidence ?? 0)) {
       map.set(key, entry);
     }
@@ -225,8 +272,9 @@ export function refreshPermutationEmails(input: {
     companyName: input.companyName,
   };
   const resolvedDomain = resolveAccountDomain(identity);
-  const keptAlts = (input.alternateEmails ?? []).filter((entry) =>
-    emailBelongsToCompany(entry.email, input.companyName),
+  const rejectedKeys = rejectedEmailKeys(input.alternateEmails);
+  const keptAlts = (input.alternateEmails ?? []).filter(
+    (entry) => isRejectedEmailEntry(entry) || emailBelongsToCompany(entry.email, input.companyName),
   );
 
   let email = input.primaryEmail?.trim() || null;
@@ -242,7 +290,7 @@ export function refreshPermutationEmails(input: {
       !emailBelongsToCompany(email, input.companyName) ||
       (primaryIsGuess && (!resolvedDomain || primaryHost !== resolvedDomain))
     );
-  if (primaryMismatched) {
+  if (primaryMismatched || (email && rejectedKeys.has(email.toLowerCase()))) {
     email = null;
     emailStatus = "missing";
     enrichmentProvider = null;
@@ -254,7 +302,7 @@ export function refreshPermutationEmails(input: {
     const firstLast = generateEmailPermutations({ firstName, lastName, domain: resolvedDomain }).find(
       (item) => item.pattern === "first.last",
     );
-    if (firstLast) {
+    if (firstLast && !rejectedKeys.has(firstLast.email.toLowerCase())) {
       email = firstLast.email;
       emailStatus = "unverified";
       enrichmentProvider = "permutation";
@@ -306,6 +354,23 @@ function normalizeAlternateList(alternateEmails?: ContactEmailEntry[] | null): C
   return [...(alternateEmails ?? [])];
 }
 
+export function rejectEmailCandidate(
+  contact: ContactEmailQueueState,
+  bouncedEmail: string,
+): ContactEmailQueueState {
+  const key = bouncedEmail.trim().toLowerCase();
+  if (!key) return contact;
+  if (contact.email?.trim().toLowerCase() === key) {
+    return rejectPrimaryEmailCandidate(contact);
+  }
+
+  const alternates = normalizeAlternateList(contact.alternateEmails).map((entry) => {
+    if (entry.email.trim().toLowerCase() !== key) return entry;
+    return { ...entry, testStatus: "rejected" as const, emailStatus: "bounced" as const };
+  });
+  return { ...contact, alternateEmails: alternates };
+}
+
 export function rejectPrimaryEmailCandidate(contact: ContactEmailQueueState): ContactEmailQueueState {
   const primaryEmail = contact.email?.trim();
   if (!primaryEmail) return contact;
@@ -313,7 +378,7 @@ export function rejectPrimaryEmailCandidate(contact: ContactEmailQueueState): Co
   const rejectedPattern = parsePatternFromEnrichmentSource(contact.enrichmentSource) ?? "unknown";
   const rejected = buildPermutationEmailEntry(primaryEmail, rejectedPattern);
   rejected.testStatus = "rejected";
-  rejected.emailStatus = "missing";
+  rejected.emailStatus = "bounced";
 
   const alternates = normalizeAlternateList(contact.alternateEmails).filter(
     (entry) => entry.email.trim().toLowerCase() !== primaryEmail.toLowerCase(),

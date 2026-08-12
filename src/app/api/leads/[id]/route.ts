@@ -54,7 +54,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       alternateEmails: existingAlternates,
     });
     contact.email = refreshed.email;
-    contact.emailStatus = refreshed.emailStatus as typeof contact.emailStatus;
+    contact.emailStatus = (
+      refreshed.emailStatus === "bounced" ? "missing" : refreshed.emailStatus
+    ) as typeof contact.emailStatus;
     contact.enrichmentProvider = refreshed.enrichmentProvider;
     contact.enrichmentSource = refreshed.enrichmentSource;
     contact.alternateEmails = refreshed.alternateEmails;

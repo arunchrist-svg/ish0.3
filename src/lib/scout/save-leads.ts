@@ -1,5 +1,6 @@
 import { db, accounts, contacts, leads, yieldFunnel, enrichmentRuns } from "@/db";
 import { verifyEmail } from "@/lib/enrichment/verify";
+import type { EmailVerifyResult } from "@/lib/enrichment/types";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
@@ -21,12 +22,14 @@ import {
 } from "@/lib/enrichment/company-domain-quality";
 import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-company-domain";
 import { resolveContactName } from "@/lib/enrichment/email-permutations";
-import { refreshPermutationEmails } from "@/lib/enrichment/contact-emails";
+import { refreshPermutationEmails, toDbEmailStatus } from "@/lib/enrichment/contact-emails";
 import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
 import { personTitleConflictsWithCompany } from "@/lib/enrichment/person-company-match";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
+import { mapWithConcurrency } from "@/lib/async";
 
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
+const SAVE_PERSON_CONCURRENCY = 4;
 
 const BUYING_TITLE_KEYWORDS = [
   "hr",
@@ -85,6 +88,10 @@ export type SaveLeadsResult = {
   skipped: { name: string; reason: string }[];
 };
 
+type PersonSaveOutcome =
+  | { kind: "saved"; item: SaveLeadsResult["saved"][number] }
+  | { kind: "skipped"; item: SaveLeadsResult["skipped"][number] }
+  | { kind: "none" };
 
 async function findExistingAccount(
   tenantId: string,
@@ -103,6 +110,32 @@ async function findExistingAccount(
   });
 }
 
+async function resolveEmailStatus(params: {
+  email?: string;
+  enrichedEmail?: string;
+  enrichedStatus?: EnrichContactResultStatus;
+  didEnrich: boolean;
+}): Promise<EmailVerifyResult> {
+  const email = params.email ?? "";
+  if (
+    params.didEnrich &&
+    params.enrichedEmail &&
+    params.email &&
+    params.enrichedEmail.toLowerCase() === params.email.toLowerCase() &&
+    params.enrichedStatus
+  ) {
+    return {
+      email: params.email,
+      status: params.enrichedStatus,
+      isPersonal: params.enrichedStatus !== "generic" && params.enrichedStatus !== "missing",
+      provider: "enrich-reuse",
+    };
+  }
+  return verifyEmail(email);
+}
+
+type EnrichContactResultStatus = "verified" | "unverified" | "generic" | "missing";
+
 export async function saveScoutLeads(params: {
   people: ScoutPersonResult[];
   company: ScoutCompanyResult;
@@ -120,12 +153,15 @@ export async function saveScoutLeads(params: {
     (await getResolvedWorkspaceEnrichmentConfig({ dataMode }));
   const shouldEnrich = cfg.enrichOnImport && cfg.enrichProvider !== "none";
   const enrichMode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
+  const skipGooglePlaces = leadSource === "scout_wizard";
 
+  const usableDomain = usableStoredDomain(company.domain, company.name);
   const domainResolution = await resolveCompanyDomain({
     companyName: company.name,
     domain: company.domain,
     website: company.website,
     city: company.city,
+    allowExternal: !usableDomain,
   });
   const resolvedCompany: ScoutCompanyResult = {
     ...company,
@@ -185,263 +221,27 @@ export async function saveScoutLeads(params: {
       .where(eq(accounts.id, existing.id));
   }
 
-  const savedLeads: SaveLeadsResult["saved"] = [];
-  const skipped: SaveLeadsResult["skipped"] = [];
-
-  for (const person of people) {
-    if (personTitleConflictsWithCompany(person.title, resolvedCompany.name)) {
-      skipped.push({ name: person.name, reason: "title names a different employer" });
-      continue;
-    }
-
-    let resolvedEmail = sanitizeEmail(person.email);
-    if (resolvedEmail && !emailBelongsToCompany(resolvedEmail, resolvedCompany.name)) {
-      resolvedEmail = undefined;
-    }
-    let resolvedPhone = person.phone;
-    let emailConfidence = 0;
-    let enrichmentSource: string | undefined;
-    let enrichmentProvider: string | undefined;
-    let enrichAttempts: unknown;
-    let resolvedTitle = sanitizeJobTitle(person.title);
-
-    if (shouldEnrich) {
-      const enriched = await enrichPersonContact({
-        person: {
-          ...person,
-          email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
-        },
-        company: resolvedCompany,
-        mode: enrichMode,
-        dataMode: cfg.dataMode,
-        enrichProvider: cfg.enrichProvider,
-      });
-      enrichAttempts = enriched.attempts;
-      const named = isNamedPerson(person.name);
-      resolvedTitle = sanitizeJobTitle(enriched.title) ?? sanitizeJobTitle(person.title);
-      if (
-        enriched.email &&
-        emailBelongsToCompany(enriched.email, resolvedCompany.name) &&
-        shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
-      ) {
-        resolvedEmail = enriched.email;
-        resolvedPhone = enriched.phone ?? resolvedPhone;
-        emailConfidence = enriched.emailConfidence;
-        enrichmentSource = enriched.enrichmentSource;
-        enrichmentProvider = enriched.enrichmentProvider;
-      } else if (enriched.email && !named) {
-        emailConfidence = enriched.emailConfidence;
-        enrichmentSource = enriched.enrichmentSource;
-        enrichmentProvider = enriched.enrichmentProvider;
-      } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && named) {
-        resolvedEmail = undefined;
-      }
-    } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && isNamedPerson(person.name)) {
-      resolvedEmail = undefined;
-    }
-
-    if (resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)) {
-      resolvedTitle = undefined;
-    }
-
-    const emailResult = await verifyEmail(resolvedEmail ?? "");
-
-    await db.insert(enrichmentRuns).values({
-      provider: enrichmentProvider ?? person.dataSource,
-      dataMode,
-      success: true,
-      emailFound: !!resolvedEmail,
-      emailVerified: emailResult.status === "verified",
-      result: {
-        email: resolvedEmail,
-        emailStatus: emailResult.status,
-        confidence: emailConfidence,
-        attempts: enrichAttempts,
-      },
-    });
-
-    if (emailResult.status === "missing" && !normalizeLinkedInUrl(person.linkedIn)) {
-      skipped.push({ name: person.name, reason: "no email or LinkedIn profile" });
-      continue;
-    }
-
-    const existingByEmail = resolvedEmail
-      ? await db.query.contacts.findFirst({
-          where: and(eq(contacts.email, resolvedEmail), eq(contacts.tenantId, tenantId)),
-        })
-      : null;
-
-    const existingByName = await db.query.contacts.findFirst({
-      where: and(
-        eq(contacts.name, person.name),
-        eq(contacts.accountId, resolvedAccountId),
-        eq(contacts.tenantId, tenantId),
-      ),
-    });
-
-    const existingContact = existingByEmail ?? existingByName;
-
-    const filter = await preFilterCheck(person, resolvedCompany, leadSource);
-    if (!filter.pass) {
-      skipped.push({ name: person.name, reason: `pre-filter rejected: ${filter.reason}` });
-      continue;
-    }
-
-    let contactId: string;
-
-    const { firstName: resolvedFirstName, lastName: resolvedLastName } = resolveContactName({
-      firstName: person.firstName,
-      lastName: person.lastName,
-      name: person.name,
-    });
-
-    const secondaryIdentity = {
-      firstName: resolvedFirstName,
-      lastName: resolvedLastName,
-      name: person.name,
-      domain: resolvedCompany.domain,
-      website: resolvedCompany.website,
-      companyName: resolvedCompany.name,
-    };
-
-    if (existingContact) {
-      const nextEmail =
-        resolvedEmail ??
-        (emailBelongsToCompany(existingContact.email, resolvedCompany.name) ? existingContact.email : undefined);
-      const refreshed = refreshPermutationEmails({
-        ...secondaryIdentity,
-        primaryEmail: nextEmail,
-        emailStatus: emailResult.status,
-        enrichmentProvider: enrichmentSource ? enrichmentProvider : existingContact.enrichmentProvider,
-        enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
-        alternateEmails: (existingContact.alternateEmails as ContactEmailEntry[] | null) ?? [],
-      });
-      await db
-        .update(contacts)
-        .set({
-          title: resolvedTitle ?? existingContact.title,
-          firstName: existingContact.firstName || resolvedFirstName || null,
-          lastName: existingContact.lastName || resolvedLastName || null,
-          email: refreshed.email,
-          emailStatus: refreshed.emailStatus,
-          emailConfidence: emailConfidence || existingContact.emailConfidence,
-          enrichmentSource: refreshed.enrichmentSource,
-          enrichmentProvider: refreshed.enrichmentProvider,
-          alternateEmails: refreshed.alternateEmails,
-          phone: resolvedPhone ?? existingContact.phone,
-          linkedIn: normalizeLinkedInUrl(person.linkedIn) ?? existingContact.linkedIn,
-          matchScore: person.matchScore ?? existingContact.matchScore,
-          updatedAt: new Date(),
-        })
-        .where(eq(contacts.id, existingContact.id));
-      contactId = existingContact.id;
-
-      const [existingLead] = await db
-        .select()
-        .from(leads)
-        .where(and(eq(leads.contactId, existingContact.id), eq(leads.tenantId, tenantId)))
-        .orderBy(desc(leads.createdAt))
-        .limit(1);
-
-      if (existingLead) {
-        savedLeads.push({
-          leadId: existingLead.id,
-          name: person.name,
-          emailStatus: emailResult.status,
-        });
-        continue;
-      }
-    } else {
-      const refreshed = refreshPermutationEmails({
-        ...secondaryIdentity,
-        primaryEmail: resolvedEmail,
-        emailStatus: emailResult.status,
-        enrichmentProvider,
-        enrichmentSource,
-        alternateEmails: [],
-      });
-      const [contact] = await db
-        .insert(contacts)
-        .values({
-          tenantId,
-          workspaceId,
-          accountId: resolvedAccountId,
-          name: person.name,
-          firstName: resolvedFirstName || person.firstName || null,
-          lastName: resolvedLastName || person.lastName || null,
-          title:
-            resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)
-              ? null
-              : resolvedTitle ?? person.title,
-          department: person.department,
-          seniority: person.seniority,
-          email: refreshed.email,
-          emailStatus: refreshed.emailStatus,
-          emailConfidence: emailConfidence || null,
-          enrichmentSource: refreshed.enrichmentSource,
-          enrichmentProvider: refreshed.enrichmentProvider,
-          alternateEmails: refreshed.alternateEmails,
-          phone: resolvedPhone,
-          linkedIn: normalizeLinkedInUrl(person.linkedIn),
-          bio: person.bio,
-          isKeyDM: person.isKeyDM ?? false,
-          matchScore: person.matchScore,
-          engagementSignals: person.engagementSignals ?? [],
-          dataSource: person.dataSource,
-          externalId: person.externalId,
-        })
-        .onConflictDoNothing()
-        .returning();
-
-      if (!contact) {
-        skipped.push({ name: person.name, reason: "contact already exists" });
-        continue;
-      }
-      contactId = contact.id;
-    }
-
-    const [lead] = await db
-      .insert(leads)
-      .values({
-        tenantId,
-        workspaceId,
-        contactId,
-        accountId: resolvedAccountId,
-        campaignId: DEFAULT_CAMPAIGN,
-        status: "scouted",
-        score: person.matchScore,
-        leadSource,
-        researcherEligible: filter.pass,
-        tags: ["Lead", "Scout"],
-      })
-      .returning();
-
-    if (!lead) continue;
-
-    await db.insert(yieldFunnel).values({ leadId: lead.id, stage: "scouted" });
-    await db.insert(yieldFunnel).values({
-      leadId: lead.id,
-      stage: "prefiltered",
-      metadata: { reason: filter.reason },
-    });
-
-    await logAudit({
+  const outcomes = await mapWithConcurrency(people, SAVE_PERSON_CONCURRENCY, async (person) => {
+    return saveOnePerson({
+      person,
+      resolvedCompany,
+      resolvedAccountId,
       tenantId,
       workspaceId,
-      action: "lead.saved",
-      entityType: "lead",
-      entityId: lead.id,
-      metadata: {
-        contactName: person.name,
-        company: resolvedCompany.name,
-        emailStatus: emailResult.status,
-        emailConfidence,
-        source: leadSource,
-        reusedContact: Boolean(existingContact),
-      },
+      dataMode,
+      leadSource,
+      shouldEnrich,
+      enrichMode,
+      cfg,
+      skipGooglePlaces,
     });
+  });
 
-    savedLeads.push({ leadId: lead.id, name: person.name, emailStatus: emailResult.status });
+  const savedLeads: SaveLeadsResult["saved"] = [];
+  const skipped: SaveLeadsResult["skipped"] = [];
+  for (const outcome of outcomes) {
+    if (outcome.kind === "saved") savedLeads.push(outcome.item);
+    else if (outcome.kind === "skipped") skipped.push(outcome.item);
   }
 
   if (savedLeads.length > 0) {
@@ -449,4 +249,307 @@ export async function saveScoutLeads(params: {
   }
 
   return { saved: savedLeads, skipped };
+}
+
+async function saveOnePerson(params: {
+  person: ScoutPersonResult;
+  resolvedCompany: ScoutCompanyResult;
+  resolvedAccountId: string;
+  tenantId: string;
+  workspaceId: string;
+  dataMode: DataMode;
+  leadSource: string;
+  shouldEnrich: boolean;
+  enrichMode: "free" | "paid";
+  cfg: EnrichmentConfig;
+  skipGooglePlaces: boolean;
+}): Promise<PersonSaveOutcome> {
+  const {
+    person,
+    resolvedCompany,
+    resolvedAccountId,
+    tenantId,
+    workspaceId,
+    dataMode,
+    leadSource,
+    shouldEnrich,
+    enrichMode,
+    cfg,
+    skipGooglePlaces,
+  } = params;
+
+  if (personTitleConflictsWithCompany(person.title, resolvedCompany.name)) {
+    return { kind: "skipped", item: { name: person.name, reason: "title names a different employer" } };
+  }
+
+  let resolvedEmail = sanitizeEmail(person.email);
+  if (resolvedEmail && !emailBelongsToCompany(resolvedEmail, resolvedCompany.name)) {
+    resolvedEmail = undefined;
+  }
+  let resolvedPhone = person.phone;
+  let emailConfidence = 0;
+  let enrichmentSource: string | undefined;
+  let enrichmentProvider: string | undefined;
+  let enrichAttempts: unknown;
+  let resolvedTitle = sanitizeJobTitle(person.title);
+  let enrichedEmailStatus: EnrichContactResultStatus | undefined;
+  let enrichedAcceptedEmail: string | undefined;
+  let didEnrich = false;
+
+  if (shouldEnrich) {
+    const enriched = await enrichPersonContact({
+      person: {
+        ...person,
+        email: resolvedEmail && isGenericCompanyEmail(resolvedEmail) ? undefined : person.email,
+      },
+      company: resolvedCompany,
+      mode: enrichMode,
+      dataMode: cfg.dataMode,
+      enrichProvider: cfg.enrichProvider,
+      skipGooglePlaces,
+    });
+    didEnrich = true;
+    enrichAttempts = enriched.attempts;
+    const named = isNamedPerson(person.name);
+    resolvedTitle = sanitizeJobTitle(enriched.title) ?? sanitizeJobTitle(person.title);
+    if (
+      enriched.email &&
+      emailBelongsToCompany(enriched.email, resolvedCompany.name) &&
+      shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
+    ) {
+      resolvedEmail = enriched.email;
+      resolvedPhone = enriched.phone ?? resolvedPhone;
+      emailConfidence = enriched.emailConfidence;
+      enrichmentSource = enriched.enrichmentSource;
+      enrichmentProvider = enriched.enrichmentProvider;
+      enrichedEmailStatus = enriched.emailStatus;
+      enrichedAcceptedEmail = enriched.email;
+    } else if (enriched.email && !named) {
+      emailConfidence = enriched.emailConfidence;
+      enrichmentSource = enriched.enrichmentSource;
+      enrichmentProvider = enriched.enrichmentProvider;
+      enrichedEmailStatus = enriched.emailStatus;
+      enrichedAcceptedEmail = enriched.email;
+    } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && named) {
+      resolvedEmail = undefined;
+    } else if (enriched.email && enriched.email === resolvedEmail) {
+      enrichedEmailStatus = enriched.emailStatus;
+      enrichedAcceptedEmail = enriched.email;
+    }
+  } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && isNamedPerson(person.name)) {
+    resolvedEmail = undefined;
+  }
+
+  if (resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)) {
+    resolvedTitle = undefined;
+  }
+
+  const emailResult = await resolveEmailStatus({
+    email: resolvedEmail,
+    enrichedEmail: enrichedAcceptedEmail,
+    enrichedStatus: enrichedEmailStatus,
+    didEnrich,
+  });
+
+  await db.insert(enrichmentRuns).values({
+    provider: enrichmentProvider ?? person.dataSource,
+    dataMode,
+    success: true,
+    emailFound: !!resolvedEmail,
+    emailVerified: emailResult.status === "verified",
+    result: {
+      email: resolvedEmail,
+      emailStatus: emailResult.status,
+      confidence: emailConfidence,
+      attempts: enrichAttempts,
+    },
+  });
+
+  if (emailResult.status === "missing" && !normalizeLinkedInUrl(person.linkedIn)) {
+    return { kind: "skipped", item: { name: person.name, reason: "no email or LinkedIn profile" } };
+  }
+
+  const existingByEmail = resolvedEmail
+    ? await db.query.contacts.findFirst({
+        where: and(eq(contacts.email, resolvedEmail), eq(contacts.tenantId, tenantId)),
+      })
+    : null;
+
+  const existingByName = await db.query.contacts.findFirst({
+    where: and(
+      eq(contacts.name, person.name),
+      eq(contacts.accountId, resolvedAccountId),
+      eq(contacts.tenantId, tenantId),
+    ),
+  });
+
+  const existingContact = existingByEmail ?? existingByName;
+
+  const filter = await preFilterCheck(person, resolvedCompany, leadSource);
+  if (!filter.pass) {
+    return {
+      kind: "skipped",
+      item: { name: person.name, reason: `pre-filter rejected: ${filter.reason}` },
+    };
+  }
+
+  let contactId: string;
+
+  const { firstName: resolvedFirstName, lastName: resolvedLastName } = resolveContactName({
+    firstName: person.firstName,
+    lastName: person.lastName,
+    name: person.name,
+  });
+
+  const secondaryIdentity = {
+    firstName: resolvedFirstName,
+    lastName: resolvedLastName,
+    name: person.name,
+    domain: resolvedCompany.domain,
+    website: resolvedCompany.website,
+    companyName: resolvedCompany.name,
+  };
+
+  if (existingContact) {
+    const nextEmail =
+      resolvedEmail ??
+      (emailBelongsToCompany(existingContact.email, resolvedCompany.name) ? existingContact.email : undefined);
+    const refreshed = refreshPermutationEmails({
+      ...secondaryIdentity,
+      primaryEmail: nextEmail,
+      emailStatus: emailResult.status,
+      enrichmentProvider: enrichmentSource ? enrichmentProvider : existingContact.enrichmentProvider,
+      enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
+      alternateEmails: (existingContact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+    });
+    await db
+      .update(contacts)
+      .set({
+        title: resolvedTitle ?? existingContact.title,
+        firstName: existingContact.firstName || resolvedFirstName || null,
+        lastName: existingContact.lastName || resolvedLastName || null,
+        email: refreshed.email,
+        emailStatus: toDbEmailStatus(refreshed.emailStatus),
+        emailConfidence: emailConfidence || existingContact.emailConfidence,
+        enrichmentSource: refreshed.enrichmentSource,
+        enrichmentProvider: refreshed.enrichmentProvider,
+        alternateEmails: refreshed.alternateEmails,
+        phone: resolvedPhone ?? existingContact.phone,
+        linkedIn: normalizeLinkedInUrl(person.linkedIn) ?? existingContact.linkedIn,
+        matchScore: person.matchScore ?? existingContact.matchScore,
+        updatedAt: new Date(),
+      })
+      .where(eq(contacts.id, existingContact.id));
+    contactId = existingContact.id;
+
+    const [existingLead] = await db
+      .select()
+      .from(leads)
+      .where(and(eq(leads.contactId, existingContact.id), eq(leads.tenantId, tenantId)))
+      .orderBy(desc(leads.createdAt))
+      .limit(1);
+
+    if (existingLead) {
+      return {
+        kind: "saved",
+        item: {
+          leadId: existingLead.id,
+          name: person.name,
+          emailStatus: emailResult.status,
+        },
+      };
+    }
+  } else {
+    const refreshed = refreshPermutationEmails({
+      ...secondaryIdentity,
+      primaryEmail: resolvedEmail,
+      emailStatus: emailResult.status,
+      enrichmentProvider,
+      enrichmentSource,
+      alternateEmails: [],
+    });
+    const [contact] = await db
+      .insert(contacts)
+      .values({
+        tenantId,
+        workspaceId,
+        accountId: resolvedAccountId,
+        name: person.name,
+        firstName: resolvedFirstName || person.firstName || null,
+        lastName: resolvedLastName || person.lastName || null,
+        title:
+          resolvedTitle && personTitleConflictsWithCompany(resolvedTitle, resolvedCompany.name)
+            ? null
+            : resolvedTitle ?? person.title,
+        department: person.department,
+        seniority: person.seniority,
+        email: refreshed.email,
+        emailStatus: toDbEmailStatus(refreshed.emailStatus),
+        emailConfidence: emailConfidence || null,
+        enrichmentSource: refreshed.enrichmentSource,
+        enrichmentProvider: refreshed.enrichmentProvider,
+        alternateEmails: refreshed.alternateEmails,
+        phone: resolvedPhone,
+        linkedIn: normalizeLinkedInUrl(person.linkedIn),
+        bio: person.bio,
+        isKeyDM: person.isKeyDM ?? false,
+        matchScore: person.matchScore,
+        engagementSignals: person.engagementSignals ?? [],
+        dataSource: person.dataSource,
+        externalId: person.externalId,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    if (!contact) {
+      return { kind: "skipped", item: { name: person.name, reason: "contact already exists" } };
+    }
+    contactId = contact.id;
+  }
+
+  const [lead] = await db
+    .insert(leads)
+    .values({
+      tenantId,
+      workspaceId,
+      contactId,
+      accountId: resolvedAccountId,
+      campaignId: DEFAULT_CAMPAIGN,
+      status: "scouted",
+      score: person.matchScore,
+      leadSource,
+      researcherEligible: filter.pass,
+      tags: ["Lead", "Scout"],
+    })
+    .returning();
+
+  if (!lead) return { kind: "none" };
+
+  await db.insert(yieldFunnel).values({ leadId: lead.id, stage: "scouted" });
+  await db.insert(yieldFunnel).values({
+    leadId: lead.id,
+    stage: "prefiltered",
+    metadata: { reason: filter.reason },
+  });
+
+  await logAudit({
+    tenantId,
+    workspaceId,
+    action: "lead.saved",
+    entityType: "lead",
+    entityId: lead.id,
+    metadata: {
+      contactName: person.name,
+      company: resolvedCompany.name,
+      emailStatus: emailResult.status,
+      emailConfidence,
+      source: leadSource,
+      reusedContact: Boolean(existingContact),
+    },
+  });
+
+  return {
+    kind: "saved",
+    item: { leadId: lead.id, name: person.name, emailStatus: emailResult.status },
+  };
 }

@@ -27,6 +27,7 @@ import {
   type ContactEmailEntry,
   mergeAlternateEmails,
   refreshPermutationEmails,
+  toDbEmailStatus,
 } from "./contact-emails";
 import type { ScoredCandidate } from "./enrich-accurate";
 import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
@@ -141,6 +142,8 @@ export async function enrichPersonContact(params: {
   dataMode?: DataMode;
   enrichProvider?: EnrichProvider;
   refetch?: boolean;
+  /** Scout wizard import: skip Places phone lookup (discovery already ran). */
+  skipGooglePlaces?: boolean;
 }): Promise<EnrichContactResult> {
   const input = toEnrichmentInput(params.person, params.company);
   const named = acceptOptions(params.person);
@@ -175,7 +178,9 @@ export async function enrichPersonContact(params: {
 
   const dataMode = params.dataMode ?? ((process.env.DEFAULT_DATA_MODE ?? "free") as DataMode);
   const enrichProvider = params.enrichProvider ?? "website_email";
-  const preferredChain = providerChainForEnrichSetting(enrichProvider, dataMode);
+  const preferredChain = providerChainForEnrichSetting(enrichProvider, dataMode, {
+    skipGooglePlaces: params.skipGooglePlaces,
+  });
 
   const result = await enrichContactAccurate(input, {
     allowPaid: params.mode === "paid",
@@ -346,7 +351,7 @@ export async function enrichLeadById(params: {
       phone: nextPhone ?? null,
       title: nextTitle ?? null,
       linkedIn: enriched.linkedIn ?? contact.linkedIn,
-      emailStatus: refreshed.emailStatus,
+      emailStatus: toDbEmailStatus(refreshed.emailStatus),
       emailConfidence: enriched.emailConfidence || contact.emailConfidence,
       enrichmentSource: refreshed.enrichmentSource,
       enrichmentProvider: refreshed.enrichmentProvider,
@@ -380,7 +385,7 @@ export async function enrichLeadById(params: {
     email: refreshed.email ?? undefined,
     phone: nextPhone ?? undefined,
     title: nextTitle ?? undefined,
-    emailStatus: refreshed.emailStatus,
+    emailStatus: toDbEmailStatus(refreshed.emailStatus),
     alternateEmails: refreshed.alternateEmails,
   };
 }

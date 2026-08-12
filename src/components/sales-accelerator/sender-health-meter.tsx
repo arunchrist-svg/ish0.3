@@ -65,7 +65,7 @@ export function SenderHealthMeter({ className }: Props) {
       <TooltipTrigger>
         <div
           className={cn(
-            "inline-flex shrink-0 cursor-help items-center gap-1.5 rounded-full border border-brand-stratus-blue/30 bg-white/90 px-2.5 py-1 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm transition-colors hover:border-brand-stratus-blue/45",
+            "inline-flex h-6 shrink-0 cursor-help items-center gap-1 rounded-full px-1.5 transition-colors hover:bg-brand-canvas/80",
             className,
           )}
         >

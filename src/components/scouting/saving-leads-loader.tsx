@@ -30,8 +30,8 @@ export function SavingLeadsLoader({ count, progress, className }: Props) {
   const label =
     count === 1 ? "1 lead" : `${count} leads`;
   const progressLabel =
-    progress && progress.total > 1
-      ? ` (${progress.done} of ${progress.total} companies)`
+    progress && progress.total > 0
+      ? ` (${progress.done} of ${progress.total} leads)`
       : "";
 
   return (

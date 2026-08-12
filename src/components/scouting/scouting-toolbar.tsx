@@ -1305,7 +1305,7 @@ export function ScoutingToolbar({
   const isSearchMode = scoutMode === "search";
   const canScout = settingsLoaded && cities.length > 0 && !loadingCompanies;
   const canSearch = settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !loadingCompanies;
-  const volumeHint = `${scoutCompaniesLimit} cos · ${scoutLeadsLimit} leads`;
+  const volumeHint = `${scoutCompaniesLimit} cos · ${scoutLeadsLimit}/co`;
 
   const [mobileSheet, setMobileSheet] = useState<ActivePanel>(null);
 

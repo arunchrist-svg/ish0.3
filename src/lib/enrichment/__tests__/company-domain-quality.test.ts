@@ -38,4 +38,20 @@ describe("company domain quality", () => {
       }),
     ).toBe("pavnaindustries.com");
   });
+
+  it("uses CUMI Murugappa domain for Carborundum Universal, not the name slug", () => {
+    expect(isAcceptableCompanyDomain("cumi-murugappa.com", "Carborundum Universal")).toBe(true);
+    expect(isAcceptableCompanyDomain("carborundumuniversal.com", "Carborundum Universal")).toBe(false);
+    expect(
+      resolveAccountDomain({
+        companyName: "Carborundum Universal",
+      }),
+    ).toBe("cumi-murugappa.com");
+    expect(
+      resolveAccountDomain({
+        domain: "carborundumuniversal.com",
+        companyName: "Carborundum Universal",
+      }),
+    ).toBe("cumi-murugappa.com");
+  });
 });

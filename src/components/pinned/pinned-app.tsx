@@ -369,7 +369,7 @@ function EmptyState() {
       <div>
         <div className={cn(text.body, "font-bold")}>No pinned items yet</div>
         <p className="mt-1.5 text-[12.5px] leading-relaxed text-brand-ink-soft">
-          Pin leads from Lead Accelerator or companies from Directory — they&apos;ll show up here for quick access.
+          Pin leads from Leads or companies from Directory. They&apos;ll show up here for quick access.
         </p>
       </div>
       <div className="flex flex-wrap justify-center gap-2 pt-2">

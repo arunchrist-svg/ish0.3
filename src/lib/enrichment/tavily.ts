@@ -2,13 +2,18 @@ import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause } from "./city-search";
-import { employeeSizeSearchClause, extractEmployeesFromText } from "./employee-size";
+import {
+  employeeSizeSearchClause,
+  extractEmployeesFromHits,
+  extractEmployeesFromText,
+  normalizeEmployeeField,
+} from "./employee-size";
 import {
   companyMatchesNameQuery,
   filterCompaniesMatchingQuery,
   isGeographicEntity,
 } from "./company-name-match";
-import { isPlausibleCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
+import { cleanCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { searchPeopleViaTavily } from "./people-search";
 import type { DirectorySearchMeta } from "./india-directories";
@@ -89,25 +94,26 @@ export function filterLookupLlmCompanies(
   targetName: string,
   limit: number,
 ): ScoutCompanyResult[] {
-  return filterCompaniesMatchingQuery(
-    parsed
-      .filter((c) => typeof c.name === "string" && isPlausibleCompanyName((c.name as string).trim()))
-      .map((c) => ({
-        name: (c.name as string).trim(),
-        domain: (c.domain as string | null) ?? undefined,
-        website: (c.website as string | null) ?? undefined,
-        industry: (c.industry as string | null) ?? undefined,
-        city: (c.city as string | null) ?? undefined,
-        employees:
-          (c.employees as string | null)?.trim() ||
-          extractEmployeesFromText(`${c.name ?? ""} ${c.intelNotes ?? ""}`) ||
-          undefined,
-        intelNotes: (c.intelNotes as string | null) ?? undefined,
-        fitScore: 70,
-        dataSource: "tavily+llm",
-      })),
-    targetName,
-  )
+  const mapped: ScoutCompanyResult[] = [];
+  for (const c of parsed) {
+    const name = typeof c.name === "string" ? cleanCompanyName(c.name.trim()) : null;
+    if (!name) continue;
+    mapped.push({
+      name,
+      domain: (c.domain as string | null) ?? undefined,
+      website: (c.website as string | null) ?? undefined,
+      industry: (c.industry as string | null) ?? undefined,
+      city: (c.city as string | null) ?? undefined,
+      employees:
+        normalizeEmployeeField(c.employees as string | null) ||
+        extractEmployeesFromText(`${c.name ?? ""} ${c.intelNotes ?? ""}`) ||
+        undefined,
+      intelNotes: (c.intelNotes as string | null) ?? undefined,
+      fitScore: 70,
+      dataSource: "tavily+llm",
+    });
+  }
+  return filterCompaniesMatchingQuery(mapped, targetName)
     .filter((c) => companyMatchesNameQuery(c, targetName))
     .slice(0, limit);
 }
@@ -203,6 +209,7 @@ Each item: { "name": string, "domain": string | null, "industry": string, "city"
 Only include REAL registered company / brand names (e.g. "Infosys", "SingleStore", "Bosch India").
 Never use job-post titles, document blurbs, report titles, review-site section headings, or UI text as company names
 (e.g. reject "Samsara is Hiring", "Work Satisfaction", "Company Culture", "Salary", "India in 2026").
+Never use UI labels, job categories, neighborhoods, building blocks, or NIC activity lines (Quotations, BPO jobs, Bellandur, Flipkart B Block, LIMITED TECHNOLOGIES).
 If a result is a hiring or reviews page for Acme, return "Acme" only. Do NOT invent companies.
 Do not score or filter for corporate gifting.`;
       const prompt = `Extract companies from these search results.
@@ -224,22 +231,26 @@ Return up to ${params.limit} companies.`;
         return heuristic;
       }
 
-      const mapped = parsed
-        .filter((c) => typeof c.name === "string" && isPlausibleCompanyName(c.name.trim()))
-        .slice(0, params.limit)
-        .map((c) => ({
-          name: (c.name as string).trim(),
+      const mapped: ScoutCompanyResult[] = [];
+      for (const c of parsed) {
+        const name = typeof c.name === "string" ? cleanCompanyName(c.name.trim()) : null;
+        if (!name) continue;
+        mapped.push({
+          name,
           domain: (c.domain as string | null) ?? undefined,
           industry: (c.industry as string | null) ?? undefined,
           city: (c.city as string | null) ?? undefined,
           employees:
-            (c.employees as string | null)?.trim() ||
+            normalizeEmployeeField(c.employees as string | null) ||
             extractEmployeesFromText(`${c.name ?? ""} ${c.intelNotes ?? ""}`) ||
+            extractEmployeesFromHits((c.name as string).trim(), results) ||
             undefined,
           intelNotes: (c.intelNotes as string | null) ?? undefined,
           fitScore: 65,
           dataSource: "tavily+llm",
-        }));
+        });
+        if (mapped.length >= params.limit) break;
+      }
       if (mapped.length) return mapped;
       meta?.warnings.push("AI extraction returned no companies — using web parsing fallback.");
     } catch (e) {

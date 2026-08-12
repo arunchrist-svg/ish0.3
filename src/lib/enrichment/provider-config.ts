@@ -38,11 +38,14 @@ export function hasAnyEnrichmentProvider(): boolean {
 export function providerChainForEnrichSetting(
   enrichProvider: EnrichProvider,
   dataMode: DataMode,
+  options?: { skipGooglePlaces?: boolean },
 ): EnrichmentProviderId[] {
   const resolved = resolveEnrichProvider(dataMode, enrichProvider);
   if (resolved === "none") return [];
 
-  const freeChain = FREE_ENRICH_PROVIDER_ORDER;
+  const freeChain = options?.skipGooglePlaces
+    ? FREE_ENRICH_PROVIDER_ORDER.filter((id) => id !== "google_places")
+    : FREE_ENRICH_PROVIDER_ORDER;
   if (resolved === "website_email") return [...freeChain];
 
   if (resolved === "apollo") {

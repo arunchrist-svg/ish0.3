@@ -6,6 +6,9 @@ const GENERIC_PREFIXES = [
   "hello@", "support@", "team@", "help@", "enquiry@", "enquiries@",
 ];
 
+const mxCache = new Map<string, Promise<boolean | null>>();
+const hunterCache = new Map<string, Promise<"verified" | "unverified" | null>>();
+
 function isGenericEmail(email: string): boolean {
   return GENERIC_PREFIXES.some((p) => email.toLowerCase().startsWith(p));
 }
@@ -21,31 +24,46 @@ function isValidFormat(email: string): boolean {
 async function domainHasMx(email: string): Promise<boolean | null> {
   const domain = email.split("@")[1]?.toLowerCase();
   if (!domain) return null;
-  try {
-    const records = await dns.resolveMx(domain);
-    return records.length > 0;
-  } catch {
-    return false;
-  }
+  const cached = mxCache.get(domain);
+  if (cached) return cached;
+
+  const promise = (async (): Promise<boolean | null> => {
+    try {
+      const records = await dns.resolveMx(domain);
+      return records.length > 0;
+    } catch {
+      return false;
+    }
+  })();
+  mxCache.set(domain, promise);
+  return promise;
 }
 
 async function hunterVerify(email: string): Promise<"verified" | "unverified" | null> {
   const key = process.env.HUNTER_API_KEY;
   if (!key) return null;
 
-  try {
-    const res = await fetch(
-      `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(email)}&api_key=${key}`,
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const status = data.data?.status;
-    if (status === "valid") return "verified";
-    if (status === "invalid" || status === "disposable") return "unverified";
-    return null;
-  } catch {
-    return null;
-  }
+  const normalized = email.toLowerCase().trim();
+  const cached = hunterCache.get(normalized);
+  if (cached) return cached;
+
+  const promise = (async (): Promise<"verified" | "unverified" | null> => {
+    try {
+      const res = await fetch(
+        `https://api.hunter.io/v2/email-verifier?email=${encodeURIComponent(normalized)}&api_key=${key}`,
+      );
+      if (!res.ok) return null;
+      const data = await res.json();
+      const status = data.data?.status;
+      if (status === "valid") return "verified";
+      if (status === "invalid" || status === "disposable") return "unverified";
+      return null;
+    } catch {
+      return null;
+    }
+  })();
+  hunterCache.set(normalized, promise);
+  return promise;
 }
 
 export async function verifyEmail(email: string): Promise<EmailVerifyResult> {

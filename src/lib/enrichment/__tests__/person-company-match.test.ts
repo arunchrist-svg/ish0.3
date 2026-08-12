@@ -20,6 +20,11 @@ describe("current employer matching", () => {
         "Christine Grebenc - Freelance Human Resources Consultant - Peak Performance HR Florida | LinkedIn",
       ),
     ).toBe("Peak Performance HR Florida");
+    expect(
+      currentEmployerFromHeadline(
+        "Chief Human Resource Officer (CHRO) - Finocontrol | LinkedIn Top Voice | Incharge - Corporate Relations",
+      ),
+    ).toBe("Finocontrol");
   });
 
   it("rejects a different current employer even if Titan appears in the snippet", () => {
@@ -31,6 +36,29 @@ describe("current employer matching", () => {
           content: "Mentioned Titan Company in a comment thread.",
         },
         "Titan Company Ltd",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects Finocontrol CHRO when scouting Harita Fehrer", () => {
+    expect(
+      currentEmployerFromHeadline(
+        "Tejaswee Tripathy | Chief Human Resource Officer (CHRO) - Finocontrol | LinkedIn",
+      ),
+    ).toBe("Finocontrol");
+    expect(
+      personTitleConflictsWithCompany(
+        "Chief Human Resource Officer (CHRO) - Finocontrol",
+        "Harita Fehrer",
+      ),
+    ).toBe(true);
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Tejaswee Tripathy | Chief Human Resource Officer (CHRO) - Finocontrol | LinkedIn",
+          content: "Chief Human Resource Officer (CHRO) - Finocontrol | Gurugram, Haryana, India",
+        },
+        "Harita Fehrer",
       ),
     ).toBe(false);
   });
@@ -51,6 +79,31 @@ describe("current employer matching", () => {
     expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Hosur Steel Industries")).toBe(true);
     expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Tata Steel")).toBe(false);
     expect(personTitleConflictsWithCompany("Chief Human Resources Officer", "Pavna Industries")).toBe(false);
+  });
+
+  it("does not treat department words as rival employers", () => {
+    expect(personTitleConflictsWithCompany("Head of Procurement", "Bosch")).toBe(false);
+    expect(personTitleConflictsWithCompany("Director - People & Culture", "Wipro")).toBe(false);
+    expect(personTitleConflictsWithCompany("Software Engineer", "Wipro")).toBe(false);
+    expect(personTitleConflictsWithCompany("VP Human Resources at Infosys", "Infosys")).toBe(false);
+    expect(personTitleConflictsWithCompany("HR Director at Peak Performance HR", "Wipro")).toBe(true);
+  });
+
+  it("drops Tejaswee Tripathy when scouting Harita Fehrer", () => {
+    const results = parsePeopleFromSearchResults(
+      [
+        {
+          title: "Tejaswee Tripathy | Chief Human Resource Officer (CHRO) - Finocontrol | LinkedIn",
+          url: "https://www.linkedin.com/in/tejaswee-tripathy",
+          content:
+            "Chief Human Resource Officer (CHRO) - Finocontrol | LinkedIn Top Voice | Gurugram, Haryana, India",
+        },
+      ],
+      5,
+      "web_heuristic",
+      "Harita Fehrer",
+    );
+    expect(results).toHaveLength(0);
   });
 
   it("keeps people currently at the target company", () => {

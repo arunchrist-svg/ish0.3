@@ -6,7 +6,7 @@ import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { logAudit } from "@/lib/audit";
 import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
-import { refreshPermutationEmails } from "@/lib/enrichment/contact-emails";
+import { refreshPermutationEmails, toDbEmailStatus } from "@/lib/enrichment/contact-emails";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
 import { nameCompanyDedupeKey } from "@/lib/leads/duplicates";
 export class LeadNotFoundError extends Error {
@@ -33,6 +33,10 @@ export type CreateLeadInput = {
   employees?: string;
   score?: number;
   tags?: string[];
+  leadSource?: string;
+  dataSource?: string;
+  rating?: string;
+  owner?: string;
 };
 
 export type UpdateLeadInput = {
@@ -63,6 +67,7 @@ async function resolveAccountId(params: {
   city?: string;
   industry?: string;
   employees?: string;
+  dataSource?: string;
 }): Promise<string> {
   const companyName = params.company.trim();
   const [existing] = await db
@@ -95,7 +100,7 @@ async function resolveAccountId(params: {
       city: params.city,
       industry: params.industry,
       employees: params.employees,
-      dataSource: "manual",
+      dataSource: params.dataSource ?? "manual",
     })
     .returning();
 
@@ -127,6 +132,9 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
   const company = input.company.trim();
   if (!name || !company) throw new Error("Name and company are required");
 
+  const dataSource = input.dataSource ?? "manual";
+  const leadSource = input.leadSource ?? "manual";
+
   const accountId = await resolveAccountId({
     tenantId: input.tenantId,
     workspaceId: input.workspaceId,
@@ -134,6 +142,7 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     city: input.city,
     industry: input.industry,
     employees: input.employees,
+    dataSource,
   });
 
   const existingId = await findExistingLeadId({
@@ -185,17 +194,20 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
       lastName,
       title: input.title?.trim() || null,
       email: refreshed.email,
-      emailStatus: refreshed.emailStatus,
+      emailStatus: toDbEmailStatus(refreshed.emailStatus),
       enrichmentSource: refreshed.enrichmentSource,
       enrichmentProvider: refreshed.enrichmentProvider,
       alternateEmails,
       phone: input.phone?.trim() || null,
       linkedIn: normalizeLinkedInUrl(input.linkedIn) ?? null,
-      dataSource: "manual",
+      dataSource,
     })
     .returning();
 
   if (!contact) throw new Error("Failed to create contact");
+
+  const defaultTags =
+    leadSource === "csv_import" ? ["Lead", "CSV Import"] : ["Lead", "Manual"];
 
   const [lead] = await db
     .insert(leads)
@@ -207,9 +219,11 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
       campaignId: DEFAULT_CAMPAIGN,
       status: "scouted",
       score: input.score ?? 60,
-      leadSource: "manual",
+      leadSource,
+      rating: input.rating?.trim() || null,
+      owner: input.owner?.trim() || null,
       researcherEligible: true,
-      tags: input.tags?.length ? input.tags : ["Lead", "Manual"],
+      tags: input.tags?.length ? input.tags : defaultTags,
     })
     .returning();
 
@@ -219,7 +233,7 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
   await db.insert(yieldFunnel).values({
     leadId: lead.id,
     stage: "prefiltered",
-    metadata: { reason: "manual entry" },
+    metadata: { reason: leadSource === "csv_import" ? "csv import" : "manual entry" },
   });
 
   await logAudit({
@@ -229,7 +243,7 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     action: "lead.created",
     entityType: "lead",
     entityId: lead.id,
-    metadata: { name, company, source: "manual" },
+    metadata: { name, company, source: leadSource },
   });
 
   return { id: lead.id };

@@ -1,4 +1,6 @@
 import { compactCompanyName, nameMatchesQuery, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
+import { knownDomainForCompanyName } from "@/lib/company-logo";
+import { domainFromCompany } from "@/lib/enrichment/provider-utils";
 
 /** Directories, social, and news/publisher hosts that are not a company's email domain. */
 const UNUSABLE_COMPANY_DOMAINS = [
@@ -179,6 +181,15 @@ export function isAcceptableCompanyDomain(domain: string | null | undefined, com
   const host = normalizeHost(domain);
   if (!host || isUnusableCompanyDomain(host)) return false;
   if (!companyName?.trim()) return true;
+
+  const known = normalizeHost(knownDomainForCompanyName(companyName));
+  if (known) {
+    if (host === known) return true;
+    const naive = normalizeHost(domainFromCompany(companyName));
+    // Curated corporate domain wins over a name-slug guess (CUMI vs carborundumuniversal.com).
+    if (naive && host === naive && host !== known) return false;
+  }
+
   const tokens = normalizeCompanyName(companyName).split(" ").filter((token) => token.length >= 3);
   if (!tokens[0] || tokens[0].length < 3) return true;
   return domainBelongsToCompany(host, companyName);

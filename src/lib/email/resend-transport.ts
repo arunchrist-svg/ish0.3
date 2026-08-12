@@ -61,6 +61,7 @@ export const resendTransport: MailTransport = {
       mode: config.sendMode,
       provider: "resend",
       messageId: params.messageId ?? data?.id,
+      providerMessageId: data?.id,
       to,
       subject: params.subject,
       timestamp,

@@ -12,6 +12,7 @@ import { parsePeopleFromSearchResults } from "./people-parser";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, TAVILY_QUOTA_PEOPLE_MSG, tavilySearch } from "./tavily-client";
 import { citySearchClause, selectPeopleForScoutCities } from "./city-search";
 import {
+  hitShowsCurrentEmployment,
   personFieldsShowCurrentEmployment,
   personTitleConflictsWithCompany,
 } from "@/lib/enrichment/person-company-match";
@@ -99,6 +100,30 @@ function mapLLMPerson(p: Record<string, unknown>, dataSource: string): ScoutPers
 function filterPeopleByCities(people: ScoutPersonResult[], cities?: string[]): ScoutPersonResult[] {
   if (!cities?.length) return people;
   return selectPeopleForScoutCities(people, cities).people;
+}
+
+/** Drop LLM inventions that stamp the scout company onto someone at a different employer. */
+function llmPersonSupportedBySearchHits(
+  person: ScoutPersonResult,
+  hits: { title: string; url: string; content: string }[],
+  companyNames: string[],
+): boolean {
+  const linkedIn = person.linkedIn?.toLowerCase();
+  if (linkedIn) {
+    const slug = linkedIn.replace(/^https?:\/\//, "").replace(/^(?:[\w-]+\.)?linkedin\.com\/in\//, "");
+    const hit = hits.find((row) => {
+      const blob = `${row.title}\n${row.url}\n${row.content}`.toLowerCase();
+      return Boolean(slug) && (blob.includes(slug) || row.url.toLowerCase().includes(slug));
+    });
+    if (!hit) return false;
+    return companyNames.some((name) => hitShowsCurrentEmployment(hit, name));
+  }
+
+  return companyNames.some(
+    (name) =>
+      personFieldsShowCurrentEmployment(person, name) &&
+      !personTitleConflictsWithCompany(person.title, name),
+  );
 }
 
 function dedupePeople(people: ScoutPersonResult[]): ScoutPersonResult[] {
@@ -265,9 +290,10 @@ export async function searchPeopleViaTavily(params: {
         system: `Extract named individuals from search results for a B2B outreach contact list.
 Output ONLY a valid JSON array. No markdown fences.
 Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
-Only people whose CURRENT employer is the target company. Put the employer in title (e.g. "Plant HR Manager at Titan Company").
+Only people whose CURRENT employer is the target company. Keep the employer from the source headline when present (e.g. "Plant HR Manager at Titan Company" or "CHRO - Titan Company").
 Exclude former employees, consultants at other firms, and anyone whose headline names a different company.
-Never invent emails or phones.
+Never rewrite a different employer into the target company name.
+Never invent emails, phones, or LinkedIn URLs that are not in the results.
 Prefer people located in the target city when location is stated.`,
         prompt: `Company: ${company}${companyAliases.length ? ` (also known as ${companyAliases.join(", ")})` : ""}
 Target city: ${cityClause}
@@ -285,7 +311,8 @@ Return up to ${limit} people.`,
         parseJsonArrayFromLLM(raw)
           .map((person) => mapLLMPerson(person, dataSource))
           .filter((person): person is ScoutPersonResult => !!person)
-          .filter(matchCompany),
+          .filter(matchCompany)
+          .filter((person) => llmPersonSupportedBySearchHits(person, allResults, searchNames)),
         params.cities,
       );
 

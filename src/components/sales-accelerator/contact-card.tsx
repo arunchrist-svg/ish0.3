@@ -5,9 +5,10 @@ import type { LeadRecord, QueueItem } from "@/lib/data";
 import type { ContactEmailEntry, LeadDetailRecord } from "@/lib/api-client";
 import { FieldRow, PanelCard, SectionHeader, text } from "@/design-system";
 import { cn } from "@/lib/utils";
-import { Loader2, Mail, Search, Sparkles, Wand2 } from "lucide-react";
+import { Loader2, Mail, Pencil, Search, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/design-system";
 import { EmailSuggestModal } from "@/components/sales-accelerator/email-suggest-modal";
+import { EmailManageModal } from "@/components/sales-accelerator/email-manage-modal";
 
 type Props = {
   record: LeadRecord;
@@ -159,6 +160,7 @@ export function ContactCard({
   const [refetching, setRefetching] = useState(false);
   const [paidDialogOpen, setPaidDialogOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
 
   async function handleRefetch(mode: "free" | "paid") {
     if (!onRefetchEmails) return;
@@ -224,15 +226,26 @@ export function ContactCard({
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className={cn(text.label)}>Email</div>
           {lead ? (
-            <button
-              type="button"
-              title="Suggest emails from name and domain"
-              onClick={() => setSuggestOpen(true)}
-              className="flex items-center gap-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-brand-ink-soft transition hover:bg-white hover:text-brand-ink lg:gap-1 lg:px-2 lg:py-1 lg:text-[10px]"
-            >
-              <Wand2 className="size-2.5 lg:size-3" />
-              Suggest
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                title="Add, edit, or delete emails"
+                onClick={() => setManageOpen(true)}
+                className="flex items-center gap-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-brand-ink-soft transition hover:bg-white hover:text-brand-ink lg:gap-1 lg:px-2 lg:py-1 lg:text-[10px]"
+              >
+                <Pencil className="size-2.5 lg:size-3" />
+                Manage
+              </button>
+              <button
+                type="button"
+                title="Suggest emails from name and domain"
+                onClick={() => setSuggestOpen(true)}
+                className="flex items-center gap-0.5 rounded-full bg-white/70 px-1.5 py-0.5 text-[9px] font-semibold text-brand-ink-soft transition hover:bg-white hover:text-brand-ink lg:gap-1 lg:px-2 lg:py-1 lg:text-[10px]"
+              >
+                <Wand2 className="size-2.5 lg:size-3" />
+                Suggest
+              </button>
+            </div>
           ) : null}
         </div>
         {emailEntries.length ? (
@@ -281,14 +294,25 @@ export function ContactCard({
         <FieldRow label="City" value={record.company.city} compactStackedOnMobile />
       </div>
       {lead ? (
-        <EmailSuggestModal
-          open={suggestOpen}
-          lead={lead}
-          onClose={() => setSuggestOpen(false)}
-          onSaved={() => {
-            onEmailsSaved?.();
-          }}
-        />
+        <>
+          <EmailSuggestModal
+            open={suggestOpen}
+            lead={lead}
+            onClose={() => setSuggestOpen(false)}
+            onSaved={() => {
+              onEmailsSaved?.();
+            }}
+          />
+          <EmailManageModal
+            open={manageOpen}
+            lead={lead}
+            emails={emailEntries}
+            onClose={() => setManageOpen(false)}
+            onSaved={() => {
+              onEmailsSaved?.();
+            }}
+          />
+        </>
       ) : null}
     </PanelCard>
   );

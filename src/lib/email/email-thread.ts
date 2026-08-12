@@ -3,7 +3,7 @@ import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
 
 export type ThreadEventKind = "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
-export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft" | "opened";
+export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft" | "opened" | "bounced";
 
 export type ThreadPhase =
   | "compose"
@@ -33,6 +33,10 @@ export type BarNode = {
   snippet?: string;
   at?: string;
   openedAt?: string;
+  bouncedAt?: string;
+  bounceType?: string;
+  bounceReason?: string;
+  recipientEmail?: string;
   action?: "draft_reply";
 };
 
@@ -46,6 +50,10 @@ export type ThreadEvent = {
   at?: string;
   status: ThreadEventStatus;
   openedAt?: string;
+  bouncedAt?: string;
+  bounceType?: string;
+  bounceReason?: string;
+  recipientEmail?: string;
   sequenceDay?: number;
 };
 
@@ -77,6 +85,23 @@ function preview(text: string | null | undefined, max = 140): string | undefined
   if (!text?.trim()) return undefined;
   const s = text.trim().replace(/\s+/g, " ");
   return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+function bounceFields(row?: ScheduleRow | null): {
+  bouncedAt?: string;
+  bounceType?: string;
+  bounceReason?: string;
+  recipientEmail?: string;
+} {
+  if (!row?.bouncedAt) {
+    return row?.recipientEmail ? { recipientEmail: row.recipientEmail } : {};
+  }
+  return {
+    bouncedAt: row.bouncedAt.toISOString(),
+    bounceType: row.bounceType ?? undefined,
+    bounceReason: row.bounceReason ?? undefined,
+    recipientEmail: row.recipientEmail ?? undefined,
+  };
 }
 
 function daysUntil(scheduledFor: Date | string): number {
@@ -132,6 +157,7 @@ export function buildEmailThread(params: {
     const isScheduled = row.status === "scheduled";
     const body = bodyForRow(row);
     const openedAt = row.openedAt?.toISOString();
+    const bounce = bounceFields(row);
     events.push({
       id: row.id,
       kind: isScheduled ? "scheduled" : kind,
@@ -140,9 +166,10 @@ export function buildEmailThread(params: {
       snippet: kind === "inbound_reply" ? preview(lead.lastReplyContent) : preview(body),
       body: kind === "inbound_reply" ? clip(lead.lastReplyContent) : clip(body),
       at: (row.sentAt ?? (isScheduled ? row.scheduledFor : undefined))?.toISOString(),
-      status: openedAt ? "opened" : isScheduled ? "scheduled" : "sent",
+      status: bounce.bouncedAt ? "bounced" : openedAt ? "opened" : isScheduled ? "scheduled" : "sent",
       openedAt,
       sequenceDay: row.sequenceDay,
+      ...bounce,
     });
   }
 
@@ -195,7 +222,16 @@ export function buildEmailThread(params: {
   else if (phase === "reply_sent") nextAction = "complete";
   else if (phase === "complete") nextAction = "complete";
 
-  const nextStep = buildNextStep(phase, nextAction, pendingFollowup);
+  const bouncedSent = scheduleRows.find((r) => r.bouncedAt && r.status === "sent");
+  const nextStep = bouncedSent
+    ? {
+        title: "Email bounced",
+        description: bouncedSent.recipientEmail
+          ? `${bouncedSent.recipientEmail} rejected this send. Follow-ups are paused until you use a working address.`
+          : "This send bounced. Follow-ups are paused until you use a working address.",
+        primaryAction: undefined,
+      }
+    : buildNextStep(phase, nextAction, pendingFollowup);
 
   const showComposeZone =
     (phase === "compose" || phase === "drafting_reply" || lead.status === "draft_ready") &&
@@ -275,6 +311,7 @@ function buildBarNodes(params: {
         snippet: preview(e1Body),
         at: e1Row?.sentAt?.toISOString(),
         openedAt: e1Row?.openedAt?.toISOString(),
+        ...bounceFields(e1Row),
       },
       {
         id: "reply",
@@ -306,6 +343,7 @@ function buildBarNodes(params: {
       snippet: preview(e1Body),
       at: e1Row?.sentAt?.toISOString(),
       openedAt: e1Row?.openedAt?.toISOString(),
+      ...bounceFields(e1Row),
     });
 
     const followupSchedules = scheduleRows
@@ -337,6 +375,7 @@ function buildBarNodes(params: {
         snippet: preview(body ?? linkedDraft?.emailBody),
         at: row?.sentAt?.toISOString() ?? (isScheduled ? row?.scheduledFor?.toISOString() : undefined),
         openedAt: row?.openedAt?.toISOString(),
+        ...bounceFields(row),
       });
     }
 

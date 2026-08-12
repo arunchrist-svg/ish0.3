@@ -1,4 +1,5 @@
 import { isAcceptableCompanyDomain } from "@/lib/enrichment/company-domain-quality";
+import { knownDomainForCompanyName } from "@/lib/company-logo";
 import { domainFromCompany, domainFromWebsite, parseName } from "@/lib/enrichment/provider-utils";
 
 export type EmailPermutation = {
@@ -30,15 +31,26 @@ export function resolveAccountDomain(input: {
   companyName?: string | null;
 }): string | undefined {
   const companyName = input.companyName ?? undefined;
+  const known = normalizeDomain(knownDomainForCompanyName(companyName));
+  const naiveGuess = companyName?.trim() ? domainFromCompany(companyName) : undefined;
+
   const fromDomain = normalizeDomain(input.domain);
-  if (fromDomain && isAcceptableCompanyDomain(fromDomain, companyName)) return fromDomain;
+  if (fromDomain && isAcceptableCompanyDomain(fromDomain, companyName)) {
+    // Curated corporate domains beat slug guesses like carborundumuniversal.com
+    if (known && naiveGuess && fromDomain === naiveGuess && known !== naiveGuess) return known;
+    return fromDomain;
+  }
 
   const fromWebsite = domainFromWebsite(input.website ?? undefined);
-  if (fromWebsite && isAcceptableCompanyDomain(fromWebsite, companyName)) return fromWebsite;
+  if (fromWebsite && isAcceptableCompanyDomain(fromWebsite, companyName)) {
+    if (known && naiveGuess && fromWebsite === naiveGuess && known !== naiveGuess) return known;
+    return fromWebsite;
+  }
 
-  if (!input.companyName?.trim()) return undefined;
-  const guessed = domainFromCompany(input.companyName);
-  return isAcceptableCompanyDomain(guessed, companyName) ? guessed : undefined;
+  if (known && isAcceptableCompanyDomain(known, companyName)) return known;
+
+  if (!companyName?.trim()) return undefined;
+  return naiveGuess && isAcceptableCompanyDomain(naiveGuess, companyName) ? naiveGuess : undefined;
 }
 
 export function resolveContactName(input: {

@@ -511,7 +511,7 @@ export function HomeApp() {
                   hoverBorder="hover:border-amber-300"
                 />
                 <QuickActionCard
-                  label="Lead Accelerator"
+                  label="Leads"
                   description="Review and action your leads"
                   icon={Rocket}
                   href="/leads"

@@ -94,7 +94,7 @@ export function EmailEditChat({
     }
   }
 
-  const pad = embedded ? "px-3 lg:px-3.5" : "px-4 sm:px-5";
+  const pad = embedded ? "px-4" : "px-4 sm:px-5";
 
   return (
     <div className={cn("flex flex-col", embedded && "bg-transparent")}>
@@ -136,11 +136,11 @@ export function EmailEditChat({
         <div
           className={cn(
             pad,
-            "pb-3",
-            embedded ? "border-t border-brand-border/50 bg-brand-canvas/30 pt-2" : "border-t border-brand-border/50 bg-white/70 py-3 backdrop-blur-sm",
+            "pb-4",
+            embedded ? "border-t border-brand-stratus-blue/12 bg-transparent pt-3.5" : "border-t border-brand-border/50 bg-white/70 py-3 backdrop-blur-sm",
           )}
         >
-          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
             {embedded ? (
               <Sparkles className="size-3.5 shrink-0 text-brand-ink-faint" aria-hidden />
             ) : (
@@ -158,9 +158,11 @@ export function EmailEditChat({
                 disabled={revising}
                 onClick={() => sendMessage(prompt)}
                 className={cn(
-                  "rounded-full border border-brand-border/50 px-2.5 py-1 font-semibold transition-colors",
-                  "text-[10px] text-brand-ink-soft hover:border-brand-stratus-blue/30 hover:bg-brand-canvas hover:text-brand-ink disabled:opacity-40",
-                  embedded ? "bg-brand-canvas/60" : "bg-white",
+                  "rounded-full border px-3 py-1.5 font-semibold transition-colors",
+                  "text-[11px] text-brand-ink-soft hover:border-brand-stratus-blue/40 hover:bg-white hover:text-brand-ink disabled:opacity-40",
+                  embedded
+                    ? "border-brand-stratus-blue/20 bg-white"
+                    : "border-brand-border/50 bg-white",
                 )}
               >
                 {prompt}
@@ -168,7 +170,7 @@ export function EmailEditChat({
             ))}
           </div>
 
-          <form onSubmit={handleSubmit} className="flex items-end gap-2">
+          <form onSubmit={handleSubmit} className="flex items-end gap-2.5">
             <textarea
               ref={inputRef}
               value={input}
@@ -178,10 +180,10 @@ export function EmailEditChat({
               rows={2}
               placeholder="Ask for a specific change (e.g. fix the second paragraph, or change one line…)"
               className={cn(
-                "min-h-[44px] max-h-[100px] min-w-0 flex-1 resize-none rounded-[14px] border border-brand-border/50 px-3.5 py-2.5",
+                "min-h-[52px] max-h-[120px] min-w-0 flex-1 resize-none rounded-[16px] border border-brand-stratus-blue/20 px-4 py-3",
                 text.bodySoft,
-                "outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/12 disabled:opacity-50",
-                embedded ? "bg-brand-canvas/40" : "bg-white",
+                "outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12 disabled:opacity-50",
+                embedded ? "bg-white" : "bg-white",
               )}
             />
             <VoiceMicButton
@@ -191,7 +193,7 @@ export function EmailEditChat({
             <button
               type="submit"
               disabled={revising || !input.trim()}
-              className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-black text-white shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-black/90 disabled:opacity-40"
+              className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-stratus-blue text-white shadow-[var(--shadow-brand-sm)] transition-all hover:opacity-90 disabled:opacity-40"
               aria-label="Send edit"
             >
               {revising ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}

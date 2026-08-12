@@ -115,6 +115,44 @@ describe("buildEmailThread", () => {
     expect(thread.events[0].openedAt).toBe(openedAt.toISOString());
   });
 
+  it("marks bounced outreach on the matching bar node", () => {
+    const bouncedAt = new Date("2026-06-25T12:30:00Z");
+    const thread = buildEmailThread({
+      lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s1",
+          leadId: "lead-1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          scheduledFor: new Date("2026-06-25T10:00:00Z"),
+          sentAt: new Date("2026-06-25T10:00:00Z"),
+          bouncedAt,
+          bounceType: "Permanent",
+          bounceReason: "Mailbox does not exist",
+          recipientEmail: "priya.sharma@acme.com",
+          subjectSent: "Diwali gifting for Acme",
+          bodySnippet: "Hi there",
+        },
+        {
+          id: "s2",
+          leadId: "lead-1",
+          sequenceDay: 3,
+          emailKind: "followup",
+          status: "paused",
+          scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      cadenceDays: [3, 7],
+    });
+
+    expect(thread.barNodes[0].bouncedAt).toBe(bouncedAt.toISOString());
+    expect(thread.barNodes[0].recipientEmail).toBe("priya.sharma@acme.com");
+    expect(thread.events[0].status).toBe("bounced");
+    expect(thread.nextStep.title).toBe("Email bounced");
+  });
+
   it("shows reply bar with draft_reply action when no reply draft", () => {
     const thread = buildEmailThread({
       lead: {

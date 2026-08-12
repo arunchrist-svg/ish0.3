@@ -9,7 +9,7 @@ import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
 import { LeadsGrid } from "./leads-grid";
 import { PersonDetailPanel } from "./person-detail-panel";
-import { scoutCompanies, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutExactSearch } from "@/lib/api-client";
+import { scoutCompanies, scoutCompaniesStream, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutSaveBatchStream, scoutExactSearch } from "@/lib/api-client";
 import { mapWithConcurrency } from "@/lib/async";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
 import { toast } from "sonner";
@@ -24,10 +24,10 @@ import {
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Compass, MapPin, MoreVertical, Search, Users } from "lucide-react";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS } from "@/lib/scouting-data";
-import { extractEmployeesFromText } from "@/lib/enrichment/employee-size";
+import { extractEmployeesFromText, normalizeEmployeeField } from "@/lib/enrichment/employee-size";
 import {
-  companyPeopleBucket,
   peoplePerCompanyLimit,
+  scoutPeopleCoverage,
   selectPeopleByCompanyCap,
 } from "@/lib/enrichment/people-diversity";
 import {
@@ -166,9 +166,9 @@ function toCompanyShape(c: ScoutCompanyResult, index = 0) {
     city: c.city ?? "",
     industry: c.industry ?? "",
     employees:
-      c.employees?.trim() && c.employees !== "—"
-        ? c.employees
-        : extractEmployeesFromText(`${c.intelNotes ?? ""} ${c.name}`) ?? c.employees ?? "—",
+      normalizeEmployeeField(c.employees) ||
+      extractEmployeesFromText(`${c.intelNotes ?? ""} ${c.name}`) ||
+      "—",
     revenue: c.revenue ?? "—",
     founded: 0,
     fitScore: c.fitScore ?? 60,
@@ -228,16 +228,12 @@ function mergeCompanies(existing: CompanyShape[], incoming: CompanyShape[]): Com
 
 function capFetchedPeople(
   people: ReturnType<typeof toPersonShape>[],
-  selected: CompanyShape[],
   leadsLimit: number,
 ) {
-  const companyById = new Map(selected.map((c) => [c.id, c]));
   return selectPeopleByCompanyCap(people, {
     perCompany: peoplePerCompanyLimit(leadsLimit),
-    bucketOf: (person) => {
-      const company = companyById.get(person.companyId);
-      return companyPeopleBucket(company?.name ?? "", person.companyId);
-    },
+    // Cap by company id so every selected company keeps its own slots.
+    bucketOf: (person) => person.companyId,
   });
 }
 
@@ -629,7 +625,7 @@ export function ScoutingApp() {
         const excludeNames =
           options?.excludeNames ?? (append ? companies.map((c) => c.name) : []);
         const seed = options?.seed ?? fetchSeed;
-        const response = await scoutCompanies({
+        const requestParams = {
           cities: nextCities,
           industries: nextIndustries,
           dataMode,
@@ -639,24 +635,53 @@ export function ScoutingApp() {
           limit: scoutCompaniesLimit,
           employeeBands: nextEmployeeBands,
           ...(options?.companyName ? { companyName: options.companyName } : {}),
-        });
+        };
 
-        const shaped = dedupeCompanyShapes(response.companies.map((c, i) => toCompanyShape(c, i)));
-        setCompanies((prev) => (append ? mergeCompanies(prev, shaped) : shaped));
-        setHasMore(response.hasMore);
-        if (!append) {
-          setSelectedCompanyIds(new Set(shaped.map((c) => c.id)));
-          setPrimaryCompanyId(null);
-        } else if (shaped.length) {
-          setSelectedCompanyIds((prev) => {
-            const next = new Set(prev);
-            shaped.forEach((c) => next.add(c.id));
-            return next;
+        let sawPartial = false;
+        const applyCompanies = (rawCompanies: ScoutCompanyResult[], _finalize: boolean) => {
+          const shaped = dedupeCompanyShapes(rawCompanies.map((c, i) => toCompanyShape(c, i)));
+          setCompanies((prev) => (append ? mergeCompanies(prev, shaped) : shaped));
+          if (!append) {
+            setSelectedCompanyIds(new Set(shaped.map((c) => c.id)));
+            if (shaped.length && !sawPartial) {
+              setPrimaryCompanyId(
+                typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches
+                  ? shaped[0].id
+                  : null,
+              );
+            } else if (!shaped.length) {
+              setPrimaryCompanyId(null);
+            }
+          } else if (shaped.length) {
+            setSelectedCompanyIds((prev) => {
+              const next = new Set(prev);
+              shaped.forEach((c) => next.add(c.id));
+              return next;
+            });
+          }
+          if (shaped.length && !append) {
+            sawPartial = true;
+            // Clear full-page spinner as soon as first companies land.
+            setLoading(false);
+            setHasFetched(true);
+          }
+          return shaped;
+        };
+
+        let response: Awaited<ReturnType<typeof scoutCompanies>>;
+        try {
+          response = await scoutCompaniesStream(requestParams, (event) => {
+            if (event.type === "partial" && event.companies.length) {
+              applyCompanies(event.companies, false);
+            }
           });
+        } catch (streamErr) {
+          console.warn("[scouting] company stream failed, falling back to JSON:", streamErr);
+          response = await scoutCompanies(requestParams);
         }
-        if (!append && shaped[0] && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-          setPrimaryCompanyId(shaped[0].id);
-        }
+
+        const shaped = applyCompanies(response.companies, true);
+        setHasMore(response.hasMore);
 
         if (append && !shaped.length && !response.errors?.length) {
           toast.info("No additional companies found for these filters. Try other cities or industries.");
@@ -919,7 +944,12 @@ export function ScoutingApp() {
     const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
     if (!selected.length) return;
 
-    // Always ask for people filters before fetching (Search mode has no People pill).
+    // Skip role picker when People filters are already set in the toolbar.
+    if (seniority.length > 0 || departments.length > 0) {
+      void runFetchLeads(selected, seniority, departments);
+      return;
+    }
+
     setPendingFetchIds(new Set(selected.map((c) => c.id)));
     setShowRolePicker(true);
   }
@@ -1056,10 +1086,15 @@ export function ScoutingApp() {
         if (leadsData) applyLeadsDedupe(leadsData);
       });
 
-      const cappedPeople = capFetchedPeople(allPeople, selected, scoutLeadsLimit);
+      const cappedPeople = capFetchedPeople(allPeople, scoutLeadsLimit);
       allPeople.length = 0;
       allPeople.push(...cappedPeople);
       setPeople(cappedPeople);
+
+      const coverage = scoutPeopleCoverage({
+        selectedCompanyIds: selected.map((c) => c.id),
+        people: cappedPeople,
+      });
 
       if (allPeople[0]) {
         if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
@@ -1074,7 +1109,18 @@ export function ScoutingApp() {
               .map((p) => p.id),
           ),
         );
-        setPeopleNotice(null);
+        if (coverage.companiesWithoutPeople > 0) {
+          setPeopleNotice({
+            headline: `Leads from ${coverage.companiesWithPeople} of ${coverage.totalCompanies} companies`,
+            detail: `Found ${cappedPeople.length} decision-maker${cappedPeople.length === 1 ? "" : "s"} at ${coverage.companiesWithPeople} of ${coverage.totalCompanies} companies. ${coverage.companiesWithoutPeople} had no match for your People filters or cities.`,
+          });
+          toast.message(
+            `Found people at ${coverage.companiesWithPeople}/${coverage.totalCompanies} companies`,
+            { description: `${coverage.companiesWithoutPeople} companies returned no matching roles.` },
+          );
+        } else {
+          setPeopleNotice(null);
+        }
       } else {
         const notice = pickPeopleNotice(peopleWarnings);
         setPeopleNotice(notice);
@@ -1122,23 +1168,62 @@ export function ScoutingApp() {
         byCompany.set(p.companyId, g);
       }
 
-      setSaveProgress({ done: 0, total: byCompany.size });
+      setSaveProgress({ done: 0, total: selectedPeople.length });
 
-      await mapWithConcurrency([...byCompany.entries()], 3, async ([companyId, persons]) => {
-        const company = companies.find((c) => c.id === companyId);
-        if (!company) {
-          setSaveProgress((prev) => ({ ...prev, done: prev.done + 1 }));
-          return;
-        }
-        const result = await scoutSave({
-          people: persons.map((p) => p._raw),
-          company: company._raw,
-          dataMode,
+      const batchCompanies = [...byCompany.entries()]
+        .map(([companyId, persons]) => {
+          const company = companies.find((c) => c.id === companyId);
+          if (!company) return null;
+          return {
+            id: companyId,
+            company: company._raw,
+            people: persons.map((p) => p._raw),
+            personCount: persons.length,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => Boolean(c));
+
+      const advanceProgress = (personCount: number) => {
+        setSaveProgress((prev) => ({
+          ...prev,
+          done: Math.min(prev.total, prev.done + personCount),
+        }));
+      };
+
+      try {
+        await scoutSaveBatchStream(
+          {
+            companies: batchCompanies.map(({ id, company, people: batchPeople }) => ({
+              id,
+              company,
+              people: batchPeople,
+            })),
+            dataMode,
+          },
+          (result) => {
+            totalSaved += result.saved.length;
+            allSkipped.push(...result.skipped);
+            const entry = batchCompanies.find((c) => c.id === result.id);
+            advanceProgress(entry?.personCount ?? result.saved.length + result.skipped.length);
+          },
+        );
+      } catch (batchErr) {
+        console.warn("[handleAddLeads] batch stream failed, falling back", batchErr);
+        setSaveProgress({ done: 0, total: selectedPeople.length });
+        totalSaved = 0;
+        allSkipped.length = 0;
+
+        await mapWithConcurrency(batchCompanies, 3, async (entry) => {
+          const result = await scoutSave({
+            people: entry.people,
+            company: entry.company,
+            dataMode,
+          });
+          totalSaved += result.saved.length;
+          allSkipped.push(...result.skipped);
+          advanceProgress(entry.personCount);
         });
-        totalSaved += result.saved.length;
-        allSkipped.push(...result.skipped);
-        setSaveProgress((prev) => ({ ...prev, done: prev.done + 1 }));
-      });
+      }
 
       if (totalSaved > 0) {
         toast.success(`${totalSaved} lead${totalSaved > 1 ? "s" : ""} saved — check Leads queue`);
@@ -1347,6 +1432,11 @@ export function ScoutingApp() {
           </button>
         ) : null}
       </div>
+      {people.length > 0 && peopleNotice ? (
+        <div className="mx-3 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
+          <span className="font-semibold">{peopleNotice.headline}.</span> {peopleNotice.detail}
+        </div>
+      ) : null}
       {loadingPeople ? (
         <DiscoveringLoader
           message={

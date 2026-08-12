@@ -1,6 +1,5 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Columns3,
   Contact,
   GitFork,
   Home,
@@ -43,7 +42,6 @@ export const MOBILE_DRAWER_SECTIONS: MobileNavSection[] = [
   {
     title: "MY WORK",
     items: [
-      { key: "lead-board", label: "Lead Board", href: "/leads/board", icon: Columns3 },
       { key: "email", label: "Outreach", href: "/email", icon: Mail },
       { key: "brand-intelligence", label: "Brand Intelligence", href: "/brand-intelligence", icon: Radar },
       { key: "funnel", label: "Yield Funnel", href: "/funnel", icon: GitFork },
@@ -75,21 +73,14 @@ export const MOBILE_ADMIN_ITEM: MobileNavItem = {
 export function isMobileNavActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   if (href === "/inbox") return pathname === "/inbox" || pathname.startsWith("/inbox/");
-  if (href === "/leads") {
-    return (
-      (pathname === "/leads" || pathname.startsWith("/leads?")) &&
-      !pathname.startsWith("/leads/board")
-    );
-  }
+  if (href === "/leads") return pathname === "/leads" || pathname.startsWith("/leads/");
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function getMobileBottomTabKey(pathname: string): string {
   if (pathname === "/" || pathname.startsWith("/?")) return "home";
   if (pathname === "/inbox" || pathname.startsWith("/inbox")) return "inbox";
-  if (pathname === "/leads" || (pathname.startsWith("/leads") && !pathname.startsWith("/leads/board"))) {
-    return "leads";
-  }
+  if (pathname === "/leads" || pathname.startsWith("/leads")) return "leads";
   if (pathname === "/scouting" || pathname.startsWith("/scouting")) return "scouting";
   return "more";
 }
@@ -99,7 +90,6 @@ export function getMobilePageTitle(pathname: string): string {
   if (pathname === "/inbox") return "Inbox";
   if (pathname === "/pinned") return "Pinned";
   if (pathname === "/scouting" || pathname.startsWith("/scouting")) return "Scouting";
-  if (pathname === "/leads/board") return "Lead Board";
   if (pathname === "/leads" || pathname.startsWith("/leads")) return "Leads";
   if (pathname === "/email") return "Outreach";
   if (pathname === "/brand-intelligence") return "Brand Intelligence";

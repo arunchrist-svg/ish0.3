@@ -70,6 +70,76 @@ export async function scoutCompanies(params: {
   return post<ScoutCompaniesResponse>("/api/scout/companies", params);
 }
 
+export type ScoutCompaniesStreamEvent =
+  | { type: "partial"; companies: ScoutCompanyResult[]; limit: number }
+  | ({ type: "done" } & ScoutCompaniesResponse);
+
+export async function scoutCompaniesStream(
+  params: {
+    cities: string[];
+    industries: string[];
+    dataMode: DataMode;
+    excludeNames?: string[];
+    skipInternal?: boolean;
+    fetchSeed?: number;
+    limit?: number;
+    companyName?: string;
+    employeeBands?: string[];
+  },
+  onEvent: (event: ScoutCompaniesStreamEvent) => void,
+): Promise<ScoutCompaniesResponse> {
+  const res = await fetch("/api/scout/companies?stream=1", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+  if (!res.body) throw new Error("Empty company stream response");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let doneEvent: ScoutCompaniesResponse | null = null;
+
+  const consume = (line: string) => {
+    if (!line.trim()) return;
+    const chunk = JSON.parse(line) as ScoutCompaniesStreamEvent;
+    onEvent(chunk);
+    if (chunk.type === "done") {
+      doneEvent = {
+        companies: chunk.companies,
+        hasMore: chunk.hasMore,
+        limit: chunk.limit,
+        warnings: chunk.warnings,
+        errors: chunk.errors,
+      };
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) consume(line);
+  }
+  if (buffer.trim()) consume(buffer);
+
+  return (
+    doneEvent ?? {
+      companies: [],
+      hasMore: false,
+      limit: params.limit ?? 0,
+      warnings: [],
+      errors: ["Company discovery stream ended without a final result"],
+    }
+  );
+}
+
 export type ScoutPeopleResponse = {
   people: ScoutPersonResult[];
   warnings?: string[];
@@ -169,6 +239,56 @@ export async function scoutSave(params: {
   dataMode?: DataMode;
 }): Promise<{ saved: { leadId: string; name: string; emailStatus: string }[]; skipped: { name: string; reason: string }[] }> {
   return post("/api/scout/save", params);
+}
+
+export type ScoutSaveBatchResult = {
+  id: string;
+  saved: { leadId: string; name: string; emailStatus: string }[];
+  skipped: { name: string; reason: string }[];
+  error?: string;
+};
+
+export async function scoutSaveBatchStream(
+  params: {
+    companies: {
+      id: string;
+      company: ScoutCompanyResult;
+      people: ScoutPersonResult[];
+    }[];
+    dataMode?: DataMode;
+  },
+  onResult: (result: ScoutSaveBatchResult) => void,
+): Promise<void> {
+  const res = await fetch("/api/scout/save/batch?stream=1", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+  if (!res.body) throw new Error("Empty save batch stream response");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const chunk = JSON.parse(line) as ScoutSaveBatchResult;
+      onResult(chunk);
+    }
+  }
+  if (buffer.trim()) {
+    onResult(JSON.parse(buffer) as ScoutSaveBatchResult);
+  }
 }
 
 export type ScoutBatchResult = {
@@ -515,6 +635,78 @@ export async function createLead(input: LeadFormInput): Promise<{ id: string; ex
   return { id: data.id, existing: data.existing };
 }
 
+export type LeadImportTargetField =
+  | "name"
+  | "firstName"
+  | "lastName"
+  | "company"
+  | "title"
+  | "email"
+  | "phone"
+  | "linkedIn"
+  | "city"
+  | "industry"
+  | "employees"
+  | "score"
+  | "tags"
+  | "rating"
+  | "owner";
+
+export type LeadImportColumnMapping = Record<string, LeadImportTargetField | null>;
+
+export type LeadImportPreviewResult = {
+  ok: boolean;
+  filename: string;
+  headers: string[];
+  rowCount: number;
+  sampleRows: Record<string, string>[];
+  rows: Record<string, string>[];
+  mapping: LeadImportColumnMapping;
+  confidence: number;
+  mappingSource: "llm" | "heuristic";
+  notes?: string;
+  warnings: string[];
+  requiredOk: boolean;
+  missingRequired: string[];
+};
+
+export type LeadImportRowResult = {
+  rowIndex: number;
+  name: string;
+  company: string;
+  status: "created" | "skipped" | "failed";
+  leadId?: string;
+  enriched?: boolean;
+  error?: string;
+};
+
+export type LeadImportConfirmResult = {
+  ok: boolean;
+  created: number;
+  skipped: number;
+  failed: number;
+  enriched: number;
+  results: LeadImportRowResult[];
+  errors: string[];
+};
+
+export async function previewLeadImport(file: File): Promise<LeadImportPreviewResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch("/api/leads/import/preview", { method: "POST", body: form });
+  const data = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok) throw new Error(data.error ?? res.statusText);
+  return data as LeadImportPreviewResult;
+}
+
+export async function confirmLeadImport(input: {
+  rows: Record<string, string>[];
+  mapping: LeadImportColumnMapping;
+  enrich?: boolean;
+}): Promise<LeadImportConfirmResult> {
+  return post<LeadImportConfirmResult>("/api/leads/import/confirm", input);
+}
+
 export type MergeLeadDuplicatesResult = {
   merged: number;
   groups: { keepId: string; deletedIds: string[] }[];
@@ -740,6 +932,10 @@ export type BarNode = {
   snippet?: string;
   at?: string;
   openedAt?: string;
+  bouncedAt?: string;
+  bounceType?: string;
+  bounceReason?: string;
+  recipientEmail?: string;
   action?: "draft_reply";
 };
 
@@ -751,8 +947,12 @@ export type ThreadEvent = {
   snippet?: string;
   body?: string;
   at?: string;
-  status: "sent" | "scheduled" | "cancelled" | "draft" | "opened";
+  status: "sent" | "scheduled" | "cancelled" | "draft" | "opened" | "bounced";
   openedAt?: string;
+  bouncedAt?: string;
+  bounceType?: string;
+  bounceReason?: string;
+  recipientEmail?: string;
   sequenceDay?: number;
 };
 
@@ -818,10 +1018,10 @@ export async function suggestLeadEmails(leadId: string): Promise<EmailSuggestRes
 
 export async function saveLeadEmails(
   leadId: string,
-  payload: { emails: string[]; primaryEmail?: string },
+  payload: { emails: string[]; primaryEmail?: string; allowEmpty?: boolean; clear?: boolean },
 ): Promise<{
   success: boolean;
-  email: string;
+  email: string | null;
   emailStatus: string;
   alternateEmails: ContactEmailEntry[];
 }> {

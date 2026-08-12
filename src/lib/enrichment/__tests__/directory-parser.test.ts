@@ -60,6 +60,36 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
       "Email ID",
       "Address",
       "Tax",
+      "Quotations",
+      "Contact Number",
+      "BPO jobs",
+      "Airline Jobs",
+      "BE mech",
+      "Bengaluru in Bellandur",
+      "Flipkart B Block",
+      "Bellandur",
+      "Whitefield",
+      "LIMITED TECHNOLOGIES",
+      "LIMITED COMPUTER AND RELATED ACTIVITIES",
+      "Aura Biulding",
+      "Karnataka. 4th Floor",
+      "BangaloreBrookefield",
+      "Karnataka. Brookefield",
+      "Prestige Technostar",
+      "Hobli",
+      "Krishnarajapura",
+      "Karnataka. Level 4",
+      "BangaloreTower-D, 10th Floor",
+      "Attibele Hobli",
+      "AnekalTaluk",
+      "Ramnagaram",
+      "Mandya",
+      "Tumkur",
+      "Hassan",
+      "NA",
+      "Bank",
+      "Shipping lines",
+      "S.T. Bed",
     ];
     for (const name of junk) {
       expect(isPlausibleCompanyName(name), name).toBe(false);
@@ -84,11 +114,28 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
       "Infosys",
       "Bosch India",
       "Titan Company Ltd",
+      "Chai Point",
+      "Kovaion Consulting India Pvt Ltd",
     ];
     for (const name of good) {
       expect(isPlausibleCompanyName(name), name).toBe(true);
       expect(cleanCompanyName(name), name).toBe(name);
     }
+  });
+
+  it("strips a leading metro and keeps the brand", () => {
+    expect(cleanCompanyName("Bengaluru, Chai Point")).toBe("Chai Point");
+    expect(isPlausibleCompanyName("Bengaluru, Chai Point")).toBe(true);
+  });
+
+  it("strips Title prefixes and trailing place after a legal entity", () => {
+    expect(cleanCompanyName("Title: Netcracker Technology India Pvt Ltd in Dairy Circle")).toBe(
+      "Netcracker Technology India Pvt Ltd",
+    );
+    expect(cleanCompanyName("Dealersocket India PVT LTD Doddakakundi Industrial Area")).toBe(
+      "Dealersocket India PVT LTD",
+    );
+    expect(isPlausibleCompanyName("Zeotap India PVT LTD")).toBe(true);
   });
 
   it("extracts company from hiring titles in directory parse", () => {

@@ -2,11 +2,30 @@
 
 import { cn } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
-import { MapPin, Users, Check, ChevronRight } from "lucide-react";
+import { MapPin, Check, ChevronRight } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
 import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { scoutCardSurface } from "./scout-card-surface";
+
+function SizePill({ employees, compact = false }: { employees?: string; compact?: boolean }) {
+  const line = formatScoutSizeLine(employees);
+  const known = line !== "Unknown scale";
+  return (
+    <span
+      title={line}
+      className={cn(
+        "inline-block max-w-full truncate rounded-full font-semibold",
+        compact ? "px-2 py-0.5 text-[9px]" : "px-2.5 py-0.5 text-[10.5px]",
+        known
+          ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+          : "bg-brand-canvas text-brand-ink-soft",
+      )}
+    >
+      {line}
+    </span>
+  );
+}
 
 type Props = {
   company: Company;
@@ -97,16 +116,16 @@ export function CompanyTile({
         </div>
         <div className="min-w-0 flex-1">
           <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-brand-ink">{company.name}</div>
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            <span className="inline-block max-w-full truncate rounded-full bg-brand-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-ink-soft">
+              {company.type}
+            </span>
+            <SizePill employees={company.employees} compact />
+          </div>
           <div className="mt-1 flex items-center gap-1 text-[10px] text-brand-ink-soft">
-            <Users className="size-3 shrink-0" />
-            <span className="min-w-0 truncate">{formatScoutSizeLine(company.employees)}</span>
-            <span className="text-brand-border">·</span>
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">{company.city}</span>
           </div>
-          <span className="mt-1.5 inline-block max-w-full truncate rounded-full bg-brand-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-ink-soft">
-            {company.type}
-          </span>
         </div>
         {selectable ? (
           <div
@@ -179,17 +198,17 @@ export function CompanyTile({
         >
           {company.name}
         </div>
-        <span className="inline-block rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
-          {company.type}
-        </span>
+        <div className="flex flex-wrap gap-1.5">
+          <span className="inline-block rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
+            {company.type}
+          </span>
+          <SizePill employees={company.employees} />
+        </div>
       </div>
 
       <div className="mx-0 my-3 h-px bg-brand-border/60" />
 
-      <div className="mb-3 flex items-center gap-1.5 text-[11px] text-brand-ink-faint">
-        <Users className="size-3 shrink-0" />
-        <span>{formatScoutSizeLine(company.employees)}</span>
-        <span className="text-brand-border">·</span>
+      <div className="mb-3 flex items-center gap-1.5 text-[11px] font-medium text-brand-ink-soft">
         <MapPin className="size-3 shrink-0" />
         <span className="max-w-[120px] truncate">{company.city}</span>
       </div>

@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
-import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
-import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
+import { requireTenantContext } from "@/lib/tenant";
+import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { discoverCompanies } from "@/lib/enrichment/waterfall";
 import { checkDiscoveryPrerequisites } from "@/lib/enrichment/discovery-prerequisites";
-import type { DataMode } from "@/lib/enrichment/types";
+import type { DataMode, ScoutCompanyResult } from "@/lib/enrichment/types";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import {
   getResolvedWorkspaceEnrichmentConfig,
   loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
+
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
+    const stream = new URL(req.url).searchParams.get("stream") === "1";
     const body = await req.json();
     const {
       cities = [],
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
 
     await assertCredits(ctx.tenantId, "scout.company", limit);
 
-    const { companies, warnings, errors } = await discoverCompanies({
+    const discoverParams = {
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
       cities,
@@ -79,7 +81,75 @@ export async function POST(req: Request) {
       fetchSeed,
       ...(companyName ? { companyName } : {}),
       employeeBands,
-    });
+    };
+
+    if (stream) {
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter();
+      const encoder = new TextEncoder();
+
+      const write = async (payload: unknown) => {
+        await writer.write(encoder.encode(`${JSON.stringify(payload)}\n`));
+      };
+
+      void (async () => {
+        try {
+          const result = await discoverCompanies({
+            ...discoverParams,
+            onPartial: async (companies: ScoutCompanyResult[]) => {
+              await write({ type: "partial", companies, limit });
+            },
+          });
+
+          const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));
+          const allWarnings = [...softPrereqWarnings, ...result.warnings];
+          const allErrors = [...result.errors];
+
+          if (!result.companies.length && !allErrors.length && !allWarnings.length) {
+            allWarnings.push(
+              "No companies matched the current filters. Try different cities or leave industries unselected for broader results.",
+            );
+          }
+
+          if (result.companies.length > 0) {
+            await deductCredits({
+              tenantId: ctx.tenantId,
+              action: "scout.company",
+              quantity: result.companies.length,
+              referenceId: `scout-companies-${Date.now()}`,
+            });
+          }
+
+          await write({
+            type: "done",
+            companies: result.companies,
+            hasMore: result.companies.length >= limit,
+            limit,
+            warnings: [...new Set(allWarnings)],
+            errors: [...new Set(allErrors)],
+          });
+          await writer.close();
+        } catch (e) {
+          console.error("[api/scout/companies:stream]", e);
+          const message = e instanceof Error ? e.message : "Discovery failed";
+          try {
+            await write({ type: "done", companies: [], hasMore: false, limit, warnings: [], errors: [message] });
+            await writer.close();
+          } catch {
+            await writer.abort(e);
+          }
+        }
+      })();
+
+      return new Response(readable, {
+        headers: {
+          "Content-Type": "application/x-ndjson",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    const { companies, warnings, errors } = await discoverCompanies(discoverParams);
 
     const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));
     const allWarnings = [...softPrereqWarnings, ...warnings];

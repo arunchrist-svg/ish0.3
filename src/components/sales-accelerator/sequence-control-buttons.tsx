@@ -15,7 +15,7 @@ type Props = {
 };
 
 const btnClass =
-  "inline-flex h-7 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold shadow-[var(--shadow-brand-sm)] transition-opacity disabled:opacity-50";
+  "inline-flex h-6 items-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50";
 
 export function SequenceControlButtons({
   leadId,
@@ -55,7 +55,7 @@ export function SequenceControlButtons({
           type="button"
           disabled={disabled || loading !== null}
           onClick={() => void run("start")}
-          className={cn(btnClass, "border-brand-green/30 bg-brand-green-soft text-brand-green hover:opacity-90")}
+          className={cn(btnClass, "border-brand-stratus-blue/30 bg-brand-green-soft text-brand-stratus-blue hover:opacity-90")}
         >
           {loading === "start" ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
           {sequenceState === "not_started" ? "Start" : "Resume"}

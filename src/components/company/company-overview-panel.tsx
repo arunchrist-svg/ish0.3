@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ExternalLink, Lightbulb, MapPin, RefreshCw } from "lucide-react";
+import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
 import type { CompanyOverview, CompanyOverviewInput } from "@/lib/company-overview";
 import { displayValue } from "@/lib/company-overview";
 import { useCompanyOverview } from "@/hooks/use-company-overview";
@@ -126,6 +127,8 @@ export function CompanyOverviewPanel({
   );
 
   const o = overview ?? initialOverview ?? {};
+  const sizeLine = formatScoutSizeLine(overviewInput?.employees ?? o.employees);
+  const sizeKnown = sizeLine !== "Unknown scale";
   const pastGifting = o.pastGiftingBrands ?? [];
   const milestones = (o.corporateMilestones ?? []).filter((m) => m.trim());
   const wide = layout === "wide";
@@ -174,6 +177,23 @@ export function CompanyOverviewPanel({
               <span>{city}</span>
             </div>
           ) : null}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {industry ? (
+              <span className="inline-block rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
+                {industry}
+              </span>
+            ) : null}
+            <span
+              className={cn(
+                "inline-block rounded-full px-2.5 py-0.5 text-[10.5px] font-semibold",
+                sizeKnown
+                  ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
+                  : "bg-brand-canvas text-brand-ink-soft",
+              )}
+            >
+              {sizeLine}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -227,7 +247,15 @@ export function CompanyOverviewPanel({
                 <>
                   <div className="grid grid-cols-2 divide-x divide-brand-border/25">
                     <OverviewRow label="Sector" value={displayValue(o.sector ?? industry)} />
-                    <OverviewRow label="Employees" value={displayValue(o.employees)} />
+                    <OverviewRow
+                      label="Employees"
+                      value={displayValue(
+                        o.employees ||
+                          (overviewInput?.employees
+                            ? formatScoutSizeLine(overviewInput.employees)
+                            : undefined),
+                      )}
+                    />
                   </div>
                   <div className="border-t border-brand-border/25">
                     <DecisionMakerRow

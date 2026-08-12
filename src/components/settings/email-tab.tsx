@@ -415,7 +415,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
       {isResend && (
         <SettingsGroup
           title="Resend"
-          footer="Use your own Resend API key and a verified from-address for this workspace."
+          footer="Use your own Resend API key and a verified from-address. In Resend, add a webhook to /api/webhooks/resend for email.bounced, email.failed, and email.complained so each outreach can show bounce status."
         >
           <SettingsTextRow
             label="API key"

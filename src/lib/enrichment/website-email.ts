@@ -81,9 +81,18 @@ export type WebsiteEmailResult = {
   isPersonal: boolean;
 };
 
-export async function scrapeWebsiteEmails(domain: string): Promise<WebsiteEmailResult> {
-  if (!domain) return { emails: [], bestEmail: null, isPersonal: false };
+/** In-flight / completed scrapes keyed by normalized domain (share across parallel people). */
+const scrapeCache = new Map<string, Promise<WebsiteEmailResult>>();
 
+function normalizeScrapeKey(domain: string): string {
+  return domain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "");
+}
+
+async function scrapeWebsiteEmailsUncached(domain: string): Promise<WebsiteEmailResult> {
   const base = domain.startsWith("http") ? domain : `https://${domain}`;
   const allCandidates: EmailCandidate[] = [];
 
@@ -121,8 +130,8 @@ export async function scrapeWebsiteEmails(domain: string): Promise<WebsiteEmailR
 
   // Filter obvious junk
   const filtered = [...personal, ...generic].filter((e) => {
-    const domain = e.email.split("@")[1];
-    return domain && domain.includes(".") && !domain.includes("sentry") && !domain.includes("example");
+    const host = e.email.split("@")[1];
+    return host && host.includes(".") && !host.includes("sentry") && !host.includes("example");
   });
 
   const best = filtered[0] ?? null;
@@ -132,4 +141,21 @@ export async function scrapeWebsiteEmails(domain: string): Promise<WebsiteEmailR
     bestEmail: best?.email ?? null,
     isPersonal: best?.isPersonal ?? false,
   };
+}
+
+export async function scrapeWebsiteEmails(domain: string): Promise<WebsiteEmailResult> {
+  if (!domain) return { emails: [], bestEmail: null, isPersonal: false };
+
+  const key = normalizeScrapeKey(domain);
+  const cached = scrapeCache.get(key);
+  if (cached) return cached;
+
+  const promise = scrapeWebsiteEmailsUncached(domain);
+  scrapeCache.set(key, promise);
+  try {
+    return await promise;
+  } catch (err) {
+    scrapeCache.delete(key);
+    throw err;
+  }
 }

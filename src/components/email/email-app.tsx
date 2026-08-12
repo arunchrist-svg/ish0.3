@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
+  Ban,
   Eye,
   MessageSquare,
   Clock,
@@ -21,8 +22,7 @@ import {
   Play,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PanelCard, text } from "@/design-system";
-import { SettingsHero } from "@/components/settings/settings-hero";
+import { MobilePageLayout, PanelCard, text } from "@/design-system";
 import { fetchEmailOverview, setOutreachSendingPaused, type EmailOverviewData } from "@/lib/api-client";
 import { SyncRepliesButton } from "@/components/sales-accelerator/sync-replies-button";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
@@ -54,7 +54,7 @@ const VALID_TABS = new Set<QueueTab>(QUEUE_TABS.map((t) => t.id));
 const EMPTY_BY_TAB: Record<QueueTab, { title: string; body: string }> = {
   needs_review: {
     title: "Queue is clear",
-    body: "No Email 1 drafts waiting. Scout a lead and write from Lead Accelerator.",
+    body: "No Email 1 drafts waiting. Scout a lead and write from Leads.",
   },
   active: {
     title: "No active sequences",
@@ -213,11 +213,13 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
           short: e.label,
           status: e.status,
           openedAt: e.openedAt,
+          bouncedAt: e.bouncedAt,
         }))
       : fallbackSteps.map((s) => ({
           ...s,
           status: isEmailSentForStep(row.lastEmailDay, s.day) ? ("sent" as const) : ("upcoming" as const),
           openedAt: null as string | null,
+          bouncedAt: null as string | null,
         }));
 
   const replySteps: { id: string; label: string; done: boolean; active: boolean }[] = [];
@@ -237,31 +239,37 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
       {sequenceSteps.map((step, i) => {
         const done = step.status === "sent";
         const opened = Boolean(step.openedAt);
+        const bounced = Boolean(step.bouncedAt);
         const active = row.nextEmailDay === step.day && !done;
         const label = emailStepLabel(step.day, normalized);
-        const title = opened
-          ? `${label}: Opened ${timeAgo(step.openedAt!)}`
-          : done
-            ? `${label}: Sent · Not opened`
-            : active
-              ? `${label}: Next`
-              : label;
+        const title = bounced
+          ? `${label}: Bounced`
+          : opened
+            ? `${label}: Opened ${timeAgo(step.openedAt!)}`
+            : done
+              ? `${label}: Sent · Not opened`
+              : active
+                ? `${label}: Next`
+                : label;
         return (
           <div key={step.day} className="flex items-center gap-1">
             <div
               title={title}
               className={cn(
                 "flex h-6 min-w-[44px] items-center justify-center gap-0.5 rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
-                opened
-                  ? "bg-orange-500 text-white"
-                  : done
-                    ? "bg-brand-black text-white"
-                    : active
-                      ? "bg-brand-yellow text-brand-ink ring-2 ring-brand-yellow/50"
-                      : "bg-brand-canvas text-brand-ink-faint",
+                bounced
+                  ? "bg-brand-stratus-salmon text-white"
+                  : opened
+                    ? "bg-orange-500 text-white"
+                    : done
+                      ? "bg-brand-black text-white"
+                      : active
+                        ? "bg-brand-yellow text-brand-ink ring-2 ring-brand-yellow/50"
+                        : "bg-brand-canvas text-brand-ink-faint",
               )}
             >
-              {opened && <Eye className="size-2.5 shrink-0" strokeWidth={2.5} />}
+              {bounced && <Ban className="size-2.5 shrink-0" strokeWidth={2.5} />}
+              {opened && !bounced && <Eye className="size-2.5 shrink-0" strokeWidth={2.5} />}
               {step.short}
             </div>
             {i < sequenceSteps.length - 1 && (
@@ -349,6 +357,14 @@ function StatusPill({ row }: { row: LeadEmailRow }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-brand-yellow-soft px-2.5 py-1 text-[10px] font-bold text-brand-ink ring-1 ring-brand-yellow/40">
         <FileText className="size-3" /> Review Email 1
+      </span>
+    );
+  }
+  const bouncedStep = row.sequenceEmails?.find((step) => step.bouncedAt);
+  if (bouncedStep) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft px-2.5 py-1 text-[10px] font-bold text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/30">
+        <Ban className="size-3" /> {bouncedStep.label} bounced
       </span>
     );
   }
@@ -691,56 +707,78 @@ export function EmailApp() {
   }
 
   return (
-    <div className="settings-ambient ish-email-page min-h-0 min-w-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-5xl px-5 py-4 sm:px-8 animate-brand-page-in">
-        <SettingsHero
-          compact
-          icon={ListChecks}
-          title="Outreach Queue"
-          action={
-            <div className="flex flex-wrap items-center justify-end gap-1.5">
-              <SyncRepliesButton compact onSynced={load} />
-              {data && (
-                <button
-                  type="button"
-                  onClick={() => void handleToggleSending()}
-                  disabled={togglingSend}
-                  className={cn(
-                    "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all disabled:opacity-60",
-                    data.outreachPaused
-                      ? "border-brand-green/40 bg-brand-green/10 text-brand-green hover:bg-brand-green/15"
-                      : "border-brand-stratus-salmon/40 bg-brand-pink-soft/50 text-brand-stratus-salmon hover:bg-brand-pink-soft",
-                  )}
-                >
-                  {data.outreachPaused ? (
-                    <>
-                      <Play className="size-3.5" />
-                      {togglingSend ? "Starting…" : "Start sending"}
-                    </>
-                  ) : (
-                    <>
-                      <Pause className="size-3.5" />
-                      {togglingSend ? "Pausing…" : "Pause sending"}
-                    </>
-                  )}
-                </button>
-              )}
+    <MobilePageLayout
+      title="Outreach Queue"
+      largeTitle
+      className="ish-email-page"
+      contentClassName="flex flex-col !overflow-hidden"
+      rightSlot={
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95 disabled:opacity-60"
+          aria-label="Refresh"
+        >
+          <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+        </button>
+      }
+    >
+      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
+        <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
+        <div className="relative flex flex-wrap items-center gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-3.5">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
+              <ListChecks className="size-5 text-brand-ink" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Outreach Queue</h1>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <SyncRepliesButton compact onSynced={load} />
+            {data && (
               <button
                 type="button"
-                onClick={() => void load()}
-                disabled={loading}
-                title="Refresh queue"
-                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-brand-black px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-black/90 disabled:opacity-60"
+                onClick={() => void handleToggleSending()}
+                disabled={togglingSend}
+                className={cn(
+                  "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-[12px] font-semibold transition-all disabled:opacity-60",
+                  data.outreachPaused
+                    ? "border-brand-green/40 bg-brand-green/10 text-brand-green hover:bg-brand-green/15"
+                    : "border-brand-stratus-salmon/40 bg-brand-pink-soft/50 text-brand-stratus-salmon hover:bg-brand-pink-soft",
+                )}
               >
-                <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
-                Refresh
+                {data.outreachPaused ? (
+                  <>
+                    <Play className="size-3.5" />
+                    {togglingSend ? "Starting…" : "Start sending"}
+                  </>
+                ) : (
+                  <>
+                    <Pause className="size-3.5" />
+                    {togglingSend ? "Pausing…" : "Pause sending"}
+                  </>
+                )}
               </button>
-            </div>
-          }
-        />
+            )}
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95 disabled:opacity-60"
+              aria-label="Refresh"
+            >
+              <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            </button>
+          </div>
+        </div>
+      </header>
 
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {data?.outreachPaused && (
-          <div className="mb-3 rounded-[12px] border border-brand-stratus-salmon/35 bg-brand-pink-soft/45 px-3 py-2">
+          <div className="mb-4 rounded-[12px] border border-brand-stratus-salmon/35 bg-brand-pink-soft/45 px-3 py-2">
             <p className="text-[12px] font-semibold text-brand-ink">Outreach sending is paused</p>
             <p className="text-[11px] leading-snug text-brand-ink-soft">
               No Email 1 sends or automated follow-ups will go out until you click Start sending.
@@ -752,7 +790,7 @@ export function EmailApp() {
           <LoadingSkeleton />
         ) : data ? (
           <>
-            <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+            <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center">
               <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-5">
                 {kpiConfig.map((kpi) => (
                   <KpiTile
@@ -776,7 +814,7 @@ export function EmailApp() {
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder="Search contact or company…"
-                  className="ish-email-search w-full rounded-full border border-brand-border bg-white py-1.5 pl-9 pr-3 text-[12px] text-brand-ink outline-none shadow-[var(--shadow-brand-sm)] placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/10"
+                  className="ish-email-search w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
                 />
               </div>
             </div>
@@ -818,6 +856,6 @@ export function EmailApp() {
           </PanelCard>
         )}
       </div>
-    </div>
+    </MobilePageLayout>
   );
 }

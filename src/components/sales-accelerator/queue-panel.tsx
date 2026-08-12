@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowDownWideNarrow, Check, ChevronDown, Clock3, Loader2, Mail, Plus, RefreshCw, Search, X } from "lucide-react";
+import { ArrowDownWideNarrow, Check, ChevronDown, Clock3, Loader2, Mail, Plus, RefreshCw, Search, Upload, X } from "lucide-react";
 import { CircleButton, IshAvatar, ScoreBadge, SearchBar, Separator } from "@/design-system";
 import {
   DropdownMenu,
@@ -16,6 +16,7 @@ import { getScoreTone, scoreToneClasses, text } from "@/design-system/tokens";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { countDuplicateExtras } from "@/lib/leads/duplicates";
 import { scoutCardSurface } from "@/components/cards/scout-card-surface";
+import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 
 export type LeadQueueSort = "score" | "date";
 
@@ -27,6 +28,7 @@ type Props = {
   onSelect: (id: string) => void;
   onRefresh?: () => void;
   onAddLead?: () => void;
+  onImportLeads?: () => void;
   canWrite?: boolean;
   searchQuery?: string;
   onSearchQueryChange?: (query: string) => void;
@@ -303,7 +305,7 @@ function QueueCard({
   );
 }
 
-export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, canWrite, searchQuery: controlledSearch, onSearchQueryChange, listScrollRef, sort: controlledSort, onSortChange, onMergeDuplicates, mergingDuplicates }: Props) {
+export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, onImportLeads, canWrite, searchQuery: controlledSearch, onSearchQueryChange, listScrollRef, sort: controlledSort, onSortChange, onMergeDuplicates, mergingDuplicates }: Props) {
   const isMobile = useIsMobileLayout();
   const [searchOpen, setSearchOpen] = useState(false);
   const [internalSearch, setInternalSearch] = useState("");
@@ -351,7 +353,8 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
                 {searchQuery ? ` · "${searchQuery}"` : ""}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <LeadsViewToggle />
               <button
                 type="button"
                 onClick={() => void handleRefresh()}
@@ -413,9 +416,20 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, ca
   return (
     <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
       <div className="mb-3 flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate text-[15px] font-bold leading-none text-brand-ink">My Leads</span>
+        <span className="min-w-0 truncate text-[15px] font-bold leading-none text-brand-ink">Leads</span>
+        <LeadsViewToggle />
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <SortByDropdown sort={sort} onChange={setSort} />
+          {canWrite && onImportLeads ? (
+            <CircleButton
+              size={26}
+              onClick={mergingDuplicates ? undefined : onImportLeads}
+              className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+              aria-label="Import leads from spreadsheet"
+            >
+              <Upload className="size-3.5" />
+            </CircleButton>
+          ) : null}
           {canWrite && onAddLead ? (
             <CircleButton
               size={26}

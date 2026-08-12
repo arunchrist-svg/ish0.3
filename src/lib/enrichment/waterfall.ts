@@ -25,10 +25,12 @@ import { eq, and, inArray, ilike, or } from "drizzle-orm";
 import { accounts, contacts } from "@/db/schema";
 import { resolveCompanyDomain } from "./resolve-company-domain";
 import { filterCompaniesMatchingQuery, isGeographicEntity } from "./company-name-match";
-import { isPlausibleCompanyName } from "./directory-parser";
+import { withCleanedCompanyName } from "./directory-parser";
+import { filterCompaniesWithLlm, shouldSkipCompaniesLlmFilter } from "./filter-companies-llm";
 import {
   extractEmployeesFromText,
   normalizeEmployeeBandIds,
+  normalizeEmployeeField,
   rankAndFilterByEmployeeBands,
 } from "./employee-size";
 
@@ -75,15 +77,18 @@ function filterBySelectedCities(
 
 function filterExcluded<T extends { name: string }>(results: T[], excludeNames: string[]): T[] {
   const excluded = new Set(excludeNames.map(normalizeName));
-  return results.filter((r) => {
-    if (!isPlausibleCompanyName(r.name) || isGeographicEntity(r.name)) return false;
-    if (excluded.size && excluded.has(normalizeName(r.name))) return false;
-    return true;
-  });
+  const out: T[] = [];
+  for (const r of results) {
+    const cleaned = withCleanedCompanyName(r);
+    if (!cleaned || isGeographicEntity(cleaned.name)) continue;
+    if (excluded.size && excluded.has(normalizeName(cleaned.name))) continue;
+    out.push(cleaned);
+  }
+  return out;
 }
 
 function hydrateEmployees(company: ScoutCompanyResult): ScoutCompanyResult {
-  if (company.employees?.trim()) return company;
+  if (normalizeEmployeeField(company.employees)) return company;
   const extracted = extractEmployeesFromText(
     [company.name, company.intelNotes].filter(Boolean).join(" "),
   );
@@ -103,6 +108,8 @@ export async function discoverCompanies(params: {
   fetchSeed?: number;
   companyName?: string;
   employeeBands?: string[];
+  /** Emit usable companies as soon as a provider step yields them (streaming Scout). */
+  onPartial?: (companies: ScoutCompanyResult[]) => void | Promise<void>;
 }): Promise<DiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = params.limit ?? parseInt(process.env.PROSPECTING_MAX_RESULTS ?? "25", 10);
@@ -293,10 +300,13 @@ export async function discoverCompanies(params: {
 
   appendTavilyKeySwitchWarning(warnings);
 
-  const tavilyAccount = hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
+  // Only hit Tavily usage API on quota errors — avoids multi-second stalls on every Scout.
+  const quotaHitAfterPrimary = tavilyQuotaHit([...warnings, ...errors]);
+  const tavilyAccount =
+    quotaHitAfterPrimary && hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
 
   // ── Step 2b: Google Places fallback when ALL Tavily keys are exhausted ────
-  if (external.length === 0 && tavilyQuotaHit([...warnings, ...errors]) && allTavilyKeysExhausted(tavilyAccount)) {
+  if (external.length === 0 && quotaHitAfterPrimary && allTavilyKeysExhausted(tavilyAccount)) {
     if (hasGooglePlacesKey()) {
       await runStep(
         "google_places_fallback",
@@ -344,27 +354,44 @@ export async function discoverCompanies(params: {
   }
 
   const merged = [...dbMapped, ...external]
-    .filter((c) => isPlausibleCompanyName(c.name) && !isGeographicEntity(c.name))
+    .map(withCleanedCompanyName)
+    .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
     .map(hydrateEmployees);
   const cityFiltered = filterBySelectedCities(merged, selectionLabels);
   const ranked = rankAndFilterByEmployeeBands(cityFiltered, employeeBands);
-  let companies = ranked.companies.slice(0, limit);
+  // Restrictive scale filters: smaller overfetch so less work feeds the LLM gate.
+  const overfetchTarget = employeeBands.length
+    ? limit + 8
+    : Math.max(limit * 2, limit + 25);
+  const overfetch = Math.min(overfetchTarget, ranked.companies.length);
+  let companies = ranked.companies.slice(0, overfetch);
 
-  if (companies.length < limit && cfg.searchProvider === "india_directories" && !tavilyQuotaHit([...warnings, ...errors])) {
+  if (params.onPartial && companies.length) {
+    await params.onPartial(companies.slice(0, limit));
+  }
+
+  // Second directory pass only when nearly empty — Large scale soft-filter used to
+  // trigger a full duplicate Tavily+LLM cycle for little gain.
+  if (
+    companies.length < 2 &&
+    cfg.searchProvider === "india_directories" &&
+    !tavilyQuotaHit([...warnings, ...errors])
+  ) {
     const extra: ScoutCompanyResult[] = [];
+    const extraLimit = Math.min(Math.max(limit * 2, 16), 80);
     await runStep(
       "india_directories_more",
       () =>
         indiaDirectoriesSearchCompanies({
           cities: queryCities,
           industries: params.industries,
-          limit: Math.min((limit - companies.length) * 2, 80),
+          limit: extraLimit,
           meta: searchMeta,
           fetchSeed: (params.fetchSeed ?? 0) + 1,
           employeeBands,
         }),
       extra,
-      Math.min((limit - companies.length) * 2, 80),
+      extraLimit,
       [...excludeNames, ...companies.map((c) => c.name)],
       warnings,
       errors,
@@ -372,14 +399,24 @@ export async function discoverCompanies(params: {
     const extraRanked = rankAndFilterByEmployeeBands(
       filterBySelectedCities(
         [...companies, ...extra]
-          .filter((c) => isPlausibleCompanyName(c.name) && !isGeographicEntity(c.name))
+          .map(withCleanedCompanyName)
+          .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
           .map(hydrateEmployees),
         selectionLabels,
       ),
       employeeBands,
     );
-    companies = extraRanked.companies.slice(0, limit);
+    companies = extraRanked.companies.slice(0, overfetchTarget);
     appendTavilyKeySwitchWarning(warnings);
+    if (params.onPartial && companies.length) {
+      await params.onPartial(companies.slice(0, limit));
+    }
+  }
+
+  if (!shouldSkipCompaniesLlmFilter(companies, limit)) {
+    companies = (await filterCompaniesWithLlm(companies, { warnings })).slice(0, limit);
+  } else {
+    companies = companies.slice(0, limit);
   }
 
   if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide) {
@@ -490,6 +527,10 @@ export async function discoverPeople(params: {
     );
     if (filtered.people.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
       warnings.push("No contacts match the selected seniority and department filters for this company.");
+    } else if (filtered.relaxed) {
+      warnings.push(
+        "Few exact seniority + department matches. Showing closest decision-makers for this company.",
+      );
     }
     return {
       people: rankPeopleSeniorFirst(filtered.people).slice(0, limit),
@@ -625,6 +666,10 @@ export async function discoverPeople(params: {
     finalPeople = filtered.people;
     if (finalPeople.length === 0 && allPeople.length > 0) {
       warnings.push("No contacts match the selected seniority and department filters for this company.");
+    } else if (filtered.relaxed) {
+      warnings.push(
+        "Few exact seniority + department matches. Showing closest decision-makers for this company.",
+      );
     }
   } else {
     finalPeople = allPeople;

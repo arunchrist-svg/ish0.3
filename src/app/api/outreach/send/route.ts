@@ -38,8 +38,8 @@ function resolveSendRecipients(
     enrichmentProvider: contact.enrichmentProvider,
     alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
   })
-    .map((e) => e.email.trim().toLowerCase())
-    .filter((e) => hasUsableEmail(e));
+    .filter((e) => e.testStatus !== "rejected" && hasUsableEmail(e.email, e.emailStatus))
+    .map((e) => e.email.trim().toLowerCase());
 
   const allowedSet = new Set(allowed);
   const rawList = Array.isArray(requested)
@@ -177,7 +177,14 @@ export async function POST(req: Request) {
     const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();
 
-    const sentResults: { to: string; messageId?: string; mode: string; trackingToken: string }[] = [];
+    const sentResults: {
+      to: string;
+      deliveredTo: string;
+      messageId?: string;
+      providerMessageId?: string;
+      mode: string;
+      trackingToken: string;
+    }[] = [];
 
     try {
       for (let i = 0; i < recipients.length; i++) {
@@ -201,7 +208,14 @@ export async function POST(req: Request) {
           inReplyTo: isPrimarySend ? threadHeaders.inReplyTo : undefined,
           references: isPrimarySend ? threadHeaders.references : undefined,
         });
-        sentResults.push({ to: result.to, messageId, mode: result.mode, trackingToken });
+        sentResults.push({
+          to,
+          deliveredTo: result.to,
+          messageId,
+          providerMessageId: result.providerMessageId,
+          mode: result.mode,
+          trackingToken,
+        });
       }
     } catch (sendError) {
       if (shouldHandleSendFailure(contact) && sentResults.length === 0) {
@@ -266,8 +280,9 @@ export async function POST(req: Request) {
       sentAt: new Date(),
       status: "sent" as const,
       sendMode,
-      resendId: result.messageId,
+      resendId: result.providerMessageId ?? result.messageId ?? null,
       rfcMessageId,
+      recipientEmail: result.to,
       inReplyTo: threadHeaders.inReplyTo ?? null,
       referencesChain: threadHeaders.references ?? null,
       subjectSent: subject,
@@ -316,8 +331,9 @@ export async function POST(req: Request) {
           sentAt: new Date(),
           status: "sent",
           sendMode,
-          resendId: extra.messageId,
+          resendId: extra.providerMessageId ?? extra.messageId ?? null,
           rfcMessageId: extra.messageId ?? null,
+          recipientEmail: extra.to,
           subjectSent: subject,
           bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
           trackingToken: extra.trackingToken,

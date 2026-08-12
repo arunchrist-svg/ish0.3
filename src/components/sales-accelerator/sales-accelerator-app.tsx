@@ -18,8 +18,9 @@ import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { LeadFormModal } from "@/components/sales-accelerator/lead-form-modal";
+import { LeadImportModal } from "@/components/sales-accelerator/lead-import-modal";
 import { Button, MobileStackLayout } from "@/design-system";
-import { Plus } from "lucide-react";
+import { Plus, Upload } from "lucide-react";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 
 function leadUrl(pathname: string, params: URLSearchParams): string {
@@ -48,6 +49,7 @@ export function SalesAcceleratorApp() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingLead, setEditingLead] = useState<LeadDetailRecord | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [queueSort, setQueueSort] = useState<LeadQueueSort>("score");
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
@@ -303,13 +305,23 @@ export function SalesAcceleratorApp() {
             <div className="mt-1">Scout companies, or add a lead manually.</div>
           </div>
           {canWritePipeline ? (
-            <Button
-              variant="ghost"
-              className="h-auto rounded-2xl bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-black/90"
-              onClick={openCreateLead}
-            >
-              Add lead
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                variant="ghost"
+                className="h-auto rounded-2xl bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-black/90"
+                onClick={openCreateLead}
+              >
+                Add lead
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-auto rounded-2xl border border-brand-border bg-white px-5 py-2.5 text-[13px] font-semibold text-brand-ink hover:bg-brand-canvas"
+                onClick={() => setImportOpen(true)}
+              >
+                <Upload className="mr-1.5 size-3.5" />
+                Import CSV / Excel
+              </Button>
+            </div>
           ) : null}
         </div>
         <LeadFormModal
@@ -318,6 +330,11 @@ export function SalesAcceleratorApp() {
           initial={editingLead}
           onClose={() => setFormOpen(false)}
           onSubmit={handleLeadFormSubmit}
+        />
+        <LeadImportModal
+          open={importOpen}
+          onClose={() => setImportOpen(false)}
+          onImported={() => refreshLeadList({ silent: true })}
         />
       </>
     );
@@ -339,6 +356,7 @@ export function SalesAcceleratorApp() {
       onSelect={selectLead}
       onRefresh={() => refreshLeadList({ silent: true })}
       onAddLead={openCreateLead}
+      onImportLeads={() => setImportOpen(true)}
       canWrite={canWritePipeline}
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
@@ -403,6 +421,11 @@ export function SalesAcceleratorApp() {
         initial={editingLead}
         onClose={() => setFormOpen(false)}
         onSubmit={handleLeadFormSubmit}
+      />
+      <LeadImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => refreshLeadList({ silent: true })}
       />
     </>
   );
