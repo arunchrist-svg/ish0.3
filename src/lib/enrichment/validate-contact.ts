@@ -6,7 +6,7 @@ const FILE_TLDS = new Set([
 const BLOCKED_EMAIL_FRAGMENTS = [
   "example.com", "sentry.io", "wixpress.com", "cloudflare.com",
   "googleusercontent.com", "schema.org", "webpack", "placeholder",
-  "yourdomain", "domain.com", "email.com", "test.com", "localhost",
+  "yourdomain", "domain.com", "email.com", "localhost",
 ];
 
 const BLOCKED_EMAIL_PATTERNS = [

@@ -58,7 +58,7 @@ Srilaksha
 India Sweet House`;
 
 describe("content quality — screenshot-style Diwali draft", () => {
-  it("flags weak opener, missing soft-exit, and thin sign-off", () => {
+  it("flags weak opener, spammy complimentary/offering language, and thin sign-off", () => {
     const result = scoreContentQuality(
       SCREENSHOT_BODY,
       "Diwali gifting options for Christ Test Co",
@@ -72,8 +72,9 @@ describe("content quality — screenshot-style Diwali draft", () => {
       },
     );
     expect(result.contentScore).toBeLessThan(70);
-    expect(result.ruleHits.some((h) => h.id === "D")).toBe(true);
+    expect(result.factors.some((f) => /complimentary|we're offering|em dash/i.test(f.label))).toBe(true);
     expect(result.ruleHits.some((h) => h.id === "G")).toBe(true);
+    expect(result.ruleHits.some((h) => h.id === "D")).toBe(false);
   });
 });
 

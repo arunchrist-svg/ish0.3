@@ -61,7 +61,7 @@ export function LinkedInIntegration() {
     const linkedin = searchParams.get("linkedin");
     if (linkedin === "connected") toast.success("LinkedIn account connected");
     if (linkedin === "error") toast.error("LinkedIn connection failed");
-    if (linkedin === "invalid_state") toast.error("LinkedIn OAuth state mismatch — try again");
+    if (linkedin === "invalid_state") toast.error("LinkedIn OAuth state mismatch. Try again");
   }, [searchParams]);
 
   async function handleUpload(file: File) {
@@ -72,7 +72,7 @@ export function LinkedInIntegration() {
       const res = await fetch("/api/linkedin/import", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
-      toast.success(`Imported ${data.imported} new, updated ${data.updated} connections`);
+      toast.success(`Imported ${data.imported} new, updated ${data.updated}`);
       if (data.errors?.length) toast.warning(`${data.errors.length} row warnings`);
       await load();
     } catch (e) {
@@ -86,7 +86,7 @@ export function LinkedInIntegration() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-brand-ink-faint">
-        <Loader2 className="mr-2 size-4 animate-spin" /> Loading integration status…
+        <Loader2 className="mr-2 size-4 animate-spin" /> Loading…
       </div>
     );
   }
@@ -94,29 +94,41 @@ export function LinkedInIntegration() {
   const member = status?.activeMember;
 
   return (
-    <>
-      {!status?.configured && (
-        <SettingsGroup title="LinkedIn OAuth">
-          <p className="px-4 py-4 text-[13px] leading-relaxed text-brand-ink-soft">
-            LinkedIn sign-in is not enabled yet. You can still import a Connections.csv export below once your account is linked by your workspace admin.
+    <div className="pb-6">
+      <SettingsGroup title="LinkedIn" className="mb-4">
+        {!status?.configured ? (
+          <p className="px-4 py-3 text-[12px] text-brand-ink-soft">
+            OAuth is off. You can still upload a Connections.csv after an admin links the account.
           </p>
-        </SettingsGroup>
-      )}
-
-      <SettingsGroup
-        title="Import Connections"
-        footer="Export from LinkedIn: Me → Settings & Privacy → Data privacy → Get a copy of your data → Connections."
-      >
+        ) : member ? (
+          <SettingsRow className="justify-between py-2.5">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-semibold text-brand-ink">{member.name}</p>
+              <p className="text-[11px] text-brand-ink-soft">
+                {member.connectionCount.toLocaleString("en-IN")} connections
+                {member.lastImportAt ? ` · ${new Date(member.lastImportAt).toLocaleDateString()}` : ""}
+              </p>
+            </div>
+          </SettingsRow>
+        ) : (
+          <div className="px-4 py-3">
+            <a
+              href="/api/auth/linkedin/authorize"
+              className="flex w-full items-center justify-center rounded-full bg-[#0A66C2] py-2 text-[13px] font-semibold text-white hover:opacity-90"
+            >
+              Connect LinkedIn
+            </a>
+          </div>
+        )}
+        <SettingsGroupDivider />
         <SettingsRow
           onClick={() => window.open("https://www.linkedin.com/help/linkedin/answer/a566336", "_blank")}
-          className="justify-between"
+          className="justify-between py-2.5"
         >
-          <span className="text-[15px] font-medium text-brand-stratus-blue">Export instructions</span>
-          <ExternalLink className="size-4 text-brand-ink-faint" />
+          <span className="text-[13px] font-medium text-brand-ink">Export guide</span>
+          <ExternalLink className="size-3.5 text-brand-ink-faint" />
         </SettingsRow>
-
         <SettingsGroupDivider />
-
         <input
           ref={fileRef}
           type="file"
@@ -127,38 +139,23 @@ export function LinkedInIntegration() {
             if (file) handleUpload(file);
           }}
         />
-
         <div className="px-4 py-3">
           <button
             type="button"
             disabled={!member || uploading}
             onClick={() => fileRef.current?.click()}
             className={cn(
-              "flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold transition-all",
+              "flex w-full items-center justify-center gap-2 rounded-full py-2 text-[13px] font-semibold",
               member && !uploading
                 ? "bg-brand-black text-white hover:opacity-90"
                 : "cursor-not-allowed bg-brand-canvas text-brand-ink-faint",
             )}
           >
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+            {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
             {uploading ? "Importing…" : "Upload Connections.csv"}
           </button>
         </div>
-
-        {status?.configured && !member ? (
-          <>
-            <SettingsGroupDivider />
-            <div className="px-4 py-3">
-              <a
-                href="/api/auth/linkedin/authorize"
-                className="flex w-full items-center justify-center rounded-xl bg-[#0A66C2] py-2.5 text-[14px] font-semibold text-white hover:opacity-90"
-              >
-                Connect LinkedIn to import
-              </a>
-            </div>
-          </>
-        ) : null}
       </SettingsGroup>
-    </>
+    </div>
   );
 }

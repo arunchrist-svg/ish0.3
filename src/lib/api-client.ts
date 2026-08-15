@@ -449,7 +449,7 @@ export type SequenceControlState = "not_started" | "active" | "paused" | "cancel
 
 export async function controlLeadSequence(
   leadId: string,
-  action: "start" | "pause" | "cancel",
+  action: "start" | "pause" | "cancel" | "reset",
 ): Promise<{ state: SequenceControlState; updated: number }> {
   const data = await post<{ ok: boolean; state: SequenceControlState; updated: number }>(
     "/api/outreach/sequence",
@@ -1197,6 +1197,16 @@ export type SenderHealthResponse = {
   issues: { id: string; label: string; severity: string }[];
   sendsLast24h: number;
   dailyCap: number;
+  projectedAdditional?: number;
+  bounceStats?: {
+    sent: number;
+    bounced: number;
+    rate: number;
+    windowHours: number;
+    threshold: number;
+    minSent: number;
+    exceedsThreshold: boolean;
+  };
   personalInboxSender: boolean;
   canSendLive: boolean;
   hasCritical: boolean;
@@ -1206,7 +1216,7 @@ export type SenderHealthResponse = {
     label: string;
     passCount: number;
     checks: {
-      spf: { found: boolean; valid: boolean };
+      spf: { found: boolean; valid: boolean; warning?: string | null };
       dmarc: { found: boolean; valid: boolean; policy?: string | null; warning?: string | null };
       dkim: { found: boolean; valid: boolean; selector?: string; note?: string };
     };

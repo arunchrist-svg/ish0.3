@@ -5,7 +5,7 @@
 - Lead time: 4–6 weeks before Diwali
 
 ## CTA patterns
-- Offer complimentary tasting sample to their desk
+- Offer a tasting sample to their desk (say tasting sample, not complimentary or free)
 - Ask for delivery address and team size
 - Propose 15-min call to confirm quantities
 

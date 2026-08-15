@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { controlLeadSequence, type SequenceAction } from "@/lib/outreach/sequence-control";
 
-const ACTIONS: SequenceAction[] = ["start", "pause", "cancel"];
+const ACTIONS: SequenceAction[] = ["start", "pause", "cancel", "reset"];
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
 
     if (!leadId) return NextResponse.json({ error: "leadId required" }, { status: 400 });
     if (!ACTIONS.includes(action)) {
-      return NextResponse.json({ error: "action must be start, pause, or cancel" }, { status: 400 });
+      return NextResponse.json({ error: "action must be start, pause, cancel, or reset" }, { status: 400 });
     }
 
     const result = await controlLeadSequence({

@@ -12,7 +12,7 @@ vi.mock("@/lib/settings/email-settings", () => ({
 vi.mock("@/lib/email/smtp-transport", () => ({
   smtpTransport: {
     name: "smtp",
-    getStatus: vi.fn(),
+    getStatus: vi.fn(() => ({ configured: true, hint: "SMTP credentials saved" })),
     verify: vi.fn(),
     send: (...args: unknown[]) => smtpSend(...args),
   },
@@ -21,7 +21,7 @@ vi.mock("@/lib/email/smtp-transport", () => ({
 vi.mock("@/lib/email/resend-transport", () => ({
   resendTransport: {
     name: "resend",
-    getStatus: vi.fn(),
+    getStatus: vi.fn(() => ({ configured: true, hint: "Resend API key set" })),
     verify: vi.fn(),
     send: (...args: unknown[]) => resendSend(...args),
   },
@@ -45,6 +45,7 @@ function smtpConfig(overrides: Record<string, unknown> = {}) {
     smtpUser: "sender@gmail.com",
     smtpPass: "app-password",
     fromAddress: "sender@gmail.com",
+    fromName: "Arun",
     sendMode: "test",
     testRecipient: "test@example.com",
     ...overrides,
@@ -140,6 +141,7 @@ describe("sendEmail", () => {
         provider: "resend",
         sendMode: "live",
         fromAddress: "sender@example.com",
+        fromName: "Arun",
       }),
     );
     await sendEmail({ to: "lead@example.com", subject: "Hi", html: "<p>hi</p>" });

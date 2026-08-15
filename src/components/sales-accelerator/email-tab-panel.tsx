@@ -328,15 +328,13 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           onSynced={onSilentRefresh}
         />
       ) : null}
-      {sequenceState !== "complete" ? (
-        <SequenceControlButtons
-          leadId={lead.id}
-          sequenceState={sequenceState}
-          disabled={!canWrite || generating}
-          onUpdated={onSilentRefresh}
-          onStartSequence={() => composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-        />
-      ) : null}
+      <SequenceControlButtons
+        leadId={lead.id}
+        sequenceState={sequenceState}
+        disabled={generating}
+        onUpdated={onSilentRefresh}
+        onStartSequence={() => composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+      />
       {showProcessBar ? (
         <>
           {!isEmptyCompose && resolvedDraft ? (

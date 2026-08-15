@@ -13,7 +13,7 @@ const FIX_TIPS: [RegExp | string, string][] = [
   [/near-baseline paraphrase/i, "Rewrite with macro, micro, and human context. Keep the thesis, change the vocabulary"],
   [/long subject/i, "Keep the subject under 50 characters. Drop brand suffixes"],
   [/brand suffix in subject/i, "Remove em dashes and company suffixes from the subject"],
-  [/spam trigger/i, "Remove salesy words (free, urgent, guarantee, act now, click here)"],
+  [/spam trigger/i, "Remove salesy / Promotions words (free, urgent, complimentary, excited to, we're offering, act now)"],
   [/marketing email style/i, "Use primary inbox tone. No bulk/marketing footer language"],
   [/marketing compliance footer/i, "Remove newsletter-style footer lines"],
   [/personal\/business info before any reply/i, "Do not ask for address, phone, budget, or headcount in email #1"],

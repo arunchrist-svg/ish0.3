@@ -11,6 +11,7 @@ import {
   getCombinedRevisionIssues,
 } from "@/lib/agents/writer-scoring";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
 import { getRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
@@ -146,7 +147,7 @@ Instructions:
 - Max 120 words`;
 
   const delivOpts = {
-    emailStyle: emailConfig.emailStyle,
+    emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
     fromName: emailConfig.fromName,
     contactFirstName,
     sequencePosition: REPLY_SEQUENCE_POSITION,

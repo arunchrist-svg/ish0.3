@@ -36,4 +36,13 @@ describe("buildEmailHtml open tracking", () => {
 
     expect(html).not.toContain("/api/track/open");
   });
+
+  it("defaults to primary layout (no unsubscribe footer)", () => {
+    const html = buildEmailHtml({
+      body: "Hello there",
+      appUrl: "https://app.example.com",
+    });
+    expect(html).not.toContain("unsubscribe");
+    expect(html).not.toContain("You received this email because");
+  });
 });

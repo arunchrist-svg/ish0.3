@@ -1,11 +1,14 @@
 import { db, leads, outreachSchedule } from "@/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
+import { resetLeadOutreach } from "@/lib/outreach/reset-lead-outreach";
 
 export type SequenceControlState = "not_started" | "active" | "paused" | "cancelled" | "complete";
-export type SequenceAction = "start" | "pause" | "cancel";
+export type SequenceAction = "start" | "pause" | "cancel" | "reset";
 
 type ScheduleRow = { sequenceDay: number; status: string };
+
+const PENDING_FOLLOWUP = ["scheduled", "paused", "pending_review"] as const;
 
 export function deriveSequenceState(leadStatus: string, scheduleRows: ScheduleRow[]): SequenceControlState {
   if (["replied", "meeting", "tasting_sent", "negotiate", "closed", "po_closed"].includes(leadStatus)) {
@@ -16,10 +19,10 @@ export function deriveSequenceState(leadStatus: string, scheduleRows: ScheduleRo
   const followups = scheduleRows.filter((r) => r.sequenceDay > 0);
 
   if (!initialSent) return "not_started";
-  if (followups.some((r) => r.status === "scheduled")) return "active";
+  if (followups.some((r) => r.status === "scheduled" || r.status === "pending_review")) return "active";
   if (followups.some((r) => r.status === "paused")) return "paused";
 
-  const pending = followups.filter((r) => r.status === "scheduled" || r.status === "paused");
+  const pending = followups.filter((r) => PENDING_FOLLOWUP.includes(r.status as (typeof PENDING_FOLLOWUP)[number]));
   if (pending.length === 0 && followups.some((r) => r.status === "cancelled")) return "cancelled";
 
   return "complete";
@@ -50,7 +53,11 @@ export async function controlLeadSequence(params: {
   let updated = 0;
   let nextState: SequenceControlState = state;
 
-  if (action === "start") {
+  if (action === "reset") {
+    await resetLeadOutreach(leadId);
+    updated = rows.length;
+    nextState = "not_started";
+  } else if (action === "start") {
     if (state === "not_started") {
       return { ok: false, error: "Send Email 1 first to start the sequence" };
     }
@@ -68,7 +75,7 @@ export async function controlLeadSequence(params: {
     if (state !== "active") {
       return { ok: false, error: "Sequence is not running" };
     }
-    const ids = followupIds(["scheduled"]);
+    const ids = followupIds(["scheduled", "pending_review"]);
     if (ids.length === 0) {
       return { ok: false, error: "No scheduled follow-ups to pause" };
     }
@@ -79,7 +86,7 @@ export async function controlLeadSequence(params: {
     if (state === "not_started" || state === "complete") {
       return { ok: false, error: "Nothing to cancel" };
     }
-    const ids = followupIds(["scheduled", "paused"]);
+    const ids = followupIds(["scheduled", "paused", "pending_review"]);
     if (ids.length === 0) {
       return { ok: false, error: "No pending follow-ups to cancel" };
     }

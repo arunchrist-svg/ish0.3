@@ -27,8 +27,8 @@ describe("getWriterFewShotExample", () => {
       "gifting-sweets",
     );
     expect(example.toLowerCase()).toContain("forgotten by the next day");
-    expect(example.toLowerCase()).toContain("handcraft authentic traditional sweets");
-    expect(example.toLowerCase()).toContain("sample box to your office on us");
+    expect(example.toLowerCase()).toContain("handcraft traditional sweets straight from our own farm to the box");
+    expect(example.toLowerCase()).toContain("sample box to your office as our treat");
     expect(example.toLowerCase()).toContain("tasting is believing");
     expect(example.toLowerCase()).toContain("100% pure ghee");
     expect(example).toMatch(/^Best,$/m);

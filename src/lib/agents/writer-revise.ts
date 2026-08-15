@@ -18,6 +18,7 @@ import { classifyReplyIntent, extractPriorCta } from "@/lib/email/reply-intent";
 import { pickOriginalEmailContext } from "@/lib/email/reply-context";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { getAntiSpamWritingRules, getRevisionInstruction, getStyleOnlyRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
@@ -265,7 +266,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   });
 
   const delivOpts = {
-    emailStyle: emailConfig.emailStyle,
+    emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
     fromName: emailConfig.fromName,
     contactFirstName,
     sequencePosition,
@@ -319,7 +320,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     sequencePosition,
     senderFirstName,
     brandName: emailConfig.brandConfig?.brandName ?? emailConfig.fromName,
-    emailStyle: emailConfig.emailStyle,
+    emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
     isReplyDraft,
   });
 

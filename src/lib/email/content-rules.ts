@@ -138,7 +138,7 @@ export function applyContentRules(
     if (templated) {
       hits.push({
         id: "C",
-        label: "Generic opener — only name and company before the pitch; add a specific, sourced detail",
+        label: "Generic opener: only name and company before the pitch; add a specific, sourced detail",
         delta: -15,
         severity: "warn",
       });
@@ -149,18 +149,23 @@ export function applyContentRules(
   const hasSoftExit = SOFT_EXIT.some((p) => lowerBody.includes(p));
   const wordCount = body.trim().split(/\s+/).filter(Boolean).length;
   const signOff = signOffBlock(body);
+  const emailStyle = ctx.emailStyle ?? "primary";
+  // Primary 1:1 cold mail: soft-exit lines ("no pressure", "no worries") read like marketing opt-outs.
+  // Email 1 ISH sampler shape stays exempt; marketing style still expects a soft exit when pitching hard.
   const e1IshShape =
     sequencePosition === 1 &&
     /sampler|tasting|taste first|desk this week|reply 'yes'|where to ship/i.test(lowerBody) &&
     (/partnerships/i.test(signOff) || /thanks\s*(&|and)\s*regards/i.test(signOff));
-  if (questionIdx >= 0 && wordCount > 30 && !hasSoftExit && !e1IshShape) {
+  const skipSoftExitRule =
+    emailStyle === "primary" || e1IshShape || sequencePosition >= 3;
+  if (questionIdx >= 0 && wordCount > 30 && !hasSoftExit && !skipSoftExitRule) {
     const beforeQuestion = body.slice(0, questionIdx);
     const pitchWords = beforeQuestion.trim().split(/\s+/).filter(Boolean).length;
     const highPitchRatio = pitchWords / wordCount > 0.55;
     if (sequencePosition === 1 || highPitchRatio) {
       hits.push({
         id: "D",
-        label: "Pitch goes straight to CTA with no soft-exit (e.g. \"no worries if not relevant\")",
+        label: "Pitch goes straight to CTA with no soft-exit (e.g. \"if timing is off\")",
         delta: -12,
         severity: "warn",
       });
@@ -170,7 +175,6 @@ export function applyContentRules(
   const isCommercial = COMMERCIAL.some((p) => lowerBody.includes(p));
   const hasUnsubscribe =
     lowerBody.includes("unsubscribe") || lowerBody.includes("you received this email because");
-  const emailStyle = ctx.emailStyle ?? "primary";
   if (sequencePosition === 1 && isCommercial && emailStyle === "marketing" && !hasUnsubscribe) {
     hits.push({
       id: "E",
@@ -187,7 +191,7 @@ export function applyContentRules(
     if (matches.length >= 2) {
       hits.push({
         id: "F",
-        label: "Subject line template detected — vary structure per batch, not just company name",
+        label: "Subject line template detected: vary structure per batch, not just company name",
         delta: -10,
         severity: "warn",
       });
@@ -203,7 +207,7 @@ export function applyContentRules(
     if (!hasRoleOrContact) {
       hits.push({
         id: "G",
-        label: "Weak sender identity — sign-off needs role or contact info, not just first name and company",
+        label: "Weak sender identity: sign-off needs role or contact info, not just first name and company",
         delta: -12,
         severity: "warn",
       });

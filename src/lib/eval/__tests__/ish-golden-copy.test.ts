@@ -25,9 +25,9 @@ describe("ISH golden copy shape", () => {
     expect(looksLikeLlmJsonDump(seq1.emailBody)).toBe(false);
     expect(seq1.emailBody).toContain("\n\n");
     expect(seq1.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
-    expect(seq1.emailBody).toMatch(/handcraft authentic traditional sweets/);
-    expect(seq1.emailBody).toMatch(/sample box to your office on us/i);
-    expect(seq1.emailBody).toMatch(/What is the best address to ship your sample box\?/);
+    expect(seq1.emailBody).toMatch(/handcraft traditional sweets straight from our own farm to the box/);
+    expect(seq1.emailBody).toMatch(/sample box to your office as our treat/i);
+    expect(seq1.emailBody).toMatch(/What is the best delivery address to ship it to\?/);
     expect(seq1.emailBody).toMatch(/100% pure ghee/);
     expect(seq1.emailBody).not.toMatch(/No worries/i);
     expect(seq1.emailBody).not.toMatch(/\boffers\b|\bspecializes in\b/i);

@@ -4,7 +4,7 @@ import { scoreInboxSafety, contentQualityLabel } from "@/lib/email/content-quali
 describe("scoreInboxSafety", () => {
   it("scores well with personalization and soft tone", () => {
     const result = scoreInboxSafety(
-      "Hi Arun,\n\nI saw TechCorp is expanding in Bangalore. Quick question about Diwali gifting for your team?\n\nHappy to share samples if useful. No pressure if timing is off.\n\nSrilaksha, ISH Gifting",
+      "Hi Arun,\n\nI saw TechCorp is expanding in Bangalore. Quick question about Diwali gifting for your team?\n\nHappy to share samples if useful. If timing is off, no need to reply.\n\nSrilaksha\nPartnerships, ISH",
       "Diwali gifting for TechCorp",
       {
         emailStyle: "primary",

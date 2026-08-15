@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 import type { EmailConfig } from "@/lib/email/config";
-import { formatFromAddress, getResendStatus } from "@/lib/email/config";
+import { formatFromAddress, getResendStatus, resolveOutreachEmailStyle, resolveReplyToAddress } from "@/lib/email/config";
 import { htmlToPlainText } from "@/lib/email/plain-text";
 import type { MailTransport, ProviderStatus, SendParams, SendResult } from "@/lib/email/types";
 
@@ -31,7 +31,7 @@ export const resendTransport: MailTransport = {
 
   async send(params: SendParams, config: EmailConfig, to: string): Promise<SendResult> {
     const from = formatFromAddress(config);
-    const replyTo = params.replyTo ?? config.replyToAddress;
+    const replyTo = resolveReplyToAddress(params, config);
     const timestamp = new Date().toISOString();
 
     const resend = getResend(config.resendApiKey);
@@ -40,7 +40,7 @@ export const resendTransport: MailTransport = {
     if (params.messageId) headers["Message-ID"] = params.messageId;
     if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
     if (params.references) headers["References"] = params.references;
-    if (config.emailStyle === "marketing" && replyTo) {
+    if (resolveOutreachEmailStyle(config.emailStyle) === "marketing" && replyTo) {
       headers["List-Unsubscribe"] = `<mailto:${replyTo}?subject=unsubscribe>`;
       headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
     }

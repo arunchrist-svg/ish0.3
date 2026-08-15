@@ -5,6 +5,7 @@ import {
 } from "@/lib/email/content-quality-score";
 import type { ContentRuleContext } from "@/lib/email/content-rules";
 import type { EmailStyle } from "@/lib/email/config";
+import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { isNearParaphrase, BASELINE_PARAPHRASE_THRESHOLD } from "@/lib/email/email-similarity";
 
 export const RUBRIC_DIMENSIONS = [
@@ -32,16 +33,18 @@ export type DeliverabilityOptions = ContentRuleContext & {
 };
 
 function buildScoreOptions(body: string, options?: DeliverabilityOptions) {
+  const emailStyle = resolveOutreachEmailStyle(options?.emailStyle);
   return {
     ...options,
-    emailStyle: options?.emailStyle ?? "primary",
+    emailStyle,
     fromName: options?.fromName,
     contactFirstName: options?.contactFirstName,
     contact:
       options?.contact ??
       (options?.contactFirstName ? { firstName: options.contactFirstName } : undefined),
     hasMarketingFooter: body.toLowerCase().includes("you received this email because"),
-    hasBulkHeaders: options?.emailStyle === "marketing",
+    // Outreach never sends bulk headers; do not penalize draft scoring as marketing.
+    hasBulkHeaders: false,
   };
 }
 

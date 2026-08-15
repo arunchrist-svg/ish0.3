@@ -53,7 +53,10 @@ export async function sendEmail(params: SendParams & { workspaceId?: string }): 
   const timestamp = new Date().toISOString();
   const transport = transports[config.provider];
 
-  const preflightErrors = validateEmailConfig(config, { forSend: true });
+  const preflightErrors = validateEmailConfig(config, {
+    forSend: true,
+    resendConfigured: transport.getStatus(config).configured,
+  });
   if (preflightErrors.length > 0) {
     throw new Error(preflightErrors.join("; "));
   }

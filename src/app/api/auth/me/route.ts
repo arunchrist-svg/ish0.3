@@ -41,7 +41,7 @@ export async function GET() {
       : null;
 
     const smtpStatus = getSmtpStatus(emailConfig);
-    const resendStatus = getResendStatus();
+    const resendStatus = getResendStatus(emailConfig);
     const emailConfigured =
       emailConfig.provider === "smtp" ? smtpStatus.configured : resendStatus.configured;
 

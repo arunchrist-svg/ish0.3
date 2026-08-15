@@ -15,9 +15,9 @@ describe("ISH baseline theses", () => {
 
   it("gives E1 Sequence 1 from the ISH file", () => {
     expect(e1).toMatch(/Most corporate festival gifts are forgotten by the next day/i);
-    expect(e1).toMatch(/handcraft authentic traditional sweets/i);
-    expect(e1).toMatch(/sample box to your office on us/i);
-    expect(e1).toMatch(/What is the best address to ship your sample box\?/i);
+    expect(e1).toMatch(/handcraft traditional sweets straight from our own farm to the box/i);
+    expect(e1).toMatch(/sample box to your office as our treat/i);
+    expect(e1).toMatch(/What is the best delivery address to ship it to\?/i);
     expect(e1).toMatch(/100% pure ghee/i);
     expect(e1).toMatch(/Best,/);
     expect(e1).not.toMatch(/No worries/i);

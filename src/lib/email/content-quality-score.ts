@@ -38,6 +38,12 @@ const SPAM_WORDS = [
   "special offer",
   "no pressure",
   "complimentary",
+  "excited to",
+  "we're offering",
+  "we are offering",
+  "limited offer",
+  "opt-out",
+  "view in browser",
 ];
 
 const GENERIC_SUBJECTS = ["following up", "quick question", "checking in", "just checking in"];

@@ -341,7 +341,7 @@ export function SalesAcceleratorApp() {
   }
 
   const listPane = listLoading && leads.length === 0 ? (
-    <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
+    <div className="flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
       <div className="mb-4 h-7 w-28 animate-pulse rounded-lg bg-brand-app" />
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (

@@ -4,7 +4,7 @@ import { getVerticalPack, resolveVerticalPackId } from "@/vertical-packs";
 export const BASE_WRITER_TONE = `WRITER TONE (all brands):
 - Friendly but professional. Write like a thoughtful colleague who did their homework.
 - Plain and direct. No hype, no flattery, no people-pleasing.
-- Not salesy: avoid excited to, would love to, amazing, thrilled, touch base, reach out, pick your brain, game-changer, best-in-class.
+- Not salesy: avoid excited to, would love to, amazing, thrilled, complimentary, touch base, reach out, pick your brain, game-changer, best-in-class.
 - Not fluffy: avoid Hope you are well, Hope this finds you, I wanted to reach out.
 - Not pleasing: no over-apologizing, no excessive thank-yous, no begging for time.
 - Confident and helpful without being pushy. Short sentences. One idea at a time.
@@ -55,11 +55,11 @@ Subject A: Send happiness this Diwali, ${contactFirstName}
 Body A:
 Hi ${contactFirstName},
 
-Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and authentic for your team this year.
+Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for your team this year.
 
-At ${brandName}, we handcraft authentic traditional sweets. We go straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. It is just fresh milk, 100% pure ghee, and a taste that stands out.
+At ${brandName}, we handcraft traditional sweets straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite.
 
-Since tasting is believing, I would love to send a sample box to your office on us. What is the best address to ship your sample box?
+Since tasting is believing, I would love to send a sample box to your office as our treat. What is the best delivery address to ship it to?
 
 Best,
 ${senderFirstName}

@@ -1,12 +1,12 @@
 "use client";
 
-import { SettingsGroup, SettingsGroupDivider } from "@/components/settings/settings-group";
-import { SettingsSelectRow } from "@/components/settings/settings-select-row";
-import { SettingsProviderRow } from "@/components/settings/settings-provider-row";
+import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
 import { SettingsNumberRow } from "@/components/settings/settings-number-row";
+import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { cn } from "@/lib/utils";
-import { Check, Loader2, Save } from "lucide-react";
+import { Check, ChevronDown, Loader2, Save } from "lucide-react";
+import { useState } from "react";
 import { BrandIntelligenceSetup } from "@/components/brand-intelligence/brand-intelligence-setup";
 import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
 import { DEFAULT_SCOUT_GEO, summarizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
@@ -18,6 +18,7 @@ import {
   type SearchProvider,
   type EnrichProvider,
   type EnrichmentConfig,
+  type DataMode,
 } from "@/lib/enrichment/config";
 
 type Props = {
@@ -37,9 +38,11 @@ export function EnrichmentTab({
   onUpdateScoutVolume,
   onSaveScoutVolume,
 }: Props) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   if (!config) {
     return (
-      <div className="flex flex-1 items-center justify-center py-24 text-[13px] text-brand-ink-faint">
+      <div className="flex flex-1 items-center justify-center py-16 text-[13px] text-brand-ink-faint">
         <Loader2 className="mr-2 size-4 animate-spin" /> Loading settings…
       </div>
     );
@@ -54,64 +57,60 @@ export function EnrichmentTab({
     (typeof ENRICH_PROVIDER_LABELS)[EnrichProvider],
   ][];
 
+  const activeVolumeKey =
+    (Object.entries(SCOUT_VOLUME_PRESETS) as [
+      keyof typeof SCOUT_VOLUME_PRESETS,
+      (typeof SCOUT_VOLUME_PRESETS)[keyof typeof SCOUT_VOLUME_PRESETS],
+    ][]).find(
+      ([, preset]) =>
+        config.scoutCompaniesLimit === preset.companies && config.scoutLeadsLimit === preset.leads,
+    )?.[0] ?? null;
+
   return (
-    <div className="pb-8">
-      <SettingsGroup
-        title="Company Search"
-        footer="How Scout discovers companies. Use India Directories for testing; Apollo for production."
-      >
-        {searchProviders.map(([value, meta], i) => (
-          <SettingsProviderRow
-            key={value}
-            value={value}
-            selected={config.searchProvider === value}
-            label={meta.label}
-            desc={meta.desc}
-            badge={meta.badge}
-            onSelect={(v) => onUpdate("searchProvider", v)}
-            showDivider={i > 0}
+    <div className="pb-6">
+      <SettingsGroup title="Providers" className="mb-4">
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Company search</span>
+          <SettingsSegmented
+            value={config.searchProvider}
+            onChange={(v) => onUpdate("searchProvider", v)}
+            options={searchProviders.map(([value, meta]) => ({
+              value,
+              label: value === "india_directories" ? "India" : value === "google_places" ? "Places" : value === "tavily_ai" ? "Tavily" : "Apollo",
+            }))}
           />
-        ))}
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Email enrich</span>
+          <SettingsSegmented
+            value={config.enrichProvider}
+            onChange={(v) => onUpdate("enrichProvider", v)}
+            options={enrichProviders.map(([value]) => ({
+              value,
+              label:
+                value === "website_email"
+                  ? "Website"
+                  : value === "none"
+                    ? "Skip"
+                    : value === "hunter"
+                      ? "Hunter"
+                      : "Apollo",
+            }))}
+          />
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Data mode</span>
+          <SettingsSegmented
+            value={config.dataMode}
+            onChange={(v) => onUpdate("dataMode", v as DataMode)}
+            options={DATA_MODE_OPTIONS.map((mode) => ({ value: mode.value, label: mode.label }))}
+          />
+        </SettingsRow>
       </SettingsGroup>
 
-      <SettingsGroup
-        title="Email Enrichment"
-        footer="How Scout finds contact emails. Website scrape works well for Indian SMBs."
-      >
-        {enrichProviders.map(([value, meta], i) => (
-          <SettingsProviderRow
-            key={value}
-            value={value}
-            selected={config.enrichProvider === value}
-            label={meta.label}
-            desc={meta.desc}
-            badge={meta.badge}
-            onSelect={(v) => onUpdate("enrichProvider", v)}
-            showDivider={i > 0}
-          />
-        ))}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Data Mode"
-        footer="Paid enrichment (Apollo / Hunter) runs per lead from the record view."
-      >
-        {DATA_MODE_OPTIONS.map((mode, i) => (
-          <SettingsSelectRow
-            key={mode.value}
-            label={mode.label}
-            desc={mode.desc}
-            selected={config.dataMode === mode.value}
-            onSelect={() => onUpdate("dataMode", mode.value)}
-            showDivider={i > 0}
-          />
-        ))}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Area of Interest"
-        footer="India map, then districts. Scout’s location dropdown only shows what you complete here."
-      >
+      <SettingsGroup title="Area of Interest" className="mb-4">
         <AreaOfInterestWizard
           key={summarizeScoutGeo(config.scoutGeo ?? DEFAULT_SCOUT_GEO)}
           value={config.scoutGeo ?? DEFAULT_SCOUT_GEO}
@@ -119,152 +118,104 @@ export function EnrichmentTab({
         />
       </SettingsGroup>
 
-      <SettingsGroup
-        title="Scout Volume"
-        footer={
-          scoutVolumeDirty
-            ? "Unsaved changes. Scouting uses the previous limits until you save."
-            : "Scout volume applies to your next run. Higher volume uses more credits."
-        }
-      >
-        {(Object.entries(SCOUT_VOLUME_PRESETS) as [
-            keyof typeof SCOUT_VOLUME_PRESETS,
-            (typeof SCOUT_VOLUME_PRESETS)[keyof typeof SCOUT_VOLUME_PRESETS],
-          ][]).map(([key, preset], i) => (
-            <SettingsSelectRow
-              key={key}
-              label={preset.label}
-              desc={`${preset.companies} companies · ${preset.leads} leads — ${preset.desc}`}
-              selected={
-                config.scoutCompaniesLimit === preset.companies &&
-                config.scoutLeadsLimit === preset.leads
-              }
-              onSelect={() =>
-                onUpdateScoutVolume({
-                  scoutCompaniesLimit: preset.companies,
-                  scoutLeadsLimit: preset.leads,
-                })
-              }
-              showDivider={i > 0}
-            />
-          ))}
-
+      <SettingsGroup title="Scout volume" className="mb-4">
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Preset</span>
+          <SettingsSegmented
+            value={activeVolumeKey ?? "custom"}
+            onChange={(key) => {
+              if (key === "custom") return;
+              const preset = SCOUT_VOLUME_PRESETS[key as keyof typeof SCOUT_VOLUME_PRESETS];
+              if (!preset) return;
+              onUpdateScoutVolume({
+                scoutCompaniesLimit: preset.companies,
+                scoutLeadsLimit: preset.leads,
+              });
+            }}
+            options={[
+              ...(Object.entries(SCOUT_VOLUME_PRESETS) as [
+                keyof typeof SCOUT_VOLUME_PRESETS,
+                (typeof SCOUT_VOLUME_PRESETS)[keyof typeof SCOUT_VOLUME_PRESETS],
+              ][]).map(([key, preset]) => ({ value: key, label: preset.label })),
+              ...(activeVolumeKey ? [] : [{ value: "custom" as const, label: "Custom" }]),
+            ]}
+          />
+        </SettingsRow>
         <SettingsGroupDivider />
-
         <SettingsNumberRow
-          label="Companies per fetch"
-          desc="Max companies each time you fetch new companies."
+          label="Companies / fetch"
           value={config.scoutCompaniesLimit}
           min={1}
           max={100}
           onChange={(v) => onUpdateScoutVolume({ scoutCompaniesLimit: v, scoutLeadsLimit: config.scoutLeadsLimit })}
         />
-
         <SettingsGroupDivider />
-
         <SettingsNumberRow
-          label="Leads per company"
-          desc="Max people discovered per company when scouting leads."
+          label="Leads / company"
           value={config.scoutLeadsLimit}
           min={1}
           max={25}
           onChange={(v) => onUpdateScoutVolume({ scoutCompaniesLimit: config.scoutCompaniesLimit, scoutLeadsLimit: v })}
         />
-
         {(scoutVolumeDirty || savingVolume) && (
           <>
             <SettingsGroupDivider />
-            <div className="px-4 py-3">
+            <div className="px-4 py-2.5">
               <button
                 type="button"
                 onClick={onSaveScoutVolume}
                 disabled={!scoutVolumeDirty || savingVolume}
                 className={cn(
-                  "flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[14px] font-semibold transition-all",
+                  "flex w-full items-center justify-center gap-2 rounded-full py-2 text-[13px] font-semibold",
                   scoutVolumeDirty && !savingVolume
                     ? "bg-brand-black text-white hover:opacity-90"
                     : "bg-brand-canvas text-brand-ink-faint",
                 )}
               >
-                {savingVolume ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : scoutVolumeDirty ? (
-                  <Save className="size-4" />
-                ) : (
-                  <Check className="size-4" />
-                )}
-                {savingVolume ? "Saving…" : "Save Scout Volume"}
+                {savingVolume ? <Loader2 className="size-3.5 animate-spin" /> : scoutVolumeDirty ? <Save className="size-3.5" /> : <Check className="size-3.5" />}
+                {savingVolume ? "Saving…" : "Save volume"}
               </button>
             </div>
           </>
         )}
       </SettingsGroup>
 
-
-      <SettingsGroup
-        title="Brand Intelligence"
-        footer="Finds companies that currently buy a competitor's product. Works best for physical goods (sweets, appliances, gifting), not SaaS. You can skip this during setup and turn it on here anytime."
-      >
-        <div className="px-4 py-3">
-          <BrandIntelligenceSetup
-            productCategory={config.giftIntelProductCategory ?? ""}
-            competitorBrands={config.giftIntelCompetitorBrands ?? []}
-            onProductCategoryChange={(v) => onUpdate("giftIntelProductCategory", v)}
-            onCompetitorBrandsChange={(brands) => onUpdate("giftIntelCompetitorBrands", brands)}
-            categoryDesc="Target product type for OSINT sweeps"
-            competitorsDesc="Add or delete brands. These appear as sweep targets on Brand Intelligence."
-          />
-        </div>
-      </SettingsGroup>
-
-      <SettingsGroup title="Behaviour">
+      <SettingsGroup title="Behaviour" className="mb-4">
         <SettingsToggleRow
           label="Fallback to AI"
-          desc="Try Tavily + Gemini when the primary provider returns fewer than 50% of results."
           value={config.fallbackToAI}
           onChange={(v) => onUpdate("fallbackToAI", v)}
         />
         <SettingsGroupDivider />
         <SettingsToggleRow
           label="Auto-enrich on import"
-          desc="Enrich emails immediately when a lead is saved from Scout."
           value={config.enrichOnImport}
           onChange={(v) => onUpdate("enrichOnImport", v)}
         />
       </SettingsGroup>
 
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((open) => !open)}
+        className="mb-3 flex w-full items-center justify-between rounded-2xl border border-brand-stratus-blue/20 bg-white/70 px-4 py-2.5 text-[12px] font-semibold text-brand-ink-soft shadow-[var(--shadow-brand-sm)] backdrop-blur-sm hover:text-brand-ink"
+      >
+        Brand Intelligence
+        <ChevronDown className={cn("size-3.5 transition-transform", showAdvanced && "rotate-180")} />
+      </button>
+      {showAdvanced ? (
+        <SettingsGroup className="mb-4">
+          <div className="px-4 py-3">
+            <BrandIntelligenceSetup
+              productCategory={config.giftIntelProductCategory ?? ""}
+              competitorBrands={config.giftIntelCompetitorBrands ?? []}
+              onProductCategoryChange={(v) => onUpdate("giftIntelProductCategory", v)}
+              onCompetitorBrandsChange={(brands) => onUpdate("giftIntelCompetitorBrands", brands)}
+              categoryDesc="Product type for competitor sweeps"
+              competitorsDesc="Sweep targets on Brand Intelligence"
+            />
+          </div>
+        </SettingsGroup>
+      ) : null}
     </div>
-  );
-}
-
-function SettingsTextRow({
-  label,
-  desc,
-  value,
-  onChange,
-  placeholder,
-  showDivider,
-}: {
-  label: string;
-  desc: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  showDivider?: boolean;
-}) {
-  return (
-    <>
-      {showDivider ? <SettingsGroupDivider /> : null}
-      <div className="px-4 py-3">
-        <div className="mb-1.5 text-[13px] font-semibold text-brand-ink">{label}</div>
-        <p className="mb-2 text-[11.5px] text-brand-ink-soft">{desc}</p>
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full rounded-xl border border-brand-border/70 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)]"
-        />
-      </div>
-    </>
   );
 }

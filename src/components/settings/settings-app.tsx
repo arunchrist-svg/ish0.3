@@ -31,13 +31,13 @@ const ALL_NAV_ITEMS: SettingsNavItem[] = [
 ];
 
 const TAB_SUBTITLES: Record<string, string> = {
-  enrichment: "Locations, search, enrichment, and scout volume",
-  email: "SMTP, send mode, cadence, and open tracking",
-  billing: "Balance, per-task costs, and usage",
-  team: "Invite teammates to your workspace",
-  integrations: "LinkedIn and external connections",
-  "ai-usage": "Platform API key status (superadmin only)",
-  appearance: "Theme and visual preferences",
+  enrichment: "Providers, geography, and scout volume",
+  email: "Sending, connection, and sequence",
+  billing: "Balance and top-ups",
+  team: "Members and invites",
+  integrations: "LinkedIn connections",
+  "ai-usage": "Search and LLM keys",
+  appearance: "Theme",
 };
 
 function SettingsAppInner() {
@@ -351,9 +351,9 @@ function SettingsAppInner() {
                 const Icon = item?.icon ?? Wrench;
                 return (
                   <SettingsHero
+                    compact
                     icon={Icon}
                     title={item?.label ?? "Settings"}
-                    subtitle={TAB_SUBTITLES[activeTab] ?? ""}
                     action={saveAction}
                   />
                 );

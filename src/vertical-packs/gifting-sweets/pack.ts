@@ -20,9 +20,9 @@ export const giftingSweetsPack: VerticalPack = {
       id: "gift_sampling",
       label: "Sending a Gift Sampling",
       shortLabel: "Gift Sampling",
-      description: "Offer a complimentary tasting box to their desk or office",
+      description: "Offer a tasting box to their desk or office",
       ctaInstruction:
-        "Primary CTA: offer a complimentary Diwali tasting sample. Ask if they are open to receiving one. Do NOT ask for address, phone, or team size in email #1; offer to coordinate details after they reply.",
+        "Primary CTA: offer a Diwali tasting sample (say tasting sample, not complimentary or free). Ask if they are open to receiving one. Do NOT ask for address, phone, or team size in email #1; offer to coordinate details after they reply.",
     },
     {
       id: "meet_online",

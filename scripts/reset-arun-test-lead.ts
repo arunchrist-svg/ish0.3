@@ -5,38 +5,17 @@ import {
   db,
   leads,
   leadOutreach,
-  outreachApprovals,
-  outreachEditMessages,
   outreachSchedule,
   workspaceSettings,
 } from "../src/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { invalidateEmailConfigCache } from "../src/lib/email/email-sender";
+import { resetLeadOutreach } from "../src/lib/outreach/reset-lead-outreach";
 
-const PROD_TEST_LEAD_ID = "00000000-0000-0000-0000-000000000117";
+const PROD_TEST_LEAD_ID = "5485962a-0f3a-4ede-98fc-fc4b2b6109b0";
 const PROD_WORKSPACE_ID = "cb86c446-0839-4ab8-9f47-ae295bfa5e36";
 
 type ResetTarget = "contact_ready" | "outreached";
-
-async function resetToContactReady() {
-  const outreachRows = await db
-    .select({ id: leadOutreach.id })
-    .from(leadOutreach)
-    .where(eq(leadOutreach.leadId, PROD_TEST_LEAD_ID));
-  const outreachIds = outreachRows.map((r) => r.id);
-
-  await db.delete(outreachSchedule).where(eq(outreachSchedule.leadId, PROD_TEST_LEAD_ID));
-  await db.delete(outreachApprovals).where(eq(outreachApprovals.leadId, PROD_TEST_LEAD_ID));
-  if (outreachIds.length > 0) {
-    await db.delete(outreachEditMessages).where(inArray(outreachEditMessages.leadOutreachId, outreachIds));
-  }
-  await db.delete(leadOutreach).where(eq(leadOutreach.leadId, PROD_TEST_LEAD_ID));
-
-  await db
-    .update(leads)
-    .set({ status: "researched", lastReplyContent: null, updatedAt: new Date() })
-    .where(eq(leads.id, PROD_TEST_LEAD_ID));
-}
 
 async function resetToOutreached() {
   const cadenceDays = [3, 7];
@@ -102,7 +81,7 @@ async function main() {
   const target = (process.argv[2] as ResetTarget | undefined) ?? "contact_ready";
 
   if (target === "contact_ready") {
-    await resetToContactReady();
+    await resetLeadOutreach(PROD_TEST_LEAD_ID);
   } else if (target === "outreached") {
     await resetToOutreached();
   } else {

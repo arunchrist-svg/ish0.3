@@ -1,7 +1,7 @@
 import nodemailer from "nodemailer";
 import type { Transporter } from "nodemailer";
 import type { EmailConfig } from "@/lib/email/config";
-import { formatFromAddress, resolveSmtpCredentials } from "@/lib/email/config";
+import { formatFromAddress, resolveOutreachEmailStyle, resolveReplyToAddress, resolveSmtpCredentials } from "@/lib/email/config";
 import { htmlToPlainText } from "@/lib/email/plain-text";
 import type { MailTransport, ProviderStatus, SendParams, SendResult } from "@/lib/email/types";
 
@@ -37,10 +37,10 @@ function classifySmtpError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);
   const lower = message.toLowerCase();
   if (lower.includes("auth") || lower.includes("credentials") || lower.includes("535")) {
-    return `SMTP authentication failed — check your email and App Password: ${message}`;
+    return `SMTP authentication failed: check your email and App Password: ${message}`;
   }
   if (lower.includes("connect") || lower.includes("timeout") || lower.includes("econnrefused")) {
-    return `SMTP network error — check host and port: ${message}`;
+    return `SMTP network error: check host and port: ${message}`;
   }
   return `SMTP verification failed: ${message}`;
 }
@@ -89,7 +89,7 @@ export const smtpTransport: MailTransport = {
 
   async send(params: SendParams, config: EmailConfig, to: string): Promise<SendResult> {
     const from = formatFromAddress(config);
-    const replyTo = params.replyTo ?? config.replyToAddress;
+    const replyTo = resolveReplyToAddress(params, config);
     const timestamp = new Date().toISOString();
 
     const text = params.text ?? htmlToPlainText(params.html);
@@ -97,7 +97,7 @@ export const smtpTransport: MailTransport = {
     if (params.messageId) headers["Message-ID"] = params.messageId;
     if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
     if (params.references) headers["References"] = params.references;
-    if (config.emailStyle === "marketing" && replyTo) {
+    if (resolveOutreachEmailStyle(config.emailStyle) === "marketing" && replyTo) {
       headers["List-Unsubscribe"] = `<mailto:${replyTo}?subject=unsubscribe>`;
       headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
     }

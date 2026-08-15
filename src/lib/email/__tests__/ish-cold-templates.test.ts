@@ -19,14 +19,13 @@ describe("ISH cold email templates", () => {
     expect(e1.subjectB).toBe("Acme Auto, make someone's Diwali better");
     expect(e1.subjectC).toBe("Happiness, handcrafted");
     expect(e1.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
-    expect(e1.emailBody).toMatch(/something memorable and authentic for your team this year/);
-    expect(e1.emailBody).toMatch(/handcraft authentic traditional sweets/);
-    expect(e1.emailBody).toMatch(/straight from our own farm to the box with zero compromises/);
+    expect(e1.emailBody).toMatch(/something memorable and distinctive for your team this year/);
+    expect(e1.emailBody).toMatch(/handcraft traditional sweets straight from our own farm to the box/);
     expect(e1.emailBody).toMatch(/no artificial flavors/);
-    expect(e1.emailBody).toMatch(/It is just fresh milk, 100% pure ghee, and a taste that stands out/);
+    expect(e1.emailBody).toMatch(/Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite/);
     expect(e1.emailBody).toMatch(/tasting is believing/);
-    expect(e1.emailBody).toMatch(/sample box to your office on us/);
-    expect(e1.emailBody).toMatch(/What is the best address to ship your sample box\?/);
+    expect(e1.emailBody).toMatch(/sample box to your office as our treat/);
+    expect(e1.emailBody).toMatch(/What is the best delivery address to ship it to\?/);
     expect(e1.emailBodyB).toMatch(/employees and clients/);
     expect(e1.emailBodyB).toMatch(/can bring that to Acme Auto/);
     expect(e1.emailBodyB).toMatch(/zero preservatives/);
@@ -100,7 +99,7 @@ describe("ISH cold email templates", () => {
     const online = fillIshDraftVariants({ ...names, sequencePosition: 1, templateId: "meet_online" });
     expect(online.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
     expect(online.emailBody).toMatch(/online walkthrough/);
-    expect(online.emailBody).not.toMatch(/sample box to your office on us/);
+    expect(online.emailBody).not.toMatch(/sample box to your office as our treat/);
     const inPerson = fillIshDraftVariants({ ...names, sequencePosition: 1, templateId: "meet_in_person" });
     expect(inPerson.emailBody).toMatch(/in-person tasting/);
   });

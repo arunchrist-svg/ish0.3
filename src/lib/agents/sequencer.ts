@@ -138,7 +138,9 @@ export async function runSequencer(): Promise<{
       }
 
       try {
-        await assertSenderPreflight(emailConfig, lead.workspaceId);
+        await assertSenderPreflight(emailConfig, lead.workspaceId, {
+          projectedAdditional: 1,
+        });
       } catch (e) {
         if (e instanceof SenderPreflightError) {
           console.warn("[sequencer] sender preflight failed, skipping send", e.issues);

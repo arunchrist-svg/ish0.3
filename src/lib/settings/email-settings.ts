@@ -1,6 +1,7 @@
 import { db, workspaceSettings } from "@/db";
 import type { EmailConfig } from "@/lib/email/config";
 import {
+  getDeliverabilityHints,
   getResendStatus,
   resolveEmailConfig,
   validateEmailConfig,
@@ -111,9 +112,10 @@ async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfi
     smtpVerified: smtpConfigured,
     resendConfigured: resendStatus.configured,
   });
+  validationWarnings.push(...getDeliverabilityHints(config));
   if (!isPublicAppUrl(config.appUrl)) {
     validationWarnings.push(
-      "App URL is localhost — open tracking is disabled. Set NEXT_PUBLIC_APP_URL to your deployed HTTPS URL for better deliverability.",
+      "App URL is localhost. Open tracking stays off until you set a public HTTPS App URL (tracking is optional; Primary outreach does not need it).",
     );
   }
 
@@ -194,11 +196,12 @@ export async function verifyEmailConnection(
     await persistEmailConfig(merged);
   }
 
-  const resendStatus = getResendStatus();
+  const resendStatus = getResendStatus(merged);
   const validationWarnings = validateEmailConfig(merged, {
     smtpVerified: verified.configured,
     resendConfigured: resendStatus.configured,
   });
+  validationWarnings.push(...getDeliverabilityHints(merged));
 
   return toPublicResponse(merged, {
     smtpConfigured: verified.configured,
@@ -215,6 +218,10 @@ export async function setOutreachPaused(paused: boolean, workspaceId?: string): 
   const merged = resolveEmailConfig({ ...overrides, outreachPaused: paused });
   await persistEmailConfig(merged, workspaceId);
   invalidateEmailConfigCache();
+  if (workspaceId) {
+    const config = await getResolvedEmailConfig(workspaceId);
+    return buildEmailConfigResponse(config);
+  }
   return getEmailConfigForApi();
 }
 

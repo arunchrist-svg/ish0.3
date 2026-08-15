@@ -2,7 +2,10 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   getDefaultEmailConfig,
   resolveEmailConfig,
+  resolveOutreachEmailStyle,
   validateEmailConfig,
+  formatFromAddress,
+  getDeliverabilityHints,
   isOutreachSendingPaused,
   OUTREACH_PAUSED_MESSAGE,
   fromAddressMatchesSmtpUser,
@@ -102,6 +105,29 @@ describe("validateEmailConfig", () => {
     expect(errors.some((e) => e.includes("verified"))).toBe(true);
   });
 
+  it("allows live Resend when a workspace API key is saved", () => {
+    const errors = validateEmailConfig({
+      ...base,
+      provider: "resend",
+      sendMode: "live",
+      resendApiKey: "re_test_key",
+    });
+    expect(errors).not.toContain("RESEND_API_KEY must be set before enabling Live send mode");
+  });
+
+  it("blocks live Resend when no API key is saved or in env", () => {
+    const prev = process.env.RESEND_API_KEY;
+    delete process.env.RESEND_API_KEY;
+    const errors = validateEmailConfig({
+      ...base,
+      provider: "resend",
+      sendMode: "live",
+    });
+    if (prev === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = prev;
+    expect(errors).toContain("RESEND_API_KEY must be set before enabling Live send mode");
+  });
+
   it("blocks from address mismatch with smtp email", () => {
     const config = {
       ...base,
@@ -116,12 +142,57 @@ describe("validateEmailConfig", () => {
     expect(fromAddressMatchesSmtpUser(config)).toBe(false);
   });
 
-  it("requires test recipient at send time in test mode", () => {
+  it("requires from name when sending", () => {
     const errors = validateEmailConfig(
-      { ...base, sendMode: "test", testRecipient: "" },
-      { forSend: true, smtpVerified: true },
+      {
+        ...base,
+        provider: "resend",
+        sendMode: "live",
+        resendApiKey: "re_test",
+        fromAddress: "hello@example.com",
+        fromName: "",
+      },
+      { forSend: true, resendConfigured: true },
     );
-    expect(errors.some((e) => e.includes("Test recipient"))).toBe(true);
+    expect(errors.some((e) => /from name/i.test(e))).toBe(true);
+  });
+});
+
+describe("outreach email style and from formatting", () => {
+  it("forces primary for cold outreach even if marketing is selected", () => {
+    expect(resolveOutreachEmailStyle("marketing")).toBe("primary");
+    expect(resolveOutreachEmailStyle("primary")).toBe("primary");
+    expect(resolveOutreachEmailStyle(undefined)).toBe("primary");
+  });
+
+  it("formats From without empty angle-bracket name", () => {
+    const withName = formatFromAddress({
+      ...getDefaultEmailConfig(),
+      fromName: "Arun",
+      fromAddress: "hello@srilakshaenterprises.in",
+    });
+    expect(withName).toBe("Arun <hello@srilakshaenterprises.in>");
+
+    const noName = formatFromAddress({
+      ...getDefaultEmailConfig(),
+      fromName: "  ",
+      fromAddress: "hello@srilakshaenterprises.in",
+    });
+    expect(noName).toBe("hello@srilakshaenterprises.in");
+  });
+
+  it("hints when marketing style or Reply-To is missing on Resend", () => {
+    const hints = getDeliverabilityHints({
+      ...getDefaultEmailConfig(),
+      provider: "resend",
+      emailStyle: "marketing",
+      fromName: "",
+      fromAddress: "hello@srilakshaenterprises.in",
+      replyToAddress: "",
+    });
+    expect(hints.some((h) => /Primary/i.test(h))).toBe(true);
+    expect(hints.some((h) => /From name/i.test(h))).toBe(true);
+    expect(hints.some((h) => /Reply-To/i.test(h))).toBe(true);
   });
 });
 

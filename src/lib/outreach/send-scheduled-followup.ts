@@ -10,9 +10,10 @@ import { deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
-import { isOutreachSendingPaused } from "@/lib/email/config";
+import { isOutreachSendingPaused, resolveOutreachEmailStyle } from "@/lib/email/config";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
+import { cleanEmailAddress } from "@/lib/email/list-cleaner";
 
 export class FollowUpQualityError extends Error {
   code = "FOLLOWUP_QUALITY_FAILED" as const;
@@ -88,6 +89,7 @@ export async function sendScheduledFollowUp(params: {
   try {
     await assertSenderPreflight(emailConfig, params.workspaceId, {
       override: Boolean(params.overridePreflight),
+      projectedAdditional: 1,
     });
   } catch (e) {
     if (e instanceof SenderPreflightError) throw e;
@@ -112,6 +114,13 @@ export async function sendScheduledFollowUp(params: {
     throw new Error("Contact has no usable email address");
   }
 
+  if (emailConfig.sendMode === "live") {
+    const cleaned = await cleanEmailAddress(to);
+    if (!cleaned.ok) {
+      throw new Error(`Recipient failed list cleaning: ${cleaned.reason ?? "invalid"}`);
+    }
+  }
+
   const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@localhost";
   const rfcMessageId = generateRfcMessageId(fromAddress);
 
@@ -123,9 +132,9 @@ export async function sendScheduledFollowUp(params: {
       body,
       trackingToken: sched.trackingToken ?? undefined,
       appUrl: emailConfig.appUrl,
-      emailStyle: emailConfig.emailStyle,
+      emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
     }),
-    replyTo: emailConfig.replyToAddress,
+    replyTo: emailConfig.replyToAddress?.trim() || emailConfig.fromAddress,
     messageId: rfcMessageId,
     inReplyTo: threadHeaders.inReplyTo,
     references: threadHeaders.references,

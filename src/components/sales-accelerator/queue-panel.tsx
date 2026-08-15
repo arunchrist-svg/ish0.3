@@ -414,53 +414,57 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, on
   }
 
   return (
-    <div className="flex h-full w-full shrink-0 flex-col border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
-      <div className="mb-3 flex min-w-0 items-center gap-2">
-        <span className="min-w-0 truncate text-[15px] font-bold leading-none text-brand-ink">Leads</span>
-        <LeadsViewToggle />
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+    <div className="flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
+      <div className="mb-3 min-w-0">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-[15px] font-bold leading-none text-brand-ink">Leads</span>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {canWrite && onImportLeads ? (
+              <CircleButton
+                size={26}
+                onClick={mergingDuplicates ? undefined : onImportLeads}
+                className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+                aria-label="Import leads from spreadsheet"
+              >
+                <Upload className="size-3.5" />
+              </CircleButton>
+            ) : null}
+            {canWrite && onAddLead ? (
+              <CircleButton
+                size={26}
+                onClick={mergingDuplicates ? undefined : onAddLead}
+                className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+                aria-label="Add lead"
+              >
+                <Plus className="size-3.5" />
+              </CircleButton>
+            ) : null}
+            <CircleButton
+              size={26}
+              onClick={mergingDuplicates ? undefined : () => void handleRefresh()}
+              className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+              aria-label="Refresh leads"
+            >
+              <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+            </CircleButton>
+            <CircleButton
+              size={26}
+              active={searchOpen}
+              onClick={() => {
+                setSearchOpen((open) => {
+                  if (open) setSearchQuery("");
+                  return !open;
+                });
+              }}
+              aria-label="Search leads"
+            >
+              <Search className="size-3.5" />
+            </CircleButton>
+          </div>
+        </div>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5">
+          <LeadsViewToggle />
           <SortByDropdown sort={sort} onChange={setSort} />
-          {canWrite && onImportLeads ? (
-            <CircleButton
-              size={26}
-              onClick={mergingDuplicates ? undefined : onImportLeads}
-              className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
-              aria-label="Import leads from spreadsheet"
-            >
-              <Upload className="size-3.5" />
-            </CircleButton>
-          ) : null}
-          {canWrite && onAddLead ? (
-            <CircleButton
-              size={26}
-              onClick={mergingDuplicates ? undefined : onAddLead}
-              className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
-              aria-label="Add lead"
-            >
-              <Plus className="size-3.5" />
-            </CircleButton>
-          ) : null}
-          <CircleButton
-            size={26}
-            onClick={mergingDuplicates ? undefined : () => void handleRefresh()}
-            className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
-            aria-label="Refresh leads"
-          >
-            <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
-          </CircleButton>
-          <CircleButton
-            size={26}
-            active={searchOpen}
-            onClick={() => {
-              setSearchOpen((open) => {
-                if (open) setSearchQuery("");
-                return !open;
-              });
-            }}
-            aria-label="Search leads"
-          >
-            <Search className="size-3.5" />
-          </CircleButton>
         </div>
       </div>
 

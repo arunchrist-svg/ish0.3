@@ -2,8 +2,6 @@
 
 import { SenderHealthSettings } from "@/components/settings/sender-health-settings";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
-import { SettingsSelectRow } from "@/components/settings/settings-select-row";
-import { SettingsNumberRow } from "@/components/settings/settings-number-row";
 import {
   EMAIL_PROVIDER_OPTIONS,
   EMAIL_SEND_MODE_OPTIONS,
@@ -17,7 +15,6 @@ import {
 } from "@/lib/email/config";
 import { campaignModeOptionsForBrand, brandConfigFromPresetSelection, brandConfigFromPlatformIntent } from "@/lib/email/brand-presets";
 import {
-  PLATFORM_INTENT_OPTIONS,
   defaultCampaignModeForIntent,
   resolvePlatformIntent,
   type PlatformIntent,
@@ -27,12 +24,13 @@ import {
   campaignModeOptionsForUser,
   platformIntentOptionsForUser,
 } from "@/lib/brand/vertical-catalog";
+import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { useSession } from "@/components/providers/session-provider";
 import { emailKeywordsToInput, normalizeEmailKeywords } from "@/lib/brand/email-keywords";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { AlertTriangle, CheckCircle2, CircleHelp, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, CircleHelp, Loader2, XCircle } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
 type Props = {
@@ -63,122 +61,124 @@ function AppPasswordHelp() {
         align="start"
         side="bottom"
         sideOffset={6}
-        className="w-[min(18rem,calc(100vw-2rem))] min-w-[16rem] rounded-xl border border-brand-border/60 bg-white p-3 shadow-[var(--shadow-brand)]"
+        className="w-[min(18rem,calc(100vw-2rem))] min-w-[16rem] rounded-xl border border-brand-stratus-blue/25 bg-white/95 p-3 shadow-[var(--shadow-brand)] backdrop-blur-md"
       >
-        <p className="text-[12px] font-semibold text-brand-ink">How to get an App Password</p>
-        <div className="mt-1.5 space-y-1.5 text-[12px] leading-relaxed text-brand-ink-soft">
-          <p>1. Enable 2-Step Verification on the Gmail account.</p>
-          <p>2. Go to Google Account → Security → App passwords.</p>
-          <p>3. Create a password for Mail, then paste it here and tap Verify connection.</p>
-          <p>4. From email below will auto-match your Gmail address.</p>
+        <p className="text-[12px] font-semibold text-brand-ink">App Password</p>
+        <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-brand-ink-soft">
+          <p>1. Turn on 2-Step Verification.</p>
+          <p>2. Google Account → Security → App passwords.</p>
+          <p>3. Create one for Mail, then paste it and verify.</p>
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-function SettingsTextRow({
+function Field({
   label,
-  desc,
   value,
   onChange,
   onBlur,
   placeholder,
   type = "text",
-  showDivider,
-  labelAccessory,
+  accessory,
 }: {
   label: string;
-  desc?: string;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (value: string) => void;
   onBlur?: () => void;
   placeholder?: string;
   type?: string;
-  showDivider?: boolean;
-  labelAccessory?: ReactNode;
+  accessory?: ReactNode;
 }) {
   return (
-    <>
-      {showDivider ? <SettingsGroupDivider /> : null}
-      <SettingsRow className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <div className="text-[15px] font-medium text-brand-ink">{label}</div>
-            {labelAccessory}
-          </div>
-          {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">{desc}</p> : null}
-        </div>
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          placeholder={placeholder}
-          className={cn(
-            "w-full rounded-xl border border-brand-border/60 bg-brand-canvas/50 px-3 py-2 text-[14px] text-brand-ink sm:max-w-[280px]",
-            "focus:border-brand-stratus-blue/50 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/15",
-          )}
-        />
-      </SettingsRow>
-    </>
+    <label className="block min-w-0">
+      <span className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+        {label}
+        {accessory}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12"
+      />
+    </label>
   );
 }
 
-function SettingsTextareaRow({
+function Stepper({
   label,
-  desc,
   value,
+  min,
+  max,
   onChange,
-  placeholder,
-  showDivider,
 }: {
   label: string;
-  desc?: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  showDivider?: boolean;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
 }) {
   return (
-    <>
-      {showDivider ? <SettingsGroupDivider /> : null}
-      <SettingsRow className="flex-col items-stretch gap-2">
-        <div className="min-w-0">
-          <div className="text-[15px] font-medium text-brand-ink">{label}</div>
-          {desc ? <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">{desc}</p> : null}
-        </div>
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          rows={3}
-          className={cn(
-            "w-full rounded-xl border border-brand-border/60 bg-brand-canvas/50 px-3 py-2 text-[14px] text-brand-ink",
-            "focus:border-brand-stratus-blue/50 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/15",
-          )}
-        />
-      </SettingsRow>
-    </>
+    <div className="flex items-center gap-2">
+      <span className="text-[12px] font-medium text-brand-ink-soft">{label}</span>
+      <div className="inline-flex items-center rounded-full border border-brand-stratus-blue/20 bg-white/80">
+        <button
+          type="button"
+          onClick={() => onChange(Math.max(min, value - 1))}
+          disabled={value <= min}
+          className="px-2 py-1 text-[13px] text-brand-ink-soft disabled:opacity-30"
+          aria-label={`Decrease ${label}`}
+        >
+          −
+        </button>
+        <span className="min-w-[1.5rem] text-center text-[13px] font-semibold tabular-nums text-brand-ink">
+          {value}
+        </span>
+        <button
+          type="button"
+          onClick={() => onChange(Math.min(max, value + 1))}
+          disabled={value >= max}
+          className="px-2 py-1 text-[13px] text-brand-ink-soft disabled:opacity-30"
+          aria-label={`Increase ${label}`}
+        >
+          +
+        </button>
+      </div>
+    </div>
   );
 }
 
 function StatusBadge({ ok, okLabel, failLabel }: { ok: boolean; okLabel: string; failLabel: string }) {
   return ok ? (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-green-soft px-2.5 py-1 text-[11px] font-semibold text-brand-green">
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand-green-soft px-2 py-0.5 text-[10px] font-semibold text-brand-green">
       <CheckCircle2 className="size-3" /> {okLabel}
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-pink-soft px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-salmon">
+    <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft px-2 py-0.5 text-[10px] font-semibold text-brand-stratus-salmon">
       <XCircle className="size-3" /> {failLabel}
     </span>
   );
 }
 
-export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, resendApiKeyDraft, onResendApiKeyChange, onVerify, verifying }: Props) {
+export function EmailTab({
+  config,
+  onUpdate,
+  smtpPassDraft,
+  onSmtpPassChange,
+  resendApiKeyDraft,
+  onResendApiKeyChange,
+  onVerify,
+  verifying,
+}: Props) {
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [analyzeMessage, setAnalyzeMessage] = useState("");
   const [keywordDraft, setKeywordDraft] = useState<string | null>(null);
+  const [showWriter, setShowWriter] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const { session } = useSession();
   const operatorEmail = session?.user.email;
 
@@ -202,7 +202,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
 
   if (!config) {
     return (
-      <div className="flex flex-1 items-center justify-center py-24 text-[13px] text-brand-ink-faint">
+      <div className="flex flex-1 items-center justify-center py-16 text-[13px] text-brand-ink-faint">
         <Loader2 className="mr-2 size-4 animate-spin" /> Loading email settings…
       </div>
     );
@@ -213,8 +213,14 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
   const resendReady = Boolean(config.resendApiKeySet || resendApiKeyDraft.trim());
   const providerReady = isSmtp ? config.smtpConfigured : resendReady;
   const canSelectLive = config.sendMode === "live" || providerReady;
-
   const smtpEmail = config.smtpUser || "";
+  const selectedPack =
+    config.brandConfig?.verticalPackId ??
+    (config.brandConfig?.brandSlug === "ish"
+      ? "gifting-sweets"
+      : config.brandConfig?.brandSlug === "prestige"
+        ? "gifting-appliances"
+        : "general");
 
   function patchWebsiteInsights(partial: Partial<WebsiteBrandInsights>) {
     if (!config) return;
@@ -235,16 +241,6 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
     });
   }
 
-  const senderFooter = isSmtp
-    ? smtpEmail
-      ? `From email must match your Gmail address (${smtpEmail}).`
-      : "From email must match the Gmail address entered above."
-    : "From address must be verified in your Resend dashboard.";
-
-  const sendModeFooter = isSmtp
-    ? "Start with Dry run, then Test with your inbox, then Live once SMTP credentials are verified."
-    : "Start with Dry run, then Test with your inbox, then Live when domain is verified in Resend.";
-
   function handleSmtpUserChange(email: string) {
     onUpdate("smtpUser", email);
     if (email.includes("@")) {
@@ -257,7 +253,7 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
     if (!config) return;
     const url = (config.brandConfig?.websiteUrl ?? "").trim();
     if (!url) {
-      setAnalyzeMessage("Enter a website URL first.");
+      setAnalyzeMessage("Enter a website first.");
       return;
     }
     setAnalyzingWebsite(true);
@@ -281,25 +277,10 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
         setAnalyzeMessage(data.error ?? "Website analysis failed");
         return;
       }
-      if (data.brandConfig) {
-        onUpdate("brandConfig", data.brandConfig as BrandConfig);
-      }
-      if (data.campaignMode) {
-        onUpdate("campaignMode", data.campaignMode as CampaignMode);
-      }
-      const industries = data.insights?.scoutIndustries?.join(", ");
-      const intentLabel = PLATFORM_INTENT_OPTIONS.find((o) => o.value === data.platformIntent)?.label;
-      setAnalyzeMessage(
-        [
-          intentLabel ? `Intent: ${intentLabel}.` : null,
-          industries
-            ? `Updated writeup, keywords, writing style, and Scout targets (${industries}).`
-            : "Updated product writeup, email keywords, and writing style from your website.",
-          "Save if you change anything else.",
-        ]
-          .filter(Boolean)
-          .join(" "),
-      );
+      if (data.brandConfig) onUpdate("brandConfig", data.brandConfig as BrandConfig);
+      if (data.campaignMode) onUpdate("campaignMode", data.campaignMode as CampaignMode);
+      setAnalyzeMessage("Writer copy updated from your website.");
+      setShowWriter(true);
     } catch {
       setAnalyzeMessage("Website analysis failed. Try again.");
     } finally {
@@ -308,12 +289,12 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
   }
 
   return (
-    <div className="pb-8">
+    <div className="ish-email-settings pb-6">
       {config.validationWarnings.length > 0 && (
-        <div className="mb-4 rounded-xl border border-brand-stratus-salmon/30 bg-brand-pink-soft/40 px-4 py-3">
-          <div className="flex items-start gap-2 text-[13px] text-brand-stratus-salmon">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <ul className="list-inside list-disc space-y-1">
+        <div className="mb-3 rounded-xl border border-brand-stratus-salmon/30 bg-brand-pink-soft/40 px-3 py-2">
+          <div className="flex items-start gap-2 text-[12px] text-brand-stratus-salmon">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <ul className="space-y-0.5">
               {config.validationWarnings.map((warning) => (
                 <li key={warning}>{warning}</li>
               ))}
@@ -322,439 +303,399 @@ export function EmailTab({ config, onUpdate, smtpPassDraft, onSmtpPassChange, re
         </div>
       )}
 
-      <SettingsGroup
-        title="Outreach sending"
-        footer="Pause stops Email 1 sends and automated follow-ups. Scheduled emails stay queued until you resume."
-      >
-        <SettingsSelectRow
-          label="Sending active"
-          desc="Email 1 and sequence follow-ups can send on schedule."
-          selected={!config.outreachPaused}
-          onSelect={() => onUpdate("outreachPaused", false)}
-        />
-        <SettingsSelectRow
-          label="Paused"
-          desc="No outbound emails until you resume. Drafts and approvals are kept."
-          selected={Boolean(config.outreachPaused)}
-          onSelect={() => onUpdate("outreachPaused", true)}
-          showDivider
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Provider" footer="Choose how outbound email is delivered.">
-        {EMAIL_PROVIDER_OPTIONS.map((option, i) => (
-          <SettingsSelectRow
-            key={option.value}
-            label={option.label}
-            desc={option.desc}
-            badge={option.badge}
-            selected={config.provider === option.value}
-            onSelect={() => onUpdate("provider", option.value)}
-            showDivider={i > 0}
+      <SettingsGroup title="Sending" className="mb-4">
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Status</span>
+          <SettingsSegmented
+            value={config.outreachPaused ? "paused" : "active"}
+            onChange={(next) => onUpdate("outreachPaused", next === "paused")}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "paused", label: "Paused" },
+            ]}
           />
-        ))}
-      </SettingsGroup>
-
-      {isSmtp && (
-        <SettingsGroup
-          title="Gmail SMTP credentials"
-          footer="Verify connection saves your credentials to the workspace. Use a Google App Password, not your login password."
-        >
-          <SettingsRow className="justify-between">
-            <div>
-              <div className="text-[15px] font-medium text-brand-ink">Connection status</div>
-              <p className="mt-0.5 text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
-            </div>
-            <StatusBadge
-              ok={config.smtpConfigured}
-              okLabel="Verified"
-              failLabel="Not verified"
-            />
-          </SettingsRow>
-          <SettingsGroupDivider />
-          <SettingsTextRow
-            label="Gmail address"
-            desc="Your outbound Gmail or Google Workspace address"
-            value={config.smtpUser}
-            onChange={handleSmtpUserChange}
-            placeholder="you@company.com"
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Mode</span>
+          <SettingsSegmented
+            value={config.sendMode}
+            onChange={(next) => onUpdate("sendMode", next)}
+            options={EMAIL_SEND_MODE_OPTIONS.map((mode) => ({ value: mode.value, label: mode.label }))}
+            disabledValue={canSelectLive ? undefined : "live"}
+          />
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <div className="grid gap-3 px-4 py-3 sm:grid-cols-2">
+          <Field
+            label="From name"
+            value={config.fromName}
+            onChange={(v) => onUpdate("fromName", v)}
+            placeholder="Arun (your real name)"
+          />
+          <Field
+            label="From email"
+            value={config.fromAddress}
+            onChange={(v) => {
+              onUpdate("fromAddress", v);
+              if (isResend && v.includes("@") && !config.replyToAddress?.trim()) {
+                onUpdate("replyToAddress", v);
+              }
+            }}
+            placeholder={isSmtp ? smtpEmail || "you@company.com" : "hello@yourdomain.com"}
             type="email"
-            showDivider
           />
-          <SettingsTextRow
-            label="App Password"
-            labelAccessory={<AppPasswordHelp />}
-            desc={
-              config.smtpPassSet && !smtpPassDraft
-                ? "Password saved. Enter a new one only to change it"
-                : "16-character Google App Password"
-            }
-            value={smtpPassDraft}
-            onChange={onSmtpPassChange}
-            placeholder={config.smtpPassSet ? "••••••••••••••••" : "xxxx xxxx xxxx xxxx"}
-            type="password"
-            showDivider
-          />
-          <SettingsGroupDivider />
-          <SettingsRow>
-            <button
-              type="button"
-              onClick={onVerify}
-              disabled={verifying || !config.smtpUser}
-              className={cn(
-                "rounded-xl bg-brand-stratus-blue px-4 py-2 text-[13px] font-semibold text-white",
-                "hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50",
-              )}
-            >
-              {verifying ? "Verifying…" : "Verify connection"}
-            </button>
-          </SettingsRow>
-        </SettingsGroup>
-      )}
+          {(config.sendMode === "test" || config.testRecipient) && (
+            <Field
+              label="Test inbox"
+              value={config.testRecipient}
+              onChange={(v) => onUpdate("testRecipient", v)}
+              placeholder="you@gmail.com"
+              type="email"
+            />
+          )}
+        </div>
+      </SettingsGroup>
 
-      {isResend && (
-        <SettingsGroup
-          title="Resend"
-          footer="Use your own Resend API key and a verified from-address. In Resend, add a webhook to /api/webhooks/resend for email.bounced, email.failed, and email.complained so each outreach can show bounce status."
-        >
-          <SettingsTextRow
-            label="API key"
-            desc="From resend.com → API Keys. Stored per workspace, never shown again after save."
-            value={resendApiKeyDraft}
-            onChange={onResendApiKeyChange}
-            placeholder={config.resendApiKeySet ? "•••••••• (saved — enter to replace)" : "re_..."}
-            type="password"
+      <SettingsGroup title="Connection" className="mb-4">
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Provider</span>
+          <SettingsSegmented
+            value={config.provider}
+            onChange={(next) => onUpdate("provider", next)}
+            options={EMAIL_PROVIDER_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.value === "smtp" ? "Gmail" : option.label,
+            }))}
           />
-        </SettingsGroup>
-      )}
+        </SettingsRow>
+        {isSmtp ? (
+          <>
+            <SettingsGroupDivider />
+            <div className="flex items-center justify-between gap-2 px-4 py-2">
+              <p className="min-w-0 truncate text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
+              <StatusBadge ok={config.smtpConfigured} okLabel="Verified" failLabel="Not verified" />
+            </div>
+            <div className="grid gap-3 px-4 pb-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+              <Field
+                label="Gmail"
+                value={config.smtpUser}
+                onChange={handleSmtpUserChange}
+                placeholder="you@company.com"
+                type="email"
+              />
+              <Field
+                label="App Password"
+                accessory={<AppPasswordHelp />}
+                value={smtpPassDraft}
+                onChange={onSmtpPassChange}
+                placeholder={config.smtpPassSet ? "••••••••••••••••" : "xxxx xxxx xxxx xxxx"}
+                type="password"
+              />
+              <button
+                type="button"
+                onClick={onVerify}
+                disabled={verifying || !config.smtpUser}
+                className="h-[38px] rounded-full bg-brand-stratus-blue px-4 text-[12px] font-semibold text-white hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {verifying ? "Verifying…" : "Verify"}
+              </button>
+            </div>
+          </>
+        ) : null}
+        {isResend ? (
+          <>
+            <SettingsGroupDivider />
+            <div className="px-4 py-3">
+              <Field
+                label="Resend API key"
+                value={resendApiKeyDraft}
+                onChange={onResendApiKeyChange}
+                placeholder={config.resendApiKeySet ? "•••••••• (saved)" : "re_..."}
+                type="password"
+              />
+            </div>
+          </>
+        ) : null}
+      </SettingsGroup>
 
-      <SettingsGroup title="Brand & Campaign" footer="Writer uses this to tailor product language and CTAs for your company. Set how you use the platform, then analyse your website to auto-fill product summary, tone, and Scout targeting.">
-        <SettingsRow className="flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-medium text-brand-ink">Company website</div>
-            <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
-              Used to customise email writing and scout industries / buyer roles
+      <SettingsGroup title="Sequence" className="mb-4">
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Follow-ups</span>
+          <SettingsSegmented
+            value={(config.followUpPolicy ?? "auto_send") as FollowUpPolicy}
+            onChange={(next) => onUpdate("followUpPolicy", next)}
+            options={FOLLOW_UP_POLICY_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.value === "auto_send" ? "Auto-send" : "Review first",
+            }))}
+          />
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Cadence</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <Stepper
+              label="Email 2"
+              value={config.cadenceDays[0]}
+              min={1}
+              max={14}
+              onChange={(v) => onUpdate("cadenceDays", [v, Math.max(v + 1, config.cadenceDays[1])])}
+            />
+            <Stepper
+              label="Email 3"
+              value={config.cadenceDays[1]}
+              min={Math.max(2, config.cadenceDays[0] + 1)}
+              max={30}
+              onChange={(v) => onUpdate("cadenceDays", [config.cadenceDays[0], v])}
+            />
+            <span className="text-[11px] text-brand-ink-faint">days after Email 1</span>
+          </div>
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <div className="min-w-0 pr-3">
+            <span className="text-[13px] font-semibold text-brand-ink">Inbox</span>
+            <p className="mt-0.5 text-[11px] text-brand-ink-faint">
+              Primary for company cold outreach. Marketing adds unsubscribe headers that push Promotions.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:max-w-[320px]">
-            <input
-              type="url"
-              value={config.brandConfig?.websiteUrl ?? ""}
-              onChange={(e) =>
-                onUpdate("brandConfig", {
-                  ...(config.brandConfig as BrandConfig),
-                  websiteUrl: e.target.value,
-                })
+          <SettingsSegmented
+            value={config.emailStyle}
+            onChange={(next) => onUpdate("emailStyle", next)}
+            options={EMAIL_STYLE_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.value === "primary" ? "Primary" : option.label,
+            }))}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup title="Writer" className="mb-4">
+        <div className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <Field
+            label="Website"
+            value={config.brandConfig?.websiteUrl ?? ""}
+            onChange={(v) =>
+              onUpdate("brandConfig", {
+                ...(config.brandConfig as BrandConfig),
+                websiteUrl: v,
+              })
+            }
+            placeholder="https://yourcompany.com"
+            type="url"
+          />
+          <button
+            type="button"
+            disabled={analyzingWebsite || !(config.brandConfig?.websiteUrl ?? "").trim()}
+            onClick={() => void analyzeWebsite()}
+            className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-full bg-brand-black px-4 text-[12px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {analyzingWebsite ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            {analyzingWebsite ? "Analysing…" : "Analyse"}
+          </button>
+        </div>
+        {analyzeMessage || config.brandConfig?.websiteInsights?.analyzedAt ? (
+          <p className="px-4 pb-2 text-[11px] text-brand-ink-faint">
+            {analyzeMessage ||
+              `Last analysed ${new Date(config.brandConfig!.websiteInsights!.analyzedAt).toLocaleDateString()}`}
+          </p>
+        ) : null}
+        <SettingsGroupDivider />
+        <button
+          type="button"
+          onClick={() => setShowWriter((open) => !open)}
+          className="flex w-full items-center justify-between px-4 py-2.5 text-left text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
+        >
+          Edit writer copy
+          <ChevronDown className={cn("size-3.5 transition-transform", showWriter && "rotate-180")} />
+        </button>
+        {showWriter ? (
+          <div className="grid gap-3 px-4 pb-3">
+            <Field
+              label="Product summary"
+              value={config.brandConfig?.productSummary ?? ""}
+              onChange={(v) =>
+                onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), productSummary: v })
               }
-              placeholder="https://yourcompany.com"
-              className={cn(
-                "w-full rounded-xl border border-brand-border/60 bg-brand-canvas/50 px-3 py-2 text-[14px] text-brand-ink",
-                "focus:border-brand-stratus-blue/50 focus:outline-none focus:ring-2 focus:ring-brand-stratus-blue/15",
-              )}
+              placeholder="What you sell"
             />
-            <button
-              type="button"
-              disabled={analyzingWebsite || !(config.brandConfig?.websiteUrl ?? "").trim()}
-              onClick={() => void analyzeWebsite()}
-              className={cn(
-                "inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[13px] font-medium",
-                "bg-brand-black text-white disabled:cursor-not-allowed disabled:opacity-50",
-              )}
-            >
-              {analyzingWebsite ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {analyzingWebsite ? "Analysing…" : "Analyse website"}
-            </button>
-            {analyzeMessage ? (
-              <p className="text-[11px] leading-relaxed text-brand-ink-soft">{analyzeMessage}</p>
-            ) : config.brandConfig?.websiteInsights?.analyzedAt ? (
-              <p className="text-[11px] text-brand-ink-faint">
-                Last analysed {new Date(config.brandConfig.websiteInsights.analyzedAt).toLocaleString()}
-                {config.brandConfig.websiteInsights.scoutIndustries?.length
-                  ? ` · Scout: ${config.brandConfig.websiteInsights.scoutIndustries.join(", ")}`
-                  : ""}
-              </p>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                Writeup
+              </span>
+              <textarea
+                value={config.brandConfig?.websiteInsights?.productWriteup ?? ""}
+                onChange={(e) => patchWebsiteInsights({ productWriteup: e.target.value })}
+                placeholder="2–3 sentences for Writer"
+                rows={2}
+                className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12"
+              />
+            </label>
+            <Field
+              label="Keywords"
+              value={keywordDraft ?? emailKeywordsToInput(config.brandConfig?.websiteInsights?.emailKeywords)}
+              onChange={setKeywordDraft}
+              onBlur={() => {
+                const next = normalizeEmailKeywords(
+                  keywordDraft ?? emailKeywordsToInput(config.brandConfig?.websiteInsights?.emailKeywords),
+                );
+                patchWebsiteInsights({ emailKeywords: next });
+                setKeywordDraft(null);
+              }}
+              placeholder="bulk hampers, branded boxes"
+            />
+            <Field
+              label="Writing style"
+              value={config.brandConfig?.toneNotes ?? ""}
+              onChange={(v) =>
+                onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), toneNotes: v })
+              }
+              placeholder="Clear, product-led"
+            />
+          </div>
+        ) : null}
+      </SettingsGroup>
+
+      <button
+        type="button"
+        onClick={() => setShowAdvanced((open) => !open)}
+        className="mb-3 flex w-full items-center justify-between rounded-2xl border border-brand-stratus-blue/20 bg-white/70 px-4 py-2.5 text-[12px] font-semibold text-brand-ink-soft shadow-[var(--shadow-brand-sm)] backdrop-blur-sm hover:text-brand-ink"
+      >
+        Advanced
+        <ChevronDown className={cn("size-3.5 transition-transform", showAdvanced && "rotate-180")} />
+      </button>
+
+      {showAdvanced ? (
+        <SettingsGroup className="mb-4">
+          <div className="grid gap-3 px-4 py-3 sm:grid-cols-2">
+            <Field
+              label="Reply-to"
+              value={config.replyToAddress}
+              onChange={(v) => onUpdate("replyToAddress", v)}
+              placeholder={config.fromAddress || "you@company.com"}
+              type="email"
+            />
+            <Field
+              label="DKIM selector"
+              value={config.dkimSelector ?? ""}
+              onChange={(v) => onUpdate("dkimSelector", v)}
+              placeholder="google"
+            />
+            <Field
+              label="Daily send cap"
+              value={String(config.dailySendCapPerDomain ?? 50)}
+              onChange={(v) => onUpdate("dailySendCapPerDomain", Math.max(1, Number(v) || 50))}
+              placeholder="50"
+              type="number"
+            />
+            <Field
+              label="App URL"
+              value={config.appUrl}
+              onChange={(v) => onUpdate("appUrl", v)}
+              placeholder="https://your-app.vercel.app"
+            />
+            {intentOptions.length > 1 ? (
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                  Intent
+                </span>
+                <select
+                  value={activeIntent}
+                  onChange={(e) => {
+                    const nextIntent = e.target.value as PlatformIntent;
+                    const next = brandConfigFromPlatformIntent(nextIntent, {
+                      websiteUrl: config.brandConfig?.websiteUrl,
+                      websiteInsights: config.brandConfig?.websiteInsights,
+                      brandName: config.brandConfig?.brandName,
+                      productSummary: config.brandConfig?.productSummary,
+                      toneNotes: config.brandConfig?.toneNotes,
+                      buyerPersonas: config.brandConfig?.buyerPersonas,
+                    });
+                    onUpdate("brandConfig", next);
+                    onUpdate("campaignMode", defaultCampaignModeForIntent(nextIntent));
+                  }}
+                  className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+                >
+                  {intentOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {presetOptions.length > 1 ? (
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                  Brand pack
+                </span>
+                <select
+                  value={
+                    presetOptions.find((option) => {
+                      const optionPack =
+                        option.value === "ish"
+                          ? "gifting-sweets"
+                          : option.value === "prestige"
+                            ? "gifting-appliances"
+                            : "general";
+                      return (
+                        selectedPack === optionPack &&
+                        (option.value !== "custom" || activeIntent === "general_b2b" || activeIntent === "b2b_saas")
+                      );
+                    })?.value ?? "custom"
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value as BrandSlug;
+                    const preset = brandConfigFromPresetSelection(value, {
+                      websiteUrl: config.brandConfig?.websiteUrl,
+                      websiteInsights: config.brandConfig?.websiteInsights,
+                      brandName: value === "custom" ? config.brandConfig?.brandName : undefined,
+                      platformIntent:
+                        value === "custom"
+                          ? activeIntent === "b2b_saas"
+                            ? "b2b_saas"
+                            : "general_b2b"
+                          : undefined,
+                    });
+                    onUpdate("brandConfig", preset);
+                    if (value === "ish") onUpdate("campaignMode", "diwali_gifting");
+                    if (value === "prestige") onUpdate("campaignMode", "mass_ordering");
+                    if (value === "custom") onUpdate("campaignMode", "custom");
+                  }}
+                  className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+                >
+                  {presetOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {campaignOptions.length > 1 ? (
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                  Campaign
+                </span>
+                <select
+                  value={config.campaignMode}
+                  onChange={(e) => onUpdate("campaignMode", e.target.value as CampaignMode)}
+                  className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+                >
+                  {campaignOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             ) : null}
           </div>
-        </SettingsRow>
-        <SettingsGroupDivider />
-        {intentOptions.map((option, i) => (
-          <SettingsSelectRow
-            key={option.value}
-            label={option.label}
-            desc={option.desc}
-            selected={activeIntent === option.value}
-            onSelect={() => {
-              const next = brandConfigFromPlatformIntent(option.value as PlatformIntent, {
-                websiteUrl: config.brandConfig?.websiteUrl,
-                websiteInsights: config.brandConfig?.websiteInsights,
-                brandName: config.brandConfig?.brandName,
-                productSummary: config.brandConfig?.productSummary,
-                toneNotes: config.brandConfig?.toneNotes,
-                buyerPersonas: config.brandConfig?.buyerPersonas,
-              });
-              onUpdate("brandConfig", next);
-              onUpdate("campaignMode", defaultCampaignModeForIntent(option.value));
-            }}
-            showDivider={i > 0}
-          />
-        ))}
-        <SettingsGroupDivider />
-        {presetOptions.map((option, i) => {
-          const selectedPack =
-            config.brandConfig?.verticalPackId ??
-            (config.brandConfig?.brandSlug === "ish"
-              ? "gifting-sweets"
-              : config.brandConfig?.brandSlug === "prestige"
-                ? "gifting-appliances"
-                : "general");
-          const optionPack =
-            option.value === "ish"
-              ? "gifting-sweets"
-              : option.value === "prestige"
-                ? "gifting-appliances"
-                : "general";
-          return (
-          <SettingsSelectRow
-            key={option.value}
-            label={option.label}
-            desc={option.desc}
-            selected={selectedPack === optionPack && (option.value !== "custom" || activeIntent === "general_b2b" || activeIntent === "b2b_saas")}
-            onSelect={() => {
-              const preset = brandConfigFromPresetSelection(option.value as BrandSlug, {
-                websiteUrl: config.brandConfig?.websiteUrl,
-                websiteInsights: config.brandConfig?.websiteInsights,
-                brandName:
-                  option.value === "custom"
-                    ? config.brandConfig?.brandName
-                    : undefined,
-                platformIntent:
-                  option.value === "custom"
-                    ? activeIntent === "b2b_saas"
-                      ? "b2b_saas"
-                      : "general_b2b"
-                    : undefined,
-              });
-              onUpdate("brandConfig", preset);
-              if (option.value === "ish") onUpdate("campaignMode", "diwali_gifting");
-              if (option.value === "prestige") onUpdate("campaignMode", "mass_ordering");
-              if (option.value === "custom") onUpdate("campaignMode", "custom");
-            }}
-            showDivider={i > 0}
-          />
-          );
-        })}
-        <SettingsGroupDivider />
-        {campaignOptions.map((option, i) => (
-          <SettingsSelectRow
-            key={option.value}
-            label={option.label}
-            desc={option.desc}
-            selected={config.campaignMode === option.value}
-            onSelect={() => onUpdate("campaignMode", option.value as CampaignMode)}
-            showDivider={i > 0}
-          />
-        ))}
-        <SettingsGroupDivider />
-        <SettingsTextRow
-          label="Product summary"
-          desc="Injected into Writer prompts"
-          value={config.brandConfig?.productSummary ?? ""}
-          onChange={(v) =>
-            onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), productSummary: v })
-          }
-          placeholder="What you sell and key pricing"
-          showDivider
-        />
-        <SettingsTextareaRow
-          label="Product writeup"
-          desc="Short positioning blurb Writer uses as the brand story"
-          value={config.brandConfig?.websiteInsights?.productWriteup ?? ""}
-          onChange={(v) => patchWebsiteInsights({ productWriteup: v })}
-          placeholder="2–3 sentences: what you sell, who it is for, why it matters"
-          showDivider
-        />
-        <SettingsTextRow
-          label="Email keywords"
-          desc="Comma-separated themes. Writer uses 1–2 per email, never all at once."
-          value={keywordDraft ?? emailKeywordsToInput(config.brandConfig?.websiteInsights?.emailKeywords)}
-          onChange={setKeywordDraft}
-          onBlur={() => {
-            const next = normalizeEmailKeywords(
-              keywordDraft ?? emailKeywordsToInput(config.brandConfig?.websiteInsights?.emailKeywords),
-            );
-            patchWebsiteInsights({ emailKeywords: next });
-            setKeywordDraft(null);
-          }}
-          placeholder="bulk Diwali hampers, custom branded boxes, pan-India delivery"
-          showDivider
-        />
-        <SettingsTextRow
-          label="Writing style"
-          desc="How Writer should sound for your brand (tone, vocabulary, angles)"
-          value={config.brandConfig?.toneNotes ?? ""}
-          onChange={(v) =>
-            onUpdate("brandConfig", { ...(config.brandConfig as BrandConfig), toneNotes: v })
-          }
-          placeholder="e.g. Clear and product-led. Focus on outcomes, not festival gifting."
-          showDivider
-        />
-      </SettingsGroup>
-
-      <SettingsGroup title="Inbox style" footer="Primary inbox sends personal 1:1 emails. Marketing adds unsubscribe footer and may land in Promotions/Forums.">
-        {EMAIL_STYLE_OPTIONS.map((option, i) => (
-          <SettingsSelectRow
-            key={option.value}
-            label={option.label}
-            desc={option.desc}
-            badge={option.badge}
-            selected={config.emailStyle === option.value}
-            onSelect={() => onUpdate("emailStyle", option.value)}
-            showDivider={i > 0}
-          />
-        ))}
-        <SettingsGroupDivider />
-        <SettingsRow className="flex-col items-stretch gap-1 px-3 py-3">
-          <p className="text-[12px] leading-relaxed text-brand-ink-soft">
-            Tip: drag a test email to Gmail <strong>Primary</strong> and add the sender to Contacts. Use a company domain for production.
-          </p>
-        </SettingsRow>
-      </SettingsGroup>
-
-      <SettingsGroup title="Send mode" footer={sendModeFooter}>
-        {EMAIL_SEND_MODE_OPTIONS.map((mode, i) => {
-          const disabled = mode.value === "live" && !canSelectLive && config.sendMode !== "live";
-          return (
-            <SettingsSelectRow
-              key={mode.value}
-              label={mode.label}
-              desc={
-                disabled
-                  ? `${mode.desc} (requires verified ${isSmtp ? "SMTP" : "Resend"} credentials)`
-                  : mode.desc
-              }
-              badge={mode.badge}
-              selected={config.sendMode === mode.value}
-              onSelect={() => !disabled && onUpdate("sendMode", mode.value)}
-              showDivider={i > 0}
-            />
-          );
-        })}
-      </SettingsGroup>
-
-      <SettingsGroup title="Sender" footer={senderFooter}>
-        <SettingsTextRow
-          label="From name"
-          value={config.fromName}
-          onChange={(v) => onUpdate("fromName", v)}
-          placeholder="Your name"
-        />
-        <SettingsTextRow
-          label="From email"
-          desc={isSmtp ? "Must match Gmail address above" : "Must match a verified domain in Resend"}
-          value={config.fromAddress}
-          onChange={(v) => onUpdate("fromAddress", v)}
-          placeholder="you@gmail.com"
-          showDivider
-        />
-        <SettingsTextRow
-          label="Reply-to email"
-          value={config.replyToAddress}
-          onChange={(v) => onUpdate("replyToAddress", v)}
-          placeholder="you@gmail.com"
-          showDivider
-        />
-        <SettingsTextRow
-          label="DKIM selector"
-          desc="Optional — from your ESP (e.g. google, default, k1). Improves DKIM detection accuracy."
-          value={config.dkimSelector ?? ""}
-          onChange={(v) => onUpdate("dkimSelector", v)}
-          placeholder="google"
-          showDivider
-        />
-        {(config.sendMode === "test" || config.testRecipient) && (
-          <SettingsTextRow
-            label="Test recipient"
-            desc="All emails go here in test mode"
-            value={config.testRecipient}
-            onChange={(v) => onUpdate("testRecipient", v)}
-            placeholder="arun.jpeg@gmail.com"
-            type="email"
-            showDivider
-          />
-        )}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Sender health"
-        footer="SPF, DMARC, and DKIM checks on your sending domain. Cached for 1 hour.">
-        <SenderHealthSettings />
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Send limits"
-        footer="Live sends are blocked when the daily cap per sending domain is exceeded (critical preflight).">
-        <SettingsTextRow
-          label="Daily cap per domain"
-          desc="Max live sends in a rolling 24h window before preflight blocks"
-          value={String(config.dailySendCapPerDomain ?? 50)}
-          onChange={(v) => onUpdate("dailySendCapPerDomain", Math.max(1, Number(v) || 50))}
-          placeholder="50"
-          type="number"
-        />
-      </SettingsGroup>
-
-
-      <SettingsGroup
-        title="Follow-up policy"
-        footer="Controls whether Email 2 and 3 need human review before the sequencer sends them."
-      >
-        {FOLLOW_UP_POLICY_OPTIONS.map((option, i) => (
-          <SettingsSelectRow
-            key={option.value}
-            label={option.label}
-            desc={option.desc}
-            selected={(config.followUpPolicy ?? "auto_send") === option.value}
-            onSelect={() => onUpdate("followUpPolicy", option.value as FollowUpPolicy)}
-            showDivider={i > 0}
-          />
-        ))}
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Cadence"
-        footer="3-email sequence: initial email, then follow-up and final reminder if no reply."
-      >
-        <SettingsNumberRow
-          label="Follow-up #1 (days after initial)"
-          desc="Default: 3 days"
-          value={config.cadenceDays[0]}
-          min={1}
-          max={14}
-          onChange={(v) => onUpdate("cadenceDays", [v, config.cadenceDays[1]])}
-        />
-        <SettingsGroupDivider />
-        <SettingsNumberRow
-          label="Follow-up #2 (days after initial)"
-          desc="Default: 7 days — final reminder"
-          value={config.cadenceDays[1]}
-          min={2}
-          max={30}
-          onChange={(v) => onUpdate("cadenceDays", [config.cadenceDays[0], v])}
-        />
-      </SettingsGroup>
-
-      <SettingsGroup
-        title="Open tracking"
-        footer="Public HTTPS URL for your app. Required for the open-tracking pixel in sent emails. Localhost disables tracking."
-      >
-        <SettingsTextRow
-          label="App URL"
-          desc="e.g. https://your-app.vercel.app or http://localhost:3002"
-          value={config.appUrl}
-          onChange={(v) => onUpdate("appUrl", v)}
-          placeholder="http://localhost:3002"
-        />
-      </SettingsGroup>
+          <SettingsGroupDivider />
+          <SenderHealthSettings />
+        </SettingsGroup>
+      ) : null}
     </div>
   );
 }

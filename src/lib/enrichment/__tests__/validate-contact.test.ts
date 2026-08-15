@@ -21,6 +21,11 @@ describe("ENRICH-UNIT-001 email validation", () => {
     expect(isValidEmail("bad@localhost")).toBe(false);
   });
 
+  it("allows test.com addresses for local testing", () => {
+    expect(isValidEmail("test@test.com")).toBe(true);
+    expect(sanitizeEmail("test@test.com")).toBe("test@test.com");
+  });
+
   it("rejects malformed emails", () => {
     expect(isValidEmail("not-an-email")).toBe(false);
     expect(sanitizeEmail("garbage")).toBeUndefined();

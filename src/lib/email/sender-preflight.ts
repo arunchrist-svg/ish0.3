@@ -1,6 +1,8 @@
 import type { EmailConfig } from "@/lib/email/config";
 import { checkDomainAuth, type DomainAuthResult, isPersonalInboxDomain } from "@/lib/email/sender-dns";
-import { countSendsLast24h } from "@/lib/email/sender-volume";
+import { assertVolumeWithinCap, countSendsLast24h } from "@/lib/email/sender-volume";
+import { getWorkspaceBounceStats, type BounceStats } from "@/lib/email/sender-bounce-rate";
+import { setOutreachPaused } from "@/lib/settings/email-settings";
 
 export type SenderIssueSeverity = "info" | "warn" | "critical";
 
@@ -15,6 +17,8 @@ export type SenderHealthResult = {
   domainAuth: DomainAuthResult;
   sendsLast24h: number;
   dailyCap: number;
+  projectedAdditional: number;
+  bounceStats: BounceStats;
   personalInboxSender: boolean;
   canSendLive: boolean;
   hasCritical: boolean;
@@ -51,10 +55,15 @@ function buildDnsIssues(auth: DomainAuthResult): SenderIssue[] {
   if (!spf.valid) {
     issues.push({
       id: "spf",
-      label: `No SPF record found for ${auth.domain}`,
+      label: spf.warning
+        ? `SPF problem for ${auth.domain}: ${spf.warning}`
+        : `No SPF record found for ${auth.domain}`,
       severity: "critical",
     });
+  } else if (spf.warning) {
+    issues.push({ id: "spf_soft", label: spf.warning, severity: "warn" });
   }
+
   if (!dmarc.valid) {
     issues.push({
       id: "dmarc",
@@ -64,6 +73,7 @@ function buildDnsIssues(auth: DomainAuthResult): SenderIssue[] {
   } else if (dmarc.warning) {
     issues.push({ id: "dmarc_policy", label: dmarc.warning, severity: "warn" });
   }
+
   if (!dkim.valid) {
     issues.push({
       id: "dkim",
@@ -75,32 +85,59 @@ function buildDnsIssues(auth: DomainAuthResult): SenderIssue[] {
   return issues;
 }
 
+export type SenderHealthOptions = {
+  /** Extra recipients about to send in this batch (counts against daily cap). */
+  projectedAdditional?: number;
+};
+
 export async function runSenderHealthCheck(
   config: EmailConfig,
   workspaceId: string,
+  options?: SenderHealthOptions,
 ): Promise<SenderHealthResult> {
   const fromAddress = config.fromAddress || config.smtpUser;
   const dailyCap = config.dailySendCapPerDomain ?? 50;
-  const [domainAuth, sendsLast24h] = await Promise.all([
+  const projectedAdditional = Math.max(0, options?.projectedAdditional ?? 0);
+
+  const [domainAuth, sendsLast24h, bounceStats] = await Promise.all([
     checkDomainAuth(fromAddress, { dkimSelector: config.dkimSelector }),
-    countSendsLast24h(workspaceId, fromAddress),
+    countSendsLast24h(workspaceId, fromAddress ?? ""),
+    getWorkspaceBounceStats(workspaceId),
   ]);
 
-  const personalInboxSender = isPersonalInboxDomain(fromAddress);
+  const personalInboxSender = isPersonalInboxDomain(fromAddress ?? "");
   const issues = buildDnsIssues(domainAuth);
 
   if (personalInboxSender && domainAuth.status !== "unsupported") {
     issues.push({
       id: "personal_inbox",
-      label: "Sending from a personal inbox — poor deliverability at volume",
+      label: "Sending from a personal inbox. Poor deliverability at volume",
       severity: "warn",
     });
   }
 
-  if (sendsLast24h >= dailyCap) {
+  const volume = assertVolumeWithinCap({
+    sendsLast24h,
+    dailyCap,
+    projectedAdditional,
+  });
+  if (!volume.ok) {
     issues.push({
       id: "volume_cap",
-      label: `Daily send cap reached (${sendsLast24h}/${dailyCap} in last 24h)`,
+      label:
+        projectedAdditional > 0
+          ? `Daily send cap would be exceeded (${volume.projectedTotal}/${dailyCap} including ${projectedAdditional} queued)`
+          : `Daily send cap reached (${sendsLast24h}/${dailyCap} in last 24h)`,
+      severity: "critical",
+    });
+  }
+
+  if (bounceStats.exceedsThreshold) {
+    const pct = (bounceStats.rate * 100).toFixed(1);
+    const thresholdPct = (bounceStats.threshold * 100).toFixed(0);
+    issues.push({
+      id: "bounce_rate",
+      label: `Bounce rate ${pct}% over last ${bounceStats.windowHours}h (${bounceStats.bounced}/${bounceStats.sent}) exceeds ${thresholdPct}% safety threshold. Outreach paused.`,
       severity: "critical",
     });
   }
@@ -111,6 +148,8 @@ export async function runSenderHealthCheck(
     domainAuth,
     sendsLast24h,
     dailyCap,
+    projectedAdditional,
+    bounceStats,
     personalInboxSender,
     canSendLive: !hasCritical,
     hasCritical,
@@ -120,14 +159,29 @@ export async function runSenderHealthCheck(
 export async function assertSenderPreflight(
   config: EmailConfig,
   workspaceId: string,
-  options?: { override?: boolean },
+  options?: SenderHealthOptions & { override?: boolean },
 ): Promise<SenderHealthResult> {
-  const health = await runSenderHealthCheck(config, workspaceId);
+  const health = await runSenderHealthCheck(config, workspaceId, {
+    projectedAdditional: options?.projectedAdditional,
+  });
+
+  if (
+    config.sendMode === "live" &&
+    health.bounceStats.exceedsThreshold &&
+    !config.outreachPaused
+  ) {
+    try {
+      await setOutreachPaused(true, workspaceId);
+    } catch (err) {
+      console.error("[sender-preflight] failed to auto-pause outreach", err);
+    }
+  }
 
   if (config.sendMode === "live" && health.hasCritical && !options?.override) {
     throw new SenderPreflightError(
       health.issues.filter((i) => i.severity === "critical"),
-      true,
+      // Bounce-rate pause should not be casually overridden
+      !health.issues.some((i) => i.id === "bounce_rate"),
     );
   }
   return health;

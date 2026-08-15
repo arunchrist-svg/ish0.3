@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, ExternalLink, Loader2, Mail, UserPlus } from "lucide-react";
+import { Copy, ExternalLink, Loader2, UserPlus } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
+import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -10,6 +11,9 @@ type Member = { id: string; name: string; email: string; role: string; status?: 
 type Invite = { id: string; email: string; role: string; expiresAt: string };
 
 const ROLES = ["admin", "member", "viewer"] as const;
+
+const inputClass =
+  "ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12";
 
 export function TeamTab() {
   const [mode, setMode] = useState<"create" | "invite">("create");
@@ -137,89 +141,135 @@ export function TeamTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="size-6 animate-spin text-brand-ink-soft" />
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="size-5 animate-spin text-brand-ink-soft" />
       </div>
     );
   }
 
   return (
-    <div className="pb-8">
-      <div className="mb-4 flex gap-2 px-1">
-        <button type="button" onClick={() => setMode("create")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "create" ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft")}>Create user</button>
-        <button type="button" onClick={() => setMode("invite")} className={cn("rounded-full px-4 py-1.5 text-[12px] font-semibold", mode === "invite" ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft")}>Invite link</button>
-      </div>
-
-      <SettingsGroup title={mode === "create" ? "Create User" : "Invite Teammate"} footer={mode === "create" ? "Add each teammate's LinkedIn profile URL. Share the temporary password. They must change it on first login." : "Copy the link and send it. They sign up and join your workspace."}>
-        <form onSubmit={mode === "create" ? handleCreate : handleInvite} className="px-4 py-4">
-          <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold text-brand-ink">
-            <UserPlus className="size-4 text-brand-stratus-blue" /> {mode === "create" ? "Direct create" : "Invite by email"}
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-            {mode === "create" ? (
-              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className="flex-1 min-w-[140px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
-            ) : null}
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required className="flex-1 min-w-[180px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
-            {mode === "create" ? (
-              <input type="url" value={linkedIn} onChange={(e) => setLinkedIn(e.target.value)} placeholder="linkedin.com/in/username" className="flex-1 min-w-[200px] rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50" />
-            ) : null}
-            <select value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])} className="rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none">
-              {ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
+    <div className="pb-6">
+      <SettingsGroup title="Add teammate" className="mb-4">
+        <SettingsRow className="justify-between py-2.5">
+          <span className="text-[13px] font-semibold text-brand-ink">Method</span>
+          <SettingsSegmented
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "create", label: "Create" },
+              { value: "invite", label: "Invite link" },
+            ]}
+          />
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <form onSubmit={mode === "create" ? handleCreate : handleInvite} className="grid gap-2.5 px-4 py-3 sm:grid-cols-[1fr_auto]">
+          {mode === "create" ? (
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className={inputClass} />
+          ) : null}
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required className={cn(inputClass, mode === "invite" && "sm:col-span-1")} />
+          {mode === "create" ? (
+            <input type="url" value={linkedIn} onChange={(e) => setLinkedIn(e.target.value)} placeholder="linkedin.com/in/…" className={cn(inputClass, "sm:col-span-2")} />
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
+              className="rounded-full border border-brand-stratus-blue/25 bg-white/80 px-3 py-1.5 text-[12px] font-semibold capitalize text-brand-ink"
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
             </select>
-            <button type="submit" disabled={submitting} className={cn("rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white", submitting && "opacity-60")}>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand-black px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60"
+            >
+              <UserPlus className="size-3.5" />
               {submitting ? "Working…" : mode === "create" ? "Create" : "Invite"}
             </button>
           </div>
           {lastTempPassword ? (
-            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] text-amber-900">
-              Temporary password: <span className="font-mono font-bold">{lastTempPassword}</span>
-              <button type="button" className="ml-2 underline" onClick={() => { void navigator.clipboard.writeText(lastTempPassword); toast.success("Copied"); }}>Copy</button>
+            <div className="rounded-xl bg-brand-yellow-soft/70 px-3 py-2 text-[12px] text-brand-ink sm:col-span-2">
+              Temp password: <span className="font-mono font-bold">{lastTempPassword}</span>
+              <button
+                type="button"
+                className="ml-2 font-semibold underline"
+                onClick={() => {
+                  void navigator.clipboard.writeText(lastTempPassword);
+                  toast.success("Copied");
+                }}
+              >
+                Copy
+              </button>
             </div>
           ) : null}
           {lastInviteUrl ? (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-brand-app/80 px-3 py-2.5 text-[11px]">
-              <Mail className="size-4 shrink-0 text-brand-stratus-blue" />
-              <span className="flex-1 truncate font-mono text-brand-ink-soft">{lastInviteUrl}</span>
-              <button type="button" onClick={() => { void navigator.clipboard.writeText(lastInviteUrl); toast.success("Copied"); }} className="flex shrink-0 items-center gap-1 font-semibold text-brand-ink hover:underline"><Copy className="size-3.5" /> Copy</button>
+            <div className="flex items-center gap-2 rounded-xl bg-brand-canvas/80 px-3 py-2 text-[11px] sm:col-span-2">
+              <span className="min-w-0 flex-1 truncate font-mono text-brand-ink-soft">{lastInviteUrl}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(lastInviteUrl);
+                  toast.success("Copied");
+                }}
+                className="inline-flex shrink-0 items-center gap-1 font-semibold text-brand-ink"
+              >
+                <Copy className="size-3.5" /> Copy
+              </button>
             </div>
           ) : null}
         </form>
       </SettingsGroup>
 
-      <SettingsGroup title={`Members (${members.length})`}>
+      <SettingsGroup title={`Members · ${members.length}`} className="mb-4">
         {members.map((m, i) => (
           <div key={m.id}>
-            {i > 0 && <SettingsGroupDivider />}
-            <SettingsRow className="justify-between gap-3">
+            {i > 0 ? <SettingsGroupDivider /> : null}
+            <SettingsRow className="justify-between gap-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-medium text-brand-ink">{m.name}</p>
-                <p className="text-[12px] text-brand-ink-soft">{m.email}</p>
-                <div className="mt-2 flex items-center gap-2">
+                <p className="truncate text-[13px] font-semibold text-brand-ink">{m.name}</p>
+                <p className="truncate text-[11px] text-brand-ink-soft">{m.email}</p>
+                <div className="mt-1.5 flex items-center gap-1.5">
                   <input
                     type="url"
                     value={memberLinkedIn[m.id] ?? ""}
                     onChange={(e) => setMemberLinkedIn((prev) => ({ ...prev, [m.id]: e.target.value }))}
                     onBlur={() => void saveMemberLinkedIn(m.id)}
-                    placeholder="linkedin.com/in/username"
-                    className="min-w-0 flex-1 rounded-lg border border-brand-border/60 bg-white/80 px-3 py-1.5 text-[12px] outline-none focus:border-brand-stratus-blue/50"
+                    placeholder="LinkedIn URL"
+                    className={cn(inputClass, "py-1.5 text-[12px]")}
                   />
                   {m.linkedIn ? (
-                    <a href={m.linkedIn} target="_blank" rel="noreferrer" className="shrink-0 text-brand-stratus-blue hover:underline" aria-label={`Open ${m.name} on LinkedIn`}>
+                    <a href={m.linkedIn} target="_blank" rel="noreferrer" className="shrink-0 text-brand-stratus-blue" aria-label={`Open ${m.name} on LinkedIn`}>
                       <ExternalLink className="size-3.5" />
                     </a>
                   ) : null}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-1.5">
                 {m.role !== "owner" ? (
                   <>
-                    <select value={m.role} onChange={(e) => updateMemberRole(m.id, e.target.value)} className="rounded-lg border px-2 py-1 text-[11px] capitalize">
-                      {ROLES.map((r) => (<option key={r} value={r}>{r}</option>))}
+                    <select
+                      value={m.role}
+                      onChange={(e) => updateMemberRole(m.id, e.target.value)}
+                      className="rounded-full border border-brand-stratus-blue/20 bg-white/80 px-2 py-1 text-[11px] capitalize"
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
                     </select>
-                    <button type="button" onClick={() => removeMember(m.id)} className="text-[11px] text-red-600 hover:underline">Remove</button>
+                    <button type="button" onClick={() => removeMember(m.id)} className="text-[11px] font-semibold text-brand-stratus-salmon">
+                      Remove
+                    </button>
                   </>
                 ) : (
-                  <span className="rounded-full bg-brand-stratus-blue/15 px-2.5 py-0.5 text-[11px] font-semibold capitalize text-brand-ink">owner</span>
+                  <span className="rounded-full bg-brand-stratus-blue/15 px-2 py-0.5 text-[10px] font-semibold capitalize text-brand-ink">
+                    owner
+                  </span>
                 )}
               </div>
             </SettingsRow>
@@ -227,22 +277,24 @@ export function TeamTab() {
         ))}
       </SettingsGroup>
 
-      {invites.length > 0 && (
-        <SettingsGroup title="Pending Invites">
+      {invites.length > 0 ? (
+        <SettingsGroup title="Pending" className="mb-4">
           {invites.map((inv, i) => (
             <div key={inv.id}>
-              {i > 0 && <SettingsGroupDivider />}
-              <SettingsRow className="justify-between">
-                <span className="text-[14px] font-medium text-brand-ink">{inv.email}</span>
+              {i > 0 ? <SettingsGroupDivider /> : null}
+              <SettingsRow className="justify-between py-2.5">
+                <span className="text-[13px] font-medium text-brand-ink">{inv.email}</span>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] capitalize text-brand-ink-faint">{inv.role}</span>
-                  <button type="button" onClick={() => revokeInvite(inv.id)} className="text-[11px] text-red-600 hover:underline">Revoke</button>
+                  <button type="button" onClick={() => revokeInvite(inv.id)} className="text-[11px] font-semibold text-brand-stratus-salmon">
+                    Revoke
+                  </button>
                 </div>
               </SettingsRow>
             </div>
           ))}
         </SettingsGroup>
-      )}
+      ) : null}
     </div>
   );
 }

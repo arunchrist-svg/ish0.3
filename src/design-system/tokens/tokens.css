@@ -1712,6 +1712,18 @@
     0 4px 16px rgba(var(--brand-stratus-blue-rgb), 0.06) !important;
 }
 
+.stratus .ish-email-settings-input {
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.18) !important;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.stratus .ish-email-settings-input:focus {
+  border-color: rgba(var(--brand-stratus-blue-rgb), 0.42) !important;
+  box-shadow: 0 0 0 3px rgba(var(--brand-stratus-blue-rgb), 0.12) !important;
+}
+
 .stratus .ish-email-tab .border-y.bg-white,
 .stratus .ish-email-tab .border.bg-gradient-to-br {
   background:

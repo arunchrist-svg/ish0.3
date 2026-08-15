@@ -147,15 +147,25 @@ export const EMAIL_STYLE_OPTIONS: {
   {
     value: "primary",
     label: "Primary inbox (1:1)",
-    desc: "Personal sales email: no bulk headers or marketing footer. Open tracking uses a quiet 1×1 pixel when App URL is public.",
+    desc: "Recommended for company cold outreach. No List-Unsubscribe, no marketing footer. Quiet open pixel only when App URL is public.",
     badge: "Recommended",
   },
   {
     value: "marketing",
     label: "Marketing",
-    desc: "Includes unsubscribe footer and open tracking. May land in Promotions/Forums.",
+    desc: "Adds unsubscribe footer and List-Unsubscribe headers. Often lands in Promotions. Nebula outreach still sends as Primary.",
   },
 ];
+
+/**
+ * Cold outreach HTML/headers always use primary (1:1).
+ * Marketing style adds List-Unsubscribe and footers that push Gmail Promotions/spam for company inboxes.
+ */
+export function resolveOutreachEmailStyle(
+  _style?: EmailStyle | null,
+): EmailStyle {
+  return "primary";
+}
 
 export const EMAIL_SEND_MODE_OPTIONS: {
   value: EmailSendMode;
@@ -245,7 +255,24 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
 }
 
 export function formatFromAddress(config: EmailConfig): string {
-  return `${config.fromName} <${config.fromAddress}>`;
+  const address = config.fromAddress?.trim() ?? "";
+  const name = config.fromName?.trim() ?? "";
+  if (!name) return address;
+  return `${name} <${address}>`;
+}
+
+/** Prefer explicit send reply-to, then workspace Reply-To, then From. */
+export function resolveReplyToAddress(
+  params: { replyTo?: string },
+  config: EmailConfig,
+): string | undefined {
+  const fromParams = params.replyTo?.trim();
+  if (fromParams) return fromParams;
+  const configured = config.replyToAddress?.trim();
+  if (configured) return configured;
+  const from = config.fromAddress?.trim();
+  if (from) return from;
+  return undefined;
 }
 
 export function getSmtpEnv(): SmtpCredentials {
@@ -292,15 +319,20 @@ export function getSmtpStatus(config?: EmailConfig): ProviderStatus {
   };
 }
 
-export function getResendStatus(): ProviderStatus {
-  const key = process.env.RESEND_API_KEY?.trim();
+export function getResendStatus(config?: Pick<EmailConfig, "resendApiKey">): ProviderStatus {
+  const key = config?.resendApiKey?.trim() || process.env.RESEND_API_KEY?.trim();
   if (!key) {
     return {
       configured: false,
-      hint: "Add RESEND_API_KEY to .env.local — get one free at resend.com",
+      hint: "Paste a Resend API key in Settings → Email, or add RESEND_API_KEY to .env.local (resend.com/api-keys)",
     };
   }
-  return { configured: true, hint: "API key configured in environment" };
+  return {
+    configured: true,
+    hint: config?.resendApiKey?.trim()
+      ? "Resend API key saved in Settings"
+      : "API key configured in environment",
+  };
 }
 
 export function fromAddressMatchesSmtpUser(config: EmailConfig): boolean {
@@ -316,7 +348,7 @@ export function validateEmailConfig(
 ): string[] {
   const errors: string[] = [];
   const smtpStatus = getSmtpStatus(config);
-  const resendStatus = getResendStatus();
+  const resendStatus = getResendStatus(config);
   const providerReady =
     config.provider === "smtp"
       ? (options?.smtpVerified ?? smtpStatus.configured)
@@ -350,9 +382,41 @@ export function validateEmailConfig(
     if (config.provider === "resend" && !resendStatus.configured) {
       errors.push("RESEND_API_KEY is not configured");
     }
+    if (!config.fromAddress?.trim()) {
+      errors.push("From email is required to send");
+    }
+    if (!config.fromName?.trim()) {
+      errors.push("From name should be a real person (e.g. Arun), not a company or noreply label");
+    }
   }
 
   return errors;
+}
+
+/** Soft deliverability hints for Settings (not hard send blockers). */
+export function getDeliverabilityHints(config: EmailConfig): string[] {
+  const hints: string[] = [];
+  if (config.emailStyle === "marketing") {
+    hints.push(
+      "Inbox is set to Marketing. Nebula cold outreach still sends as Primary (no unsubscribe headers). Switch Inbox to Primary to match Writer guidance.",
+    );
+  }
+  if (!config.fromName?.trim()) {
+    hints.push(
+      "Set From name to a real person (first name or first + last). Empty or noreply-style names hurt trust at company inboxes.",
+    );
+  }
+  if (config.provider === "resend" && !config.replyToAddress?.trim()) {
+    hints.push(
+      "Set Reply-To to a monitored inbox (often the same as From). Replies and trust signals matter for company deliverability.",
+    );
+  }
+  if (config.provider === "resend" && !config.fromAddress?.trim()) {
+    hints.push(
+      "From email must be on a domain verified in Resend (SPF/DKIM). Shared or unverified domains land in spam more often.",
+    );
+  }
+  return hints;
 }
 
 export function isOutreachSendingPaused(config: Pick<EmailConfig, "outreachPaused">): boolean {

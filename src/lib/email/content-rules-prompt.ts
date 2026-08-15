@@ -1,4 +1,5 @@
 import type { EmailStyle } from "@/lib/email/config";
+import { resolveOutreachEmailStyle } from "@/lib/email/config";
 
 export type AntiSpamPromptContext = {
   sequencePosition: number;
@@ -13,12 +14,15 @@ const NO_COMPANY_STATS_RULE =
 
 /** LLM instructions aligned with content-rules.ts scorer and cold-email-review skill. */
 export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
+  const emailStyle = resolveOutreachEmailStyle(ctx.emailStyle);
   const lines = [
-    "CONTENT QUALITY (avoid spam-filter triggers):",
+    "CONTENT QUALITY (avoid spam-filter / Promotions triggers for company inboxes):",
+    "- Write as a personal 1:1 note, not a newsletter or blast. No unsubscribe, opt-out, List-Unsubscribe, or 'you received this because' language.",
     `- After "Hi {firstName}," add ONE specific, sourced detail (title, verified hook, or intel) in the same breath, not a standalone greeting line`,
     `- Sign off exactly as:\nThanks & Regards\n${ctx.senderFirstName}\n${ctx.brandName}`,
-    '- Email 1: no No worries line. Email 3 carries the close: I won\'t email further / the door is open',
-    "- Never: Dear, em dashes, FREE, urgent, guarantee, act now, click here, no pressure, complimentary, generic team sign-offs",
+    '- Email 1: no No worries / no pressure line. Email 3 carries the close: I won\'t email further / the door is open',
+    "- Never: Dear, em dashes, FREE, urgent, guarantee, act now, click here, no pressure, complimentary, excited to, we're offering, generic team sign-offs",
+    '- Prefer "tasting sample" or "sample box" over "complimentary sample" or "free sample"',
     "- Never use em dashes in subject or body. Use commas, periods, or line breaks instead.",
     "- One question CTA; keep under 120 words",
     '- "Happy to coordinate" or "happy to help" is NOT a soft exit',
@@ -62,8 +66,10 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
     );
   }
 
-  if (ctx.emailStyle === "marketing") {
-    lines.push("- Marketing mode: include unsubscribe/compliance footer language if pitching commercially");
+  if (emailStyle === "primary") {
+    lines.push(
+      "- PRIMARY INBOX MODE: Keep HTML plain. No marketing footer, tracking CTAs, or bulk-campaign phrasing.",
+    );
   }
 
   return lines.join("\n");

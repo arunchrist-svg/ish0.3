@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
 import { getOutreachTemplate, packIdFromBrand, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 import { auditContentScored } from "@/lib/email/feedback-hooks";
 import {
@@ -83,7 +84,8 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
   const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
-  const { brandConfig, campaignMode, emailStyle, fromName } = emailConfig;
+  const { brandConfig, campaignMode, fromName } = emailConfig;
+  const emailStyle = resolveOutreachEmailStyle(emailConfig.emailStyle);
   const senderFirstName = fromName.split(" ")[0] || fromName;
   const senderName = fromName.trim() || senderFirstName || "Srilaksha";
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
@@ -475,7 +477,8 @@ async function persistIshTemplateDraft(params: {
     isFollowUp,
     skipStatusUpdate,
   } = params;
-  const { brandConfig, emailStyle, fromName } = emailConfig;
+  const { brandConfig, fromName } = emailConfig;
+  const emailStyle = resolveOutreachEmailStyle(emailConfig.emailStyle);
   const copy = fillIshDraftVariants({
     contactFirstName,
     companyName: companyDisplayName,

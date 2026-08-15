@@ -3,9 +3,9 @@ import { db, outreachApprovals, leadOutreach, leads, contacts, outreachSchedule,
 import { eq } from "drizzle-orm";
 import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
+import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE, resolveOutreachEmailStyle } from "@/lib/email/config";
 import { buildEmailHtml } from "@/lib/email/templates";
-import { getResolvedEmailConfig} from "@/lib/settings/email-settings";
-import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE } from "@/lib/email/config";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
@@ -24,59 +24,9 @@ import {
   applySendRejectionUpdates,
   shouldHandleSendFailure,
 } from "@/lib/enrichment/email-candidate-queue";
-import { buildContactEmails, hasUsableEmail } from "@/lib/enrichment/contact-emails";
-
-function resolveSendRecipients(
-  contact: typeof contacts.$inferSelect,
-  requested?: unknown,
-): { recipients: string[]; error?: string } {
-  const allowed = buildContactEmails({
-    primaryEmail: contact.email,
-    emailStatus: contact.emailStatus,
-    emailConfidence: contact.emailConfidence,
-    enrichmentSource: contact.enrichmentSource,
-    enrichmentProvider: contact.enrichmentProvider,
-    alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
-  })
-    .filter((e) => e.testStatus !== "rejected" && hasUsableEmail(e.email, e.emailStatus))
-    .map((e) => e.email.trim().toLowerCase());
-
-  const allowedSet = new Set(allowed);
-  const rawList = Array.isArray(requested)
-    ? requested.filter((v): v is string => typeof v === "string")
-    : [];
-
-  const requestedEmails = [...new Set(rawList.map((e) => e.trim().toLowerCase()).filter(Boolean))];
-
-  if (requestedEmails.length === 0) {
-    const primary = contact.email?.trim();
-    if (!primary || !hasUsableEmail(primary, contact.emailStatus)) {
-      return { recipients: [], error: "Contact has no usable email address" };
-    }
-    return { recipients: [primary] };
-  }
-
-  const invalid = requestedEmails.filter((e) => !allowedSet.has(e));
-  if (invalid.length) {
-    return {
-      recipients: [],
-      error: `Email not on this contact: ${invalid.join(", ")}`,
-    };
-  }
-
-  // Preserve original casing from contact records where possible
-  const byLower = new Map(
-    buildContactEmails({
-      primaryEmail: contact.email,
-      emailStatus: contact.emailStatus,
-      alternateEmails: (contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
-    }).map((e) => [e.email.trim().toLowerCase(), e.email.trim()]),
-  );
-
-  return {
-    recipients: requestedEmails.map((e) => byLower.get(e) ?? e),
-  };
-}
+import { cleanEmailBatch } from "@/lib/email/list-cleaner";
+import { resolveSendRecipients } from "@/lib/outreach/send-recipients";
+import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 
 export async function POST(req: Request) {
   try {
@@ -128,12 +78,44 @@ export async function POST(req: Request) {
     }
 
     const contact = leadRow.contact as typeof contacts.$inferSelect;
-    const { recipients, error: recipientError } = resolveSendRecipients(contact, toEmails);
-    if (recipientError || recipients.length === 0) {
+    const { recipients: rawRecipients, error: recipientError } = resolveSendRecipients(
+      {
+        email: contact.email,
+        emailStatus: contact.emailStatus,
+        emailConfidence: contact.emailConfidence,
+        enrichmentSource: contact.enrichmentSource,
+        enrichmentProvider: contact.enrichmentProvider,
+        alternateEmails: (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+      },
+      toEmails,
+    );
+    if (recipientError || rawRecipients.length === 0) {
       return NextResponse.json({ error: recipientError ?? "No recipients selected" }, { status: 400 });
     }
 
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+    const shouldCleanRecipients = emailConfig.sendMode === "live";
+    let recipients = rawRecipients;
+    if (shouldCleanRecipients) {
+      const cleaned = await cleanEmailBatch(rawRecipients);
+      recipients = rawRecipients.filter((_, i) => cleaned[i]?.ok);
+      const skippedRecipients = cleaned.filter((c) => !c.ok);
+      if (recipients.length === 0) {
+        return NextResponse.json(
+          {
+            error: "All recipients failed list cleaning",
+            skipped: skippedRecipients.map((c) => ({ email: c.email, reason: c.reason, detail: c.detail })),
+          },
+          { status: 400 },
+        );
+      }
+      if (skippedRecipients.length) {
+        console.warn(
+          "[api/outreach/send] skipped invalid recipients",
+          skippedRecipients.map((c) => `${c.email}:${c.reason}`).join(", "),
+        );
+      }
+    }
     if (isOutreachSendingPaused(emailConfig)) {
       return NextResponse.json({ error: OUTREACH_PAUSED_MESSAGE }, { status: 423 });
     }
@@ -144,6 +126,7 @@ export async function POST(req: Request) {
 
     const preflight = await assertSenderPreflight(emailConfig, ctx.workspaceId, {
       override: Boolean(overridePreflight),
+      projectedAdditional: recipients.length,
     });
     if (overridePreflight && preflight.hasCritical) {
       await logAudit({
@@ -201,9 +184,9 @@ export async function POST(req: Request) {
             body: approval.bodyUsed || outreach.emailBody || "",
             trackingToken,
             appUrl: emailConfig.appUrl,
-            emailStyle: emailConfig.emailStyle,
+            emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
           }),
-          replyTo: emailConfig.replyToAddress,
+          replyTo: emailConfig.replyToAddress?.trim() || emailConfig.fromAddress,
           messageId,
           inReplyTo: isPrimarySend ? threadHeaders.inReplyTo : undefined,
           references: isPrimarySend ? threadHeaders.references : undefined,
