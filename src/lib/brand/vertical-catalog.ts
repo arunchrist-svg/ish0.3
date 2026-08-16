@@ -2,7 +2,7 @@ import { PLATFORM_INTENT_OPTIONS, type PlatformIntent } from "@/lib/brand/platfo
 import { BRAND_PRESET_OPTIONS, CAMPAIGN_MODE_OPTIONS } from "@/lib/email/brand-presets";
 import type { BrandSlug, CampaignMode } from "@/lib/email/config";
 
-const SWEETS_ONLY_LOCAL_PARTS = ["srilaksha.ish"];
+const SWEETS_ONLY_LOCAL_PARTS = ["srilaksha.ish", "srlaksha.ish"];
 
 export function isSweetsOnlyOperator(email?: string | null): boolean {
   const normalized = email?.trim().toLowerCase() ?? "";
@@ -11,6 +11,13 @@ export function isSweetsOnlyOperator(email?: string | null): boolean {
   return SWEETS_ONLY_LOCAL_PARTS.some(
     (part) => local === part || local.startsWith(`${part}.`) || normalized.includes(part),
   );
+}
+
+/** Tenant slug for festive sweets (srilaksha.ish / ISH). */
+export function isSweetsGiftingSlug(slug?: string | null): boolean {
+  const value = slug?.trim().toLowerCase() ?? "";
+  if (!value) return false;
+  return /srilaksha|srlaksha|india-sweet|indiasweet|gifting-sweets/.test(value) || value === "ish";
 }
 
 export function platformIntentOptionsForUser(email?: string | null) {

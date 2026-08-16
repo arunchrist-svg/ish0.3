@@ -135,8 +135,8 @@ export function scoutDefaultsForIntent(intent: PlatformIntent): IntentScoutDefau
       };
     case "corporate_gifting":
       return {
-        buyerPersonas: ["HR Manager", "Procurement Manager", "Admin Head"],
-        scoutDepartments: ["HR", "Procurement", "Admin"],
+        buyerPersonas: ["HR Director", "HR Manager", "Procurement Manager", "Admin Head"],
+        scoutDepartments: ["HR", "Procurement"],
         scoutSeniority: [],
       };
     case "appliances":
