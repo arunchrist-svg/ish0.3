@@ -37,19 +37,18 @@ export const MOBILE_BOTTOM_TABS: MobileNavItem[] = [
 
 export const MOBILE_DRAWER_SECTIONS: MobileNavSection[] = [
   {
-    items: [{ key: "pinned", label: "Pinned", href: "/pinned", icon: Pin }],
-  },
-  {
     title: "MY WORK",
     items: [
       { key: "email", label: "Outreach", href: "/email", icon: Mail },
-      { key: "brand-intelligence", label: "Brand Intelligence", href: "/brand-intelligence", icon: Radar },
-      { key: "funnel", label: "Yield Funnel", href: "/funnel", icon: GitFork },
+      { key: "scouting", label: "Scout", href: "/scouting", icon: Telescope },
     ],
   },
   {
-    title: "CUSTOMERS",
+    title: "MORE",
     items: [
+      { key: "brand-intelligence", label: "Brand Intelligence", href: "/brand-intelligence", icon: Radar },
+      { key: "funnel", label: "Yield Funnel", href: "/funnel", icon: GitFork },
+      { key: "pinned", label: "Pinned", href: "/pinned", icon: Pin },
       { key: "accounts", label: "Accounts", href: "/directory", icon: User },
       { key: "contacts", label: "Contacts", href: "/contacts", icon: Contact },
     ],

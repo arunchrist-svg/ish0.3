@@ -12,7 +12,12 @@ const extractionDataSchema = z.object({
   productCategory: z.string().optional(),
   occasion_or_context: z.string().optional(),
   occasionOrContext: z.string().optional(),
+  occasion_type: z.string().optional(),
+  occasionType: z.string().optional(),
   timeframe: z.string().optional(),
+  timing: z.string().optional(),
+  signal_type: z.string().optional(),
+  signalType: z.string().optional(),
   giving_company_city: z.string().optional(),
   givingCompanyCity: z.string().optional(),
 });
@@ -20,6 +25,8 @@ const extractionDataSchema = z.object({
 export const giftIntelExtractionSchema = z.object({
   is_target_gifting_event: z.boolean().optional(),
   isTargetGiftingEvent: z.boolean().optional(),
+  is_target_occasion_event: z.boolean().optional(),
+  isTargetOccasionEvent: z.boolean().optional(),
   confidence_score: z.number().optional(),
   confidenceScore: z.number().optional(),
   extraction_data: extractionDataSchema.optional(),

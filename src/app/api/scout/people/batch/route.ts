@@ -5,6 +5,7 @@ import { discoverPeopleBatch, discoverPeopleBatchStream } from "@/lib/enrichment
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { MAX_SCOUT_LEADS_LIMIT } from "@/lib/enrichment/config";
 
 type BatchCompanyInput = {
   id: string;
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
     const discoveryConfig = { ...cfg, ...requestOverride };
     const mappedCompanies = mapCompanies(companies);
 
-    const batchLimit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25);
+    const batchLimit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, MAX_SCOUT_LEADS_LIMIT);
     await assertCredits(ctx.tenantId, "scout.contact", mappedCompanies.length * batchLimit);
 
     const batchParams = {
@@ -87,7 +88,11 @@ export async function POST(req: Request) {
         })
         .catch(async (e) => {
           console.error("[api/scout/people/batch:stream]", e);
-          await writer.abort(e);
+          try {
+            await writer.close();
+          } catch {
+            /* already closed */
+          }
         });
 
       return new Response(readable, {

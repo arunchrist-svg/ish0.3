@@ -53,7 +53,7 @@ export const smtpTransport: MailTransport = {
     if (!creds.host || !creds.user || !creds.pass) {
       return {
         configured: false,
-        hint: "Add your Gmail address and App Password in Settings → Email",
+        hint: "Add your inbox email and App Password in Settings → Email",
         user: creds.user || undefined,
       };
     }

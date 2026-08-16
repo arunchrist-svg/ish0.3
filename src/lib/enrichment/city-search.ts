@@ -132,7 +132,7 @@ function locationMentionsCityLabel(location: string, cityLabel: string): boolean
 }
 
 const FOREIGN_LOCATION_RE =
-  /\b(united states|u\.s\.a\.|u\.s\.|usa|united kingdom|u\.k\.|uk|canada|australia|germany|france|netherlands|switzerland|sweden|norway|denmark|ireland|new zealand|brazil|mexico|japan|spain|italy|florida|california|texas|illinois|ohio|georgia|arizona|colorado|michigan|pennsylvania|massachusetts|washington|virginia|north carolina|new york|new jersey|tampa|miami|orlando|atlanta|chicago|seattle|boston|dallas|houston|phoenix|denver|detroit|philadelphia|los angeles|san francisco|las vegas)\b/i;
+  /\b(united states|u\.s\.a\.|u\.s\.|usa|united kingdom|u\.k\.|uk|canada|australia|germany|france|netherlands|switzerland|sweden|norway|denmark|ireland|new zealand|brazil|mexico|japan|spain|italy|florida|california|texas|illinois|ohio|georgia|arizona|colorado|michigan|pennsylvania|massachusetts|washington|virginia|north carolina|new york|new jersey|nyc|ny|manhattan|brooklyn|queens|tampa|miami|orlando|atlanta|chicago|seattle|boston|dallas|houston|phoenix|denver|detroit|philadelphia|los angeles|san francisco|las vegas|greater tampa|bay area)\b/i;
 
 /** True when a profile location is clearly outside India. */
 export function isForeignPersonLocation(location: string | null | undefined): boolean {
@@ -140,30 +140,32 @@ export function isForeignPersonLocation(location: string | null | undefined): bo
   return FOREIGN_LOCATION_RE.test(normalizeCity(location));
 }
 
-/** True when person location is unknown or matches any selected scout city. */
+function selectionAllowsUnknownLocation(selectedCities: string[]): boolean {
+  return selectedCities.some((label) => isNationwideLabel(label) || isBroadGeoLabel(label));
+}
+
+/** True when person location matches the scout area. Empty location is not a district match. */
 export function personLocationMatchesSelection(
   location: string | null | undefined,
   selectedCities: string[],
 ): boolean {
   if (selectedCities.length === 0 || isNationwideSelection(selectedCities)) return true;
-  if (!location?.trim()) return true; // keep unknown locations; bias ranking elsewhere
+  if (!location?.trim()) return selectionAllowsUnknownLocation(selectedCities);
 
   const normalizedLocation = normalizeCity(location);
   if (UNVERIFIED_CITY_LABELS.has(normalizedLocation) || normalizedLocation === "india") {
-    return true;
+    return selectionAllowsUnknownLocation(selectedCities);
   }
 
-  if (companyCityMatchesSelection(location, selectedCities)) return true;
-
   if (isForeignPersonLocation(location)) return false;
+  if (companyCityMatchesSelection(location, selectedCities)) return true;
 
   for (const cityLabel of Object.keys(INDIA_METRO_ALIASES)) {
     if (!locationMentionsCityLabel(location, cityLabel)) continue;
-    if (companyCityMatchesSelection(cityLabel, selectedCities)) return true;
-    return false;
+    return companyCityMatchesSelection(cityLabel, selectedCities);
   }
 
-  return true;
+  return false;
 }
 
 export function rankPeopleByCityMatch<T extends { location?: string | null; matchScore?: number }>(
@@ -180,8 +182,8 @@ export function rankPeopleByCityMatch<T extends { location?: string | null; matc
 }
 
 /**
- * Prefer people in the scout cities. If every located person is elsewhere in India
- * (common for plant-city scouts vs HQ DMs), keep India-based people instead of wiping.
+ * Keep people in the selected scout cities only.
+ * Do not fill with Delhi / Mumbai / other India metros when the plant city has no match.
  */
 export function selectPeopleForScoutCities<T extends { location?: string | null; matchScore?: number }>(
   people: T[],
@@ -192,14 +194,5 @@ export function selectPeopleForScoutCities<T extends { location?: string | null;
   }
 
   const local = people.filter((p) => personLocationMatchesSelection(p.location, selectedCities));
-  if (local.some((p) => p.location?.trim())) {
-    return { people: rankPeopleByCityMatch(local, selectedCities), relaxedToIndia: false };
-  }
-
-  const inIndia = people.filter((p) => !isForeignPersonLocation(p.location));
-  if (inIndia.length > 0) {
-    return { people: rankPeopleByCityMatch(inIndia, selectedCities), relaxedToIndia: true };
-  }
-
   return { people: rankPeopleByCityMatch(local, selectedCities), relaxedToIndia: false };
 }

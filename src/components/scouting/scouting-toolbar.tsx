@@ -8,6 +8,8 @@ import {
 } from "react";
 import {
   ArrowRight,
+  Bookmark,
+  BookmarkPlus,
   Briefcase,
   Building,
   Building2,
@@ -30,10 +32,12 @@ import {
   RefreshCw,
   Rocket,
   Search,
+  Square,
   Settings,
   ShoppingBag,
   ShoppingCart,
   Truck,
+  TriangleAlert,
   UserCog,
   Users,
   UtensilsCrossed,
@@ -42,6 +46,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/design-system";
+import { peopleAndFilterWarning } from "@/lib/enrichment/people-role-filter";
 import {
   districtGroupsForScoutOptions,
   isScoutDistrictPicked,
@@ -78,6 +83,7 @@ type Props = {
   scoutLeadsLimit?: number;
   loadingCompanies?: boolean;
   loadingMore?: boolean;
+  loadingPeople?: boolean;
   saving?: boolean;
   scoutMode?: ScoutMode;
   companySearchQuery?: string;
@@ -88,6 +94,10 @@ type Props = {
   onDepartmentToggle: (d: string) => void;
   onFetchNewCompanies: () => void;
   onFetchLeads: () => void;
+  onSaveCompanies?: () => void;
+  savingCompanies?: boolean;
+  showingSaved?: boolean;
+  onShowSaved?: () => void;
   onAddLeads: () => void;
   onScoutMore: () => void;
   onLoadMore: () => void;
@@ -95,6 +105,7 @@ type Props = {
   onScoutModeChange?: (mode: ScoutMode) => void;
   onCompanySearchQueryChange?: (query: string) => void;
   onSearchByName?: () => void;
+  onStopSearch?: () => void;
   isMobileLayout?: boolean;
   filtersCollapsed?: boolean;
   onExpandFilters?: () => void;
@@ -149,6 +160,24 @@ function peopleLabel(seniority: string[], departments: string[]): string {
   const total = seniority.length + departments.length;
   if (total === 0) return "Any people";
   return `${total} filter${total > 1 ? "s" : ""}`;
+}
+
+function PeopleAndFilterNotice({
+  seniority,
+  departments,
+  className,
+}: {
+  seniority: string[];
+  departments: string[];
+  className?: string;
+}) {
+  const warning = peopleAndFilterWarning(seniority, departments);
+  if (!warning) return null;
+  return (
+    <p className={cn("rounded-xl bg-amber-50 px-3 py-2 text-[11.5px] font-medium leading-snug text-amber-950", className)}>
+      {warning}
+    </p>
+  );
 }
 
 /* ─────────────────────────────────────────────
@@ -619,9 +648,7 @@ function LocationDistrictPicker({
               {c}
               <button
                 type="button"
-                disabled={cities.length <= 1}
                 onClick={() => onCitiesChange(cities.filter((x) => x !== c))}
-                className="disabled:opacity-40"
               >
                 <X className="size-2.5" />
               </button>
@@ -784,6 +811,12 @@ function MobilePeopleSheetContent({
           );
         })}
       </div>
+
+      <PeopleAndFilterNotice
+        seniority={seniority}
+        departments={departments}
+        className="mx-3 mt-4"
+      />
     </div>
   );
 }
@@ -1038,6 +1071,12 @@ function PeoplePopoverContent({
             })}
           </div>
         </div>
+
+        <PeopleAndFilterNotice
+          seniority={seniority}
+          departments={departments}
+          className="mt-3"
+        />
       </div>
 
       {hasAny && (
@@ -1172,18 +1211,25 @@ function SecondaryBtn({
   disabled,
   icon,
   label,
+  active,
 }: {
   onClick: () => void;
   disabled?: boolean;
   icon?: ReactNode;
   label: string;
+  active?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-border bg-white px-4 py-2 text-[12.5px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-all hover:bg-brand-canvas active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-[12.5px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
+        active
+          ? "border-brand-stratus-blue/40 bg-brand-stratus-blue/10 text-brand-ink"
+          : "border-brand-border bg-white text-brand-ink hover:bg-brand-canvas",
+      )}
     >
       {icon}
       {label}
@@ -1197,18 +1243,21 @@ function PrimaryBtn({
   icon,
   label,
   color,
+  title,
 }: {
   onClick: () => void;
   disabled?: boolean;
   icon?: ReactNode;
   label: string;
   color: "yellow" | "green";
+  title?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className={cn(
         "flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2 text-[13px] font-bold transition-all duration-150 active:scale-[0.97]",
         !disabled && color === "yellow" &&
@@ -1274,6 +1323,7 @@ export function ScoutingToolbar({
   scoutLeadsLimit = 1,
   loadingCompanies,
   loadingMore,
+  loadingPeople,
   saving,
   scoutMode = "autopilot",
   companySearchQuery = "",
@@ -1284,6 +1334,10 @@ export function ScoutingToolbar({
   onDepartmentToggle,
   onFetchNewCompanies,
   onFetchLeads,
+  onSaveCompanies,
+  savingCompanies = false,
+  showingSaved = false,
+  onShowSaved,
   onAddLeads,
   onScoutMore,
   onLoadMore,
@@ -1291,6 +1345,7 @@ export function ScoutingToolbar({
   onScoutModeChange,
   onCompanySearchQueryChange,
   onSearchByName,
+  onStopSearch,
   isMobileLayout = false,
   filtersCollapsed = false,
   onExpandFilters,
@@ -1303,8 +1358,9 @@ export function ScoutingToolbar({
   const barRef = useRef<HTMLDivElement>(null);
 
   const isSearchMode = scoutMode === "search";
-  const canScout = settingsLoaded && cities.length > 0 && !loadingCompanies;
-  const canSearch = settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !loadingCompanies;
+  const searching = Boolean(loadingCompanies || loadingMore || loadingPeople);
+  const canScout = settingsLoaded && cities.length > 0 && !searching;
+  const canSearch = settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !searching;
   const volumeHint = `${scoutCompaniesLimit} cos · ${scoutLeadsLimit}/co`;
 
   const [mobileSheet, setMobileSheet] = useState<ActivePanel>(null);
@@ -1631,20 +1687,44 @@ export function ScoutingToolbar({
                   />
                   <SecondaryBtn
                     onClick={onLoadMore}
-                    disabled={loadingMore || cities.length === 0}
+                    disabled={loadingMore || cities.length === 0 || showingSaved}
                     label={loadingMore ? "Loading…" : "Load More"}
                   />
                 </>
               )}
+              {onShowSaved ? (
+                <SecondaryBtn
+                  onClick={onShowSaved}
+                  disabled={loadingCompanies || savingCompanies}
+                  icon={<Bookmark className="size-3.5" />}
+                  label="Saved"
+                  active={showingSaved}
+                />
+              ) : null}
+              {onSaveCompanies && selectedCount > 0 ? (
+                <SecondaryBtn
+                  onClick={onSaveCompanies}
+                  disabled={savingCompanies}
+                  icon={<BookmarkPlus className="size-3.5" />}
+                  label={savingCompanies ? "Saving…" : "Save companies"}
+                />
+              ) : null}
               <PrimaryBtn
                 onClick={onFetchLeads}
                 disabled={selectedCount === 0}
+                title={peopleAndFilterWarning(seniority, departments) ?? undefined}
                 label={
                   selectedCount > 0
-                    ? `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
+                    ? peopleAndFilterWarning(seniority, departments)
+                      ? `Check first · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
+                      : `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
                     : "Select companies first"
                 }
-                icon={<ArrowRight className="size-3.5" />}
+                icon={
+                  peopleAndFilterWarning(seniority, departments) && selectedCount > 0
+                    ? <TriangleAlert className="size-3.5" />
+                    : <ArrowRight className="size-3.5" />
+                }
                 color="green"
               />
             </>

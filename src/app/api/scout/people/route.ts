@@ -5,6 +5,7 @@ import { discoverPeople } from "@/lib/enrichment/waterfall";
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { MAX_SCOUT_LEADS_LIMIT } from "@/lib/enrichment/config";
 
 export async function POST(req: Request) {
   try {
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
     const discoveryConfig = { ...cfg, ...requestOverride };
 
-    const limit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, 25);
+    const limit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, MAX_SCOUT_LEADS_LIMIT);
     await assertCredits(ctx.tenantId, "scout.contact", limit);
 
     const { people, warnings, errors, resolvedDomain, resolvedWebsite } = await discoverPeople({

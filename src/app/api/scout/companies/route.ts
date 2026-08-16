@@ -10,6 +10,7 @@ import {
   loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
+import { MAX_SCOUT_COMPANIES_LIMIT } from "@/lib/enrichment/config";
 
 export async function POST(req: Request) {
   try {
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
     const storedSettings = await loadWorkspaceEnrichmentOverrides();
     const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
     const discoveryConfig = { ...storedSettings, ...requestOverride };
-    const limit = Math.min(requestedLimit ?? cfg.scoutCompaniesLimit, 100);
+    const limit = Math.min(requestedLimit ?? cfg.scoutCompaniesLimit, MAX_SCOUT_COMPANIES_LIMIT);
 
     const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);
     const blockingErrors = prerequisiteErrors.filter((e) =>

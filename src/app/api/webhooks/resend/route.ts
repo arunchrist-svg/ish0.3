@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { processResendBounceEvent } from "@/lib/email/process-bounce";
-import { isBounceLikeEvent, verifyResendWebhook } from "@/lib/email/resend-webhook";
+import { processResendInboundEvent } from "@/lib/email/process-inbound";
+import { isBounceLikeEvent, isInboundLikeEvent, verifyResendWebhook } from "@/lib/email/resend-webhook";
 
 export async function POST(req: Request) {
   const secret = process.env.RESEND_WEBHOOK_SECRET?.trim();
@@ -18,6 +19,11 @@ export async function POST(req: Request) {
       svixSignature: req.headers.get("svix-signature"),
       secret,
     });
+
+    if (isInboundLikeEvent(event.type)) {
+      const result = await processResendInboundEvent(event);
+      return NextResponse.json(result);
+    }
 
     if (!isBounceLikeEvent(event.type)) {
       return NextResponse.json({ ok: true, skipped: true });

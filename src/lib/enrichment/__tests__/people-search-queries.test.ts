@@ -9,7 +9,7 @@ describe("companyPeopleSearchNames", () => {
 });
 
 describe("buildPeopleSearchQueries", () => {
-  it("always includes an India-wide LinkedIn query before the plant city", () => {
+  it("locks LinkedIn queries to the scout cities instead of all of India", () => {
     const queries = buildPeopleSearchQueries({
       company: "Titan Company",
       roleTerm: "Director OR Manager OR HR",
@@ -20,10 +20,9 @@ describe("buildPeopleSearchQueries", () => {
     });
 
     expect(queries[0]).toContain('site:linkedin.com/in "Titan Company"');
-    expect(queries[0]).toContain("India");
-    expect(queries[0]).not.toContain("Hosur");
-    expect(queries.some((q) => q.includes("Hosur"))).toBe(true);
-    expect(queries.some((q) => q.includes("titancompany.in"))).toBe(true);
-    expect(queries.some((q) => q.includes('"Titan"'))).toBe(true);
+    expect(queries[0]).toContain("Hosur");
+    expect(queries[0]).not.toMatch(/\bIndia\b/);
+    expect(queries.some((q) => q.includes("titancompany.in") && q.includes("Hosur"))).toBe(true);
+    expect(queries.some((q) => q.includes('"Titan"') && q.includes("Hosur"))).toBe(true);
   });
 });

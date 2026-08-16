@@ -5,6 +5,17 @@ export type PastGiftingBrand = {
   perPerson?: string;
 };
 
+export type DetectedOccasion = {
+  type: string;
+  label?: string;
+  timeframe?: string;
+  location?: string;
+  sourceUrl?: string;
+  /** Upcoming openings pitch before the function. Recent is after-the-fact. */
+  timing?: "upcoming" | "recent";
+  signalType?: "hiring" | "coming_soon" | "mall_lease" | "press_expansion";
+};
+
 export type CompanyOverview = {
   sector?: string;
   decisionMaker?: string;
@@ -13,6 +24,7 @@ export type CompanyOverview = {
   corporateMilestones?: string[];
   complianceRequirements?: string;
   pastGiftingBrands?: PastGiftingBrand[];
+  detectedOccasions?: DetectedOccasion[];
   /** Preferred field name after white-label rename. */
   budgetBand?: string;
   /** @deprecated Prefer budgetBand. Kept for LLM JSON / cached overviews. */
@@ -44,6 +56,8 @@ export type CompanyOverviewResult = {
   overview: CompanyOverview;
   cached: boolean;
   enrichedAt?: string;
+  domain?: string;
+  website?: string;
 };
 
 export const OVERVIEW_CACHE_DAYS = 7;

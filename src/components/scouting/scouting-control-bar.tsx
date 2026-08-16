@@ -50,6 +50,7 @@ export function ScoutingControlBar({
       <CitySelector
         cities={cities}
         onCitiesChange={onCitiesChange}
+        minSelection={0}
         className="max-w-[min(100%,280px)] shrink-0"
       />
 

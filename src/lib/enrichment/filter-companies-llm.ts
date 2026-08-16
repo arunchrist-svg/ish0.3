@@ -8,11 +8,17 @@ import { hasOpenRouterKey } from "@/lib/llm/openrouter";
 import { hasGeminiKey, llmErrorMessage } from "./discovery-prerequisites";
 import { cleanCompanyName, keepStrictCompaniesOnly } from "./directory-parser";
 import { isGeographicEntity } from "./company-name-match";
+import { isAcceptableCompanyDomain } from "./company-domain-quality";
+import { icpCompanyFilterInstructions } from "@/lib/brand/platform-intent";
+import type { PlatformIntent } from "@/lib/brand/platform-intent";
 
 const BATCH_SIZE = 40;
 
 export type CompanyNameFilterMeta = {
   warnings?: string[];
+  icpSummary?: string | null;
+  platformIntent?: PlatformIntent | null;
+  productSummary?: string | null;
 };
 
 /** Prefer OpenRouter free models, then Gemini. Never Anthropic for this filter. */
@@ -88,9 +94,16 @@ export function parseCompanyFilterKeepNames(raw: string): string[] {
   return out;
 }
 
-async function filterBatch(names: string[], provider: LLMProvider): Promise<string[]> {
+async function filterBatch(
+  names: string[],
+  provider: LLMProvider,
+  icpBlock?: string | null,
+): Promise<string[]> {
   if (!names.length) return [];
   const numbered = names.map((name, i) => `${i + 1}. ${name}`).join("\n");
+  const icp = icpBlock?.trim()
+    ? `\n${icpBlock.trim()}`
+    : "";
   const raw = await callLLM({
     tier: "fast",
     provider,
@@ -98,8 +111,9 @@ async function filterBatch(names: string[], provider: LLMProvider): Promise<stri
 Return ONLY a JSON array of strings: the real company / brand names to KEEP.
 Drop anything that is not a company: neighborhoods, cities, states, hobli, industrial areas, buildings, towers, floors, levels, tech parks, UI labels, job categories, NIC activity lines, or address fragments.
 If a string mixes a company with a place or floor (e.g. "Acme Pvt Ltd in Dairy Circle" or "Acme Pvt Ltd Doddakakundi Industrial Area"), return only the cleaned company name ("Acme Pvt Ltd").
+${icp}
 Do not invent companies. Do not explain.`,
-    prompt: `Keep only real companies from this list. Return a JSON array of cleaned company name strings.
+    prompt: `Keep only real buyer companies from this list. Return a JSON array of cleaned company name strings.
 
 ${numbered}`,
     maxTokens: 1536,
@@ -127,7 +141,7 @@ export function shouldSkipCompaniesLlmFilter(
     if (!name || isGeographicEntity(name)) continue;
     const cleaned = cleanCompanyName(name);
     if (!cleaned || cleaned.toLowerCase() !== name.toLowerCase()) continue;
-    if (!(company.website || company.domain)) continue;
+    if (!isAcceptableCompanyDomain(company.website || company.domain, name)) continue;
     if (/\b(floor|tower|building|tech park|industrial area|hobli|salary|culture)\b/i.test(name)) {
       continue;
     }
@@ -159,16 +173,22 @@ export async function filterCompaniesWithLlm<T extends { name: string }>(
   const kept: T[] = [];
   const keptKeys = new Set<string>();
 
+  const icpBlock = icpCompanyFilterInstructions({
+    platformIntent: meta?.platformIntent,
+    icpSummary: meta?.icpSummary,
+    productSummary: meta?.productSummary,
+  });
+
   try {
     for (let i = 0; i < uniqueNames.length; i += BATCH_SIZE) {
       const batch = uniqueNames.slice(i, i + BATCH_SIZE);
       let keepNames: string[];
       try {
-        keepNames = await filterBatch(batch, provider);
+        keepNames = await filterBatch(batch, provider, icpBlock);
       } catch (e) {
         if (provider === "openrouter" && hasGeminiKey()) {
           console.warn("[filter-companies-llm] OpenRouter failed, falling back to Gemini:", e);
-          keepNames = await filterBatch(batch, "gemini");
+          keepNames = await filterBatch(batch, "gemini", icpBlock);
         } else {
           throw e;
         }

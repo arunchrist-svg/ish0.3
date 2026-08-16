@@ -34,10 +34,11 @@ export const workspaces = pgTable("workspaces", {
 });
 
 export const workspaceSettings = pgTable("workspace_settings", {
-  workspaceId:      uuid("workspace_id").primaryKey().references(() => workspaces.id),
-  enrichmentConfig: jsonb("enrichment_config").notNull().default({}),
-  emailConfig:      jsonb("email_config").notNull().default({}),
-  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+  workspaceId:           uuid("workspace_id").primaryKey().references(() => workspaces.id),
+  enrichmentConfig:      jsonb("enrichment_config").notNull().default({}),
+  emailConfig:           jsonb("email_config").notNull().default({}),
+  userPreferenceProfile: jsonb("user_preference_profile").notNull().default({}),
+  updatedAt:             timestamp("updated_at").defaultNow().notNull(),
 });
 
 
@@ -119,9 +120,20 @@ export const creditBalances = pgTable("credit_balances", {
   updatedAt:   timestamp("updated_at").defaultNow().notNull(),
 });
 
+/** Per-user slice of the org pool. Remaining is spendable; leftover is pool minus sum(remaining). */
+export const userCreditBalances = pgTable("user_credit_balances", {
+  tenantId:  uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  userId:    uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  remaining: integer("remaining").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  pk: uniqueIndex("user_credit_balances_pk").on(table.tenantId, table.userId),
+}));
+
 export const creditTransactions = pgTable("credit_transactions", {
   id:             uuid("id").defaultRandom().primaryKey(),
   tenantId:       uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  userId:         uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   amount:         integer("amount").notNull(),
   action:         text("action").notNull(),
   referenceId:    text("reference_id"),
@@ -134,6 +146,7 @@ export const creditTransactions = pgTable("credit_transactions", {
 export const usageEvents = pgTable("usage_events", {
   id:             uuid("id").defaultRandom().primaryKey(),
   tenantId:       uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  userId:         uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   action:         text("action").notNull(),
   quantity:       integer("quantity").notNull().default(1),
   creditsCharged: integer("credits_charged").notNull().default(0),

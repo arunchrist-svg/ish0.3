@@ -89,6 +89,7 @@ export function CompanyTile({
             <CompanyLogo
               name={company.name}
               domain={company.domain}
+              website={company.website}
               logo={company.logo}
               size="sm"
               rounded="rounded-lg"
@@ -174,6 +175,7 @@ export function CompanyTile({
           <CompanyLogo
             name={company.name}
             domain={company.domain}
+            website={company.website}
             logo={company.logo}
             size="md"
             rounded="rounded-xl"

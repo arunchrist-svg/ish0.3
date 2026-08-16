@@ -149,6 +149,7 @@ export async function generateWriterPlan(
     campaignNotes: emailConfig.campaignNotes,
     buyerPersonas: brand.buyerPersonas,
     decisionChain: research?.decisionChain,
+    icpSummary: brand.websiteInsights?.icpSummary,
   });
 
   const prompt = `Create a 3-part cold email plan for B2B corporate outreach.

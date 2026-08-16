@@ -1,5 +1,6 @@
 import type { EnrichmentConfig } from "./config";
 import { friendlyLLMError } from "@/lib/llm";
+import { hasOpenRouterKey } from "@/lib/llm/openrouter";
 import { hasTavilyKeys } from "./tavily-keys";
 
 export function hasTavilyKey(): boolean {
@@ -11,7 +12,7 @@ export function hasGeminiKey(): boolean {
 }
 
 export function hasLLMKey(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY || hasGeminiKey();
+  return !!process.env.ANTHROPIC_API_KEY || hasGeminiKey() || hasOpenRouterKey();
 }
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {

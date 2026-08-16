@@ -107,34 +107,172 @@ export type IntentScoutDefaults = {
   scoutSeniority: string[];
 };
 
-/** Fallbacks when website analysis leaves scout filters thin. */
+/**
+ * Who you sell to. Used in setup, Scout company filtering, and email copy.
+ * Sweets sellers need employer-buyers, not other mithai shops.
+ */
+export function defaultIcpSummary(intent: PlatformIntent): string {
+  switch (intent) {
+    case "corporate_gifting":
+      return "Companies that gift sweets, mithai, or hampers to employees for festivals, onboarding, and office occasions. Buyers are HR, Admin, and Procurement at those employers, not other sweet shops.";
+    case "b2b_saas":
+      return "Companies that would buy this software for their own team. Typical buyers are founders, sales, marketing, operations, or IT. Skip retailers that are unrelated, and skip vendors that sell competing software.";
+    case "appliances":
+      return "Companies that buy kitchen appliances in volume or as employee rewards. Buyers are Procurement, HR, and Facilities.";
+    default:
+      return "Companies that match this product as buyers, not as competitors.";
+  }
+}
+
+/** One People-filter stack only. Stacking seniority AND department often returns nobody. */
 export function scoutDefaultsForIntent(intent: PlatformIntent): IntentScoutDefaults {
   switch (intent) {
     case "b2b_saas":
       return {
         buyerPersonas: ["Founder", "VP Sales", "Head of Marketing", "CTO", "Operations Lead"],
-        scoutDepartments: ["Leadership", "Marketing", "Operations"],
-        scoutSeniority: ["Founders", "VP", "Director", "C-Level"],
+        scoutDepartments: [],
+        scoutSeniority: ["Founders", "C-Level", "VP"],
       };
     case "corporate_gifting":
       return {
         buyerPersonas: ["HR Manager", "Procurement Manager", "Admin Head"],
         scoutDepartments: ["HR", "Procurement", "Admin"],
-        scoutSeniority: ["Director", "Manager"],
+        scoutSeniority: [],
       };
     case "appliances":
       return {
         buyerPersonas: ["Procurement Manager", "HR Director", "Facilities Head"],
-        scoutDepartments: ["Procurement", "HR", "Admin"],
-        scoutSeniority: ["Director", "Manager", "VP"],
+        scoutDepartments: ["Procurement", "HR", "Facilities"],
+        scoutSeniority: [],
       };
     default:
       return {
         buyerPersonas: ["Director", "Manager", "Founder", "Operations Lead"],
-        scoutDepartments: ["Leadership", "Operations", "Marketing"],
+        scoutDepartments: [],
         scoutSeniority: ["Director", "Manager", "Founders"],
       };
   }
+}
+
+/** If analysis filled both stacks, keep the stack that matches the offer. */
+export function normalizeScoutRoleFilters(
+  intent: PlatformIntent,
+  departments: string[],
+  seniority: string[],
+): { scoutDepartments: string[]; scoutSeniority: string[] } {
+  const defaults = scoutDefaultsForIntent(intent);
+  const scoutDepartments = departments.length ? departments : defaults.scoutDepartments;
+  const scoutSeniority = seniority.length ? seniority : defaults.scoutSeniority;
+  if (scoutDepartments.length && scoutSeniority.length) {
+    if (intent === "b2b_saas" || intent === "general_b2b") {
+      return { scoutDepartments: [], scoutSeniority };
+    }
+    return { scoutDepartments, scoutSeniority: [] };
+  }
+  return { scoutDepartments, scoutSeniority };
+}
+
+export type DecisionMakerChoice = {
+  id: string;
+  label: string;
+  hint: string;
+  departments: string[];
+  seniority: string[];
+};
+
+/** Setup chips: one stack (departments or seniority), never both. */
+export function decisionMakerChoicesForIntent(intent: PlatformIntent): DecisionMakerChoice[] {
+  switch (intent) {
+    case "corporate_gifting":
+      return [
+        { id: "hr", label: "HR / People", hint: "HR Manager, HR Director, CHRO", departments: ["HR"], seniority: [] },
+        { id: "admin", label: "Admin", hint: "Admin Head", departments: ["Admin"], seniority: [] },
+        { id: "procurement", label: "Procurement", hint: "Purchase, Sourcing", departments: ["Procurement"], seniority: [] },
+      ];
+    case "appliances":
+      return [
+        { id: "procurement", label: "Procurement", hint: "Volume buyers", departments: ["Procurement"], seniority: [] },
+        { id: "hr", label: "HR", hint: "Employee rewards", departments: ["HR"], seniority: [] },
+        { id: "facilities", label: "Facilities", hint: "Pantry and office", departments: ["Facilities"], seniority: [] },
+      ];
+    case "b2b_saas":
+      return [
+        { id: "founders", label: "Founders", hint: "Founder, co-founder", departments: [], seniority: ["Founders"] },
+        { id: "clevel", label: "C-Level", hint: "CEO, CTO, COO", departments: [], seniority: ["C-Level"] },
+        { id: "vp", label: "VP", hint: "VP Sales, VP Marketing", departments: [], seniority: ["VP"] },
+      ];
+    default:
+      return [
+        { id: "director", label: "Director", hint: "Directors who buy", departments: [], seniority: ["Director"] },
+        { id: "manager", label: "Manager", hint: "Managers who buy", departments: [], seniority: ["Manager"] },
+        { id: "founders", label: "Founders", hint: "Founder-led teams", departments: [], seniority: ["Founders"] },
+      ];
+  }
+}
+
+export function rolesFromDecisionMakerIds(
+  intent: PlatformIntent,
+  ids: string[],
+): { scoutDepartments: string[]; scoutSeniority: string[] } {
+  const choices = decisionMakerChoicesForIntent(intent);
+  const selected = choices.filter((c) => ids.includes(c.id));
+  const use = selected.length ? selected : choices.filter((c) => {
+    const d = scoutDefaultsForIntent(intent);
+    return (
+      (c.departments.length > 0 && c.departments.every((x) => d.scoutDepartments.includes(x))) ||
+      (c.seniority.length > 0 && c.seniority.every((x) => d.scoutSeniority.includes(x)))
+    );
+  });
+  const departments = [...new Set(use.flatMap((c) => c.departments))];
+  const seniority = [...new Set(use.flatMap((c) => c.seniority))];
+  return normalizeScoutRoleFilters(intent, departments, seniority);
+}
+
+export function decisionMakerIdsFromRoles(
+  intent: PlatformIntent,
+  departments: string[],
+  seniority: string[],
+): string[] {
+  return decisionMakerChoicesForIntent(intent)
+    .filter((c) => {
+      if (c.departments.length) return c.departments.every((d) => departments.includes(d));
+      if (c.seniority.length) return c.seniority.every((s) => seniority.includes(s));
+      return false;
+    })
+    .map((c) => c.id);
+}
+
+/** Extra LLM rules so Scout keeps buyer companies, not lookalike sellers. */
+export function icpCompanyFilterInstructions(params: {
+  platformIntent?: PlatformIntent | null;
+  icpSummary?: string | null;
+  productSummary?: string | null;
+}): string | null {
+  const icp = params.icpSummary?.trim();
+  const product = params.productSummary?.trim();
+  const intent = params.platformIntent;
+  const lines: string[] = [];
+  if (icp) {
+    lines.push(`Buyer ICP: ${icp}`);
+    lines.push("Keep companies that match this buyer profile. Drop the seller's competitors and companies that clearly would not buy.");
+  }
+  if (intent === "corporate_gifting") {
+    lines.push(
+      "This seller sells corporate sweets or hampers. Keep employer companies (factories, offices, IT, manufacturing, healthcare, banks) that could gift to employees. Drop mithai shops, bakeries, sweet retailers, hamper stores, and other gift sellers.",
+    );
+  } else if (intent === "b2b_saas") {
+    lines.push(
+      "This seller sells B2B software. Keep companies that could buy that software as customers. Drop unrelated retail shops and competing software vendors of the same category.",
+    );
+  } else if (intent === "appliances") {
+    lines.push(
+      "Keep companies that could place volume appliance or reward orders. Drop retail appliance stores that only sell to consumers.",
+    );
+  }
+  if (product && !icp) {
+    lines.push(`Seller offer: ${product.slice(0, 280)}`);
+  }
+  return lines.length ? lines.join("\n") : null;
 }
 
 /**

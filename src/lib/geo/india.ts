@@ -367,11 +367,22 @@ export function locationOptionsFromSelection(raw?: Partial<ScoutGeoSelection> | 
   return options;
 }
 
+export function defaultLabelsFromLocationOptions(options: ScoutLocationOption[]): string[] {
+  if (!options.length) return [];
+  if (options.length <= 12) return options.map((o) => o.label);
+  return options.slice(0, 8).map((o) => o.label);
+}
+
 export function defaultScoutLocationLabels(raw?: Partial<ScoutGeoSelection> | null): string[] {
   const options = locationOptionsFromSelection(raw);
   if (!options.length) return [ENTIRE_INDIA_LABEL];
-  if (options.length <= 12) return options.map((o) => o.label);
-  return options.slice(0, 8).map((o) => o.label);
+  return defaultLabelsFromLocationOptions(options);
+}
+
+/** Tavily city slots. Nationwide labels must not be sent as a quoted city. */
+export function citiesForGiftIntelSweep(labels: string[]): string[] | undefined {
+  const cities = [...new Set(labels.map((label) => label.trim()).filter((label) => label && !isNationwideLabel(label)))];
+  return cities.length ? cities : undefined;
 }
 
 export function isNationwideLabel(label: string): boolean {

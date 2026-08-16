@@ -82,6 +82,10 @@ export async function listActiveMemberships(userId: string) {
 const TENANT_CTX_TTL_MS = 8_000;
 const tenantCtxCache = new Map<string, { ctx: TenantContext; expiresAt: number }>();
 
+export function clearTenantContextCache() {
+  tenantCtxCache.clear();
+}
+
 export async function requireTenantContext(): Promise<TenantContext> {
   const token = await getSessionTokenFromCookies();
   if (token) {

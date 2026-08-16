@@ -1,14 +1,14 @@
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { db, leads, contacts, outreachSchedule, workspaceSettings } from "@/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { EmailConfig } from "@/lib/email/config";
-import { resolveEmailConfig, resolveSmtpCredentials } from "@/lib/email/config";
+import { imapHostForSmtp, resolveSmtpCredentials } from "@/lib/email/config";
 import { processLeadReply } from "@/lib/email/process-reply";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { REPLY_WATCH_STATUSES } from "@/lib/pipeline-status";
+import { getResolvedEmailConfig, persistEmailConfig } from "@/lib/settings/email-settings";
 
-const GMAIL_IMAP_HOST = "imap.gmail.com";
-const GMAIL_IMAP_PORT = 993;
 const MAX_PROCESSED_IDS = 200;
 const LOOKBACK_DAYS = 14;
 
@@ -41,7 +41,7 @@ function extractReplyBody(parsed: Awaited<ReturnType<typeof simpleParser>>): str
   return extractLatestReplyText(html);
 }
 
-async function loadOutreachedLeads(workspaceId: string): Promise<OutreachedLead[]> {
+async function loadReplyWatchLeads(workspaceId: string): Promise<OutreachedLead[]> {
   const rows = await db
     .select({
       leadId: leads.id,
@@ -56,7 +56,7 @@ async function loadOutreachedLeads(workspaceId: string): Promise<OutreachedLead[
       outreachSchedule,
       and(eq(outreachSchedule.leadId, leads.id), eq(outreachSchedule.status, "sent")),
     )
-    .where(and(eq(leads.workspaceId, workspaceId), eq(leads.status, "outreached")));
+    .where(and(eq(leads.workspaceId, workspaceId), inArray(leads.status, [...REPLY_WATCH_STATUSES])));
 
   const byLead = new Map<string, OutreachedLead>();
   for (const row of rows) {
@@ -86,15 +86,14 @@ function getPollSince(): Date {
 
 async function persistPollState(workspaceId: string, config: EmailConfig, processedIds: string[]) {
   const merged = [...new Set([...(config.processedReplyMessageIds ?? []), ...processedIds])].slice(-MAX_PROCESSED_IDS);
-  const nextConfig: EmailConfig = {
-    ...config,
-    lastReplyPollAt: new Date().toISOString(),
-    processedReplyMessageIds: merged,
-  };
-  await db
-    .update(workspaceSettings)
-    .set({ emailConfig: nextConfig, updatedAt: new Date() })
-    .where(eq(workspaceSettings.workspaceId, workspaceId));
+  await persistEmailConfig(
+    {
+      ...config,
+      lastReplyPollAt: new Date().toISOString(),
+      processedReplyMessageIds: merged,
+    },
+    workspaceId,
+  );
 }
 
 export async function pollRepliesForWorkspace(workspaceId: string): Promise<ReplyPollResult> {
@@ -107,15 +106,8 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
     errors: [],
   };
 
-  const [settings] = await db
-    .select()
-    .from(workspaceSettings)
-    .where(eq(workspaceSettings.workspaceId, workspaceId))
-    .limit(1);
-
-  const config = resolveEmailConfig((settings?.emailConfig as Partial<EmailConfig> | undefined) ?? {});
+  const config = await getResolvedEmailConfig(workspaceId);
   if (config.provider !== "smtp") {
-    result.errors.push("Reply polling requires SMTP (Gmail) provider");
     return result;
   }
 
@@ -125,16 +117,17 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
     return result;
   }
 
-  const outreached = await loadOutreachedLeads(workspaceId);
-  if (outreached.length === 0) return result;
+  const watchLeads = await loadReplyWatchLeads(workspaceId);
+  if (watchLeads.length === 0) return result;
 
-  const emailToLead = new Map(outreached.map((l) => [l.contactEmail, l]));
+  const emailToLead = new Map(watchLeads.map((l) => [l.contactEmail, l]));
   const processedIds = new Set(config.processedReplyMessageIds ?? []);
   const since = getPollSince();
 
+  const imap = imapHostForSmtp(creds.host);
   const client = new ImapFlow({
-    host: GMAIL_IMAP_HOST,
-    port: GMAIL_IMAP_PORT,
+    host: imap.host,
+    port: imap.port,
     secure: true,
     auth: { user: creds.user, pass: creds.pass },
     logger: false,
@@ -146,7 +139,12 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
-      for await (const message of client.fetch("1:*", { uid: true, envelope: true, source: true })) {
+      const uids = await client.search({ since }, { uid: true });
+      const uidList = Array.isArray(uids) ? uids : [];
+      if (uidList.length === 0) {
+        return result;
+      }
+      for await (const message of client.fetch(uidList, { uid: true, envelope: true, source: true }, { uid: true })) {
         const messageDate = message.envelope?.date ?? new Date();
         if (messageDate < since) continue;
         result.checked++;

@@ -1,15 +1,18 @@
 import { requireTenantContext } from "@/lib/tenant";
-import { saveScoutLeads, type SaveLeadsResult } from "@/lib/scout/save-leads";
+import { saveScoutCompanies, saveScoutLeads, type SaveLeadsResult } from "@/lib/scout/save-leads";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { mapWithConcurrency } from "@/lib/async";
+import { handleApiError } from "@/lib/api-errors";
 
 type BatchCompanyInput = {
   id: string;
   company: ScoutCompanyResult;
-  people: ScoutPersonResult[];
+  people?: ScoutPersonResult[];
 };
+
+type BatchSaveRow = { id: string } & SaveLeadsResult & { error?: string };
 
 export async function POST(req: Request) {
   try {
@@ -30,6 +33,39 @@ export async function POST(req: Request) {
       return Response.json({ error: "companies required" }, { status: 400 });
     }
 
+    const named = companies.filter((entry) => entry.company?.name);
+    const companyOnly = named.length > 0 && named.every((entry) => !(entry.people?.length));
+
+    if (companyOnly) {
+      const saved = await saveScoutCompanies({
+        companies: named.map((entry) => entry.company),
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+      });
+      const results: BatchSaveRow[] = companies.map((entry) => ({
+        id: entry.id,
+        saved: [],
+        skipped: [],
+        companySaved: Boolean(entry.company?.name),
+        accountId: saved.accounts.find((account) => account.name === entry.company?.name)?.id,
+      }));
+
+      if (stream) {
+        const encoder = new TextEncoder();
+        const bodyStream = results
+          .map((result) => `${JSON.stringify(result)}\n`)
+          .join("");
+        return new Response(encoder.encode(bodyStream), {
+          headers: {
+            "Content-Type": "application/x-ndjson",
+            "Cache-Control": "no-store",
+          },
+        });
+      }
+
+      return Response.json({ results, saved: saved.saved });
+    }
+
     const dataMode = (requestedDataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
     const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
     const concurrency = Math.min(
@@ -37,12 +73,12 @@ export async function POST(req: Request) {
       10,
     );
 
-    const saveOne = async (entry: BatchCompanyInput): Promise<{ id: string } & SaveLeadsResult> => {
-      if (!entry.company?.name || !entry.people?.length) {
+    const saveOne = async (entry: BatchCompanyInput): Promise<BatchSaveRow> => {
+      if (!entry.company?.name) {
         return { id: entry.id, saved: [], skipped: [] };
       }
       const result = await saveScoutLeads({
-        people: entry.people,
+        people: entry.people ?? [],
         company: entry.company,
         dataMode,
         enrichmentConfig,
@@ -95,7 +131,8 @@ export async function POST(req: Request) {
     const results = await mapWithConcurrency(companies, concurrency, saveOne);
     return Response.json({ results });
   } catch (e) {
-    console.error("[api/scout/save/batch]", e);
+    const err = handleApiError(e, "[api/scout/save/batch]");
+    if (err.status !== 500) return err;
     return Response.json({ error: "Batch save failed" }, { status: 500 });
   }
 }

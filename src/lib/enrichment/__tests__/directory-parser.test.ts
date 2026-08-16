@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cleanCompanyName,
+  extractFromRegistryUrl,
   isPlausibleCompanyName,
   parseCompaniesFromDirectoryResults,
 } from "@/lib/enrichment/directory-parser";
@@ -215,5 +216,32 @@ describe("cleanCompanyName / isPlausibleCompanyName", () => {
     expect(names.some((n) => /work satisfaction|company culture|^salary$|job security/i.test(n))).toBe(
       false,
     );
+  });
+
+  it("prefers Zauba company-page slugs over listing junk", () => {
+    expect(
+      extractFromRegistryUrl(
+        "https://www.zaubacorp.com/company/SCHUNK-INTEC-INDIA-PRIVATE-LIMITED/U29253KA2008PTC046123",
+      ),
+    ).toMatch(/Schunk Intec India Private LIMITED/i);
+
+    const results = parseCompaniesFromDirectoryResults(
+      [
+        {
+          title: "Companies in Karnataka",
+          url: "https://www.justdial.com/Bengaluru/Hobli",
+          content: "Attibele Hobli · Anekal Taluk",
+        },
+        {
+          title: "SCHUNK INTEC INDIA PRIVATE LIMITED - Company, directors",
+          url: "https://www.zaubacorp.com/company/SCHUNK-INTEC-INDIA-PRIVATE-LIMITED/U29253KA2008PTC046123",
+          content: "Registered office in Bengaluru. CIN U29253KA2008PTC046123.",
+        },
+      ],
+      ["Bengaluru"],
+      10,
+    );
+    expect(results.some((r) => /schunk/i.test(r.name))).toBe(true);
+    expect(results.some((r) => /hobli/i.test(r.name))).toBe(false);
   });
 });

@@ -45,6 +45,11 @@ export const giftingAppliancesPack: VerticalPack = {
     productCategory: "Kitchen Appliances",
     competitorBrands: ["Philips", "Bajaj", "Preethi", "Butterfly", "Havells"],
   },
+  pipelineLabels: {
+    stages: ["Contact Ready", "Email", "Email Sent", "Replied", "Sample Sent", "Negotiate", "Closed"],
+    postReplyStatusLabel: "Sample Sent",
+    markPostReplyAction: "Mark sample sent",
+  },
   toneHint:
     "Product angle: kitchen appliances, employee rewards, warranty, bulk pricing. Practical, not flashy.",
   knowledgeFiles: ["knowledge/brand.md", "knowledge/campaign-mass-ordering.md"],

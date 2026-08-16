@@ -12,6 +12,8 @@ import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
 import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { WRITE_THEME_OCCASIONS, FESTIVE_OCCASION_SENTINEL, occasionIdFromTags } from "@/lib/occasions/catalog";
+import { latestDetectedOccasion } from "@/lib/occasions/resolve";
 import { CREDIT_COSTS } from "@/lib/billing/credit-costs";
 import { WritingLoader } from "./writing-loader";
 import { OutreachApprovalCard } from "./outreach-approval-card";
@@ -58,6 +60,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const [generating, setGenerating] = useState(false);
   const [generatingLabel, setGeneratingLabel] = useState<string | undefined>();
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const [occasionMenuOpen, setOccasionMenuOpen] = useState(false);
+  const detectedOccasion = latestDetectedOccasion(lead.companyOverview);
+  const taggedOccasion = occasionIdFromTags(lead.tags);
+  const defaultOccasion =
+    taggedOccasion ?? (detectedOccasion?.type ? detectedOccasion.type : FESTIVE_OCCASION_SENTINEL);
+  const [selectedOccasion, setSelectedOccasion] = useState<string>(defaultOccasion);
   const [draftSaving, setDraftSaving] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [draftingReply, setDraftingReply] = useState(false);
@@ -100,6 +108,10 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     }
   }, [templates, selectedTemplate]);
 
+  useEffect(() => {
+    setSelectedOccasion(taggedOccasion ?? (detectedOccasion?.type ? detectedOccasion.type : FESTIVE_OCCASION_SENTINEL));
+  }, [lead.id, taggedOccasion, detectedOccasion?.type]);
+
   const selectedNode = thread?.barNodes.find((n) => n.id === selectedNodeId);
 
   const resolvedDraft = useMemo(() => {
@@ -137,6 +149,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const canWrite = isContactReadyStage(lead.status) || lead.status === "draft_ready" || isReplyLead;
   const hasDraft = !!(resolvedDraft ?? draft ?? sequence.length);
   const activeTemplate = templates.find((t) => t.id === selectedTemplate) ?? templates[0] ?? OUTREACH_TEMPLATES[0];
+  const showOccasionPicker = templates.some((t) => t.id === "gift_sampling");
+  const selectedOccasionDef =
+    selectedOccasion === FESTIVE_OCCASION_SENTINEL
+      ? { id: FESTIVE_OCCASION_SENTINEL, label: "Festive", pitch: "Seasonal Diwali and festival boxes" }
+      : WRITE_THEME_OCCASIONS.find((o) => o.id === selectedOccasion) ??
+        { id: selectedOccasion, label: selectedOccasion, pitch: detectedOccasion?.label ?? "Account event" };
   const isEmptyCompose = canWrite && !hasDraft && !isReplyLead && (phase === "compose" || thread?.barMode === "hidden");
   const isEditableNode =
     isEmptyCompose ||
@@ -190,6 +208,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         const regen = await regenerateSequenceStep(lead.id, followUpPosition, {
           outreachTemplate: selectedTemplate,
           writerMode,
+          occasionTheme: selectedOccasion,
         });
         setActiveDraft(regen);
         onDraftUpdated(regen);
@@ -201,7 +220,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
       if (isMobileLayout) {
         setStreamMessage("Starting smart emails...");
-        const draft = await runWriterStream(lead.id, { outreachTemplate: selectedTemplate, writerMode }, (ev) => {
+        const draft = await runWriterStream(lead.id, { outreachTemplate: selectedTemplate, writerMode, occasionTheme: selectedOccasion }, (ev) => {
           if (ev.type === "progress" && ev.message) setStreamMessage(ev.message);
         });
         setStreamMessage(null);
@@ -215,7 +234,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         return;
       }
 
-      const drafts = await runWriterSequence(lead.id, { outreachTemplate: selectedTemplate, writerMode });
+      const drafts = await runWriterSequence(lead.id, { outreachTemplate: selectedTemplate, writerMode, occasionTheme: selectedOccasion });
       setGeneratingLabel("Draft 3 of 3");
       const first = drafts[0];
       setActiveDraft(first);
@@ -414,6 +433,55 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                           <div>
                             <div className="font-semibold">{template.label}</div>
                             <div className="text-[11px] text-brand-ink-faint">{template.description}</div>
+                          </div>
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              {!isReplyLead && showRegenerate && showOccasionPicker ? (
+                <DropdownMenu modal={false} open={occasionMenuOpen} onOpenChange={setOccasionMenuOpen}>
+                  <DropdownMenuTrigger
+                    disabled={!canWrite || generating}
+                    className={cn(
+                      "flex h-full items-center gap-0.5 border-r border-brand-stratus-blue/15 px-2 text-[11px] font-semibold text-brand-ink outline-none",
+                      "hover:bg-brand-canvas focus-visible:ring-2 focus-visible:ring-brand-black/20 disabled:cursor-not-allowed",
+                    )}
+                  >
+                    <span>{selectedOccasionDef.label}</span>
+                    <ChevronDown className="size-3 text-brand-ink-faint" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[240px]">
+                    <DropdownMenuRadioGroup
+                      value={selectedOccasion}
+                      onValueChange={(v) => {
+                        setSelectedOccasion(v);
+                        setOccasionMenuOpen(false);
+                      }}
+                    >
+                      <DropdownMenuRadioItem value={FESTIVE_OCCASION_SENTINEL} className="text-[12px]">
+                        <div>
+                          <div className="font-semibold">Festive gifting</div>
+                          <div className="text-[11px] text-brand-ink-faint">Diwali and seasonal boxes</div>
+                        </div>
+                      </DropdownMenuRadioItem>
+                      {detectedOccasion?.type ? (
+                        <DropdownMenuRadioItem value="account_event" className="text-[12px]">
+                          <div>
+                            <div className="font-semibold">Account event</div>
+                            <div className="text-[11px] text-brand-ink-faint">
+                              {detectedOccasion.timing === "upcoming" ? "Upcoming: " : ""}
+                              {detectedOccasion.label ?? detectedOccasion.type}
+                            </div>
+                          </div>
+                        </DropdownMenuRadioItem>
+                      ) : null}
+                      {WRITE_THEME_OCCASIONS.map((occasion) => (
+                        <DropdownMenuRadioItem key={occasion.id} value={occasion.id} className="text-[12px]">
+                          <div>
+                            <div className="font-semibold">{occasion.label}</div>
+                            <div className="text-[11px] text-brand-ink-faint">{occasion.pitch}</div>
                           </div>
                         </DropdownMenuRadioItem>
                       ))}

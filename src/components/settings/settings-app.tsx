@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { SettingsNav, type SettingsNavItem } from "@/components/settings/settings-nav";
 import { SettingsHero } from "@/components/settings/settings-hero";
+import { UnsavedChangesModal } from "@/components/settings/unsaved-changes-modal";
 import { EnrichmentTab } from "@/components/settings/enrichment-tab";
 import { EmailTab } from "@/components/settings/email-tab";
 import { AppearanceTab } from "@/components/settings/appearance-tab";
@@ -17,6 +18,7 @@ import { ListGroup, ListRow, MobileHeader, MobileStackLayout } from "@/design-sy
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
+import { clampScoutCompaniesLimit, clampScoutLeadsLimit } from "@/lib/enrichment/config";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
 import { toast } from "sonner";
 
@@ -77,6 +79,9 @@ function SettingsAppInner() {
   const [verifyingEmail, setVerifyingEmail] = useState(false);
   const [scoutVolumeDirty, setScoutVolumeDirty] = useState(false);
   const [savingVolume, setSavingVolume] = useState(false);
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const pendingHrefRef = useRef<string | null>(null);
+  const hasUnsavedRef = useRef(false);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -133,7 +138,15 @@ function SettingsAppInner() {
   }
 
   function updateScoutVolume(partial: Pick<EnrichmentConfig, "scoutCompaniesLimit" | "scoutLeadsLimit">) {
-    setConfig((prev) => (prev ? { ...prev, ...partial } : prev));
+    setConfig((prev) =>
+      prev
+        ? {
+            ...prev,
+            scoutCompaniesLimit: clampScoutCompaniesLimit(partial.scoutCompaniesLimit),
+            scoutLeadsLimit: clampScoutLeadsLimit(partial.scoutLeadsLimit),
+          }
+        : prev,
+    );
     setScoutVolumeDirty(true);
     setDirty(true);
   }
@@ -167,15 +180,60 @@ function SettingsAppInner() {
     }
   }
 
-  async function save() {
-    if (!config) return;
+  const hasUnsaved =
+    dirty || emailDirty || Boolean(smtpPassDraft.trim()) || Boolean(resendApiKeyDraft.trim());
+
+  useEffect(() => {
+    hasUnsavedRef.current = hasUnsaved;
+  }, [hasUnsaved]);
+
+  function hrefLeavingSettings(raw: string): string | null {
+    if (!raw || raw.startsWith("#") || raw.startsWith("javascript:")) return null;
+    try {
+      const url = new URL(raw, window.location.href);
+      if (url.origin !== window.location.origin) return null;
+      if (url.pathname === "/settings" || url.pathname.startsWith("/settings/")) return null;
+      return `${url.pathname}${url.search}${url.hash}`;
+    } catch {
+      return null;
+    }
+  }
+
+  function askLeave(href: string) {
+    pendingHrefRef.current = href;
+    setLeaveOpen(true);
+  }
+
+  function stayOnSettings() {
+    pendingHrefRef.current = null;
+    setLeaveOpen(false);
+  }
+
+  function discardAndLeave() {
+    const href = pendingHrefRef.current;
+    pendingHrefRef.current = null;
+    setLeaveOpen(false);
+    setDirty(false);
+    setEmailDirty(false);
+    setScoutVolumeDirty(false);
+    setSmtpPassDraft("");
+    setResendApiKeyDraft("");
+    if (href) router.push(href);
+  }
+
+  async function save(): Promise<boolean> {
+    if (!config) return false;
     setSaving(true);
     try {
-      await fetch("/api/settings", {
+      const res = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
+      if (!res.ok) {
+        toast.error("Save failed");
+        return false;
+      }
       setDirty(false);
       setScoutVolumeDirty(false);
       window.dispatchEvent(
@@ -192,8 +250,10 @@ function SettingsAppInner() {
         }),
       );
       toast.success("Settings saved — applies to next Scout run");
+      return true;
     } catch {
       toast.error("Save failed");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -247,8 +307,8 @@ function SettingsAppInner() {
     }
   }
 
-  async function saveEmail() {
-    if (!emailConfig) return;
+  async function saveEmail(): Promise<boolean> {
+    if (!emailConfig) return false;
     setSaving(true);
     try {
       const {
@@ -274,18 +334,65 @@ function SettingsAppInner() {
       if (!res.ok) {
         const message = Array.isArray(data.errors) ? data.errors.join("; ") : data.error ?? "Could not save email settings";
         toast.error(message);
-        return;
+        return false;
       }
       if (data.config) setEmailConfig(data.config);
       setSmtpPassDraft("");
       setEmailDirty(false);
       toast.success("Email settings saved");
+      return true;
     } catch {
       toast.error("Could not save email settings");
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  async function saveAndLeave() {
+    const emailNeedsSave = emailDirty || Boolean(smtpPassDraft.trim()) || Boolean(resendApiKeyDraft.trim());
+    if (dirty) {
+      const ok = await save();
+      if (!ok) return;
+    }
+    if (emailNeedsSave) {
+      const ok = await saveEmail();
+      if (!ok) return;
+    }
+    const href = pendingHrefRef.current;
+    pendingHrefRef.current = null;
+    setLeaveOpen(false);
+    if (href) router.push(href);
+  }
+
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      if (!hasUnsavedRef.current) return;
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const href = hrefLeavingSettings(anchor.getAttribute("href") ?? "");
+      if (!href) return;
+      event.preventDefault();
+      event.stopPropagation();
+      askLeave(href);
+    };
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, []);
 
   const saveAction =
     activeTab === "enrichment" || activeTab === "email" ? (
@@ -393,16 +500,30 @@ function SettingsAppInner() {
       </div>
   );
 
-  return isMobileLayout ? (
-    <MobileStackLayout
-      showDetail={mobileShowDetail}
-      list={settingsList}
-      detail={settingsDetail}
+  const unsavedModal = (
+    <UnsavedChangesModal
+      open={leaveOpen}
+      saving={saving}
+      onStay={stayOnSettings}
+      onDiscard={discardAndLeave}
+      onSave={() => void saveAndLeave()}
     />
+  );
+
+  return isMobileLayout ? (
+    <>
+      <MobileStackLayout
+        showDetail={mobileShowDetail}
+        list={settingsList}
+        detail={settingsDetail}
+      />
+      {unsavedModal}
+    </>
   ) : (
     <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
       <SettingsNav value={activeTab} onChange={handleTabChange} items={NAV_ITEMS} />
       {settingsDetail}
+      {unsavedModal}
     </div>
   );
 }

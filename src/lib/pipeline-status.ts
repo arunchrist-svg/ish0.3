@@ -1,14 +1,17 @@
+import { getVerticalPack } from "@/vertical-packs";
+import type { VerticalPackId } from "@/vertical-packs/types";
+
 export const PIPELINE_STAGES = [
   "Contact Ready",
   "Email",
   "Email Sent",
   "Replied",
-  "Tasting Sent",
+  "Meeting",
   "Negotiate",
   "Closed",
 ] as const;
 
-export type PipelineStageLabel = (typeof PIPELINE_STAGES)[number];
+export type PipelineStageLabel = string;
 
 export const MANUAL_STATUSES = ["tasting_sent", "negotiate", "closed"] as const;
 export type ManualStatus = (typeof MANUAL_STATUSES)[number];
@@ -28,26 +31,17 @@ const STATUS_TO_PIPELINE_INDEX: Record<string, number> = {
   po_closed: 6,
 };
 
-const STATUS_TO_DISPLAY_LABEL: Record<string, string> = {
-  scouted: "Contact Ready",
-  prefiltered: "Contact Ready",
-  researched: "Contact Ready",
-  draft_ready: "Email",
-  approved: "Email",
-  outreached: "Email Sent",
-  replied: "Replied",
-  tasting_sent: "Tasting Sent",
-  negotiate: "Negotiate",
-  closed: "Closed",
-  meeting: "Negotiate",
-  po_closed: "Closed",
-};
-
 const MANUAL_TRANSITIONS: Record<string, ManualStatus> = {
   replied: "tasting_sent",
   tasting_sent: "negotiate",
   negotiate: "closed",
 };
+
+const ACCENTS_BY_INDEX = ["blue", "yellow", "yellow", "salmon", "yellow", "salmon", "muted"] as const;
+
+export function pipelineStageLabels(packId?: VerticalPackId | string | null): string[] {
+  return [...getVerticalPack(packId).pipelineLabels.stages];
+}
 
 export function statusToPipelineIndex(status: string): number {
   return STATUS_TO_PIPELINE_INDEX[status] ?? 0;
@@ -55,37 +49,42 @@ export function statusToPipelineIndex(status: string): number {
 
 export function groupLeadsByPipelineStage<T extends { status: string; score?: number | null }>(
   leads: T[],
-): Record<PipelineStageLabel, T[]> {
-  const groups = Object.fromEntries(
-    PIPELINE_STAGES.map((stage) => [stage, [] as T[]]),
-  ) as Record<PipelineStageLabel, T[]>;
+  packId?: VerticalPackId | string | null,
+): Record<string, T[]> {
+  const stages = pipelineStageLabels(packId);
+  const groups = Object.fromEntries(stages.map((stage) => [stage, [] as T[]])) as Record<string, T[]>;
 
   for (const lead of leads) {
-    const stage = PIPELINE_STAGES[statusToPipelineIndex(lead.status)];
+    const stage = stages[statusToPipelineIndex(lead.status)] ?? stages[0];
     groups[stage].push(lead);
   }
 
-  for (const stage of PIPELINE_STAGES) {
+  for (const stage of stages) {
     groups[stage].sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
   }
 
   return groups;
 }
 
-export const PIPELINE_STAGE_ACCENTS = {
+export const PIPELINE_STAGE_ACCENTS: Record<string, (typeof ACCENTS_BY_INDEX)[number]> = {
   "Contact Ready": "blue",
   Email: "yellow",
   "Email Sent": "yellow",
   Replied: "salmon",
+  Meeting: "yellow",
   "Tasting Sent": "yellow",
+  "Sample Sent": "yellow",
   Negotiate: "salmon",
   Closed: "muted",
-} as const;
+};
 
-export type PipelineStageAccent = (typeof PIPELINE_STAGE_ACCENTS)[PipelineStageLabel];
+export type PipelineStageAccent = (typeof ACCENTS_BY_INDEX)[number];
 
-export function statusToDisplayLabel(status: string): string {
-  return STATUS_TO_DISPLAY_LABEL[status] ?? status.replace(/_/g, " ");
+export function statusToDisplayLabel(status: string, packId?: VerticalPackId | string | null): string {
+  const stages = pipelineStageLabels(packId);
+  const index = STATUS_TO_PIPELINE_INDEX[status];
+  if (index != null) return stages[index] ?? status.replace(/_/g, " ");
+  return status.replace(/_/g, " ");
 }
 
 export function isManualStage(status: string): boolean {
@@ -118,7 +117,14 @@ export function isEmailStage(status: string): boolean {
   return ["draft_ready", "approved", "outreached"].includes(status);
 }
 
-export function deriveQueueAction(status: string): string {
+/** Statuses that still expect a prospect reply. */
+export const REPLY_WATCH_STATUSES = ["outreached", "approved"] as const;
+
+export function isReplyWatchStatus(status: string): boolean {
+  return (REPLY_WATCH_STATUSES as readonly string[]).includes(status);
+}
+
+export function deriveQueueAction(status: string, packId?: VerticalPackId | string | null): string {
   switch (status) {
     case "scouted":
     case "prefiltered":
@@ -132,7 +138,7 @@ export function deriveQueueAction(status: string): string {
     case "outreached":
       return "Follow-up";
     case "replied":
-      return "Mark tasting sent";
+      return getVerticalPack(packId).pipelineLabels.markPostReplyAction;
     case "tasting_sent":
       return "Move to negotiate";
     case "negotiate":

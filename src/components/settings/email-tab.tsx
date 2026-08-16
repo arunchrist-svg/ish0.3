@@ -7,10 +7,14 @@ import {
   EMAIL_SEND_MODE_OPTIONS,
   EMAIL_STYLE_OPTIONS,
   FOLLOW_UP_POLICY_OPTIONS,
+  SMTP_SERVER_OPTIONS,
+  applySmtpServer,
+  smtpServerFromHost,
   type FollowUpPolicy,
   type BrandConfig,
   type BrandSlug,
   type CampaignMode,
+  type SmtpServerId,
   type WebsiteBrandInsights,
 } from "@/lib/email/config";
 import { campaignModeOptionsForBrand, brandConfigFromPresetSelection, brandConfigFromPlatformIntent } from "@/lib/email/brand-presets";
@@ -44,7 +48,7 @@ type Props = {
   verifying: boolean;
 };
 
-function AppPasswordHelp() {
+function AppPasswordHelp({ variant }: { variant: "gmail" | "zoho" }) {
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger
@@ -64,11 +68,19 @@ function AppPasswordHelp() {
         className="w-[min(18rem,calc(100vw-2rem))] min-w-[16rem] rounded-xl border border-brand-stratus-blue/25 bg-white/95 p-3 shadow-[var(--shadow-brand)] backdrop-blur-md"
       >
         <p className="text-[12px] font-semibold text-brand-ink">App Password</p>
-        <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-brand-ink-soft">
-          <p>1. Turn on 2-Step Verification.</p>
-          <p>2. Google Account → Security → App passwords.</p>
-          <p>3. Create one for Mail, then paste it and verify.</p>
-        </div>
+        {variant === "zoho" ? (
+          <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-brand-ink-soft">
+            <p>1. Sign in to Zoho Mail as this inbox.</p>
+            <p>2. Open My Account → Security → App Passwords.</p>
+            <p>3. Generate one for Mail, then paste it and verify. India datacenter: pick Zoho India.</p>
+          </div>
+        ) : (
+          <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-brand-ink-soft">
+            <p>1. Turn on 2-Step Verification.</p>
+            <p>2. Google Account → Security → App passwords.</p>
+            <p>3. Create one for Mail, then paste it and verify.</p>
+          </div>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -210,6 +222,8 @@ export function EmailTab({
 
   const isSmtp = config.provider === "smtp";
   const isResend = config.provider === "resend";
+  const smtpServer = smtpServerFromHost(config.smtpHost);
+  const isZoho = smtpServer === "zoho_in" || smtpServer === "zoho_com";
   const resendReady = Boolean(config.resendApiKeySet || resendApiKeyDraft.trim());
   const providerReady = isSmtp ? config.smtpConfigured : resendReady;
   const canSelectLive = config.sendMode === "live" || providerReady;
@@ -365,12 +379,29 @@ export function EmailTab({
             onChange={(next) => onUpdate("provider", next)}
             options={EMAIL_PROVIDER_OPTIONS.map((option) => ({
               value: option.value,
-              label: option.value === "smtp" ? "Gmail" : option.label,
+              label: option.value === "smtp" ? "Inbox" : option.label,
             }))}
           />
         </SettingsRow>
         {isSmtp ? (
           <>
+            <SettingsGroupDivider />
+            <SettingsRow className="justify-between py-2.5">
+              <span className="text-[13px] font-semibold text-brand-ink">Mail host</span>
+              <SettingsSegmented
+                value={smtpServer}
+                onChange={(next) => {
+                  const patch = applySmtpServer(next as SmtpServerId);
+                  onUpdate("smtpHost", patch.smtpHost);
+                  onUpdate("smtpPort", patch.smtpPort);
+                  onUpdate("smtpSecure", patch.smtpSecure);
+                }}
+                options={SMTP_SERVER_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
+            </SettingsRow>
             <SettingsGroupDivider />
             <div className="flex items-center justify-between gap-2 px-4 py-2">
               <p className="min-w-0 truncate text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
@@ -378,15 +409,15 @@ export function EmailTab({
             </div>
             <div className="grid gap-3 px-4 pb-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <Field
-                label="Gmail"
+                label={isZoho ? "Zoho email" : "Gmail"}
                 value={config.smtpUser}
                 onChange={handleSmtpUserChange}
-                placeholder="you@company.com"
+                placeholder={isZoho ? "you@company.com" : "you@gmail.com"}
                 type="email"
               />
               <Field
                 label="App Password"
-                accessory={<AppPasswordHelp />}
+                accessory={<AppPasswordHelp variant={isZoho ? "zoho" : "gmail"} />}
                 value={smtpPassDraft}
                 onChange={onSmtpPassChange}
                 placeholder={config.smtpPassSet ? "••••••••••••••••" : "xxxx xxxx xxxx xxxx"}
@@ -527,7 +558,19 @@ export function EmailTab({
               <textarea
                 value={config.brandConfig?.websiteInsights?.productWriteup ?? ""}
                 onChange={(e) => patchWebsiteInsights({ productWriteup: e.target.value })}
-                placeholder="2–3 sentences for Writer"
+                placeholder="2-3 sentences for Writer"
+                rows={2}
+                className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                Who you sell to
+              </span>
+              <textarea
+                value={config.brandConfig?.websiteInsights?.icpSummary ?? ""}
+                onChange={(e) => patchWebsiteInsights({ icpSummary: e.target.value })}
+                placeholder="Companies that gift sweets to employees, or companies that would buy this software"
                 rows={2}
                 className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12"
               />
@@ -692,6 +735,18 @@ export function EmailTab({
               </label>
             ) : null}
           </div>
+          <label className="mt-3 block min-w-0">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+              Campaign notes
+            </span>
+            <textarea
+              value={config.campaignNotes ?? ""}
+              onChange={(e) => onUpdate("campaignNotes", e.target.value)}
+              rows={2}
+              placeholder="Optional monthly theme, e.g. birthday boxes for September"
+              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+            />
+          </label>
           <SettingsGroupDivider />
           <SenderHealthSettings />
         </SettingsGroup>

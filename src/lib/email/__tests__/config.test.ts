@@ -11,6 +11,9 @@ import {
   fromAddressMatchesSmtpUser,
   resolveSmtpCredentials,
   getSmtpStatus,
+  smtpServerFromHost,
+  imapHostForSmtp,
+  applySmtpServer,
 } from "@/lib/email/config";
 
 const ORIGINAL_ENV = process.env;
@@ -76,6 +79,16 @@ describe("resolveEmailConfig", () => {
     const creds = resolveSmtpCredentials(resolved);
     expect(creds.user).toBe("settings@gmail.com");
     expect(creds.pass).toBe("settings-pass");
+  });
+
+  it("maps Zoho India SMTP to imap.zoho.in", () => {
+    expect(smtpServerFromHost("smtp.zoho.in")).toBe("zoho_in");
+    expect(imapHostForSmtp("smtp.zoho.in")).toEqual({ host: "imap.zoho.in", port: 993 });
+    expect(applySmtpServer("zoho_in")).toEqual({
+      smtpHost: "smtp.zoho.in",
+      smtpPort: 587,
+      smtpSecure: false,
+    });
   });
 });
 

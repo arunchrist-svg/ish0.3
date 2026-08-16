@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   domainBelongsToCompany,
+  displayCompanyWebsite,
   isAcceptableCompanyDomain,
   isUnusableCompanyDomain,
+  mergeResolvedWebsite,
+  persistableCompanyWebsite,
+  officialWebsiteForScoutCompany,
   usableStoredDomain,
 } from "@/lib/enrichment/company-domain-quality";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
@@ -29,6 +33,63 @@ describe("company domain quality", () => {
     expect(usableStoredDomain("tatasteel.com", "Tata Steel")).toBe("tatasteel.com");
   });
 
+  it("rejects directory hosts and accepts SCHUNK's official site", () => {
+    const schunk = "SCHUNK Intec India Pvt Ltd";
+    expect(isUnusableCompanyDomain("zaubacorp.com")).toBe(true);
+    expect(isUnusableCompanyDomain("indiamart.com")).toBe(true);
+    expect(isUnusableCompanyDomain("justdial.com")).toBe(true);
+    expect(isUnusableCompanyDomain("linkedin.com")).toBe(true);
+    expect(isAcceptableCompanyDomain("zaubacorp.com", schunk)).toBe(false);
+    expect(isAcceptableCompanyDomain("schunk.com", schunk)).toBe(true);
+    expect(usableStoredDomain("zaubacorp.com", schunk)).toBeNull();
+    expect(usableStoredDomain("schunk.com", schunk)).toBe("schunk.com");
+  });
+
+  it("merges overview website from a resolved official domain, not directories", () => {
+    const schunk = "SCHUNK Intec India Pvt Ltd";
+    expect(
+      persistableCompanyWebsite(schunk, {
+        domain: "zaubacorp.com",
+        website: "https://www.zaubacorp.com/company/SCHUNK-INTEC-INDIA-PRIVATE-LIMITED/U29253KA2008PTC046123",
+        source: "tavily",
+      }),
+    ).toEqual({});
+    expect(
+      persistableCompanyWebsite(schunk, {
+        domain: "schunk.com",
+        website: "https://www.schunk.com/in/en/company.html",
+        source: "tavily",
+      }),
+    ).toEqual({ domain: "schunk.com", website: "https://www.schunk.com" });
+    expect(
+      mergeResolvedWebsite({
+        companyName: schunk,
+        resolved: { source: "unresolved" },
+        existingDomain: "zaubacorp.com",
+        existingWebsite: "https://www.zaubacorp.com/company/SCHUNK",
+      }),
+    ).toEqual({});
+    expect(
+      mergeResolvedWebsite({
+        companyName: schunk,
+        resolved: { domain: "schunk.com", website: "https://www.schunk.com", source: "provided" },
+        existingDomain: "zaubacorp.com",
+      }),
+    ).toEqual({ domain: "schunk.com", website: "https://www.schunk.com" });
+    expect(
+      mergeResolvedWebsite({
+        companyName: schunk,
+        resolved: { source: "unresolved" },
+        existingDomain: "schunk.com",
+      }),
+    ).toEqual({ domain: "schunk.com", website: "https://www.schunk.com" });
+    expect(displayCompanyWebsite("zaubacorp.com", "https://www.zaubacorp.com/x")).toBeUndefined();
+    expect(displayCompanyWebsite("schunk.com")).toEqual({
+      href: "https://www.schunk.com",
+      label: "schunk.com",
+    });
+  });
+
   it("falls back to a company-name domain when the stored host is a publisher", () => {
     expect(
       resolveAccountDomain({
@@ -53,5 +114,23 @@ describe("company domain quality", () => {
         companyName: "Carborundum Universal",
       }),
     ).toBe("cumi-murugappa.com");
+  });
+
+  it("strips a website whose slug does not match the scouted company", () => {
+    const cleaned = officialWebsiteForScoutCompany({
+      name: "Titan Company Ltd",
+      domain: "justdial.com",
+      website: "https://www.justdial.com/titan",
+      fitScore: 60,
+    });
+    expect(cleaned.domain).toBeUndefined();
+    expect(cleaned.website).toBeUndefined();
+    const matched = officialWebsiteForScoutCompany({
+      name: "Titan Company Ltd",
+      domain: "titancompany.in",
+      website: "https://www.titancompany.in",
+      fitScore: 60,
+    });
+    expect(matched.domain).toBe("titancompany.in");
   });
 });

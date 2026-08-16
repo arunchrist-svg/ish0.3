@@ -8,6 +8,8 @@ export type ResendWebhookEvent = {
     to?: string[];
     from?: string;
     subject?: string;
+    text?: string;
+    html?: string;
     bounce?: {
       message?: string;
       type?: string;
@@ -21,6 +23,10 @@ export type ResendWebhookEvent = {
 
 export function isBounceLikeEvent(type?: string): boolean {
   return type === "email.bounced" || type === "email.failed" || type === "email.complained";
+}
+
+export function isInboundLikeEvent(type?: string): boolean {
+  return type === "email.received" || type === "email.inbound";
 }
 
 export function bounceMetaFromEvent(event: ResendWebhookEvent): {

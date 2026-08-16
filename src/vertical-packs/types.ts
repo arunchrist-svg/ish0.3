@@ -23,6 +23,12 @@ export type PackBrandIntelDefaults = {
   competitorBrands: string[];
 };
 
+export type PackPipelineLabels = {
+  stages: [string, string, string, string, string, string, string];
+  postReplyStatusLabel: string;
+  markPostReplyAction: string;
+};
+
 export type VerticalPack = {
   id: VerticalPackId;
   label: string;
@@ -32,6 +38,7 @@ export type VerticalPack = {
   defaultCampaignMode: CampaignMode;
   outreachCtas: PackOutreachCta[];
   brandIntelDefaults: PackBrandIntelDefaults;
+  pipelineLabels: PackPipelineLabels;
   toneHint: string;
   /** Relative paths under src/vertical-packs/{id}/ */
   knowledgeFiles: string[];

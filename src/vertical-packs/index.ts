@@ -66,6 +66,7 @@ export function applyVerticalPack(
     websiteUrl: overrides?.websiteUrl,
     websiteInsights: overrides?.websiteInsights,
     platformIntent: overrides?.platformIntent,
+    defaultOutreachCta: overrides?.defaultOutreachCta,
   };
 }
 

@@ -40,8 +40,8 @@ export function getTavilyKeyConfigIssues(): string[] {
   const backupDefined = process.env.TAVILY_API_KEY_2 !== undefined;
 
   if (!primary) issues.push("TAVILY_API_KEY is missing in .env.local");
-  if (backupDefined && !backup) issues.push("TAVILY_API_KEY_2 is blank — paste your backup key after the = sign");
-  if (primary && backup && primary === backup) issues.push("TAVILY_API_KEY_2 is the same as TAVILY_API_KEY — add a different backup key");
+  if (backupDefined && !backup) issues.push("TAVILY_API_KEY_2 is blank. Paste your backup key after the = sign");
+  if (primary && backup && primary === backup) issues.push("TAVILY_API_KEY_2 is the same as TAVILY_API_KEY. Add a different backup key");
 
   return issues;
 }

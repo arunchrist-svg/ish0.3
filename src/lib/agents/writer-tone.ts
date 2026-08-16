@@ -1,5 +1,7 @@
 import type { BrandConfig } from "@/lib/email/config";
 import { getVerticalPack, resolveVerticalPackId } from "@/vertical-packs";
+import { fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import { isFestiveWriteOccasion, type WriteOccasionId } from "@/lib/occasions/catalog";
 
 export const BASE_WRITER_TONE = `WRITER TONE (all brands):
 - Friendly but professional. Write like a thoughtful colleague who did their homework.
@@ -39,6 +41,7 @@ export function getWriterFewShotExample(
   companyName = "TechCorp",
   productSummary = "",
   verticalPackId?: BrandConfig["verticalPackId"],
+  occasionId?: WriteOccasionId | null,
 ): string {
   const productLine = productSummary.trim()
     ? productSummary.trim().replace(/\.\s*$/, "")
@@ -46,12 +49,41 @@ export function getWriterFewShotExample(
 
   const packId = resolveVerticalPackId(verticalPackId, _brandSlug as BrandConfig["brandSlug"]);
 
+  if (packId === "gifting-sweets" && occasionId && !isFestiveWriteOccasion(occasionId)) {
+    const copy = fillIshDraftVariants({
+      contactFirstName,
+      companyName,
+      senderFirstName,
+      brandName,
+      sequencePosition: 1,
+      occasionId,
+    });
+    return `
+---
+ISH TEMPLATES (keep ~90% of this wording; only fill name and company; return as subjectA/B/C + emailBody/B/C):
+
+Subject A: ${copy.subjectA}
+Body A:
+${copy.emailBody}
+
+Subject B: ${copy.subjectB}
+Body B:
+${copy.emailBodyB}
+
+Subject C: ${copy.subjectC}
+Body C:
+${copy.emailBodyC}
+
+---
+`;
+  }
+
   if (packId === "gifting-sweets") {
     return `
 ---
 ISH TEMPLATES (keep ~90% of this wording; only fill name and company; return as subjectA/B/C + emailBody/B/C):
 
-Subject A: Send happiness this Diwali, ${contactFirstName}
+Subject A: Sample box for festive tasting, ${contactFirstName}
 Body A:
 Hi ${contactFirstName},
 
@@ -65,7 +97,7 @@ Best,
 ${senderFirstName}
 ${brandName}
 
-Subject B: ${companyName}, make someone's Diwali better
+Subject B: Festive sweets sample for ${companyName}
 Body B:
 Hi ${contactFirstName},
 
@@ -77,7 +109,7 @@ Thanks & Regards
 ${senderFirstName}
 ${brandName}
 
-Subject C: Happiness, handcrafted
+Subject C: A tasting box for your team
 Body C:
 Hi ${contactFirstName},
 

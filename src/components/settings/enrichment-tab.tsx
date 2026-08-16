@@ -15,6 +15,8 @@ import {
   ENRICH_PROVIDER_LABELS,
   DATA_MODE_OPTIONS,
   SCOUT_VOLUME_PRESETS,
+  MAX_SCOUT_COMPANIES_LIMIT,
+  MAX_SCOUT_LEADS_LIMIT,
   type SearchProvider,
   type EnrichProvider,
   type EnrichmentConfig,
@@ -146,7 +148,7 @@ export function EnrichmentTab({
           label="Companies / fetch"
           value={config.scoutCompaniesLimit}
           min={1}
-          max={100}
+          max={MAX_SCOUT_COMPANIES_LIMIT}
           onChange={(v) => onUpdateScoutVolume({ scoutCompaniesLimit: v, scoutLeadsLimit: config.scoutLeadsLimit })}
         />
         <SettingsGroupDivider />
@@ -154,7 +156,7 @@ export function EnrichmentTab({
           label="Leads / company"
           value={config.scoutLeadsLimit}
           min={1}
-          max={25}
+          max={MAX_SCOUT_LEADS_LIMIT}
           onChange={(v) => onUpdateScoutVolume({ scoutCompaniesLimit: config.scoutCompaniesLimit, scoutLeadsLimit: v })}
         />
         {(scoutVolumeDirty || savingVolume) && (

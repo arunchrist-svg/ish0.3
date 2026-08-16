@@ -52,13 +52,26 @@ describe("Titan logo domain", () => {
       "titancompany.in",
     );
     expect(getCompanyLogoSources({ name: "Titan Company" })[0]).toBe(
-      "https://logo.clearbit.com/titancompany.in",
+      "https://www.google.com/s2/favicons?domain=titancompany.in&sz=128",
+    );
+  });
+
+  it("maps SCHUNK Intec India to schunk.com", () => {
+    expect(extractCompanyDomain({ name: "SCHUNK Intec India Pvt Ltd" })).toBe("schunk.com");
+    expect(getCompanyLogoSources({ name: "SCHUNK Intec India Pvt Ltd" })[0]).toBe(
+      "https://www.google.com/s2/favicons?domain=schunk.com&sz=128",
     );
   });
 
   it("tries the known Titan domain before a dead alias like titan.co.in", () => {
     const sources = getCompanyLogoSources({ name: "Titan Company", domain: "titan.co.in" });
-    expect(sources[0]).toBe("https://logo.clearbit.com/titancompany.in");
-    expect(sources).toContain("https://logo.clearbit.com/titan.co.in");
+    expect(sources[0]).toBe("https://www.google.com/s2/favicons?domain=titancompany.in&sz=128");
+    expect(sources).toContain("https://www.google.com/s2/favicons?domain=titan.co.in&sz=128");
+  });
+
+  it("looks up TEREX from the company name", () => {
+    expect(extractCompanyDomain({ name: "TEREX INDIA PRIVATE LIMITED" })).toBe("terex.com");
+    const sources = getCompanyLogoSources({ name: "Copral Energy" }, { includeLookup: true });
+    expect(sources.some((src) => src.startsWith("/api/company-logo?"))).toBe(true);
   });
 });

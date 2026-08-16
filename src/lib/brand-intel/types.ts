@@ -2,6 +2,8 @@ export type SourceTier = 1 | 2 | 3 | 4 | 5;
 
 export type GiftIntelSourceId =
   | "linkedin_posts"
+  | "linkedin_jobs"
+  | "careers_web"
   | "instagram_reels"
   | "x_posts"
   | "india_business_news"
@@ -12,6 +14,10 @@ export type GiftIntelSourceId =
   | "reddit_india"
   | "gifting_roundups";
 
+export type ComingSoonSignalType = "hiring" | "coming_soon" | "mall_lease" | "press_expansion";
+
+export type OccasionTiming = "upcoming" | "recent";
+
 export type RawGiftIntelPost = {
   url: string;
   text: string;
@@ -21,6 +27,7 @@ export type RawGiftIntelPost = {
   sourceId: GiftIntelSourceId;
   sourceTier: SourceTier;
   ocrText?: string;
+  signalType?: ComingSoonSignalType;
 };
 
 export type ExtractedGiftIntel = {
@@ -33,8 +40,11 @@ export type ExtractedGiftIntel = {
     specific_product_details?: string;
     product_category: string;
     occasion_or_context?: string;
+    occasion_type?: string;
     timeframe?: string;
     giving_company_city?: string;
+    timing?: OccasionTiming;
+    signal_type?: ComingSoonSignalType;
   };
   evidence_rationale: string;
   source_id?: GiftIntelSourceId;

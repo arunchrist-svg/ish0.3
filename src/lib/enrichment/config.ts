@@ -25,10 +25,13 @@ export type EnrichmentConfig = {
   scoutGeo?: ScoutGeoSelection;
 };
 
+export const MAX_SCOUT_COMPANIES_LIMIT = 25;
+export const MAX_SCOUT_LEADS_LIMIT = 10;
+
 export const SCOUT_VOLUME_PRESETS = {
   lite: { companies: 1, leads: 1, label: "Minimum", desc: "1 company · 1 lead — lowest token use" },
   standard: { companies: 10, leads: 3, label: "Lite", desc: "Small batch · moderate token use" },
-  max: { companies: 25, leads: 8, label: "Standard", desc: "Balanced coverage and cost" },
+  max: { companies: MAX_SCOUT_COMPANIES_LIMIT, leads: MAX_SCOUT_LEADS_LIMIT, label: "Standard", desc: "Balanced coverage and cost" },
 } as const;
 
 function clampScoutLimit(value: number, min: number, max: number, fallback: number): number {
@@ -36,14 +39,22 @@ function clampScoutLimit(value: number, min: number, max: number, fallback: numb
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+export function clampScoutCompaniesLimit(value: number): number {
+  return clampScoutLimit(value, 1, MAX_SCOUT_COMPANIES_LIMIT, 1);
+}
+
+export function clampScoutLeadsLimit(value: number): number {
+  return clampScoutLimit(value, 1, MAX_SCOUT_LEADS_LIMIT, 1);
+}
+
 export function getScoutCompaniesLimit(): number {
   const raw = process.env.SCOUT_COMPANIES_LIMIT ?? process.env.PROSPECTING_MAX_RESULTS ?? "1";
-  return clampScoutLimit(parseInt(raw, 10), 1, 100, 1);
+  return clampScoutCompaniesLimit(parseInt(raw, 10));
 }
 
 export function getScoutLeadsLimit(): number {
   const raw = process.env.SCOUT_LEADS_LIMIT ?? "1";
-  return clampScoutLimit(parseInt(raw, 10), 1, 25, 1);
+  return clampScoutLeadsLimit(parseInt(raw, 10));
 }
 
 export const SEARCH_PROVIDER_LABELS: Record<SearchProvider, { label: string; desc: string; badge: string }> = {
@@ -176,5 +187,7 @@ export function resolveEnrichmentConfig(
     brandIntelProductCategory: giftIntel.productCategory || undefined,
     brandIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
     scoutGeo: normalizeScoutGeo(base.scoutGeo),
+    scoutCompaniesLimit: clampScoutCompaniesLimit(base.scoutCompaniesLimit),
+    scoutLeadsLimit: clampScoutLeadsLimit(base.scoutLeadsLimit),
   };
 }

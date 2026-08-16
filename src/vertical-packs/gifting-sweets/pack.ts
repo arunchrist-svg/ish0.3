@@ -11,9 +11,9 @@ export const giftingSweetsPack: VerticalPack = {
       "Premium pure-ghee mithai, dry fruit hampers, and curated Diwali gift boxes. Bulk pricing from ₹500/person for 200+ employees. Custom-branded boxes and pan-India delivery.",
     buyerPersonas: ["HR Director", "HR Manager", "Admin Head", "Procurement Manager"],
     toneNotes:
-      "Festive but plain. Focus on mithai, hampers, and tasting samples. Mention Diwali timing without hype. Not salesy.",
+      "Plain and professional. Focus on mithai, hampers, and tasting samples. Match the occasion (festival, opening, birthday, pantry). Not salesy.",
   },
-  campaignModes: ["diwali_gifting", "mass_ordering", "festival_bundle", "custom"],
+  campaignModes: ["diwali_gifting", "year_round", "mass_ordering", "festival_bundle", "custom"],
   defaultCampaignMode: "diwali_gifting",
   outreachCtas: [
     {
@@ -22,7 +22,7 @@ export const giftingSweetsPack: VerticalPack = {
       shortLabel: "Gift Sampling",
       description: "Offer a tasting box to their desk or office",
       ctaInstruction:
-        "Primary CTA: offer a Diwali tasting sample (say tasting sample, not complimentary or free). Ask if they are open to receiving one. Do NOT ask for address, phone, or team size in email #1; offer to coordinate details after they reply.",
+        "Primary CTA: offer a tasting sample (say tasting sample, not complimentary or free). Ask if they are open to receiving one. Do NOT ask for address, phone, or team size in email #1; offer to coordinate details after they reply.",
     },
     {
       id: "meet_online",
@@ -30,7 +30,7 @@ export const giftingSweetsPack: VerticalPack = {
       shortLabel: "Meet Online",
       description: "Book a short video call to showcase the gift range",
       ctaInstruction:
-        "Primary CTA: invite them to a 15-min online presentation of our Diwali gifting range. Ask if a brief call this week works. No harvesting of personal info.",
+        "Primary CTA: invite them to a 15-min online presentation of our gift range. Ask if a brief call this week works. No harvesting of personal info.",
     },
     {
       id: "meet_in_person",
@@ -51,13 +51,21 @@ export const giftingSweetsPack: VerticalPack = {
       "Karachi Bakery",
     ],
   },
+  pipelineLabels: {
+    stages: ["Contact Ready", "Email", "Email Sent", "Replied", "Tasting Sent", "Negotiate", "Closed"],
+    postReplyStatusLabel: "Tasting Sent",
+    markPostReplyAction: "Mark tasting sent",
+  },
   toneHint:
-    "Product angle: mithai, hampers, Diwali gifting, tasting samples. Festive but plain language.",
+    "Product angle: mithai, hampers, tasting samples. Match the occasion (festival, store opening, birthday, pantry, empanelment). Plain language.",
   knowledgeFiles: [
     "knowledge/brand.md",
     "knowledge/rules.md",
     "knowledge/campaign-diwali.md",
+    "knowledge/campaign-openings.md",
+    "knowledge/campaign-programs.md",
+    "knowledge/occasions.md",
     "knowledge/roles.md",
   ],
-  searchLexicon: ["mithai", "sweets box", "hamper", "Diwali gift", "festive hamper"],
+  searchLexicon: ["mithai", "sweets box", "hamper", "Diwali gift", "festive hamper", "inauguration", "new store", "opening soon", "coming soon"],
 };

@@ -9,8 +9,9 @@ import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
 import { LeadsGrid } from "./leads-grid";
 import { PersonDetailPanel } from "./person-detail-panel";
-import { scoutCompanies, scoutCompaniesStream, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutSaveBatchStream, scoutExactSearch } from "@/lib/api-client";
+import { scoutCompanies, scoutCompaniesStream, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutSaveBatchStream, scoutSaveCompanies, scoutSavedCompanies, scoutExactSearch } from "@/lib/api-client";
 import { mapWithConcurrency } from "@/lib/async";
+import { isLogoUrl } from "@/lib/company-logo";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, cn } from "@/lib/utils";
@@ -22,7 +23,7 @@ import {
   MobilePageLayout,
 } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
-import { Compass, MapPin, MoreVertical, Search, Users } from "lucide-react";
+import { Compass, Bookmark, BookmarkPlus, MapPin, MoreVertical, Search, TriangleAlert, Users } from "lucide-react";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS } from "@/lib/scouting-data";
 import { extractEmployeesFromText, normalizeEmployeeField } from "@/lib/enrichment/employee-size";
 import {
@@ -30,6 +31,11 @@ import {
   scoutPeopleCoverage,
   selectPeopleByCompanyCap,
 } from "@/lib/enrichment/people-diversity";
+import {
+  assessPeopleFetchRisk,
+  peopleAndFilterWarning,
+} from "@/lib/enrichment/people-role-filter";
+import { summarizeEmptyPeopleFetch } from "@/lib/enrichment/people-fetch-notice";
 import {
   locationOptionsFromSelection,
   scoutPickerAllowedLabels,
@@ -61,65 +67,18 @@ function noticeKey(msg: string): string {
 }
 
 
-function pickPeopleNotice(messages: string[]): { headline: string; detail: string } {
-  const unique = [...new Set(messages.filter(Boolean))];
-  if (!unique.length) {
-    return {
-      headline: "No decision-makers found for the selected companies.",
-      detail:
-        "We search LinkedIn via Tavily. Try companies with websites or well-known brands (e.g. Bosch, Infosys).",
-    };
-  }
-
-  const joined = unique.join(" ");
-  const primary = pickPrimaryNotice(unique) ?? unique[0];
-
-  if (/tavily_api_key.*missing|tavily api key.*missing|tavily_api_key not set/i.test(joined)) {
-    return {
-      headline: "People search is temporarily unavailable.",
-      detail: "Try again later or contact support if this persists.",
-    };
-  }
-
-  if (/all tavily keys exhausted/i.test(joined)) {
-    return {
-      headline: "Search capacity is temporarily limited.",
-      detail: "Try a smaller scout batch, switch data mode in Settings, or try again later.",
-    };
-  }
-
-  if (/insufficient credits/i.test(joined)) {
-    return {
-      headline: "Not enough credits to fetch decision-makers.",
-      detail: primary,
-    };
-  }
-
-  if (/quota|usage limit|exhausted|people search needs tavily credits/i.test(joined)) {
-    return {
-      headline: "Tavily credits exhausted for people search.",
-      detail: primary,
-    };
-  }
-
-  if (/switched to backup key/i.test(joined)) {
-    return {
-      headline: "No decision-makers found for the selected companies.",
-      detail: `${primary} Try companies with websites or larger brands.`,
-    };
-  }
-
-  if (/website|linkedin profiles|no decision-makers found/i.test(joined)) {
-    return {
-      headline: "No decision-makers found for the selected companies.",
-      detail: primary,
-    };
-  }
-
-  return {
-    headline: "No decision-makers found for the selected companies.",
-    detail: primary,
-  };
+function pickPeopleNotice(
+  messages: string[],
+  companyCount = 1,
+  filters?: { cities?: string[]; seniority?: string[]; departments?: string[] },
+): { headline: string; detail: string } {
+  return summarizeEmptyPeopleFetch({
+    companyCount,
+    warnings: messages,
+    cities: filters?.cities,
+    seniority: filters?.seniority,
+    departments: filters?.departments,
+  });
 }
 
 function pickPrimaryNotice(messages: string[]): string | null {
@@ -159,8 +118,9 @@ function companyKey(c: ScoutCompanyResult, index = 0): string {
 function toCompanyShape(c: ScoutCompanyResult, index = 0) {
   return {
     id: companyKey(c, index),
-    logo: c.logo ?? "🏢",
+    logo: isLogoUrl(c.logo) ? c.logo : undefined,
     domain: c.domain,
+    website: c.website,
     name: c.name,
     type: c.industry ?? "Corporate",
     city: c.city ?? "",
@@ -277,6 +237,7 @@ function RolePickerModal({
   }
 
   const hasSelection = chosenSeniority.length > 0 || chosenDepts.length > 0;
+  const andWarning = peopleAndFilterWarning(chosenSeniority, chosenDepts);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
@@ -285,7 +246,7 @@ function RolePickerModal({
         <div className="border-b border-brand-border px-6 py-4">
           <p className="text-[15px] font-bold text-brand-ink">Who are you looking for?</p>
           <p className="mt-0.5 text-[12px] text-brand-ink-soft">
-            Pick seniority and department. We only show matching decision-makers, senior-most first.
+            Pick seniority or department. Matching both is stricter and often returns nobody.
           </p>
         </div>
 
@@ -344,6 +305,12 @@ function RolePickerModal({
               })}
             </div>
           </div>
+
+          {andWarning ? (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
+              {andWarning}
+            </p>
+          ) : null}
         </div>
 
         {/* Footer */}
@@ -374,16 +341,106 @@ function RolePickerModal({
   );
 }
 
+function FetchLeadsRiskModal({
+  companyCount,
+  seniority,
+  departments,
+  onCancel,
+  onFetchWithoutFilters,
+  onFetchAnyway,
+}: {
+  companyCount: number;
+  seniority: string[];
+  departments: string[];
+  onCancel: () => void;
+  onFetchWithoutFilters: () => void;
+  onFetchAnyway: () => void;
+}) {
+  const risk = assessPeopleFetchRisk({ companyCount, seniority, departments });
+  const senLabel = seniority.join(", ");
+  const deptLabel = departments.join(", ");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
+      <div className="mx-4 w-full max-w-md rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-float)]">
+        <div className="border-b border-brand-border px-6 py-4">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+              <TriangleAlert className="size-4" />
+            </div>
+            <div>
+              <p className="text-[15px] font-bold text-brand-ink">{risk.headline}</p>
+              <p className="mt-1 text-[12px] leading-snug text-brand-ink-soft">{risk.costLine}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-3 px-6 py-5">
+          <p className="text-[13px] leading-snug text-brand-ink">
+            {risk.emptyRiskLine}
+          </p>
+          <p className="rounded-xl bg-brand-app px-3 py-2 text-[12px] leading-snug text-brand-ink-soft">
+            Current filters: {senLabel} + {deptLabel}. Cancel and keep one stack (seniority or department) if you want matches without dropping all People filters.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 border-t border-brand-border px-6 py-4">
+          <button
+            type="button"
+            onClick={onFetchWithoutFilters}
+            className="rounded-xl bg-brand-green px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[var(--shadow-brand)] hover:opacity-90"
+          >
+            Fetch without People filters
+          </button>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="text-[12px] font-semibold text-brand-ink-faint hover:text-brand-ink"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onFetchAnyway}
+              className="text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
+            >
+              Fetch anyway
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 
 function ScoutCompaniesEmpty({
   hasFetched,
   scoutMode,
   fetchMessage,
+  showingSaved,
+  icpHint,
 }: {
   hasFetched: boolean;
   scoutMode: ScoutMode;
   fetchMessage: string | null;
+  showingSaved?: boolean;
+  icpHint?: string | null;
 }) {
+  if (showingSaved) {
+    return (
+      <div className="mx-4 mt-6 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
+        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-brand-canvas text-brand-ink-soft">
+          <Bookmark className="size-7" />
+        </div>
+        <EmptyState
+          title="No saved companies yet"
+          description="Select companies from Scout, then tap Save companies. Fetch Leads later from Saved."
+          className="py-0"
+        />
+      </div>
+    );
+  }
+
   if (!hasFetched) {
     return (
       <div className="mx-4 mt-6 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish lg:mx-5 lg:mt-8">
@@ -395,7 +452,9 @@ function ScoutCompaniesEmpty({
           description={
             scoutMode === "search"
               ? "Pick a city, type a company name, then tap Search."
-              : "Pick a city, then tap Scout now. Leave industry open for broader results."
+              : icpHint
+                ? `Pick a city, then tap Scout now. ${icpHint}`
+                : "Pick a city, then tap Scout now. Leave industry open for broader results."
           }
           className="py-0"
         />
@@ -452,6 +511,7 @@ export function ScoutingApp() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [dataMode, setDataMode] = useState<DataMode>("free");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [icpHint, setIcpHint] = useState<string | null>(null);
   const [scoutCompaniesLimit, setScoutCompaniesLimit] = useState(1);
   const [scoutLeadsLimit, setScoutLeadsLimit] = useState(1);
 
@@ -462,6 +522,8 @@ export function ScoutingApp() {
   const [loadingPeople, setLoadingPeople] = useState(false);
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
   const [saving, setSaving] = useState(false);
+  const [savingCompanies, setSavingCompanies] = useState(false);
+  const [showingSaved, setShowingSaved] = useState(false);
   const [saveProgress, setSaveProgress] = useState({ done: 0, total: 0 });
   const [hasMore, setHasMore] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
@@ -480,7 +542,12 @@ export function ScoutingApp() {
   const [scoutMode, setScoutMode] = useState<ScoutMode>("autopilot");
   const [companySearchQuery, setCompanySearchQuery] = useState("");
   const [showRolePicker, setShowRolePicker] = useState(false);
+  const [showFetchRisk, setShowFetchRisk] = useState(false);
   const [pendingFetchIds, setPendingFetchIds] = useState<Set<string> | null>(null);
+  const [pendingFetchRoles, setPendingFetchRoles] = useState<{
+    seniority: string[];
+    departments: string[];
+  } | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -565,12 +632,7 @@ export function ScoutingApp() {
   function applyLocationOptions(locations: ScoutLocationOption[]) {
     setLocationOptions(locations);
     const allowed = scoutPickerAllowedLabels(locations);
-    setCities((prev) => {
-      const kept = prev.filter((c) => allowed.has(c));
-      if (kept.length) return kept;
-      if (!locations.length) return [];
-      return locations.length <= 12 ? locations.map((l) => l.label) : locations.slice(0, 8).map((l) => l.label);
-    });
+    setCities((prev) => prev.filter((c) => allowed.has(c)));
   }
 
   useEffect(() => {
@@ -619,6 +681,7 @@ export function ScoutingApp() {
     ) => {
       const append = options?.append ?? false;
       const setLoading = append && !options?.forceMainLoader ? setLoadingMore : setLoadingCompanies;
+      if (!append) setShowingSaved(false);
       setLoading(true);
 
       try {
@@ -940,28 +1003,116 @@ export function ScoutingApp() {
     setSelectedPersonIds(new Set());
   }
 
+  function companiesForPendingFetch() {
+    const ids = pendingFetchIds ?? selectedCompanyIds;
+    return companies.filter((c) => ids.has(c.id));
+  }
+
+  function beginFetchLeads(selected: CompanyShape[], activeSeniority: string[], activeDepartments: string[]) {
+    setShowRolePicker(false);
+    setShowFetchRisk(false);
+    setPendingFetchIds(null);
+    setPendingFetchRoles(null);
+    void runFetchLeads(selected, activeSeniority, activeDepartments);
+  }
+
+  function confirmFetchIfRisky(
+    selected: CompanyShape[],
+    activeSeniority: string[],
+    activeDepartments: string[],
+  ) {
+    const risk = assessPeopleFetchRisk({
+      companyCount: selected.length,
+      seniority: activeSeniority,
+      departments: activeDepartments,
+    });
+    if (!risk.needsConfirm) {
+      beginFetchLeads(selected, activeSeniority, activeDepartments);
+      return;
+    }
+    setPendingFetchIds(new Set(selected.map((c) => c.id)));
+    setPendingFetchRoles({ seniority: activeSeniority, departments: activeDepartments });
+    setShowFetchRisk(true);
+  }
+
   function handleFetchLeads() {
     const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
     if (!selected.length) return;
 
-    // Skip role picker when People filters are already set in the toolbar.
-    if (seniority.length > 0 || departments.length > 0) {
-      void runFetchLeads(selected, seniority, departments);
-      return;
-    }
-
     setPendingFetchIds(new Set(selected.map((c) => c.id)));
-    setShowRolePicker(true);
+    confirmFetchIfRisky(selected, seniority, departments);
   }
 
   function handleRolePickerConfirm(chosenSeniority: string[], chosenDepartments: string[]) {
     setSeniority(chosenSeniority);
     setDepartments(chosenDepartments);
     setShowRolePicker(false);
-    const ids = pendingFetchIds ?? selectedCompanyIds;
-    const selected = companies.filter((c) => ids.has(c.id));
+    confirmFetchIfRisky(companiesForPendingFetch(), chosenSeniority, chosenDepartments);
+  }
+
+  function handleFetchRiskCancel() {
+    setShowFetchRisk(false);
     setPendingFetchIds(null);
-    void runFetchLeads(selected, chosenSeniority, chosenDepartments);
+    setPendingFetchRoles(null);
+  }
+
+  function handleFetchWithoutPeopleFilters() {
+    setSeniority([]);
+    setDepartments([]);
+    beginFetchLeads(companiesForPendingFetch(), [], []);
+  }
+
+  function handleFetchAnyway() {
+    const roles = pendingFetchRoles ?? { seniority, departments };
+    beginFetchLeads(companiesForPendingFetch(), roles.seniority, roles.departments);
+  }
+
+  async function handleSaveCompanies() {
+    const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
+    if (!selected.length || savingCompanies) return;
+    setSavingCompanies(true);
+    try {
+      const result = await scoutSaveCompanies({
+        companies: selected.map((c) => c._raw),
+        dataMode,
+      });
+      toast.success(`Saved ${result.saved} companies. Fetch Leads later from Saved.`);
+    } catch (e) {
+      toast.error("Could not save companies. Try again.");
+      console.error(e);
+    } finally {
+      setSavingCompanies(false);
+    }
+  }
+
+  async function handleShowSaved() {
+    setView("companies");
+    setShowingSaved(true);
+    setHasMore(false);
+    setDiscoveryNotice(null);
+    setFetchMessage(null);
+    setPeople([]);
+    setSelectedPersonIds(new Set());
+    setOverflowOpen(false);
+    setFiltersExpanded(false);
+    setLoadingCompanies(true);
+    try {
+      const data = await scoutSavedCompanies();
+      const shaped = dedupeCompanyShapes(data.companies.map((c, i) => toCompanyShape(c, i)));
+      setCompanies(shaped);
+      setSelectedCompanyIds(new Set());
+      setPrimaryCompanyId(
+        shaped.length && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches
+          ? shaped[0].id
+          : null,
+      );
+      setHasFetched(true);
+    } catch (e) {
+      toast.error("Could not load saved companies. Try again.");
+      console.error(e);
+    } finally {
+      setLoadingCompanies(false);
+    }
   }
 
   function applyLeadsDedupe(leadsData: { leads?: { id: string; name: string; company: string }[] }) {
@@ -983,6 +1134,7 @@ export function ScoutingApp() {
         return {
           ...c,
           domain: domain ?? c.domain,
+          website: website ?? c.website,
           _raw: {
             ...c._raw,
             domain: domain ?? c._raw.domain,
@@ -1002,23 +1154,30 @@ export function ScoutingApp() {
   ) {
     let doneCount = 0;
     await mapWithConcurrency(selected, 8, async (company) => {
-      const { people: results, warnings, errors, resolvedDomain, resolvedWebsite } = await scoutPeople({
-        companyName: company.name,
-        companyDomain: resolveCompanyDomain(company._raw),
-        companyWebsite: company._raw.website,
-        dataMode,
-        limit: peoplePerCompanyLimit(scoutLeadsLimit),
-        seniority: activeSeniority,
-        departments: activeDepartments,
-        cities,
-      });
-      applyResolvedCompanyDomain(company.id, resolvedDomain, resolvedWebsite);
-      peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
-      const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
-      allPeople.push(...shaped);
-      doneCount += 1;
-      setFetchProgress({ done: doneCount, total: selected.length });
-      setPeople((prev) => [...prev, ...shaped]);
+      try {
+        const { people: results, warnings, errors, resolvedDomain, resolvedWebsite } = await scoutPeople({
+          companyName: company.name,
+          companyDomain: resolveCompanyDomain(company._raw),
+          companyWebsite: company._raw.website,
+          dataMode,
+          limit: peoplePerCompanyLimit(scoutLeadsLimit),
+          seniority: activeSeniority,
+          departments: activeDepartments,
+          cities,
+        });
+        applyResolvedCompanyDomain(company.id, resolvedDomain, resolvedWebsite);
+        peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
+        const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
+        allPeople.push(...shaped);
+        setPeople((prev) => [...prev, ...shaped]);
+      } catch (e) {
+        peopleWarnings.push(
+          e instanceof Error ? e.message : `People search failed for ${company.name}`,
+        );
+      } finally {
+        doneCount += 1;
+        setFetchProgress({ done: doneCount, total: selected.length });
+      }
     });
   }
 
@@ -1122,7 +1281,11 @@ export function ScoutingApp() {
           setPeopleNotice(null);
         }
       } else {
-        const notice = pickPeopleNotice(peopleWarnings);
+        const notice = pickPeopleNotice(peopleWarnings, selected.length, {
+          cities,
+          seniority: activeSeniority,
+          departments: activeDepartments,
+        });
         setPeopleNotice(notice);
         const switchMsg = peopleWarnings.find((w) => /switched to backup key/i.test(w));
         if (switchMsg) {
@@ -1318,6 +1481,8 @@ export function ScoutingApp() {
     loadingCompanies,
     loadingMore,
     saving,
+    savingCompanies,
+    showingSaved,
     scoutMode,
     companySearchQuery,
     onCitiesChange: handleCitiesChange,
@@ -1327,6 +1492,8 @@ export function ScoutingApp() {
     onDepartmentToggle: toggleDepartment,
     onFetchNewCompanies: handleFetchNewCompanies,
     onFetchLeads: handleFetchLeads,
+    onSaveCompanies: handleSaveCompanies,
+    onShowSaved: handleShowSaved,
     onAddLeads: handleAddLeads,
     onScoutMore: handleScoutMore,
     onLoadMore: handleLoadMore,
@@ -1341,41 +1508,61 @@ export function ScoutingApp() {
   const companiesResults = view === "companies" ? (
     loadingCompanies ? (
       <DiscoveringLoader
-        hints={[
-          cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
-          industries.length ? `Filtering ${industries.join(", ")}` : "Matching all industries",
-          employeeBands.length
-            ? `Matching ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
-            : "Any company scale",
-          "Ranking by fit for outreach",
-        ]}
+        message={showingSaved ? "Loading saved companies" : undefined}
+        hints={
+          showingSaved
+            ? ["Loading saved companies"]
+            : [
+                cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
+                industries.length ? `Filtering ${industries.join(", ")}` : "Matching all industries",
+                employeeBands.length
+                  ? `Matching ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
+                  : "Any company scale",
+                icpHint ? `Buyers: ${icpHint}` : "Ranking by fit for outreach",
+              ]
+        }
       />
-    ) : companies.length === 0 && !filterPanelOpen ? (
-      <ScoutCompaniesEmpty hasFetched={hasFetched} scoutMode={scoutMode} fetchMessage={fetchMessage} />
+    ) : companies.length === 0 && (!filterPanelOpen || showingSaved) ? (
+      <ScoutCompaniesEmpty
+        hasFetched={hasFetched}
+        scoutMode={scoutMode}
+        fetchMessage={fetchMessage}
+        showingSaved={showingSaved}
+        icpHint={icpHint}
+      />
     ) : companies.length === 0 ? (
       null
     ) : (
       <>
-        {discoveryNotice ? (
+        {discoveryNotice && !showingSaved ? (
           <div className="mx-4 mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950 lg:mx-5">
             {discoveryNotice}
           </div>
         ) : null}
-        {isMobileLayout && scoutCompaniesLimit <= 1 && companies.length > 0 ? (
+        {isMobileLayout && scoutCompaniesLimit <= 1 && companies.length > 0 && !showingSaved ? (
           <div className="mx-3 mt-2 rounded-xl border border-brand-stratus-blue/20 bg-brand-canvas/80 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft">
             1 company per scout batch. Tap <span className="font-semibold text-brand-ink">Load more</span> in the menu, or raise the limit in Settings.
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-3 px-4 py-2 lg:px-5">
           <div className="min-w-0 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-            {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
-            {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
-            {" · "}{cities.join(", ")}
-            {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
-            {employeeBands.length > 0
-              ? ` · ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
-              : ""}
-            {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
+            {showingSaved ? (
+              <>
+                {companies.length} saved compan{companies.length === 1 ? "y" : "ies"}
+                {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
+              </>
+            ) : (
+              <>
+                {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
+                {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
+                {" · "}{cities.join(", ")}
+                {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
+                {employeeBands.length > 0
+                  ? ` · ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
+                  : ""}
+                {selectedCompanyIds.size > 0 ? ` · ${selectedCompanyIds.size} selected` : ""}
+              </>
+            )}
           </div>
           <button
             type="button"
@@ -1393,7 +1580,7 @@ export function ScoutingApp() {
           onSetPrimary={setCompanyAsPrimary}
           compact={isMobileLayout}
         />
-        {hasMore && !isMobileLayout ? (
+        {hasMore && !isMobileLayout && !showingSaved ? (
           <div className="flex justify-center py-4">
             <button
               type="button"
@@ -1480,15 +1667,28 @@ export function ScoutingApp() {
       initialSeniority={seniority}
       initialDepartments={departments}
       onConfirm={handleRolePickerConfirm}
-      onSkip={() => {
-        setShowRolePicker(false);
-        const ids = pendingFetchIds ?? selectedCompanyIds;
-        const selected = companies.filter((c) => ids.has(c.id));
-        setPendingFetchIds(null);
-        void runFetchLeads(selected, [], []);
-      }}
+      onSkip={() => beginFetchLeads(companiesForPendingFetch(), [], [])}
     />
   ) : null;
+
+  const fetchRiskConfirm =
+    showFetchRisk && pendingFetchRoles ? (
+      <FetchLeadsRiskModal
+        companyCount={companiesForPendingFetch().length}
+        seniority={pendingFetchRoles.seniority}
+        departments={pendingFetchRoles.departments}
+        onCancel={handleFetchRiskCancel}
+        onFetchWithoutFilters={handleFetchWithoutPeopleFilters}
+        onFetchAnyway={handleFetchAnyway}
+      />
+    ) : null;
+
+  const scoutModals = (
+    <>
+      {rolePicker}
+      {fetchRiskConfirm}
+    </>
+  );
 
   const mobilePrimaryLabel = (() => {
     if (view === "people") {
@@ -1497,7 +1697,10 @@ export function ScoutingApp() {
       return "Select people to save";
     }
     if (selectedCompanyIds.size > 0) {
-      return `Fetch Leads · ${selectedCompanyIds.size}`;
+      const andStacked = seniority.length > 0 && departments.length > 0;
+      return andStacked
+        ? `Check first · ${selectedCompanyIds.size}`
+        : `Fetch Leads · ${selectedCompanyIds.size}`;
     }
     if (scoutMode === "search") {
       return loadingCompanies ? "Searching…" : "Search";
@@ -1542,13 +1745,20 @@ export function ScoutingApp() {
           />
           <div className="min-h-0 flex-1 overflow-y-auto">
             {view === "companies" && primaryCompany ? (
-              <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
+              <CompanyDetailPanel
+                company={primaryCompany}
+                decisionMakerHint={primaryCompanyDecisionMaker}
+                decisionMakerLeadId={primaryCompanyDecisionMakerLeadId}
+                onWebsiteResolved={(resolved) =>
+                  applyResolvedCompanyDomain(primaryCompany.id, resolved.domain, resolved.website)
+                }
+              />
             ) : view === "people" && primaryPerson ? (
               <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
             ) : null}
           </div>
         </div>
-        {rolePicker}
+        {scoutModals}
       </>
     );
   }
@@ -1574,6 +1784,20 @@ export function ScoutingApp() {
           }
           footer={
             <ActionBar>
+              {view === "companies" && selectedCompanyIds.size > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltersExpanded(false);
+                    void handleSaveCompanies();
+                  }}
+                  disabled={savingCompanies}
+                  className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-2xl border border-brand-border/70 bg-white px-4 text-[14px] font-bold text-brand-ink shadow-brand-sm transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <BookmarkPlus className="size-4 text-brand-stratus-blue" />
+                  {savingCompanies ? "Saving…" : "Save companies"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={mobilePrimaryAction}
@@ -1616,6 +1840,19 @@ export function ScoutingApp() {
               <Search className="size-4 text-brand-stratus-blue" />
               Switch to {scoutMode === "autopilot" ? "Search mode" : "Autopilot"}
             </button>
+            {view === "companies" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void handleShowSaved();
+                }}
+                disabled={loadingCompanies}
+                className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99] disabled:opacity-50"
+              >
+                <Bookmark className="size-4 text-brand-stratus-blue" />
+                Saved companies
+              </button>
+            ) : null}
             {scoutMode === "autopilot" && view === "companies" ? (
               <>
                 <button
@@ -1629,7 +1866,7 @@ export function ScoutingApp() {
                 <button
                   type="button"
                   onClick={() => { handleLoadMore(); setOverflowOpen(false); }}
-                  disabled={loadingMore || !hasMore}
+                  disabled={loadingMore || !hasMore || showingSaved}
                   className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99] disabled:opacity-50"
                 >
                   {loadingMore ? "Loading more…" : "Load more companies"}
@@ -1649,7 +1886,7 @@ export function ScoutingApp() {
             ) : null}
           </div>
         </BottomSheet>
-        {rolePicker}
+        {scoutModals}
       </>
     );
   }
@@ -1662,7 +1899,14 @@ export function ScoutingApp() {
           <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">{companiesResults}</div>
           <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-brand-border bg-white lg:block">
             {view === "companies" && primaryCompany ? (
-              <CompanyDetailPanel company={primaryCompany} decisionMakerHint={primaryCompanyDecisionMaker} decisionMakerLeadId={primaryCompanyDecisionMakerLeadId} />
+              <CompanyDetailPanel
+                company={primaryCompany}
+                decisionMakerHint={primaryCompanyDecisionMaker}
+                decisionMakerLeadId={primaryCompanyDecisionMakerLeadId}
+                onWebsiteResolved={(resolved) =>
+                  applyResolvedCompanyDomain(primaryCompany.id, resolved.domain, resolved.website)
+                }
+              />
             ) : view === "people" && primaryPerson ? (
               <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
             ) : (
@@ -1675,7 +1919,7 @@ export function ScoutingApp() {
           </div>
         </div>
       </div>
-      {rolePicker}
+      {scoutModals}
     </>
   );
 }

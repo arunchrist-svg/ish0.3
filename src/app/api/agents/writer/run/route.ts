@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveWriterMode, runWriter } from "@/lib/agents/writer";
 import { runWriterSequence, regenerateSequenceStep } from "@/lib/agents/writer-sequence";
-import { db, leadOutreach, leads } from "@/db";
+import { db, leadOutreach, leads, accounts } from "@/db";
 import { eq } from "drizzle-orm";
 import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
@@ -12,12 +12,17 @@ import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { ResearchNotReadyError } from "@/lib/agents/writer-plan";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { resolveWriteOccasion } from "@/lib/occasions/resolve";
+import { FESTIVE_OCCASION_SENTINEL } from "@/lib/occasions/catalog";
+import { prepareLeadForOccasionWrite } from "@/lib/outreach/prepare-occasion-write";
+import type { CompanyOverview } from "@/lib/company-overview";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadId, outreachTemplate, mode, sequencePosition, writerMode } = await req.json();
+    const { leadId, outreachTemplate, mode, sequencePosition, writerMode, occasionTheme } = await req.json();
     const resolvedWriterMode = resolveWriterMode(writerMode);
     if (!leadId) return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
@@ -26,12 +31,24 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
+    const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+    const [account] = await db.select().from(accounts).where(eq(accounts.id, lead.accountId)).limit(1);
+    const occasionId =
+      resolveWriteOccasion({
+        selected: occasionTheme,
+        overview: (account?.companyOverview as CompanyOverview | null) ?? null,
+        campaignMode: emailConfig.campaignMode,
+      }) ?? FESTIVE_OCCASION_SENTINEL;
+    if (mode !== "single") {
+      await prepareLeadForOccasionWrite(leadId, occasionId);
+    }
 
     if (mode === "single" && sequencePosition && [2, 3].includes(sequencePosition)) {
       await assertCredits(ctx.tenantId, "writer.draft", 1);
       const outreachId = await regenerateSequenceStep(leadId, sequencePosition as 2 | 3, {
         outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
         writerMode: resolvedWriterMode,
+        occasionTheme,
       });
       await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
       void checkLowBalanceAlerts(ctx.tenantId);
@@ -48,6 +65,7 @@ export async function POST(req: Request) {
       const ids = await runWriterSequence(leadId, {
         outreachTemplate: requestedTemplate,
         writerMode: resolvedWriterMode,
+        occasionTheme,
       });
       for (const id of ids) {
         await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: id });
@@ -67,6 +85,7 @@ export async function POST(req: Request) {
     const outreachId = await runWriter(leadId, {
       outreachTemplate: requestedTemplate,
       writerMode: resolvedWriterMode,
+      occasionTheme,
     });
     await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
     void checkLowBalanceAlerts(ctx.tenantId);

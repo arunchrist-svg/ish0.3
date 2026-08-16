@@ -5,7 +5,7 @@ import { getNextTavilyKey, recordTavilySearch, rotateToNextKey } from "./tavily-
 export type TavilyHit = { title: string; url: string; content: string };
 
 export const TAVILY_QUOTA_COMPANY_MSG =
-  "Tavily API quota exceeded — upgrade at tavily.com or wait for your monthly credit reset.";
+  "Tavily API quota exceeded. Upgrade at tavily.com or wait for your monthly credit reset.";
 
 export const TAVILY_QUOTA_PEOPLE_MSG =
   "People search needs Tavily credits (or Apollo). Company scouting can continue via Google Places.";
@@ -105,7 +105,11 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
           if (!accountKeys.length) {
             accountKeys = await fetchTavilyAccountUsage({ force: true }).catch(() => []);
           }
-          keyEntry = rotateToNextKey(keyEntry.id, accountKeys.length ? accountKeys : undefined);
+          keyEntry = rotateToNextKey(
+            keyEntry.id,
+            accountKeys.length ? accountKeys : undefined,
+            tried,
+          );
           continue;
         }
         throw new Error(msg);
@@ -120,7 +124,11 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
         if (!accountKeys.length) {
           accountKeys = await fetchTavilyAccountUsage({ force: true }).catch(() => []);
         }
-        keyEntry = rotateToNextKey(keyEntry.id, accountKeys.length ? accountKeys : undefined);
+        keyEntry = rotateToNextKey(
+          keyEntry.id,
+          accountKeys.length ? accountKeys : undefined,
+          tried,
+        );
         continue;
       }
       throw err;

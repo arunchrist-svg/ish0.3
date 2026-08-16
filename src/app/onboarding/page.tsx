@@ -12,6 +12,8 @@ import { PlanBenefitsList } from "@/components/billing/plan-benefits-list";
 import {
   PLATFORM_INTENT_OPTIONS,
   brandIntelRecommendedForIntent,
+  defaultIcpSummary,
+  decisionMakerChoicesForIntent,
   type PlatformIntent,
 } from "@/lib/brand/platform-intent";
 import { isSweetsOnlyOperator, platformIntentOptionsForUser } from "@/lib/brand/vertical-catalog";
@@ -19,6 +21,7 @@ import { getIndustryByLabel } from "@/lib/brand-intel/industry-catalog";
 import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
 import { SettingsHero } from "@/components/settings/settings-hero";
 import { DEFAULT_SCOUT_GEO, type ScoutGeoSelection } from "@/lib/geo/india";
+import { OnboardingConnectEmail } from "@/components/onboarding/connect-email-step";
 
 function looksLikeWebsite(raw: string): boolean {
   const trimmed = raw.trim();
@@ -48,7 +51,8 @@ const STEPS = [
   { id: 3, label: "Brand", icon: Radar },
   { id: 3.5, label: "Location", icon: MapPin },
   { id: 4, label: "Team", icon: Users },
-  { id: 5, label: "Launch", icon: Rocket },
+  { id: 5, label: "Email", icon: Mail },
+  { id: 6, label: "Launch", icon: Rocket },
 ];
 
 const SETUP_CTA =
@@ -88,6 +92,9 @@ export default function OnboardingPage() {
   const [categoryFromWebsite, setCategoryFromWebsite] = useState(false);
   const [productWriteup, setProductWriteup] = useState("");
   const [emailKeywords, setEmailKeywords] = useState<string[]>([]);
+  const [icpSummary, setIcpSummary] = useState("");
+  const [icpTouched, setIcpTouched] = useState(false);
+  const [dmChoiceIds, setDmChoiceIds] = useState<string[]>([]);
   const [brandIntelWanted, setBrandIntelWanted] = useState<boolean | null>(null);
   const intentOptions = platformIntentOptionsForUser(operatorEmail);
   const sweetsOnly = isSweetsOnlyOperator(operatorEmail);
@@ -151,6 +158,10 @@ export default function OnboardingPage() {
         }
         if (Array.isArray(data.emailKeywords)) {
           setEmailKeywords(data.emailKeywords.filter((k: unknown) => typeof k === "string" && k.trim()));
+        }
+        if (typeof data.icpSummary === "string" && data.icpSummary.trim()) {
+          setIcpSummary(data.icpSummary);
+          setIcpTouched(true);
         }
         if (data.websiteUrl && data.brandReady) {
           setAnalyzedWebsiteUrl(String(data.websiteUrl).replace(/\/$/, ""));
@@ -254,9 +265,11 @@ export default function OnboardingPage() {
       if (sweetsOnly) {
         setPlatformIntent("corporate_gifting");
         setIntentFromWebsite(true);
+        if (!icpTouched) setIcpSummary(defaultIcpSummary("corporate_gifting"));
       } else if (allowed && inferredIntent) {
         setPlatformIntent(inferredIntent);
         setIntentFromWebsite(true);
+        if (!icpTouched) setIcpSummary(defaultIcpSummary(inferredIntent));
       }
 
       const category =
@@ -285,6 +298,12 @@ export default function OnboardingPage() {
       setEmailKeywords(
         keywords.filter((k: unknown): k is string => typeof k === "string" && Boolean(k.trim())),
       );
+
+      const inferredIcp =
+        (typeof data.insights?.icpSummary === "string" && data.insights.icpSummary.trim()) ||
+        (typeof data.icpSummary === "string" && data.icpSummary.trim()) ||
+        "";
+      if (inferredIcp && !icpTouched) setIcpSummary(inferredIcp);
 
       setAnalyzedWebsiteUrl((data.websiteUrl as string | undefined) ?? url.replace(/\/$/, ""));
       const intentLabel = PLATFORM_INTENT_OPTIONS.find((o) => o.value === (sweetsOnly ? "corporate_gifting" : inferredIntent))?.label;
@@ -340,6 +359,12 @@ export default function OnboardingPage() {
       websiteUrl: websiteUrl.trim() || undefined,
       skipWebsiteAnalyze,
       platformIntent,
+      icpSummary: (icpSummary.trim() || (platformIntent ? defaultIcpSummary(platformIntent) : "")).trim() || undefined,
+      buyerPersonas: platformIntent
+        ? decisionMakerChoicesForIntent(platformIntent)
+            .filter((c) => dmChoiceIds.includes(c.id))
+            .map((c) => c.hint.split(",")[0]?.trim() || c.label)
+        : undefined,
       enrichmentConfig: brandIntelWanted
         ? {
             giftIntelProductCategory: category,
@@ -596,6 +621,8 @@ export default function OnboardingPage() {
                       onClick={() => {
                         setPlatformIntent(option.value);
                         setIntentFromWebsite(false);
+                        if (!icpTouched) setIcpSummary(defaultIcpSummary(option.value));
+                        setDmChoiceIds([]);
                       }}
                       className={cn(
                         "ish-onboarding-choice rounded-xl border p-3 text-left transition",
@@ -610,6 +637,65 @@ export default function OnboardingPage() {
                   ))}
                 </div>
               </div>
+
+              {platformIntent ? (
+                <div>
+                  <label className="mb-1.5 block text-[13px] font-semibold text-brand-ink">
+                    Who do you sell to?
+                  </label>
+                  <p className="mb-2 text-[11.5px] leading-relaxed text-brand-ink-soft">
+                    Scout uses this to pick buyer companies, not lookalike sellers. Writer uses it so emails match that buyer.
+                    {platformIntent === "corporate_gifting"
+                      ? " For sweets, that means employers who gift to staff, not other mithai shops."
+                      : platformIntent === "b2b_saas"
+                        ? " For software, that means companies that would buy your product."
+                        : ""}
+                  </p>
+                  <textarea
+                    value={icpSummary || defaultIcpSummary(platformIntent)}
+                    onChange={(e) => {
+                      setIcpTouched(true);
+                      setIcpSummary(e.target.value);
+                    }}
+                    rows={3}
+                    className={SETUP_FIELD}
+                    placeholder={defaultIcpSummary(platformIntent)}
+                  />
+                  <div className="mt-4">
+                    <p className="mb-1.5 text-[13px] font-semibold text-brand-ink">Who is the best decision maker?</p>
+                    <p className="mb-2 text-[11.5px] leading-relaxed text-brand-ink-soft">
+                      Used to rank leads and personalise emails. Scout People filters stay empty until you pick them on Scout.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {decisionMakerChoicesForIntent(platformIntent).map((choice) => {
+                        const on = dmChoiceIds.includes(choice.id);
+                        return (
+                          <button
+                            key={choice.id}
+                            type="button"
+                            data-selected={on}
+                            onClick={() =>
+                              setDmChoiceIds((prev) =>
+                                prev.includes(choice.id)
+                                  ? prev.filter((id) => id !== choice.id)
+                                  : [...prev, choice.id],
+                              )
+                            }
+                            className={cn(
+                              "rounded-full px-3.5 py-1.5 text-left text-[12px] font-semibold transition",
+                              on
+                                ? "bg-brand-ink text-white"
+                                : "bg-brand-app text-brand-ink-soft ring-1 ring-brand-border hover:text-brand-ink",
+                            )}
+                          >
+                            {choice.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {productWriteup || emailKeywords.length ? (
                 <div className="space-y-3 rounded-xl border border-brand-border bg-brand-app/60 px-4 py-3">

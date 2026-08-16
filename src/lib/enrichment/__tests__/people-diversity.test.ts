@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   companyPeopleBucket,
   peoplePerCompanyLimit,
+  rankPeopleForScout,
   scoutPeopleCoverage,
   selectPeopleByCompanyCap,
 } from "@/lib/enrichment/people-diversity";
@@ -11,7 +12,7 @@ describe("peoplePerCompanyLimit", () => {
     expect(peoplePerCompanyLimit(8)).toBe(8);
     expect(peoplePerCompanyLimit(1)).toBe(1);
     expect(peoplePerCompanyLimit(0)).toBe(1);
-    expect(peoplePerCompanyLimit(40)).toBe(25);
+    expect(peoplePerCompanyLimit(40)).toBe(10);
   });
 });
 
@@ -67,5 +68,18 @@ describe("scoutPeopleCoverage", () => {
       totalCompanies: 3,
       emptyCompanyIds: ["b"],
     });
+  });
+});
+
+describe("rankPeopleForScout", () => {
+  it("ranks plant HR above CTO when scouting gifting buyers", () => {
+    const ranked = rankPeopleForScout(
+      [
+        { name: "CTO", title: "CTO", emailStatus: "missing", dataSource: "tavily" },
+        { name: "Meera", title: "Plant HR Manager", emailStatus: "missing", dataSource: "tavily" },
+      ],
+      { departments: ["HR", "Procurement", "Admin"], buyerPersonas: ["HR Manager"] },
+    );
+    expect(ranked[0]?.name).toBe("Meera");
   });
 });

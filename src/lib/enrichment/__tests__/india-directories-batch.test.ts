@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { directoryQueryBatchCount } from "@/lib/enrichment/india-directories";
+import {
+  buildDirectoryQueries,
+  directoryQueryBatchCount,
+  directorySearchQueryCap,
+} from "@/lib/enrichment/india-directories";
 
 describe("directoryQueryBatchCount", () => {
-  it("uses more than 2 Tavily queries when targeting 100 companies", () => {
-    expect(directoryQueryBatchCount(100, 12)).toBe(12);
-    expect(directoryQueryBatchCount(25, 12)).toBeGreaterThan(2);
-    expect(directoryQueryBatchCount(8, 12)).toBe(2);
+  it("keeps a small batch and scales modestly for 100 companies", () => {
+    expect(directoryQueryBatchCount(8, 12)).toBe(3);
+    expect(directoryQueryBatchCount(25, 12)).toBeGreaterThanOrEqual(3);
+    expect(directorySearchQueryCap(100, 12)).toBeGreaterThanOrEqual(4);
+    expect(directorySearchQueryCap(100, 12)).toBeLessThanOrEqual(6);
+  });
+});
+
+describe("buildDirectoryQueries", () => {
+  it("puts Zauba and MCA registries ahead of JustDial listings", () => {
+    const queries = buildDirectoryQueries(["Bengaluru"], ["Technology"]);
+    expect(queries[0]).toMatch(/zaubacorp|tofler/i);
+    expect(queries.some((q) => /zaubacorp/i.test(q))).toBe(true);
+    expect(queries.some((q) => /indiamart|tradeindia/i.test(q))).toBe(true);
   });
 });

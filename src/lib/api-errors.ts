@@ -12,7 +12,7 @@ export function handleApiError(e: unknown, logPrefix: string) {
   }
   if (e instanceof InsufficientCreditsError) {
     return NextResponse.json(
-      { error: e.message, required: e.required, available: e.available, code: "INSUFFICIENT_CREDITS" },
+      { error: e.message, required: e.required, available: e.available, scope: e.scope, code: "INSUFFICIENT_CREDITS" },
       { status: 402 },
     );
   }

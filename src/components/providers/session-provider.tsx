@@ -30,6 +30,7 @@ export type SessionData = {
   sendMode: string;
   emailConfigured?: boolean;
   credits: number;
+  verticalPackId?: string;
 };
 
 type SessionContextValue = {

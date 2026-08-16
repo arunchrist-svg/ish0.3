@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   compactSearchTermsForScoutLabels,
+  citiesForGiftIntelSweep,
+  defaultScoutLocationLabels,
   districtGroupsForScoutOptions,
   isScoutDistrictPicked,
+  locationOptionsFromSelection,
   matchTermsForScoutLabels,
   resolveScoutLabel,
   scoutGeoFromStateAndDistrictPicks,
@@ -77,5 +80,27 @@ describe("scout geo label expansion", () => {
       expect(isScoutDistrictPicked(next, bengaluru.district)).toBe(false);
     }
     expect(next.length).toBeGreaterThan(2);
+  });
+
+  it("does not pass Entire India as a gift intel city", () => {
+    expect(citiesForGiftIntelSweep(["Entire India"])).toBeUndefined();
+    expect(citiesForGiftIntelSweep(["India"])).toBeUndefined();
+    expect(citiesForGiftIntelSweep(["Entire India", "Bengaluru"])).toEqual(["Bengaluru"]);
+  });
+
+  it("defaults gift intel cities to Settings scoutGeo districts", () => {
+    const labels = defaultScoutLocationLabels();
+    expect(labels).toContain("Bengaluru");
+    expect(labels).toContain("Hosur");
+    expect(labels).not.toContain("Entire India");
+    expect(citiesForGiftIntelSweep(labels)?.length).toBeGreaterThan(0);
+
+    const telangana = locationOptionsFromSelection({
+      entireIndia: false,
+      regionIds: [],
+      stateIds: ["TS"],
+      districtIds: [],
+    });
+    expect(telangana.map((o) => o.label)).toEqual(["Telangana"]);
   });
 });

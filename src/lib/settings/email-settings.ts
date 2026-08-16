@@ -1,4 +1,4 @@
-import { db, workspaceSettings } from "@/db";
+import { db, tenants, workspaceSettings } from "@/db";
 import type { EmailConfig } from "@/lib/email/config";
 import {
   getDeliverabilityHints,
@@ -11,7 +11,13 @@ import { invalidateEmailConfigCache } from "@/lib/email/email-sender";
 import { isPublicAppUrl } from "@/lib/email/plain-text";
 import { smtpTransport } from "@/lib/email/smtp-transport";
 import { resendTransport } from "@/lib/email/resend-transport";
-import { requireTenantContext } from "@/lib/tenant";
+import { repliesCapability } from "@/lib/email/replies-capability";
+import {
+  sealEmailSecrets,
+  secretsNeedSealing,
+  unsealEmailSecrets,
+} from "@/lib/email/secret-crypto";
+import { clearTenantContextCache, requireTenantContext } from "@/lib/tenant";
 import { eq } from "drizzle-orm";
 
 export type EmailConfigResponse = Omit<EmailConfig, "smtpPass" | "resendApiKey"> & {
@@ -21,6 +27,8 @@ export type EmailConfigResponse = Omit<EmailConfig, "smtpPass" | "resendApiKey">
   smtpHint: string;
   resendConfigured: boolean;
   resendHint: string;
+  repliesSupported: boolean;
+  repliesHint: string;
   validationWarnings: string[];
 };
 
@@ -43,7 +51,18 @@ export async function loadWorkspaceEmailOverrides(workspaceId?: string): Promise
       .where(eq(workspaceSettings.workspaceId, resolvedWorkspaceId))
       .limit(1);
 
-    return (row?.emailConfig as Partial<EmailConfig> | undefined) ?? {};
+    const stored = (row?.emailConfig as Partial<EmailConfig> | undefined) ?? {};
+    const unsealed = unsealEmailSecrets(stored);
+    if (row && secretsNeedSealing(stored)) {
+      await db
+        .update(workspaceSettings)
+        .set({
+          emailConfig: sealEmailSecrets(unsealed) as EmailConfig,
+          updatedAt: new Date(),
+        })
+        .where(eq(workspaceSettings.workspaceId, resolvedWorkspaceId));
+    }
+    return unsealed;
   } catch (e) {
     console.error("[email-settings] load failed:", e);
     return {};
@@ -61,10 +80,13 @@ function toPublicResponse(
   },
 ): EmailConfigResponse {
   const { smtpPass, resendApiKey, ...publicConfig } = config;
+  const replies = repliesCapability(config);
   return {
     ...publicConfig,
     smtpPassSet: Boolean(smtpPass?.trim()),
     resendApiKeySet: Boolean(resendApiKey?.trim()),
+    repliesSupported: replies.supported,
+    repliesHint: replies.hint,
     ...extras,
   };
 }
@@ -76,24 +98,35 @@ export function clearResolvedEmailConfigCache() {
   emailConfigCache.clear();
 }
 
-async function persistEmailConfig(config: EmailConfig, workspaceId?: string): Promise<void> {
+export async function persistEmailConfig(config: EmailConfig, workspaceId?: string): Promise<void> {
   const resolvedWorkspaceId = workspaceId ?? (await requireTenantContext()).workspaceId;
+  const sealed = sealEmailSecrets(config);
   await db
     .insert(workspaceSettings)
     .values({
       workspaceId: resolvedWorkspaceId,
-      emailConfig: config,
+      emailConfig: sealed,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: workspaceSettings.workspaceId,
       set: {
-        emailConfig: config,
+        emailConfig: sealed,
         updatedAt: new Date(),
       },
     });
   invalidateEmailConfigCache();
   clearResolvedEmailConfigCache();
+}
+
+async function clearDemoModeForCurrentTenant() {
+  try {
+    const ctx = await requireTenantContext();
+    await db.update(tenants).set({ demoMode: false }).where(eq(tenants.id, ctx.tenantId));
+    clearTenantContextCache();
+  } catch {
+    // Cron/job persist paths have no session; skip.
+  }
 }
 
 async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfigResponse> {
@@ -138,6 +171,9 @@ export async function saveWorkspaceEmailOverrides(
   if (!mergedPartial.smtpPass?.trim() && existing.smtpPass) {
     mergedPartial.smtpPass = existing.smtpPass;
   }
+  if (!mergedPartial.resendApiKey?.trim() && existing.resendApiKey) {
+    mergedPartial.resendApiKey = existing.resendApiKey;
+  }
 
   const merged = resolveEmailConfig({ ...existing, ...mergedPartial });
 
@@ -151,6 +187,10 @@ export async function saveWorkspaceEmailOverrides(
   }
 
   await persistEmailConfig(merged, workspaceId);
+  const smtpReady = merged.provider === "smtp" ? smtpVerified : resendConfigured;
+  if (merged.sendMode === "live" && smtpReady) {
+    await clearDemoModeForCurrentTenant();
+  }
   return buildEmailConfigResponse(merged);
 }
 
@@ -169,13 +209,14 @@ export async function getResolvedEmailConfig(workspaceId?: string): Promise<Emai
 export async function patchWorkspaceBrandConfig(
   brandConfig: BrandConfig,
   workspaceId?: string,
-  extras?: { campaignMode?: EmailConfig["campaignMode"] },
+  extras?: { campaignMode?: EmailConfig["campaignMode"]; campaignNotes?: string },
 ): Promise<EmailConfig> {
   const existing = await loadWorkspaceEmailOverrides(workspaceId);
   const merged = resolveEmailConfig({
     ...existing,
     brandConfig,
     ...(extras?.campaignMode ? { campaignMode: extras.campaignMode } : {}),
+    ...(extras?.campaignNotes !== undefined ? { campaignNotes: extras.campaignNotes } : {}),
   });
   await persistEmailConfig(merged, workspaceId);
   return merged;
@@ -189,11 +230,15 @@ export async function verifyEmailConnection(
   if (!mergedPartial.smtpPass?.trim() && existing.smtpPass) {
     mergedPartial.smtpPass = existing.smtpPass;
   }
+  if (!mergedPartial.resendApiKey?.trim() && existing.resendApiKey) {
+    mergedPartial.resendApiKey = existing.resendApiKey;
+  }
   const merged = resolveEmailConfig({ ...existing, ...mergedPartial });
   const verified = await smtpTransport.verify(merged);
 
   if (verified.configured) {
     await persistEmailConfig(merged);
+    if (merged.sendMode === "live") await clearDemoModeForCurrentTenant();
   }
 
   const resendStatus = getResendStatus(merged);

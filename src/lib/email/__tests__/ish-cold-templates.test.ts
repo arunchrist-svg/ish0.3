@@ -15,9 +15,9 @@ describe("ISH cold email templates", () => {
   const e3 = fillIshDraftVariants({ ...names, sequencePosition: 3 });
 
   it("keeps Sequence 1/2/3 Email 1 wording with own-dairy selling points", () => {
-    expect(e1.subjectA).toBe("Send happiness this Diwali, Vijetha");
-    expect(e1.subjectB).toBe("Acme Auto, make someone's Diwali better");
-    expect(e1.subjectC).toBe("Happiness, handcrafted");
+    expect(e1.subjectA).toBe("Sample box for festive tasting, Vijetha");
+    expect(e1.subjectB).toBe("Festive sweets sample for Acme Auto");
+    expect(e1.subjectC).toBe("A tasting box for your team");
     expect(e1.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
     expect(e1.emailBody).toMatch(/something memorable and distinctive for your team this year/);
     expect(e1.emailBody).toMatch(/handcraft traditional sweets straight from our own farm to the box/);
@@ -48,7 +48,7 @@ describe("ISH cold email templates", () => {
   });
 
   it("fills E2 with dairy, variety, and hygiene selling points", () => {
-    expect(e2.subjectA).toBe("Re: Send happiness this Diwali, Vijetha");
+    expect(e2.subjectA).toBe("Re: Sample box for festive tasting, Vijetha");
     expect(e2.emailBody).toMatch(/farm-to-counter pipeline/);
     expect(e2.emailBody).toMatch(/organic milk from our own dairy/);
     expect(e2.emailBody).toMatch(/zero preservatives/);
@@ -81,7 +81,7 @@ describe("ISH cold email templates", () => {
       companyName: "Kems India Pvt Ltd",
       sequencePosition: 1,
     });
-    expect(legal.subjectB).toBe("Kems, make someone's Diwali better");
+    expect(legal.subjectB).toBe("Festive sweets sample for Kems");
     expect(legal.emailBodyC).toMatch(/Want it sent to Kems this week\?/);
     expect(legal.emailBodyC).not.toMatch(/Pvt\.?\s*Ltd/i);
     expect(legal.emailBodyC).not.toMatch(/India Pvt/i);
@@ -92,7 +92,7 @@ describe("ISH cold email templates", () => {
     });
     expect(e2Legal.emailBody).toContain("Kems");
     expect(e2Legal.emailBody).not.toMatch(/Pvt\.?\s*Ltd/i);
-    expect(e2Legal.subjectB).toBe("Re: Kems, make someone's Diwali better");
+    expect(e2Legal.subjectB).toBe("Re: Festive sweets sample for Kems");
   });
 
   it("swaps only the Email 1 CTA for meet_online / meet_in_person", () => {
@@ -102,5 +102,35 @@ describe("ISH cold email templates", () => {
     expect(online.emailBody).not.toMatch(/sample box to your office as our treat/);
     const inPerson = fillIshDraftVariants({ ...names, sequencePosition: 1, templateId: "meet_in_person" });
     expect(inPerson.emailBody).toMatch(/in-person tasting/);
+  });
+
+  it("uses store opening copy without Diwali subjects", () => {
+    const opening = fillIshDraftVariants({ ...names, sequencePosition: 1, occasionId: "store_opening" });
+    expect(opening.subjectA).toMatch(/store coming up|store launch/i);
+    expect(opening.subjectA.toLowerCase()).not.toMatch(/diwali|festive tasting/);
+    expect(opening.subjectB.toLowerCase()).not.toMatch(/diwali|festive/);
+    expect(opening.emailBody).toMatch(/coming up|store and office openings|inauguration/i);
+    expect(opening.emailBody.toLowerCase()).not.toContain("diwali");
+  });
+
+  it("uses upcoming opening copy when timing is upcoming", () => {
+    const opening = fillIshDraftVariants({
+      ...names,
+      sequencePosition: 1,
+      occasionId: "store_opening",
+      occasionTiming: "upcoming",
+    });
+    expect(opening.subjectA).toMatch(/coming up/i);
+    expect(opening.emailBody).toMatch(/inauguration mithai/i);
+    expect(opening.emailBody.toLowerCase()).not.toContain("diwali");
+  });
+
+  it("uses birthday and pantry copy without festive subjects", () => {
+    const birthday = fillIshDraftVariants({ ...names, sequencePosition: 1, occasionId: "birthday" });
+    expect(birthday.subjectA).toMatch(/monthly birthdays/i);
+    expect(birthday.subjectA.toLowerCase()).not.toMatch(/diwali|festive/);
+    const pantry = fillIshDraftVariants({ ...names, sequencePosition: 1, occasionId: "pantry" });
+    expect(pantry.subjectA).toMatch(/office pantry/i);
+    expect(pantry.emailBody.toLowerCase()).not.toContain("diwali");
   });
 });

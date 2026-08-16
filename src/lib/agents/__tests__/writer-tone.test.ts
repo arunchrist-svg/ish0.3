@@ -35,11 +35,52 @@ describe("getWriterFewShotExample", () => {
     expect(example.toLowerCase()).toContain("employees and clients");
     expect(example.toLowerCase()).toContain("organic milk");
     expect(example.toLowerCase()).toContain("own dairy");
-    expect(example).toMatch(/Send happiness this Diwali/i);
+    expect(example).toMatch(/Sample box for festive tasting/i);
     expect(example).toMatch(/No fillers\. No mass production/);
     expect(example).toMatch(/zero preservatives/);
     expect(example.toLowerCase()).not.toContain("offers traditional");
     expect(example).not.toMatch(/No worries/i);
+  });
+
+  it("uses store opening, birthday, and pantry few-shots without Diwali subjects", () => {
+    const opening = getWriterFewShotExample(
+      "ish",
+      "India Sweet House",
+      "Arun",
+      "Priya",
+      "TechCorp",
+      "Premium mithai",
+      "gifting-sweets",
+      "store_opening",
+    );
+    expect(opening).toMatch(/store launch/i);
+    expect(opening.toLowerCase()).not.toMatch(/diwali|festive tasting/);
+
+    const birthday = getWriterFewShotExample(
+      "ish",
+      "India Sweet House",
+      "Arun",
+      "Priya",
+      "TechCorp",
+      "Premium mithai",
+      "gifting-sweets",
+      "birthday",
+    );
+    expect(birthday).toMatch(/monthly birthdays/i);
+    expect(birthday.toLowerCase()).not.toMatch(/diwali|festive tasting/);
+
+    const pantry = getWriterFewShotExample(
+      "ish",
+      "India Sweet House",
+      "Arun",
+      "Priya",
+      "TechCorp",
+      "Premium mithai",
+      "gifting-sweets",
+      "pantry",
+    );
+    expect(pantry).toMatch(/office pantry/i);
+    expect(pantry.toLowerCase()).not.toContain("diwali");
   });
 
   it("builds custom example from product summary, not mithai", () => {

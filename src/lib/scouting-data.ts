@@ -4,6 +4,7 @@ export type Company = {
   id: string;
   logo?: string;
   domain?: string;
+  website?: string;
   name: string;
   type: string;
   city: string;

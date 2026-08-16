@@ -28,6 +28,15 @@ const KNOWN_DOMAINS: Record<string, string> = {
   "carborundum": "cumi-murugappa.com",
   "cumi murugappa": "cumi-murugappa.com",
   "cumi": "cumi-murugappa.com",
+  "schunk intec india": "schunk.com",
+  "schunk intec": "schunk.com",
+  "schunk": "schunk.com",
+  "terex india": "terex.com",
+  "terex": "terex.com",
+  "tata electronics": "tataelectronics.com",
+  "tata semiconductor": "tataelectronics.com",
+  "tvsscs": "tvsscs.com",
+  "tvs supply chain": "tvsscs.com",
 };
 
 export function normalizeDomain(raw: string): string {
@@ -74,18 +83,45 @@ export function extractCompanyDomain(input: {
   return knownDomainForCompanyName(input.name);
 }
 
-export function isLogoUrl(value?: string | null): boolean {
+export function isLogoUrl(value?: string | null): value is string {
   if (!value) return false;
   if (/[\u{1F300}-\u{1FAFF}]/u.test(value)) return false;
   return /^https?:\/\//i.test(value) || value.startsWith("//");
 }
 
-export function getCompanyLogoSources(input: {
+export function companyLogoLookupSrc(input: {
+  name?: string | null;
   domain?: string | null;
   website?: string | null;
-  name?: string | null;
-  logo?: string | null;
-}): string[] {
+}): string | undefined {
+  const name = input.name?.trim();
+  if (!name && !input.domain && !input.website) return undefined;
+  const params = new URLSearchParams();
+  if (name) params.set("name", name);
+  const domain = input.domain?.trim();
+  const website = input.website?.trim();
+  if (domain) params.set("domain", domain);
+  if (website) params.set("website", website);
+  return `/api/company-logo?${params.toString()}`;
+}
+
+function logoUrlsForDomain(domain: string): string[] {
+  return [
+    `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+    `https://unavatar.io/${domain}?fallback=false`,
+  ];
+}
+
+export function getCompanyLogoSources(
+  input: {
+    domain?: string | null;
+    website?: string | null;
+    name?: string | null;
+    logo?: string | null;
+  },
+  opts?: { includeLookup?: boolean },
+): string[] {
   const sources: string[] = [];
   const domains = [...new Set(
     [knownDomainForCompanyName(input.name), extractCompanyDomain(input)].filter(
@@ -93,11 +129,11 @@ export function getCompanyLogoSources(input: {
     ),
   )];
 
-  if (isLogoUrl(input.logo)) sources.push(input.logo!);
-  for (const domain of domains) {
-    sources.push(`https://logo.clearbit.com/${domain}`);
-    sources.push(`https://www.google.com/s2/favicons?domain=${domain}&sz=128`);
-    sources.push(`https://icons.duckduckgo.com/ip3/${domain}.ico`);
+  if (isLogoUrl(input.logo)) sources.push(input.logo.startsWith("//") ? `https:${input.logo}` : input.logo);
+  for (const domain of domains) sources.push(...logoUrlsForDomain(domain));
+  if (opts?.includeLookup) {
+    const lookup = companyLogoLookupSrc(input);
+    if (lookup) sources.push(lookup);
   }
 
   return [...new Set(sources)];

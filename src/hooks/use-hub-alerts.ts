@@ -3,6 +3,8 @@
 import { Eye, FlaskConical, Mail, Zap } from "lucide-react";
 import { useSession } from "@/components/providers/session-provider";
 import { usePermissions } from "@/hooks/use-permissions";
+import { LOW_CREDIT_THRESHOLD } from "@/lib/billing/credit-costs";
+import { isNonLiveSendState, operationalSendState, sendStateLabel } from "@/lib/email/send-mode";
 
 export type HubAlert = {
   id: string;
@@ -21,7 +23,7 @@ export function useHubAlerts(): HubAlert[] {
 
   const alerts: HubAlert[] = [];
 
-  if (session.credits <= 50) {
+  if (session.credits <= LOW_CREDIT_THRESHOLD) {
     alerts.push({
       id: "credits",
       icon: Zap,
@@ -35,7 +37,12 @@ export function useHubAlerts(): HubAlert[] {
     });
   }
 
-  if (session.emailConfigured === false) {
+  const state = operationalSendState({
+    emailConfigured: session.emailConfigured,
+    sendMode: session.sendMode,
+  });
+
+  if (state === "unconfigured") {
     alerts.push({
       id: "email-setup",
       icon: Mail,
@@ -45,12 +52,15 @@ export function useHubAlerts(): HubAlert[] {
       href: "/settings?tab=email",
       hrefLabel: "Settings → Email",
     });
-  } else if (session.tenant.demoMode || session.sendMode === "dry_run") {
+  } else if (isNonLiveSendState(state)) {
     alerts.push({
       id: "demo",
       icon: FlaskConical,
-      title: "Demo mode",
-      description: `Emails are logged only (${session.sendMode}). Scout, enrich, and draft work without sending live outreach.`,
+      title: sendStateLabel(state),
+      description:
+        state === "test"
+          ? "Outreach goes only to your test inbox until you switch to Live in Settings → Email."
+          : `Emails are logged only (${session.sendMode}). Scout, enrich, and draft work without sending live outreach.`,
       href: "/settings?tab=email",
       hrefLabel: "Settings → Email",
     });

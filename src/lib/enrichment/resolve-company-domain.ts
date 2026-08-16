@@ -14,6 +14,20 @@ function isUsableForCompany(domain: string | undefined, companyName: string): do
   return Boolean(domain && isAcceptableCompanyDomain(domain, companyName));
 }
 
+/** Keep an official URL when it matches the resolved host; never keep directories or social. */
+function officialWebsiteForDomain(
+  domain: string,
+  website: string | undefined,
+  companyName: string,
+): string {
+  const fromSite = domainFromWebsite(website);
+  if (isUsableForCompany(fromSite, companyName) && fromSite === domain && website?.trim()) {
+    const raw = website.trim();
+    return raw.startsWith("http") ? raw : `https://${raw}`;
+  }
+  return `https://www.${domain}`;
+}
+
 export type ResolvedCompanyDomain = {
   domain?: string;
   website?: string;
@@ -52,38 +66,61 @@ export async function resolveCompanyDomain(params: {
     // Prefer curated domains over naive slug guesses stored on the account.
     if (known && provided === naiveGuess && known !== naiveGuess) {
       return withAliases(
-        { domain: known, website: params.website ?? `https://www.${known}`, source: "provided" },
+        {
+          domain: known,
+          website: officialWebsiteForDomain(known, params.website, params.companyName),
+          source: "provided",
+        },
         params.companyName,
         [provided],
       );
     }
-    return withAliases({ domain: provided, website: params.website, source: "provided" }, params.companyName);
+    return withAliases(
+      {
+        domain: provided,
+        website: officialWebsiteForDomain(provided, params.website, params.companyName),
+        source: "provided",
+      },
+      params.companyName,
+    );
   }
 
   const fromWebsite = domainFromWebsite(params.website);
   if (isUsableForCompany(fromWebsite, params.companyName)) {
     if (known && fromWebsite === naiveGuess && known !== naiveGuess) {
       return withAliases(
-        { domain: known, website: `https://www.${known}`, source: "provided" },
+        {
+          domain: known,
+          website: officialWebsiteForDomain(known, undefined, params.companyName),
+          source: "provided",
+        },
         params.companyName,
         [fromWebsite],
       );
     }
     return withAliases(
-      { domain: fromWebsite, website: params.website, source: "website" },
+      {
+        domain: fromWebsite,
+        website: officialWebsiteForDomain(fromWebsite, params.website, params.companyName),
+        source: "website",
+      },
       params.companyName,
     );
   }
 
   if (isUsableForCompany(known, params.companyName)) {
     return withAliases(
-      { domain: known, website: params.website ?? `https://www.${known}`, source: "provided" },
+      {
+        domain: known,
+        website: officialWebsiteForDomain(known, params.website, params.companyName),
+        source: "provided",
+      },
       params.companyName,
     );
   }
 
   if (params.allowExternal === false) {
-    return { domain: undefined, website: params.website, source: "unresolved" };
+    return { domain: undefined, website: undefined, source: "unresolved" };
   }
 
   if (process.env.APOLLO_API_KEY && params.companyName.trim()) {
@@ -97,7 +134,15 @@ export async function resolveCompanyDomain(params: {
       const match = pickBestOrganizationMatch(orgs, params.companyName);
       if (match?.domain) {
         return withAliases(
-          { domain: match.domain, website: match.website ?? params.website, source: "apollo" },
+          {
+            domain: match.domain,
+            website: officialWebsiteForDomain(
+              match.domain,
+              match.website ?? params.website,
+              params.companyName,
+            ),
+            source: "apollo",
+          },
           params.companyName,
           orgs.map((org) => org.domain),
         );
@@ -114,7 +159,14 @@ export async function resolveCompanyDomain(params: {
       for (const hit of hits) {
         const domain = domainFromWebsite(hit.url);
         if (isUsableForCompany(domain, params.companyName)) {
-          return withAliases({ domain, website: hit.url, source: "tavily" }, params.companyName);
+          return withAliases(
+            {
+              domain,
+              website: officialWebsiteForDomain(domain, hit.url, params.companyName),
+              source: "tavily",
+            },
+            params.companyName,
+          );
         }
       }
     } catch (e) {
@@ -122,5 +174,5 @@ export async function resolveCompanyDomain(params: {
     }
   }
 
-  return { domain: undefined, website: params.website, source: "unresolved" };
+  return { domain: undefined, website: undefined, source: "unresolved" };
 }

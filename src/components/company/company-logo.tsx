@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getCompanyInitials, getCompanyLogoSources } from "@/lib/company-logo";
 
@@ -47,11 +47,16 @@ export function CompanyLogo({
   rounded = "rounded-[12px]",
 }: CompanyLogoProps) {
   const sources = useMemo(
-    () => getCompanyLogoSources({ domain, website, name, logo }),
+    () => getCompanyLogoSources({ domain, website, name, logo }, { includeLookup: true }),
     [domain, website, name, logo],
   );
   const [sourceIndex, setSourceIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
+
+  useEffect(() => {
+    setSourceIndex(0);
+    setExhausted(false);
+  }, [sources]);
 
   const currentSrc = !exhausted ? sources[sourceIndex] : undefined;
   const dims = SIZE_MAP[size];
@@ -75,6 +80,7 @@ export function CompanyLogo({
           src={currentSrc}
           alt={`${name} logo`}
           className={cn("object-contain p-0.5", dims.img, imageClassName)}
+          referrerPolicy="no-referrer"
           onError={() => {
             if (sourceIndex < sources.length - 1) {
               setSourceIndex((i) => i + 1);

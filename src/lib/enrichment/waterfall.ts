@@ -1,6 +1,6 @@
 import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "./types";
 import type { EnrichmentConfig } from "./config";
-import { hasApolloKey, resolveEnrichmentConfig } from "./config";
+import { hasApolloKey, resolveEnrichmentConfig, MAX_SCOUT_LEADS_LIMIT } from "./config";
 import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies } from "./google-places";
@@ -14,7 +14,7 @@ import {
 } from "./city-search";
 import { companyDomainAliases } from "./company-domain-aliases";
 import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
-import { rankPeopleSeniorFirst } from "./people-diversity";
+import { rankPeopleForScout } from "./people-diversity";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -28,11 +28,21 @@ import { filterCompaniesMatchingQuery, isGeographicEntity } from "./company-name
 import { withCleanedCompanyName } from "./directory-parser";
 import { filterCompaniesWithLlm, shouldSkipCompaniesLlmFilter } from "./filter-companies-llm";
 import {
+  officialWebsiteForScoutCompany,
+  rankCompaniesWithOfficialSitesFirst,
+} from "./company-domain-quality";
+import {
   extractEmployeesFromText,
   normalizeEmployeeBandIds,
   normalizeEmployeeField,
   rankAndFilterByEmployeeBands,
 } from "./employee-size";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import {
+  defaultIcpSummary,
+  icpCompanyFilterInstructions,
+  resolvePlatformIntent,
+} from "@/lib/brand/platform-intent";
 
 const BUYING_TITLES = [
   "Director", "Manager", "Head", "VP", "Vice President",
@@ -45,6 +55,34 @@ export type DiscoveryResult = {
   warnings: string[];
   errors: string[];
 };
+
+async function loadScoutBrandIcp(workspaceId: string): Promise<{
+  icpSummary?: string;
+  platformIntent?: ReturnType<typeof resolvePlatformIntent>;
+  productSummary?: string;
+  buyerPersonas: string[];
+} | null> {
+  try {
+    const email = await getResolvedEmailConfig(workspaceId);
+    const platformIntent = resolvePlatformIntent(
+      email.brandConfig.platformIntent,
+      email.brandConfig.verticalPackId ?? email.brandConfig.brandSlug,
+    );
+    return {
+      platformIntent,
+      icpSummary:
+        email.brandConfig.websiteInsights?.icpSummary?.trim() || defaultIcpSummary(platformIntent),
+      productSummary: email.brandConfig.productSummary,
+      buyerPersonas: email.brandConfig.buyerPersonas ?? [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+function finalizeScoutCompanies(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
+  return rankCompaniesWithOfficialSitesFirst(companies.map(officialWebsiteForScoutCompany));
+}
 
 function tavilyQuotaHit(messages: string[]): boolean {
   return messages.some(isTavilyQuotaError);
@@ -119,6 +157,7 @@ export async function discoverCompanies(params: {
   const warnings: string[] = [];
   const errors: string[] = [];
   const searchMeta = { warnings };
+  const brandIcp = await loadScoutBrandIcp(params.workspaceId);
   const isNameSearch = !!params.companyName?.trim();
   const selectionLabels = params.cities;
   const nationwide = isNationwideSelection(selectionLabels);
@@ -208,7 +247,7 @@ export async function discoverCompanies(params: {
     }
 
     return {
-      companies: matched.slice(0, limit),
+      companies: finalizeScoutCompanies(matched).slice(0, limit),
       warnings: [...new Set(warnings)],
       errors: [...new Set(errors)],
     };
@@ -413,8 +452,16 @@ export async function discoverCompanies(params: {
     }
   }
 
-  if (!shouldSkipCompaniesLlmFilter(companies, limit)) {
-    companies = (await filterCompaniesWithLlm(companies, { warnings })).slice(0, limit);
+  const icpMeta = {
+    warnings,
+    icpSummary: brandIcp?.icpSummary,
+    platformIntent: brandIcp?.platformIntent,
+    productSummary: brandIcp?.productSummary,
+  };
+  companies = finalizeScoutCompanies(companies);
+  const runIcpGate = Boolean(icpCompanyFilterInstructions(icpMeta));
+  if (runIcpGate || !shouldSkipCompaniesLlmFilter(companies, limit)) {
+    companies = finalizeScoutCompanies(await filterCompaniesWithLlm(companies, icpMeta)).slice(0, limit);
   } else {
     companies = companies.slice(0, limit);
   }
@@ -475,19 +522,21 @@ export async function discoverPeople(params: {
   tenantAccounts?: (typeof accounts.$inferSelect)[];
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
-  const limit = Math.max(1, Math.min(params.limit ?? 15, 25));
+  const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
   // Small headroom for role filters — avoid 3x over-fetch (each hit costs Tavily/LLM time).
   const fetchLimit = Math.min(10, Math.max(limit + 2, limit));
   const warnings: string[] = [];
   const errors: string[] = [];
   const hasDomainHint = Boolean(params.companyDomain || params.companyWebsite);
-  const domainResolution = await resolveCompanyDomain({
-    companyName: params.companyName,
-    domain: params.companyDomain,
-    website: params.companyWebsite,
-    // Skip Apollo/Tavily domain lookups unless Apollo search needs a domain.
-    allowExternal: cfg.searchProvider === "apollo" && !hasDomainHint,
-  });
+  const [domainResolution, brandIcp] = await Promise.all([
+    resolveCompanyDomain({
+      companyName: params.companyName,
+      domain: params.companyDomain,
+      website: params.companyWebsite,
+      allowExternal: cfg.searchProvider === "apollo" && !hasDomainHint,
+    }),
+    loadScoutBrandIcp(params.workspaceId),
+  ]);
   const resolvedDomain = domainResolution.domain;
   const resolvedWebsite = domainResolution.website ?? params.companyWebsite;
   if (domainResolution.source !== "provided" && domainResolution.source !== "unresolved" && resolvedDomain) {
@@ -497,6 +546,7 @@ export async function discoverPeople(params: {
   }
   const activeSeniority = params.seniority ?? [];
   const activeDepartments = params.departments ?? [];
+  const scoutCities = params.cities ?? [];
   const roleHints = buildRoleTitleHints(activeSeniority, activeDepartments);
 
   // ── Step 1: Internal DB contacts for this company ───────────────────────
@@ -525,20 +575,30 @@ export async function discoverPeople(params: {
       activeSeniority,
       activeDepartments,
     );
-    if (filtered.people.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
-      warnings.push("No contacts match the selected seniority and department filters for this company.");
-    } else if (filtered.relaxed) {
-      warnings.push(
-        "Few exact seniority + department matches. Showing closest decision-makers for this company.",
-      );
+    const localized = scoutCities.length
+      ? selectPeopleForScoutCities(filtered.people, scoutCities).people
+      : filtered.people;
+    // Saved HQ contacts in Delhi/Mumbai must not short-circuit a plant-city scout.
+    if (localized.length > 0 || !scoutCities.length) {
+      if (filtered.people.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
+        warnings.push("No contacts match the selected seniority and department filters for this company.");
+      } else if (filtered.relaxed) {
+        warnings.push(
+          "Few exact seniority + department matches. Showing closest decision-makers for this company.",
+        );
+      }
+      return {
+        people: rankPeopleForScout(localized, {
+          seniority: activeSeniority,
+          departments: activeDepartments,
+          buyerPersonas: brandIcp?.buyerPersonas,
+        }).slice(0, limit),
+        resolvedDomain,
+        resolvedWebsite,
+        warnings,
+        errors,
+      };
     }
-    return {
-      people: rankPeopleSeniorFirst(filtered.people).slice(0, limit),
-      resolvedDomain,
-      resolvedWebsite,
-      warnings,
-      errors,
-    };
   }
 
   const remaining = fetchLimit - companyContacts.length;
@@ -675,7 +735,6 @@ export async function discoverPeople(params: {
     finalPeople = allPeople;
   }
 
-  const scoutCities = params.cities ?? [];
   if (scoutCities.length) {
     const selected = selectPeopleForScoutCities(finalPeople, scoutCities);
     if (selected.relaxedToIndia && selected.people.length > 0) {
@@ -691,7 +750,11 @@ export async function discoverPeople(params: {
   }
 
   return {
-    people: rankPeopleSeniorFirst(finalPeople).slice(0, limit),
+    people: rankPeopleForScout(finalPeople, {
+      seniority: activeSeniority,
+      departments: activeDepartments,
+      buyerPersonas: brandIcp?.buyerPersonas,
+    }).slice(0, limit),
     resolvedDomain,
     resolvedWebsite,
     warnings: [...new Set(warnings)],
@@ -731,15 +794,32 @@ export async function discoverPeopleBatch(params: {
 
   const results: Record<string, PeopleDiscoveryResult> = {};
   const { companies, concurrency = 8, ...discoverParams } = params;
+  let quotaStop = false;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
-    results[company.id] = await discoverPeople({
-      ...discoverParams,
-      companyName: company.companyName,
-      companyDomain: company.companyDomain,
-      companyWebsite: company.companyWebsite,
-      tenantAccounts,
-    });
+    if (quotaStop) {
+      results[company.id] = {
+        people: [],
+        warnings: [],
+        errors: [`Skipped ${company.companyName}: Tavily quota after earlier companies.`],
+      };
+      return;
+    }
+    try {
+      const result = await discoverPeople({
+        ...discoverParams,
+        companyName: company.companyName,
+        companyDomain: company.companyDomain,
+        companyWebsite: company.companyWebsite,
+        tenantAccounts,
+      });
+      if (tavilyQuotaHit([...result.warnings, ...result.errors])) quotaStop = true;
+      results[company.id] = result;
+    } catch (e) {
+      const msg = stepFailureMessage("people_search", e);
+      if (isTavilyQuotaError(msg)) quotaStop = true;
+      results[company.id] = { people: [], warnings: [], errors: [msg] };
+    }
   });
 
   return results;
@@ -771,16 +851,32 @@ export async function discoverPeopleBatchStream(
   }
 
   const { companies, concurrency = 8, ...discoverParams } = params;
+  let quotaStop = false;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
-    const result = await discoverPeople({
-      ...discoverParams,
-      companyName: company.companyName,
-      companyDomain: company.companyDomain,
-      companyWebsite: company.companyWebsite,
-      tenantAccounts,
-    });
-    await onResult(company.id, result);
+    if (quotaStop) {
+      await onResult(company.id, {
+        people: [],
+        warnings: [],
+        errors: [`Skipped ${company.companyName}: Tavily quota after earlier companies.`],
+      });
+      return;
+    }
+    try {
+      const result = await discoverPeople({
+        ...discoverParams,
+        companyName: company.companyName,
+        companyDomain: company.companyDomain,
+        companyWebsite: company.companyWebsite,
+        tenantAccounts,
+      });
+      if (tavilyQuotaHit([...result.warnings, ...result.errors])) quotaStop = true;
+      await onResult(company.id, result);
+    } catch (e) {
+      const msg = stepFailureMessage("people_search", e);
+      if (isTavilyQuotaError(msg)) quotaStop = true;
+      await onResult(company.id, { people: [], warnings: [], errors: [msg] });
+    }
   });
 }
 

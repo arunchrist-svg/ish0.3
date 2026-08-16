@@ -27,18 +27,18 @@ type NavItemEntry = {
 
 const mainNav: NavItemEntry[] = [
   { icon: Home, label: "Home", href: "/", key: "home" },
-  { icon: Pin, label: "Pinned", href: "/pinned", key: "pinned" },
 ];
 
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
   { icon: Rocket, label: "Leads", href: "/leads", key: "leads" },
   { icon: Mail, label: "Outreach", href: "/email", key: "email" },
-  { icon: Radar, label: "Brand Intelligence", href: "/brand-intelligence", key: "brand-intelligence" },
-  { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
 ];
 
-const customerNav: NavItemEntry[] = [
+const moreNav: NavItemEntry[] = [
+  { icon: Radar, label: "Brand Intelligence", href: "/brand-intelligence", key: "brand-intelligence" },
+  { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
+  { icon: Pin, label: "Pinned", href: "/pinned", key: "pinned" },
   { icon: User, label: "Accounts", href: "/directory", key: "accounts" },
   { icon: Contact, label: "Contacts", href: "/contacts", key: "contacts" },
 ];
@@ -51,7 +51,7 @@ const bottomNav: NavItemEntry[] = [
 const sections: { title?: string; items: NavItemEntry[] }[] = [
   { items: mainNav },
   { title: "MY WORK", items: workNav },
-  { title: "CUSTOMERS", items: customerNav },
+  { title: "MORE", items: moreNav },
 ];
 
 const allLinkedItems = [...sections.flatMap((s) => s.items), ...bottomNav].filter((item) => item.href);

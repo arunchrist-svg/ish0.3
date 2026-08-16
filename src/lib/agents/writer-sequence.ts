@@ -9,6 +9,7 @@ export type WriterSequenceOptions = {
   outreachTemplate?: OutreachTemplateId;
   forceNewAngle?: boolean;
   writerMode?: WriterMode;
+  occasionTheme?: string | null;
 };
 
 export async function runWriterSequence(
@@ -33,6 +34,7 @@ export async function runWriterSequence(
     sequencePosition: 1,
     skipStatusUpdate: false,
     writerMode,
+    occasionTheme: options?.occasionTheme,
   });
 
   const draft1 = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, id1) });
@@ -44,6 +46,7 @@ export async function runWriterSequence(
     originalEmailSubject: e1Subject,
     skipStatusUpdate: true,
     writerMode,
+    occasionTheme: options?.occasionTheme,
   } as const;
 
   let [id2, id3] = await Promise.all([
@@ -91,6 +94,7 @@ export async function regenerateSequenceStep(
     outreachTemplate: options?.outreachTemplate,
     forceNewAngle: options?.forceNewAngle,
     writerMode: resolveWriterMode(options?.writerMode),
+    occasionTheme: options?.occasionTheme,
   });
 }
 

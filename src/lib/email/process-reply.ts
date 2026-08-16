@@ -1,6 +1,6 @@
 import { db, leads, yieldFunnel, outreachSchedule } from "@/db";
 import { eq, and } from "drizzle-orm";
-import { isPastReplyStage } from "@/lib/pipeline-status";
+import { isPastReplyStage, isReplyWatchStatus } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
 import { enqueueReplyOrchestrator } from "@/lib/jobs/enqueue";
 
@@ -22,11 +22,11 @@ export async function processLeadReply(params: {
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
   if (!lead) return { ok: false, error: "Lead not found" };
 
-  if (isPastReplyStage(lead.status)) {
+  if (lead.status === "replied" || isPastReplyStage(lead.status)) {
     return { ok: true, skipped: true, reason: "already past reply stage" };
   }
 
-  if (lead.status !== "outreached") {
+  if (!isReplyWatchStatus(lead.status) && lead.status !== "outreached") {
     return { ok: true, skipped: true, reason: `lead status is ${lead.status}` };
   }
 

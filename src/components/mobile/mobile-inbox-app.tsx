@@ -13,6 +13,7 @@ import {
   sendOutreach,
   type EmailOverviewData,
 } from "@/lib/api-client";
+import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
@@ -109,10 +110,7 @@ export function MobileInboxApp() {
     setBusyId(row.leadId);
     try {
       if (followUp && row.pendingFollowUpScheduleId) {
-        await sendFollowUp(row.pendingFollowUpScheduleId, {
-          overridePreflight: true,
-          overrideQualityGate: true,
-        });
+        await sendWithGateConfirm((overrides) => sendFollowUp(row.pendingFollowUpScheduleId!, overrides));
         void hapticLight();
         toast.success(`Follow-up sent to ${row.contactName}`);
       } else if (row.draftOutreachId) {
@@ -122,10 +120,7 @@ export function MobileInboxApp() {
           channel: "email",
           status: "approved",
         });
-        await sendOutreach(approvalId, {
-          overridePreflight: true,
-          overrideQualityGate: true,
-        });
+        await sendWithGateConfirm((overrides) => sendOutreach(approvalId, overrides));
         void hapticLight();
         toast.success(`Sent to ${row.contactName}`);
       }

@@ -2,11 +2,12 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ExternalLink, Lightbulb, MapPin, RefreshCw } from "lucide-react";
+import { ExternalLink, Globe, Lightbulb, MapPin, RefreshCw } from "lucide-react";
 import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
 import type { CompanyOverview, CompanyOverviewInput } from "@/lib/company-overview";
 import { displayValue } from "@/lib/company-overview";
 import { useCompanyOverview } from "@/hooks/use-company-overview";
+import { displayCompanyWebsite } from "@/lib/enrichment/company-domain-quality";
 import { PanelCard, SectionHeader } from "@/design-system";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ type Props = {
   decisionMakerLeadId?: string;
   layout?: "sidebar" | "wide";
   footer?: ReactNode;
+  onWebsiteResolved?: (resolved: { domain?: string; website?: string }) => void;
 };
 
 function OverviewRow({
@@ -120,17 +122,25 @@ export function CompanyOverviewPanel({
   decisionMakerLeadId,
   layout = "sidebar",
   footer,
+  onWebsiteResolved,
 }: Props) {
-  const { overview, loading, error, enrichedAt, cached, hasLoaded, refresh } = useCompanyOverview(
-    overviewInput ? { ...overviewInput, name } : null,
-    { enabled, initialOverview },
-  );
+  const { overview, loading, error, enrichedAt, cached, hasLoaded, resolvedDomain, resolvedWebsite, didFetch, refresh } =
+    useCompanyOverview(overviewInput ? { ...overviewInput, name } : null, {
+      enabled,
+      initialOverview,
+      onWebsiteResolved,
+    });
 
   const o = overview ?? initialOverview ?? {};
+  const displayDomain = didFetch ? resolvedDomain : (domain ?? overviewInput?.domain);
+  const displayWebsite = didFetch ? resolvedWebsite : (website ?? overviewInput?.website);
+  const site = displayCompanyWebsite(displayDomain, displayWebsite);
+  const showWebsiteUnknown = didFetch && !site;
   const sizeLine = formatScoutSizeLine(overviewInput?.employees ?? o.employees);
   const sizeKnown = sizeLine !== "Unknown scale";
   const pastGifting = o.pastGiftingBrands ?? [];
   const milestones = (o.corporateMilestones ?? []).filter((m) => m.trim());
+  const detectedOccasions = (o.detectedOccasions ?? []).filter((d) => d.type || d.label);
   const wide = layout === "wide";
   const compactPrimary = Boolean(footer);
   const showIntelligence = Boolean(o.intelligenceNotes?.trim()) && !footer;
@@ -163,8 +173,8 @@ export function CompanyOverviewPanel({
       <div className="flex items-start gap-3 border-b border-brand-border/60 pb-3">
         <CompanyLogo
           name={name}
-          domain={domain ?? overviewInput?.domain}
-          website={website ?? overviewInput?.website}
+          domain={displayDomain}
+          website={displayWebsite}
           logo={logo}
           size="xl"
           rounded="rounded-2xl"
@@ -175,6 +185,22 @@ export function CompanyOverviewPanel({
             <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-brand-ink-soft">
               <MapPin className="size-3 shrink-0" />
               <span>{city}</span>
+            </div>
+          ) : null}
+          {site ? (
+            <a
+              href={site.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-1 inline-flex max-w-full items-center gap-1 text-[11.5px] font-medium text-blue-600 hover:underline"
+            >
+              <Globe className="size-3 shrink-0" />
+              <span className="truncate">{site.label}</span>
+            </a>
+          ) : showWebsiteUnknown ? (
+            <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-brand-ink-faint">
+              <Globe className="size-3 shrink-0" />
+              <span>Website unknown</span>
             </div>
           ) : null}
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -312,6 +338,26 @@ export function CompanyOverviewPanel({
                       className="flex gap-2 text-[12px] leading-relaxed text-brand-ink-soft before:mt-1.5 before:size-1 before:shrink-0 before:rounded-full before:bg-brand-pink"
                     >
                       <span className="min-w-0 break-words">{m}</span>
+                    </li>
+                  ))}
+                </ul>
+              </PanelCard>
+            </BentoCell>
+          ) : null}
+
+          {detectedOccasions.length > 0 ? (
+            <BentoCell className={wide ? "col-span-6" : "col-span-2"}>
+              <PanelCard tone="yellow" className="h-full p-3.5">
+                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                  Detected occasions
+                </div>
+                <ul className="grid gap-1.5 sm:grid-cols-2">
+                  {detectedOccasions.map((d, i) => (
+                    <li key={`${d.type}-${i}`} className="text-[12px] leading-relaxed text-brand-ink-soft">
+                      <span className="font-semibold text-brand-ink">{d.label || d.type}</span>
+                      {d.timing === "upcoming" ? " · upcoming" : ""}
+                      {d.location ? ` · ${d.location}` : ""}
+                      {d.timeframe ? ` · ${d.timeframe}` : ""}
                     </li>
                   ))}
                 </ul>

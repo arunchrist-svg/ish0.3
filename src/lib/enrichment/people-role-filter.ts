@@ -82,6 +82,53 @@ export function personMatchesRoles(person: ScoutPersonResult, seniority: string[
   return deptMatch;
 }
 
+export type PeopleFetchRisk = {
+  needsConfirm: boolean;
+  stacked: boolean;
+  headline: string;
+  costLine: string;
+  emptyRiskLine: string | null;
+};
+
+export function peopleAndFilterWarning(seniority: string[], departments: string[]): string | null {
+  if (!seniority.length || !departments.length) return null;
+  return "A contact must match seniority AND department. Stacking both often returns 0 people, and Fetch Leads still spends one search credit per company.";
+}
+
+export function assessPeopleFetchRisk(input: {
+  companyCount: number;
+  seniority: string[];
+  departments: string[];
+}): PeopleFetchRisk {
+  const { companyCount, seniority, departments } = input;
+  const both = seniority.length > 0 && departments.length > 0;
+  const stacked = both && seniority.length + departments.length >= 4;
+  const costLine =
+    companyCount === 1
+      ? "This uses 1 people search credit."
+      : `This uses ${companyCount} people search credits, one per company. Credits are spent even if nobody matches.`;
+
+  if (!both) {
+    return {
+      needsConfirm: false,
+      stacked: false,
+      headline: "",
+      costLine,
+      emptyRiskLine: null,
+    };
+  }
+
+  return {
+    needsConfirm: true,
+    stacked,
+    headline: stacked
+      ? "These People filters often return 0 leads"
+      : "People filters require both seniority and department",
+    costLine,
+    emptyRiskLine: peopleAndFilterWarning(seniority, departments),
+  };
+}
+
 export function filterPeopleByRoles(
   people: ScoutPersonResult[],
   seniority: string[],

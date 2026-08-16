@@ -210,3 +210,80 @@ export function usableStoredDomain(
   if (!host || !isAcceptableCompanyDomain(host, companyName)) return null;
   return host;
 }
+
+function canonicalWebsiteUrl(domain: string, website?: string | null): string {
+  const host = normalizeHost(website);
+  if (host === domain && website?.trim().startsWith("http")) {
+    try {
+      const parsed = new URL(website.trim());
+      return `${parsed.protocol}//${parsed.host}`;
+    } catch {
+      return `https://www.${domain}`;
+    }
+  }
+  return `https://www.${domain}`;
+}
+
+/** Official site only when the domain slug matches the scouted company name. */
+export function officialWebsiteForScoutCompany<
+  T extends { name: string; domain?: string; website?: string; fitScore?: number },
+>(company: T): T {
+  const site = persistableCompanyWebsite(company.name, {
+    domain: company.domain,
+    website: company.website,
+    source: company.domain || company.website ? "provided" : "unresolved",
+  });
+  return {
+    ...company,
+    domain: site.domain,
+    website: site.website,
+    fitScore: site.domain ? Math.min(100, (company.fitScore ?? 55) + 8) : company.fitScore,
+  };
+}
+
+export function rankCompaniesWithOfficialSitesFirst<T extends { domain?: string; fitScore?: number }>(
+  companies: T[],
+): T[] {
+  return [...companies].sort((a, b) => {
+    const aSite = a.domain ? 1 : 0;
+    const bSite = b.domain ? 1 : 0;
+    if (aSite !== bSite) return bSite - aSite;
+    return (b.fitScore ?? 0) - (a.fitScore ?? 0);
+  });
+}
+
+/** Official domain + homepage only. Directory, social, and news URLs stay empty. */
+export function persistableCompanyWebsite(
+  companyName: string,
+  resolved: { domain?: string | null; website?: string | null; source?: string },
+): { domain?: string; website?: string } {
+  if (resolved.source === "unresolved") return {};
+  const domain = usableStoredDomain(resolved.domain, companyName);
+  if (!domain) return {};
+  return { domain, website: canonicalWebsiteUrl(domain, resolved.website) };
+}
+
+/** Prefer a freshly resolved official site; keep a previously stored official site; otherwise empty. */
+export function mergeResolvedWebsite(params: {
+  companyName: string;
+  resolved: { domain?: string | null; website?: string | null; source?: string };
+  existingDomain?: string | null;
+  existingWebsite?: string | null;
+}): { domain?: string; website?: string } {
+  const fromResolved = persistableCompanyWebsite(params.companyName, params.resolved);
+  if (fromResolved.domain) return fromResolved;
+  return persistableCompanyWebsite(params.companyName, {
+    domain: params.existingDomain,
+    website: params.existingWebsite,
+    source: params.existingDomain || params.existingWebsite ? "provided" : "unresolved",
+  });
+}
+
+export function displayCompanyWebsite(
+  domain?: string | null,
+  website?: string | null,
+): { href: string; label: string } | undefined {
+  const host = normalizeHost(domain) ?? normalizeHost(website);
+  if (!host || isUnusableCompanyDomain(host)) return undefined;
+  return { href: canonicalWebsiteUrl(host, website), label: host };
+}

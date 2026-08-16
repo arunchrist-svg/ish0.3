@@ -43,6 +43,11 @@ export const generalPack: VerticalPack = {
     productCategory: "",
     competitorBrands: [],
   },
+  pipelineLabels: {
+    stages: ["Contact Ready", "Email", "Email Sent", "Replied", "Meeting", "Negotiate", "Closed"],
+    postReplyStatusLabel: "Meeting",
+    markPostReplyAction: "Mark meeting",
+  },
   toneHint: "Product angle: use the product summary below. Stay factual, not promotional.",
   knowledgeFiles: [],
   searchLexicon: ["B2B software", "SaaS", "enterprise sales", "team productivity", "workflow"],

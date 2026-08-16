@@ -76,3 +76,11 @@ export function labelForCreditAction(action: string): string {
 export function getCreditCost(action: string): number {
   return CREDIT_COSTS[action] ?? 0;
 }
+
+/** Banner when remaining credits drop to about 10 company scouts. */
+export const LOW_CREDIT_THRESHOLD = getCreditCost("scout.company") * 10;
+
+export function formatCreditCost(action: string, quantity = 1): string {
+  const cost = getCreditCost(action) * quantity;
+  return `${cost} credit${cost === 1 ? "" : "s"}`;
+}

@@ -15,19 +15,19 @@ import {
   extractEmployeesFromText,
   normalizeEmployeeField,
 } from "./employee-size";
-import { cleanCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
+import {
+  cleanCompanyName,
+  keepStrictCompaniesOnly,
+  parseCompaniesFromDirectoryResults,
+} from "./directory-parser";
 import { searchPeopleViaTavily } from "./people-search";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
+import { freeCompanyFilterProvider } from "./filter-companies-llm";
 import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, tavilySearch } from "./tavily-client";
 import { mapWithConcurrency } from "@/lib/async";
 
-const DIRECTORIES = [
-  "site:justdial.com",
-  "site:indiamart.com",
-  "site:sulekha.com",
-  "site:zauba.com",
-  "site:tradeindia.com",
-];
+const REGISTRY_SITES = ["site:zaubacorp.com", "site:zauba.com", "site:tofler.in"];
+const LISTING_SITES = ["site:indiamart.com", "site:tradeindia.com", "site:justdial.com", "site:sulekha.com"];
 
 export type DirectorySearchMeta = {
   warnings: string[];
@@ -40,7 +40,12 @@ function aiConfidenceThreshold(): number {
   return Number.isFinite(parsed) ? parsed : 40;
 }
 
-function buildQueries(cities: string[], industries: string[], fetchSeed = 0, employeeBands: string[] = []): string[] {
+export function buildDirectoryQueries(
+  cities: string[],
+  industries: string[],
+  fetchSeed = 0,
+  employeeBands: string[] = [],
+): string[] {
   const cityStr = citySearchClause(cities);
   const indStr =
     industries.length > 0 ? industries.slice(0, 3).join(" OR ") : "corporate";
@@ -48,22 +53,20 @@ function buildQueries(cities: string[], industries: string[], fetchSeed = 0, emp
   const sizeBit = sizeStr ? ` ${sizeStr}` : "";
 
   const queries = [
-    `(${DIRECTORIES.slice(0, 2).join(" OR ")}) ${indStr} companies ${cityStr}${sizeBit} India`,
-    `(${DIRECTORIES.slice(2, 4).join(" OR ")}) ${indStr} businesses ${cityStr}${sizeBit}`,
-    `ZaubaCorp ${indStr} ${cityStr} India registered companies`,
+    `(${REGISTRY_SITES.join(" OR ")}) ${indStr} private limited companies ${cityStr} India`,
+    `site:zaubacorp.com ${indStr} ${cityStr} company CIN registered`,
+    `(${LISTING_SITES.slice(0, 2).join(" OR ")}) ${indStr} Pvt Ltd manufacturers ${cityStr}${sizeBit}`,
+    `(${LISTING_SITES.slice(2).join(" OR ")}) ${indStr} companies ${cityStr}${sizeBit} India`,
   ];
 
-  // Per-city queries improve coverage for smaller cities like Hosur
-  for (const city of expandCitySearchTerms(cities).slice(0, 3)) {
-    queries.push(
-      `(site:justdial.com OR site:indiamart.com) ${indStr} companies ${city}${sizeBit} India`,
-    );
+  for (const city of expandCitySearchTerms(cities).slice(0, 2)) {
+    queries.push(`site:zaubacorp.com ${indStr} companies ${city} India`);
   }
 
   const extras = [
+    `site:thecompanycheck.com ${indStr} ${cityStr} private limited`,
     `site:indiamart.com ${indStr} ${cityStr}${sizeBit} company directory`,
     `site:tradeindia.com ${indStr} manufacturers ${cityStr}${sizeBit}`,
-    `site:sulekha.com ${indStr} companies ${cityStr}${sizeBit}`,
   ];
   const offset = Math.abs(fetchSeed) % extras.length;
   const rotatedExtras = [...extras.slice(offset), ...extras.slice(0, offset)];
@@ -72,7 +75,14 @@ function buildQueries(cities: string[], industries: string[], fetchSeed = 0, emp
 }
 
 export function directoryQueryBatchCount(limit: number, available: number): number {
-  return Math.min(available, Math.max(2, Math.ceil(Math.max(limit, 1) / 8)));
+  return Math.min(available, Math.max(3, Math.ceil(Math.max(limit, 1) / 20)));
+}
+
+/** Run enough Tavily searches to hit Zauba + listings, without burning the quota. */
+export function directorySearchQueryCap(limit: number, available: number): number {
+  const needed = directoryQueryBatchCount(limit, available);
+  const maxQueries = limit >= 25 ? 6 : 4;
+  return Math.min(available, Math.max(needed, 3), maxQueries);
 }
 
 function dedupeCompaniesByName(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
@@ -155,9 +165,8 @@ export async function indiaDirectoriesSearchCompanies(params: {
   }
 
   const fetchSeed = params.fetchSeed ?? 0;
-  const queries = buildQueries(params.cities, params.industries, fetchSeed, params.employeeBands);
-  // Cap at 2 queries for Scout speed (was up to ceil(limit/8)).
-  const queryBatch = queries.slice(0, Math.min(2, directoryQueryBatchCount(limit, queries.length)));
+  const queries = buildDirectoryQueries(params.cities, params.industries, fetchSeed, params.employeeBands);
+  const queryBatch = queries.slice(0, directorySearchQueryCap(limit, queries.length));
   const perQueryLimit = optimizedMaxResults(Math.ceil(limit / Math.max(queryBatch.length, 1)));
 
   let quotaExceeded = false;
@@ -190,15 +199,17 @@ export async function indiaDirectoriesSearchCompanies(params: {
 
   const heuristic = parseCompaniesFromDirectoryResults(allResults, params.cities, limit);
   const heuristicReady = fillEmployeesFromHits(heuristic, allResults);
-  // Heuristic-first: skip LLM extract when directory parse already has enough companies.
-  const heuristicFloor = Math.max(1, Math.ceil(limit / 2));
-  if (heuristicReady.length >= heuristicFloor) {
-    return heuristicReady.slice(0, limit);
+  const strictHeuristic = keepStrictCompaniesOnly(heuristicReady);
+  // Skip LLM only when we already have enough registered names (Pvt Ltd / Ltd).
+  const heuristicFloor = Math.max(1, Math.min(8, Math.ceil(limit / 4)));
+  if (strictHeuristic.length >= heuristicFloor) {
+    return strictHeuristic.slice(0, limit);
   }
 
   const threshold = aiConfidenceThreshold();
+  const freeProvider = freeCompanyFilterProvider();
 
-  if (hasLLMKey()) {
+  if (hasLLMKey() || freeProvider) {
     const context = allResults
       .slice(0, Math.min(allResults.length, Math.max(12, Math.ceil(limit / 4))))
       .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 600)}`)
@@ -207,17 +218,18 @@ export async function indiaDirectoriesSearchCompanies(params: {
     try {
       const raw = await callLLM({
         tier: "fast",
-        system: `You extract structured B2B company data for SaaS sales prospecting from Indian business directory listings.
+        ...(freeProvider ? { provider: freeProvider } : {}),
+        system: `You extract structured B2B company data for SaaS sales prospecting from Indian MCA / Zauba / directory listings.
 Output ONLY a valid JSON array. No markdown fences. No explanation.
 Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }
-Only include REAL named Indian companies. Do NOT invent companies.
+Only include REAL named Indian companies (prefer "… Pvt Ltd" / "… Limited" from Zauba URLs). Do NOT invent companies.
 Never use job-post titles, document blurbs, report titles, or review-site headings (Work Satisfaction, Company Culture, Salary) as company names.
 Never use addresses, plot numbers, PIN codes, villages, SIPCOT/MIDC/SEZ estates, or "Industrial Area/Complex" labels as company names (e.g. Hosur-635126, Sipcot Industrial Complex).
 Never use product titles, prices (INR / Approx), catalog items (name plates, air purifiers), or registry form fields (Company Class, Email ID, Address, Tax) as company names.
 Never use UI labels, job categories, neighborhoods, building blocks, or NIC activity lines as company names (Quotations, Contact Number, BPO jobs, Bellandur, Flipkart B Block, LIMITED TECHNOLOGIES).
 If a listing is a hiring or reviews page for Acme, return "Acme" only.
 Minimum confidence score: ${threshold}.`,
-        prompt: `Extract companies from these directory results.
+        prompt: `Extract companies from these directory results. Prefer zaubacorp.com / tofler.in registered names.
 Target: ${indStr} industry companies in ${cityStr}, India${sizeStr ? `. Scale target: ${sizeStr}` : ""}.
 Include real businesses that match the industry and city.
 Always fill "employees" with a headcount or one of: Micro Industries, Small scale, Medium scale, Large scale. Use null if unknown.
@@ -233,10 +245,12 @@ Return up to ${limit} companies.`,
       try {
         const llmResults = parseLLMCompanies(raw, limit);
         const merged = fillEmployeesFromHits(
-          dedupeCompaniesByName([...llmResults, ...heuristic]),
+          dedupeCompaniesByName([...llmResults, ...strictHeuristic, ...heuristicReady]),
           allResults,
-        ).slice(0, limit);
-        if (merged.length) return merged;
+        );
+        const preferred = keepStrictCompaniesOnly(merged);
+        const picked = (preferred.length >= Math.min(8, limit) ? preferred : merged).slice(0, limit);
+        if (picked.length) return picked;
         meta?.warnings.push("AI extraction returned no companies — using directory parsing fallback.");
       } catch {
         console.error("[india-directories] parse failed, raw:", raw.slice(0, 200));
@@ -247,15 +261,15 @@ Return up to ${limit} companies.`,
       meta?.warnings.push(llmErrorMessage(e));
     }
   } else {
-    meta?.warnings.push("LLM API key not set — using directory parsing fallback.");
+    meta?.warnings.push("LLM API key not set — using Zauba / directory parsing fallback.");
   }
 
-  if (!heuristic.length) {
+  if (!strictHeuristic.length) {
     meta?.warnings.push(
-      "Directory pages were found but no company names could be parsed. Try different cities or industries.",
+      "Directory pages were found but no registered company names could be parsed. Try Zauba-friendly industries or another city.",
     );
   }
-  return fillEmployeesFromHits(heuristic, allResults);
+  return fillEmployeesFromHits(strictHeuristic, allResults);
 }
 
 export async function indiaDirectoriesSearchPeople(params: {

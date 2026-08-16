@@ -29,6 +29,10 @@ export const GIVER_INTENT_PHRASES = [
   "unboxing",
   "company gifted",
   "gift from work",
+  "welcome kit",
+  "joining kit",
+  "birthday hamper",
+  "inauguration mithai",
 ];
 
 export const OCCASION_PHRASES = [
@@ -37,6 +41,11 @@ export const OCCASION_PHRASES = [
   "onboarding",
   "work anniversary",
   "Women's Day",
+  "birthday",
+  "foundation day",
+  "inauguration",
+  "grand opening",
+  "new store",
 ];
 
 export const EXCLUDED_DOMAINS = [

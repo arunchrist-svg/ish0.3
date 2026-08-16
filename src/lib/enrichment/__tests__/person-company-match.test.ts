@@ -178,6 +178,16 @@ describe("foreign person locations", () => {
 
   it("drops US people when scouting Indian cities", () => {
     expect(personLocationMatchesSelection("Greater Tampa Bay Area", ["Hosur"])).toBe(false);
+    expect(personLocationMatchesSelection("New York City Metropolitan Area", ["Hosur"])).toBe(false);
     expect(personLocationMatchesSelection("Hosur, Tamil Nadu", ["Hosur"])).toBe(true);
+  });
+
+  it("drops other Indian cities and empty location on a district pick", () => {
+    expect(personLocationMatchesSelection("Delhi, India", ["Hosur"])).toBe(false);
+    expect(personLocationMatchesSelection("New Delhi", ["Hosur"])).toBe(false);
+    expect(personLocationMatchesSelection("Mumbai", ["Hosur"])).toBe(false);
+    expect(personLocationMatchesSelection("", ["Hosur"])).toBe(false);
+    expect(personLocationMatchesSelection(null, ["Hosur"])).toBe(false);
+    expect(personLocationMatchesSelection("India", ["Hosur"])).toBe(false);
   });
 });

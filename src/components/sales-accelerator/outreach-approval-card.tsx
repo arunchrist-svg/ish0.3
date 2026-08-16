@@ -10,9 +10,9 @@ import {
   sendOutreach,
   sendFollowUp,
   updateOutreachDraft,
-  SenderPreflightApiError,
   EmailSendRejectedError,
 } from "@/lib/api-client";
+import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
 import { EmailEditChat } from "./email-edit-chat";
@@ -405,10 +405,9 @@ export function OutreachApprovalCard({
       if (!saved) return;
 
       if (isFollowUpReview && scheduleIdForFollowUp) {
-        const result = await sendFollowUp(scheduleIdForFollowUp, {
-          overridePreflight: true,
-          overrideQualityGate: true,
-        });
+        const result = await sendWithGateConfirm((overrides) =>
+          sendFollowUp(scheduleIdForFollowUp, overrides),
+        );
         toast.success(`Follow-up sent (${result.mode})`);
         onSent?.();
         return;
@@ -423,11 +422,12 @@ export function OutreachApprovalCard({
         bodyUsed: bodyToSend,
       });
 
-      const result = await sendOutreach(approvalId, {
-        overridePreflight: true,
-        overrideQualityGate: true,
-        toEmails: selectedEmails,
-      });
+      const result = await sendWithGateConfirm((overrides) =>
+        sendOutreach(approvalId, {
+          ...overrides,
+          toEmails: selectedEmails,
+        }),
+      );
       const recipient =
         result.recipients?.length
           ? result.recipients.join(", ")

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   brandIntelRecommendedForIntent,
   campaignModesForIntent,
+  defaultIcpSummary,
+  icpCompanyFilterInstructions,
   inferPlatformIntent,
+  normalizeScoutRoleFilters,
   scoutDefaultsForIntent,
   verticalPackIdForIntent,
 } from "@/lib/brand/platform-intent";
@@ -28,6 +31,7 @@ describe("platform intent", () => {
       }),
     ).toBe("corporate_gifting");
     expect(campaignModesForIntent("corporate_gifting")).toContain("diwali_gifting");
+    expect(campaignModesForIntent("corporate_gifting")).toContain("year_round");
   });
 
   it("recommends Brand Intelligence for physical goods, not software", () => {
@@ -38,10 +42,37 @@ describe("platform intent", () => {
     expect(brandIntelRecommendedForIntent(null)).toBe(false);
   });
 
-  it("uses leadership scout defaults for saas", () => {
+  it("uses seniority-only scout defaults for saas", () => {
     const defaults = scoutDefaultsForIntent("b2b_saas");
-    expect(defaults.scoutDepartments).toContain("Leadership");
+    expect(defaults.scoutDepartments).toEqual([]);
     expect(defaults.scoutDepartments).not.toContain("Procurement");
     expect(defaults.scoutSeniority).toContain("Founders");
+    expect(defaults.scoutSeniority).toContain("C-Level");
+  });
+
+  it("uses department-only scout defaults for corporate gifting", () => {
+    const defaults = scoutDefaultsForIntent("corporate_gifting");
+    expect(defaults.scoutDepartments).toEqual(["HR", "Procurement", "Admin"]);
+    expect(defaults.scoutSeniority).toEqual([]);
+    expect(defaultIcpSummary("corporate_gifting")).toMatch(/employees/);
+    expect(defaultIcpSummary("corporate_gifting")).toMatch(/not other sweet shops/);
+  });
+
+  it("drops one people-filter stack when analysis filled both", () => {
+    const gifting = normalizeScoutRoleFilters("corporate_gifting", ["HR"], ["Director"]);
+    expect(gifting.scoutDepartments).toEqual(["HR"]);
+    expect(gifting.scoutSeniority).toEqual([]);
+    const saas = normalizeScoutRoleFilters("b2b_saas", ["Leadership"], ["Founders"]);
+    expect(saas.scoutDepartments).toEqual([]);
+    expect(saas.scoutSeniority).toEqual(["Founders"]);
+  });
+
+  it("tells the company filter to keep employer buyers for sweets", () => {
+    const text = icpCompanyFilterInstructions({
+      platformIntent: "corporate_gifting",
+      icpSummary: defaultIcpSummary("corporate_gifting"),
+    });
+    expect(text).toMatch(/mithai shops/i);
+    expect(text).toMatch(/employees/i);
   });
 });

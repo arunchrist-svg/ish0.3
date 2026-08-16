@@ -1,15 +1,108 @@
 import type { CompanyOverview, CompanyOverviewInput, CompanyOverviewResult } from "./company-overview";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "./enrichment/types";
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+export function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = "name" in error ? String(error.name) : "";
+  const message = "message" in error ? String(error.message) : "";
+  return name === "AbortError" || /aborted|abort(ed)? the request/i.test(message);
+}
+
+export class InsufficientCreditsApiError extends Error {
+  code = "INSUFFICIENT_CREDITS" as const;
+  required?: number;
+  available?: number;
+
+  constructor(message: string, required?: number, available?: number) {
+    super(message);
+    this.name = "InsufficientCreditsApiError";
+    this.required = required;
+    this.available = available;
+  }
+}
+
+export class QualityGateApiError extends Error {
+  code = "QUALITY_GATE_FAILED" as const;
+  canOverride: boolean;
+
+  constructor(message: string, canOverride = true) {
+    super(message);
+    this.name = "QualityGateApiError";
+    this.canOverride = canOverride;
+  }
+}
+
+export type SenderPreflightIssue = { id: string; label: string; severity: string };
+
+export class SenderPreflightApiError extends Error {
+  code = "SENDER_PREFLIGHT_FAILED" as const;
+  issues: SenderPreflightIssue[];
+  canOverride: boolean;
+
+  constructor(message: string, issues: SenderPreflightIssue[], canOverride: boolean) {
+    super(message);
+    this.name = "SenderPreflightApiError";
+    this.issues = issues;
+    this.canOverride = canOverride;
+  }
+}
+
+export class EmailSendRejectedError extends Error {
+  code = "email_send_rejected" as const;
+  rejectedEmail: string;
+  nextEmail?: string;
+  canRetry: boolean;
+
+  constructor(message: string, rejectedEmail: string, nextEmail?: string, canRetry = false) {
+    super(message);
+    this.name = "EmailSendRejectedError";
+    this.rejectedEmail = rejectedEmail;
+    this.nextEmail = nextEmail;
+    this.canRetry = canRetry;
+  }
+}
+
+function throwFromErrorBody(err: Record<string, unknown>, statusText: string): never {
+  const code = typeof err.code === "string" ? err.code : "";
+  const message = typeof err.error === "string" ? err.error : statusText;
+  if (code === "INSUFFICIENT_CREDITS") {
+    throw new InsufficientCreditsApiError(
+      message,
+      typeof err.required === "number" ? err.required : undefined,
+      typeof err.available === "number" ? err.available : undefined,
+    );
+  }
+  if (code === "SENDER_PREFLIGHT_FAILED") {
+    throw new SenderPreflightApiError(
+      message,
+      (err.issues as SenderPreflightIssue[]) ?? [],
+      err.canOverride !== false,
+    );
+  }
+  if (code === "QUALITY_GATE_FAILED" || code === "FOLLOWUP_QUALITY_FAILED") {
+    throw new QualityGateApiError(message, err.canOverride !== false);
+  }
+  if (code === "email_send_rejected") {
+    throw new EmailSendRejectedError(
+      message,
+      typeof err.rejectedEmail === "string" ? err.rejectedEmail : "",
+      typeof err.nextEmail === "string" ? err.nextEmail : undefined,
+      Boolean(err.canRetry),
+    );
+  }
+  throw new Error(message);
+}
+
+async function post<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
+    throwFromErrorBody(err, res.statusText);
   }
   return res.json();
 }
@@ -23,7 +116,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
+    throwFromErrorBody(err, res.statusText);
   }
   return res.json();
 }
@@ -32,7 +125,7 @@ async function get<T>(path: string): Promise<T> {
   const res = await fetch(path);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(err.error ?? res.statusText);
+    throwFromErrorBody(err, res.statusText);
   }
   return res.json();
 }
@@ -66,8 +159,10 @@ export async function scoutCompanies(params: {
   limit?: number;
   companyName?: string;
   employeeBands?: string[];
+  signal?: AbortSignal;
 }): Promise<ScoutCompaniesResponse> {
-  return post<ScoutCompaniesResponse>("/api/scout/companies", params);
+  const { signal, ...body } = params;
+  return post<ScoutCompaniesResponse>("/api/scout/companies", body, signal);
 }
 
 export type ScoutCompaniesStreamEvent =
@@ -85,13 +180,16 @@ export async function scoutCompaniesStream(
     limit?: number;
     companyName?: string;
     employeeBands?: string[];
+    signal?: AbortSignal;
   },
   onEvent: (event: ScoutCompaniesStreamEvent) => void,
 ): Promise<ScoutCompaniesResponse> {
+  const { signal, ...body } = params;
   const res = await fetch("/api/scout/companies?stream=1", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -157,8 +255,10 @@ export async function scoutPeople(params: {
   seniority?: string[];
   departments?: string[];
   cities?: string[];
+  signal?: AbortSignal;
 }): Promise<ScoutPeopleResponse> {
-  return post<ScoutPeopleResponse>("/api/scout/people", params);
+  const { signal, ...body } = params;
+  return post<ScoutPeopleResponse>("/api/scout/people", body, signal);
 }
 
 
@@ -196,13 +296,16 @@ export async function scoutPeopleBatchStream(
     seniority?: string[];
     departments?: string[];
     cities?: string[];
+    signal?: AbortSignal;
   },
   onResult: (companyId: string, result: ScoutPeopleResponse) => void,
 ): Promise<void> {
+  const { signal, ...body } = params;
   const res = await fetch("/api/scout/people/batch?stream=1", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -239,6 +342,28 @@ export async function scoutSave(params: {
   dataMode?: DataMode;
 }): Promise<{ saved: { leadId: string; name: string; emailStatus: string }[]; skipped: { name: string; reason: string }[] }> {
   return post("/api/scout/save", params);
+}
+
+export async function scoutSaveCompanies(params: {
+  companies: ScoutCompanyResult[];
+  dataMode?: DataMode;
+}): Promise<{ saved: number; results: ScoutSaveBatchResult[] }> {
+  const body = await post<{ saved?: number; results: ScoutSaveBatchResult[] }>("/api/scout/save/batch", {
+    companies: params.companies.map((company, index) => ({
+      id: company.externalId ?? `${company.name}-${index}`,
+      company,
+      people: [],
+    })),
+    dataMode: params.dataMode,
+  });
+  return {
+    saved: body.saved ?? body.results.length,
+    results: body.results,
+  };
+}
+
+export async function scoutSavedCompanies(): Promise<{ companies: ScoutCompanyResult[] }> {
+  return get("/api/scout/saved-companies");
 }
 
 export type ScoutSaveBatchResult = {
@@ -325,13 +450,14 @@ export type WriterMode = "standard" | "ai";
 
 export async function runWriter(
   leadId: string,
-  options?: { outreachTemplate?: string; mode?: "sequence" | "single"; writerMode?: WriterMode },
+  options?: { outreachTemplate?: string; mode?: "sequence" | "single"; writerMode?: WriterMode; occasionTheme?: string | null },
 ): Promise<WriterDraft> {
   const data = await post<{ draft: WriterDraft; drafts?: WriterDraft[] }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
     mode: options?.mode ?? "sequence",
     writerMode: options?.writerMode,
+    occasionTheme: options?.occasionTheme,
   });
   return data.draft;
 }
@@ -340,7 +466,7 @@ export async function runWriter(
 
 export async function runWriterStream(
   leadId: string,
-  options?: { outreachTemplate?: string; writerMode?: WriterMode },
+  options?: { outreachTemplate?: string; writerMode?: WriterMode; occasionTheme?: string | null },
   onEvent?: (event: { type: string; message?: string; draft?: WriterDraft; code?: string }) => void,
 ): Promise<WriterDraft> {
   const res = await fetch("/api/agents/writer/run/stream", {
@@ -350,6 +476,7 @@ export async function runWriterStream(
       leadId,
       outreachTemplate: options?.outreachTemplate,
       writerMode: options?.writerMode,
+      occasionTheme: options?.occasionTheme,
     }),
   });
   if (!res.ok || !res.body) {
@@ -384,12 +511,13 @@ export async function runWriterStream(
 
 export async function runWriterSequence(
   leadId: string,
-  options?: { outreachTemplate?: string; writerMode?: WriterMode },
+  options?: { outreachTemplate?: string; writerMode?: WriterMode; occasionTheme?: string | null },
 ): Promise<WriterDraft[]> {
   const data = await post<{ drafts: WriterDraft[]; draft: WriterDraft }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
     writerMode: options?.writerMode,
+    occasionTheme: options?.occasionTheme,
     mode: "sequence",
   });
   return data.drafts ?? [data.draft];
@@ -398,12 +526,13 @@ export async function runWriterSequence(
 export async function regenerateSequenceStep(
   leadId: string,
   sequencePosition: 2 | 3,
-  options?: { outreachTemplate?: string; writerMode?: WriterMode },
+  options?: { outreachTemplate?: string; writerMode?: WriterMode; occasionTheme?: string | null },
 ): Promise<WriterDraft> {
   const data = await post<{ draft: WriterDraft }>("/api/agents/writer/run", {
     leadId,
     outreachTemplate: options?.outreachTemplate,
     writerMode: options?.writerMode,
+    occasionTheme: options?.occasionTheme,
     mode: "single",
     sequencePosition,
   });
@@ -541,36 +670,6 @@ export async function approveOutreach(params: {
   return post<{ approvalId: string }>("/api/outreach/approve", params);
 }
 
-export type SenderPreflightIssue = { id: string; label: string; severity: string };
-
-export class SenderPreflightApiError extends Error {
-  code = "SENDER_PREFLIGHT_FAILED" as const;
-  issues: SenderPreflightIssue[];
-  canOverride: boolean;
-
-  constructor(message: string, issues: SenderPreflightIssue[], canOverride: boolean) {
-    super(message);
-    this.name = "SenderPreflightApiError";
-    this.issues = issues;
-    this.canOverride = canOverride;
-  }
-}
-
-export class EmailSendRejectedError extends Error {
-  code = "email_send_rejected" as const;
-  rejectedEmail: string;
-  nextEmail?: string;
-  canRetry: boolean;
-
-  constructor(message: string, rejectedEmail: string, nextEmail?: string, canRetry = false) {
-    super(message);
-    this.name = "EmailSendRejectedError";
-    this.rejectedEmail = rejectedEmail;
-    this.nextEmail = nextEmail;
-    this.canRetry = canRetry;
-  }
-}
-
 export async function sendOutreach(
   approvalId: string,
   options?: {
@@ -579,36 +678,12 @@ export async function sendOutreach(
     toEmails?: string[];
   },
 ): Promise<{ mode: string; messageId?: string; to?: string; recipients?: string[] }> {
-  const res = await fetch("/api/outreach/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      approvalId,
-      overridePreflight: options?.overridePreflight,
-      overrideQualityGate: options?.overrideQualityGate,
-      toEmails: options?.toEmails,
-    }),
+  return post<{ mode: string; messageId?: string; to?: string; recipients?: string[] }>("/api/outreach/send", {
+    approvalId,
+    overridePreflight: options?.overridePreflight,
+    overrideQualityGate: options?.overrideQualityGate,
+    toEmails: options?.toEmails,
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (data.code === "SENDER_PREFLIGHT_FAILED") {
-      throw new SenderPreflightApiError(
-        data.error ?? "Sender preflight failed",
-        data.issues ?? [],
-        data.canOverride ?? true,
-      );
-    }
-    if (data.code === "email_send_rejected") {
-      throw new EmailSendRejectedError(
-        data.error ?? "Email address rejected",
-        data.rejectedEmail ?? "",
-        data.nextEmail,
-        Boolean(data.canRetry),
-      );
-    }
-    throw new Error(data.error ?? res.statusText);
-  }
-  return data;
 }
 
 
@@ -1166,8 +1241,10 @@ export async function scoutExactSearch(params: {
   query: string;
   personName?: string;
   city?: string;
+  signal?: AbortSignal;
 }): Promise<unknown> {
-  return post("/api/scout/exact", params);
+  const { signal, ...body } = params;
+  return post("/api/scout/exact", body, signal);
 }
 
 export async function submitDraftFeedback(outreachId: string, rating: "up" | "down", comment?: string): Promise<void> {
@@ -1246,25 +1323,49 @@ import type {
 export type GiftIntelConfigView = {
   productCategory: string;
   competitorBrands: string[];
+  locations?: Array<{
+    id: string;
+    label: string;
+    group: string;
+    kind: "india" | "region" | "state" | "district";
+    searchTerms: string[];
+  }>;
+  locationSummary?: string;
 };
 
 export async function fetchGiftIntelConfig(): Promise<GiftIntelConfigView> {
   return get<GiftIntelConfigView>("/api/settings/brand-intel");
 }
 
+export async function fetchScoutLocations(): Promise<{
+  locations: NonNullable<GiftIntelConfigView["locations"]>;
+  scoutGeo?: {
+    entireIndia: boolean;
+    regionIds: string[];
+    stateIds: string[];
+    districtIds: string[];
+  };
+}> {
+  return get("/api/scout/locations");
+}
+
 export async function runGiftIntelSweep(params: {
-  competitorBrands: string[];
+  competitorBrands?: string[];
   cities?: string[];
   enabledSourceTiers?: SourceTier[];
+  sweepMode?: "competitors" | "occasions" | "upcoming_openings";
 }): Promise<GiftIntelSweepResult> {
   return post<GiftIntelSweepResult>("/api/agents/brand-intel/run", params);
 }
 
 export async function confirmGiftIntelMerge(params: {
-  accountId: string;
+  accountId?: string;
   extraction: ExtractedGiftIntel;
-}): Promise<{ ok: boolean; accountId: string }> {
-  return post<{ ok: boolean; accountId: string }>("/api/agents/brand-intel/confirm", params);
+}): Promise<{ ok: boolean; accountId: string; created?: boolean; name?: string }> {
+  return post<{ ok: boolean; accountId: string; created?: boolean; name?: string }>(
+    "/api/agents/brand-intel/confirm",
+    params,
+  );
 }
 
 

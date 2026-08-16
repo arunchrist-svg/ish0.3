@@ -5,7 +5,8 @@ import { normalizeLinkedInUrl } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, or, ilike } from "drizzle-orm";
+import { pickMatchingAccount, uniqueScoutCompanies } from "@/lib/scout/account-match";
 import {
   enrichPersonContact,
   shouldAutoAcceptEmail,
@@ -86,28 +87,216 @@ async function preFilterCheck(
 export type SaveLeadsResult = {
   saved: { leadId: string; name: string; emailStatus: string }[];
   skipped: { name: string; reason: string }[];
+  accountId?: string;
+  companySaved?: boolean;
 };
+
+export type SaveScoutCompaniesResult = {
+  saved: number;
+  accounts: { id: string; name: string }[];
+};
+
+type AccountRow = typeof accounts.$inferSelect;
 
 type PersonSaveOutcome =
   | { kind: "saved"; item: SaveLeadsResult["saved"][number] }
   | { kind: "skipped"; item: SaveLeadsResult["skipped"][number] }
   | { kind: "none" };
 
+async function loadWorkspaceAccountCandidates(
+  tenantId: string,
+  workspaceId: string,
+): Promise<AccountRow[]> {
+  return db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.tenantId, tenantId), eq(accounts.workspaceId, workspaceId)))
+    .limit(2000);
+}
+
 async function findExistingAccount(
   tenantId: string,
+  workspaceId: string,
   company: ScoutCompanyResult,
-): Promise<typeof accounts.$inferSelect | undefined> {
-  const domain = usableStoredDomain(company.domain, company.name);
-  if (domain) {
-    const byDomain = await db.query.accounts.findFirst({
-      where: (a, { eq: eqFn, and: andFn }) => andFn(eqFn(a.tenantId, tenantId), eqFn(a.domain, domain)),
+  candidates?: AccountRow[],
+): Promise<AccountRow | undefined> {
+  const pool =
+    candidates ??
+    (await (async () => {
+      const domain = usableStoredDomain(company.domain, company.name);
+      const matchers = [
+        ...(domain ? [eq(accounts.domain, domain)] : []),
+        ...(company.name.trim() ? [ilike(accounts.name, company.name.trim())] : []),
+      ];
+      if (!matchers.length) return [] as AccountRow[];
+      return db
+        .select()
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.tenantId, tenantId),
+            eq(accounts.workspaceId, workspaceId),
+            or(...matchers),
+          ),
+        )
+        .limit(100);
+    })());
+
+  return pickMatchingAccount(pool, company);
+}
+
+async function upsertScoutAccount(params: {
+  company: ScoutCompanyResult;
+  tenantId: string;
+  workspaceId: string;
+  skipExternalDomain?: boolean;
+  candidates?: AccountRow[];
+}): Promise<{ account: AccountRow; created: boolean; resolvedCompany: ScoutCompanyResult }> {
+  const { company, tenantId, workspaceId, skipExternalDomain = false, candidates } = params;
+  const usableDomain = usableStoredDomain(company.domain, company.name);
+
+  let resolvedCompany: ScoutCompanyResult = {
+    ...company,
+    domain: usableDomain ?? undefined,
+  };
+
+  if (!skipExternalDomain) {
+    const domainResolution = await resolveCompanyDomain({
+      companyName: company.name,
+      domain: company.domain,
+      website: company.website,
+      city: company.city,
+      allowExternal: !usableDomain,
     });
-    if (byDomain && isAcceptableCompanyDomain(byDomain.domain, company.name)) return byDomain;
+    resolvedCompany = {
+      ...company,
+      domain: usableStoredDomain(domainResolution.domain, company.name) ?? undefined,
+      website: domainResolution.website ?? company.website,
+    };
   }
 
-  return db.query.accounts.findFirst({
-    where: (a, { eq: eqFn, and: andFn }) => andFn(eqFn(a.tenantId, tenantId), eqFn(a.name, company.name)),
-  });
+  const existing = await findExistingAccount(tenantId, workspaceId, resolvedCompany, candidates);
+  if (existing) {
+    await db
+      .update(accounts)
+      .set({
+        domain:
+          usableStoredDomain(existing.domain, resolvedCompany.name) ??
+          usableStoredDomain(resolvedCompany.domain, resolvedCompany.name),
+        website: isAcceptableCompanyDomain(
+          normalizeDomain(existing.website) ?? existing.domain,
+          resolvedCompany.name,
+        )
+          ? existing.website
+          : resolvedCompany.website ?? null,
+        industry: existing.industry ?? resolvedCompany.industry ?? null,
+        city: existing.city ?? resolvedCompany.city ?? null,
+        employees: existing.employees ?? resolvedCompany.employees ?? null,
+        logo: existing.logo ?? resolvedCompany.logo ?? null,
+        intelNotes: existing.intelNotes ?? resolvedCompany.intelNotes ?? null,
+        fitScore: existing.fitScore ?? resolvedCompany.fitScore ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(accounts.id, existing.id));
+    return { account: existing, created: false, resolvedCompany };
+  }
+
+  const [account] = await db
+    .insert(accounts)
+    .values({
+      tenantId,
+      workspaceId,
+      name: resolvedCompany.name,
+      domain: usableStoredDomain(resolvedCompany.domain, resolvedCompany.name),
+      website: resolvedCompany.website,
+      industry: resolvedCompany.industry,
+      city: resolvedCompany.city,
+      employees: resolvedCompany.employees,
+      logo: resolvedCompany.logo,
+      fitScore: resolvedCompany.fitScore,
+      budgetBand: resolvedCompany.budgetBand,
+      revenue: resolvedCompany.revenue,
+      pastGifting: resolvedCompany.pastGifting ?? [],
+      intelNotes: resolvedCompany.intelNotes,
+      companyOverview: resolvedCompany.companyOverview ?? null,
+      dataSource: resolvedCompany.dataSource || "scout",
+      externalId: resolvedCompany.externalId,
+    })
+    .returning();
+
+  if (!account) throw new Error("Account save failed");
+  return { account, created: true, resolvedCompany };
+}
+
+export async function saveScoutCompanies(params: {
+  companies: ScoutCompanyResult[];
+  tenantId: string;
+  workspaceId: string;
+}): Promise<SaveScoutCompaniesResult> {
+  const unique = uniqueScoutCompanies(params.companies);
+  const candidates = await loadWorkspaceAccountCandidates(params.tenantId, params.workspaceId);
+  const savedAccounts: { id: string; name: string }[] = [];
+
+  for (const company of unique) {
+    const { account, created } = await upsertScoutAccount({
+      company,
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      skipExternalDomain: true,
+      candidates,
+    });
+    if (created) candidates.push(account);
+    savedAccounts.push({ id: account.id, name: account.name });
+  }
+
+  if (savedAccounts.length > 0) {
+    await logAudit({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      action: "accounts.saved",
+      entityType: "account",
+      entityId: savedAccounts[0]!.id,
+      metadata: { count: savedAccounts.length, source: "scout" },
+    });
+  }
+
+  return { saved: savedAccounts.length, accounts: savedAccounts };
+}
+
+export function accountToScoutCompany(row: AccountRow): ScoutCompanyResult {
+  return {
+    name: row.name,
+    domain: row.domain ?? undefined,
+    website: row.website ?? undefined,
+    industry: row.industry ?? undefined,
+    city: row.city ?? undefined,
+    employees: row.employees ?? undefined,
+    logo: row.logo ?? undefined,
+    fitScore: row.fitScore ?? undefined,
+    budgetBand: row.budgetBand ?? undefined,
+    revenue: row.revenue ?? undefined,
+    intelNotes: row.intelNotes ?? undefined,
+    dataSource: row.dataSource || "scout",
+    externalId: row.id,
+  };
+}
+
+export async function listSavedScoutCompanies(params: {
+  tenantId: string;
+  workspaceId: string;
+  limit?: number;
+}): Promise<ScoutCompanyResult[]> {
+  const limit = Math.min(Math.max(params.limit ?? 200, 1), 500);
+  const rows = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.tenantId, params.tenantId), eq(accounts.workspaceId, params.workspaceId)))
+    .orderBy(desc(accounts.updatedAt))
+    .limit(limit);
+
+  return rows
+    .filter((row) => (row.dataSource ?? "").toLowerCase() !== "sample")
+    .map(accountToScoutCompany);
 }
 
 async function resolveEmailStatus(params: {
@@ -146,6 +335,17 @@ export async function saveScoutLeads(params: {
   enrichmentConfig?: EnrichmentConfig;
 }): Promise<SaveLeadsResult> {
   const { people, company, tenantId, workspaceId } = params;
+
+  if (!people.length) {
+    const { account } = await upsertScoutAccount({
+      company,
+      tenantId,
+      workspaceId,
+      skipExternalDomain: true,
+    });
+    return { saved: [], skipped: [], accountId: account.id, companySaved: true };
+  }
+
   const dataMode = (params.dataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
   const leadSource = params.leadSource ?? "scout";
   const cfg =
@@ -155,71 +355,13 @@ export async function saveScoutLeads(params: {
   const enrichMode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
   const skipGooglePlaces = leadSource === "scout_wizard";
 
-  const usableDomain = usableStoredDomain(company.domain, company.name);
-  const domainResolution = await resolveCompanyDomain({
-    companyName: company.name,
-    domain: company.domain,
-    website: company.website,
-    city: company.city,
-    allowExternal: !usableDomain,
+  const { account, resolvedCompany } = await upsertScoutAccount({
+    company,
+    tenantId,
+    workspaceId,
+    skipExternalDomain: false,
   });
-  const resolvedCompany: ScoutCompanyResult = {
-    ...company,
-    domain: usableStoredDomain(domainResolution.domain, company.name) ?? undefined,
-    website: domainResolution.website ?? company.website,
-  };
-
-  let resolvedAccountId: string;
-  const [account] = await db
-    .insert(accounts)
-    .values({
-      tenantId,
-      workspaceId,
-      name: resolvedCompany.name,
-      domain: usableStoredDomain(resolvedCompany.domain, resolvedCompany.name),
-      website: resolvedCompany.website,
-      industry: resolvedCompany.industry,
-      city: resolvedCompany.city,
-      employees: resolvedCompany.employees,
-      logo: resolvedCompany.logo,
-      fitScore: resolvedCompany.fitScore,
-      budgetBand: resolvedCompany.budgetBand,
-      revenue: resolvedCompany.revenue,
-      pastGifting: resolvedCompany.pastGifting ?? [],
-      intelNotes: resolvedCompany.intelNotes,
-      companyOverview: resolvedCompany.companyOverview ?? null,
-      dataSource: resolvedCompany.dataSource,
-      externalId: resolvedCompany.externalId,
-    })
-    .onConflictDoNothing()
-    .returning();
-
-  if (account) {
-    resolvedAccountId = account.id;
-  } else {
-    const existing = await findExistingAccount(tenantId, resolvedCompany);
-    if (!existing) throw new Error("Account save failed");
-    resolvedAccountId = existing.id;
-    await db
-      .update(accounts)
-      .set({
-        domain:
-          usableStoredDomain(existing.domain, resolvedCompany.name) ??
-          usableStoredDomain(resolvedCompany.domain, resolvedCompany.name),
-        website: isAcceptableCompanyDomain(
-          normalizeDomain(existing.website) ?? existing.domain,
-          resolvedCompany.name,
-        )
-          ? existing.website
-          : resolvedCompany.website ?? null,
-        industry: existing.industry ?? resolvedCompany.industry ?? null,
-        city: existing.city ?? resolvedCompany.city ?? null,
-        employees: existing.employees ?? resolvedCompany.employees ?? null,
-        logo: existing.logo ?? resolvedCompany.logo ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(accounts.id, existing.id));
-  }
+  const resolvedAccountId = account.id;
 
   const outcomes = await mapWithConcurrency(people, SAVE_PERSON_CONCURRENCY, async (person) => {
     return saveOnePerson({
@@ -248,7 +390,7 @@ export async function saveScoutLeads(params: {
     void enqueueResearchForLeads(savedLeads.map((s) => s.leadId));
   }
 
-  return { saved: savedLeads, skipped };
+  return { saved: savedLeads, skipped, accountId: resolvedAccountId };
 }
 
 async function saveOnePerson(params: {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const runGiftIntelSweep = vi.fn();
+const runOccasionIntelSweep = vi.fn();
 
 vi.mock("@/lib/settings/workspace-settings", () => ({
   getResolvedEnrichmentConfigForWorkspace: vi.fn().mockResolvedValue({
@@ -11,6 +12,10 @@ vi.mock("@/lib/settings/workspace-settings", () => ({
 
 vi.mock("@/lib/agents/brand-intel", () => ({
   runGiftIntelSweep: (...args: unknown[]) => runGiftIntelSweep(...args),
+}));
+
+vi.mock("@/lib/agents/occasion-intel", () => ({
+  runOccasionIntelSweep: (...args: unknown[]) => runOccasionIntelSweep(...args),
 }));
 
 vi.mock("@/lib/tenant", async (importOriginal) => {
@@ -95,6 +100,88 @@ describe("AGENT-API brand-intel route", () => {
         targetCategory: "Sweets",
         targetCities: ["Bengaluru"],
         enabledSourceTiers: [1, 2],
+      }),
+    );
+  });
+
+  it("runs coming soon sweep without a competitor brand and drops Entire India as a city", async () => {
+    vi.mocked(requireTenantContext).mockResolvedValueOnce({
+      userId: "user-1",
+      tenantId: "tenant-1",
+      workspaceId: "ws-1",
+      role: "owner",
+      platformRole: "user",
+      isSuperadmin: false,
+      onboardingStatus: "complete",
+      onboardingStep: 5,
+      demoMode: true,
+      tenantSlug: "demo",
+      mustChangePassword: false,
+    });
+    runOccasionIntelSweep.mockResolvedValueOnce({
+      results: [],
+      autoMerged: 0,
+      pendingConfirmations: [],
+      errors: [],
+      stats: { queriesRun: 3, hitsFound: 4, hitsAfterPreFilter: 2, hitsExtracted: 1, byTier: { 1: 1 }, combinationsRun: 1 },
+    });
+
+    const res = await POST(
+      new Request("http://localhost/api/agents/brand-intel/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sweepMode: "upcoming_openings",
+          cities: ["Entire India", "Bengaluru"],
+          enabledSourceTiers: [1, 2],
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(runGiftIntelSweep).not.toHaveBeenCalled();
+    expect(runOccasionIntelSweep).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "tenant-1",
+        workspaceId: "ws-1",
+        families: ["coming_soon"],
+        targetCities: ["Bengaluru"],
+        enabledSourceTiers: [1, 2],
+      }),
+    );
+  });
+
+  it("omits targetCities when the only city is Entire India", async () => {
+    vi.mocked(requireTenantContext).mockResolvedValueOnce({
+      userId: "user-1",
+      tenantId: "tenant-1",
+      workspaceId: "ws-1",
+      role: "owner",
+      platformRole: "user",
+      isSuperadmin: false,
+      onboardingStatus: "complete",
+      onboardingStep: 5,
+      demoMode: true,
+      tenantSlug: "demo",
+      mustChangePassword: false,
+    });
+
+    const res = await POST(
+      new Request("http://localhost/api/agents/brand-intel/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          competitorBrands: ["Kanti Sweets"],
+          cities: ["Entire India"],
+        }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(runGiftIntelSweep).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetBrands: ["Kanti Sweets"],
+        targetCities: undefined,
       }),
     );
   });

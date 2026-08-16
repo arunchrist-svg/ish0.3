@@ -1,9 +1,11 @@
 import { normalizeCompanyName } from "@/lib/enrichment/company-name-match";
 import { computeSeniorityScore, sortPeopleByScore } from "@/lib/enrichment/seniority-score";
 import type { ScoutPersonResult } from "@/lib/enrichment/types";
+import { MAX_SCOUT_LEADS_LIMIT } from "@/lib/enrichment/config";
+import { personMatchesRoles } from "@/lib/enrichment/people-role-filter";
 
 /** Matches Settings → Scout Volume "Leads per company" max. */
-export const MAX_PEOPLE_PER_COMPANY = 25;
+export const MAX_PEOPLE_PER_COMPANY = MAX_SCOUT_LEADS_LIMIT;
 
 export function peoplePerCompanyLimit(scoutLeadsLimit: number): number {
   const n = Number.isFinite(scoutLeadsLimit) ? Math.round(scoutLeadsLimit) : 1;
@@ -66,6 +68,45 @@ export function rankPeopleSeniorFirst(people: ScoutPersonResult[]): ScoutPersonR
   return sortPeopleByScore(
     people.map((person) => ({ ...person, matchScore: computeSeniorityScore(person).total })),
   );
+}
+
+const GIFTING_DEPTS = new Set(["HR", "Admin", "Procurement", "Facilities"]);
+
+/** Rank the actual buyer for this offer, not only the most senior title. */
+export function rankPeopleForScout(
+  people: ScoutPersonResult[],
+  opts?: { seniority?: string[]; departments?: string[]; buyerPersonas?: string[] },
+): ScoutPersonResult[] {
+  const seniority = opts?.seniority ?? [];
+  const departments = opts?.departments ?? [];
+  const personas = opts?.buyerPersonas ?? [];
+  if (!people.length) return people;
+
+  return [...people]
+    .map((person) => {
+      const base = computeSeniorityScore(person).total;
+      let bonus = 0;
+      const title = `${person.title ?? ""} ${person.department ?? ""}`.toLowerCase();
+      if (departments.length && personMatchesRoles(person, [], departments)) bonus += 18;
+      if (seniority.length && personMatchesRoles(person, seniority, [])) bonus += 8;
+      if (
+        personas.some((persona) => {
+          const token = persona.toLowerCase().replace(/\b(director|manager|head|lead|vp|chief)\b/g, "").trim();
+          return token.length >= 2 && title.includes(token);
+        })
+      ) {
+        bonus += 10;
+      }
+      if (
+        departments.some((d) => GIFTING_DEPTS.has(d)) &&
+        /\b(cto|cfo|engineer|software)\b/i.test(title) &&
+        !/\b(hr|people|chro|admin|procurement|purchase)\b/i.test(title)
+      ) {
+        bonus -= 40;
+      }
+      return { ...person, matchScore: Math.max(0, Math.min(100, base + bonus)) };
+    })
+    .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 }
 
 export function scoutPeopleCoverage(params: {

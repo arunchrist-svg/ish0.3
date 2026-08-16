@@ -27,7 +27,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "file required" }, { status: 400 });
     }
 
-    await assertCredits(ctx.tenantId, "linkedin.import", 1);
+    await assertCredits(ctx.tenantId, "linkedin.import", 1, creditActorFrom(ctx));
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const summary = await importConnectionsFromFile(memberId, buffer, file.name);

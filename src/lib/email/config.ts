@@ -5,7 +5,7 @@ export type EmailSendMode = "dry_run" | "test" | "live";
 export type EmailStyle = "primary" | "marketing";
 /** Legacy preset ids kept for migration; new saves use "custom" + verticalPackId. */
 export type BrandSlug = "ish" | "prestige" | "custom";
-export type CampaignMode = "diwali_gifting" | "mass_ordering" | "festival_bundle" | "custom";
+export type CampaignMode = "diwali_gifting" | "year_round" | "mass_ordering" | "festival_bundle" | "custom";
 export type VerticalPackId = "general" | "gifting-sweets" | "gifting-appliances";
 
 /** Insights extracted from the seller's website during setup / Settings. */
@@ -32,6 +32,8 @@ export type WebsiteBrandInsights = {
   productWriteup?: string;
   /** Themes Writer should lean on (offers, occasions, proof, logistics). */
   emailKeywords?: string[];
+  /** Who you sell to. Scout and Writer use this so sweets finds employer-buyers, not other sweet shops. */
+  icpSummary?: string;
 };
 
 export type BrandConfig = {
@@ -52,6 +54,8 @@ export type BrandConfig = {
   websiteUrl?: string;
   /** Auto-filled from website analysis; Writer and Scout consume these. */
   websiteInsights?: WebsiteBrandInsights;
+  /** Email 1 CTA id (meet_online, gift_sampling, meet_in_person). Set from the preference coach. */
+  defaultOutreachCta?: string;
 };
 export type EmailProvider = "smtp" | "resend";
 
@@ -127,16 +131,70 @@ export const EMAIL_PROVIDER_OPTIONS: {
 }[] = [
   {
     value: "smtp",
-    label: "SMTP (Google Workspace)",
-    desc: "Send via smtp.gmail.com using an App Password. Recommended for your own domain.",
+    label: "Inbox (SMTP)",
+    desc: "Send via Gmail or Zoho SMTP using the mailbox password or an app-specific password.",
     badge: "Recommended",
   },
   {
     value: "resend",
     label: "Resend",
-    desc: "Send via Resend API. Better for serverless deploys (e.g. Vercel).",
+    desc: "Send via Resend API. Needs a domain you can verify in DNS.",
   },
 ];
+
+export type SmtpServerId = "gmail" | "zoho_in" | "zoho_com";
+
+export const SMTP_SERVER_OPTIONS: {
+  value: SmtpServerId;
+  label: string;
+  host: string;
+  port: number;
+  secure: boolean;
+  imapHost: string;
+}[] = [
+  {
+    value: "gmail",
+    label: "Gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false,
+    imapHost: "imap.gmail.com",
+  },
+  {
+    value: "zoho_in",
+    label: "Zoho India",
+    host: "smtp.zoho.in",
+    port: 587,
+    secure: false,
+    imapHost: "imap.zoho.in",
+  },
+  {
+    value: "zoho_com",
+    label: "Zoho",
+    host: "smtp.zoho.com",
+    port: 587,
+    secure: false,
+    imapHost: "imap.zoho.com",
+  },
+];
+
+export function smtpServerFromHost(host?: string | null): SmtpServerId {
+  const h = (host ?? "").trim().toLowerCase();
+  if (h.includes("zoho.in")) return "zoho_in";
+  if (h.includes("zoho")) return "zoho_com";
+  return "gmail";
+}
+
+export function applySmtpServer(id: SmtpServerId): Pick<EmailConfig, "smtpHost" | "smtpPort" | "smtpSecure"> {
+  const option = SMTP_SERVER_OPTIONS.find((o) => o.value === id) ?? SMTP_SERVER_OPTIONS[0];
+  return { smtpHost: option.host, smtpPort: option.port, smtpSecure: option.secure };
+}
+
+export function imapHostForSmtp(host?: string | null): { host: string; port: number } {
+  const id = smtpServerFromHost(host);
+  const option = SMTP_SERVER_OPTIONS.find((o) => o.value === id) ?? SMTP_SERVER_OPTIONS[0];
+  return { host: option.imapHost, port: 993 };
+}
 
 export const EMAIL_STYLE_OPTIONS: {
   value: EmailStyle;
@@ -301,14 +359,14 @@ export function getSmtpStatus(config?: EmailConfig): ProviderStatus {
   if (!config) {
     return {
       configured: false,
-      hint: "Add your Gmail address and App Password in Settings → Email",
+      hint: "Add your inbox email and App Password in Settings → Email",
     };
   }
   const creds = resolveSmtpCredentials(config);
   if (!creds.host || !creds.user || !creds.pass) {
     return {
       configured: false,
-      hint: "Add your Gmail address and App Password in Settings → Email",
+      hint: "Add your inbox email and App Password in Settings → Email",
       user: creds.user || undefined,
     };
   }

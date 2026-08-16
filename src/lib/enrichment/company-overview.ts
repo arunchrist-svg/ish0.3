@@ -3,6 +3,8 @@ import { eq, desc } from "drizzle-orm";
 import { callLLM } from "@/lib/llm";
 import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { tavilySearch } from "./tavily-client";
+import { mergeResolvedWebsite } from "./company-domain-quality";
+import { resolveCompanyDomain } from "./resolve-company-domain";
 import type {
   CompanyOverview,
   CompanyOverviewInput,
@@ -41,7 +43,7 @@ function pickDecisionMaker(
   if (hint?.trim()) return hint.trim();
   const key = keyContacts.find((c) => c.name);
   if (key) {
-    return key.title ? `${key.name} — ${key.title}` : key.name;
+    return key.title ? `${key.name}, ${key.title}` : key.name;
   }
   if (decisionChain?.length) return decisionChain[0];
   return undefined;
@@ -83,6 +85,9 @@ function mergeOverview(
       (known.pastGiftingBrands?.length ? known.pastGiftingBrands : undefined) ||
       (base.pastGiftingBrands?.length ? base.pastGiftingBrands : undefined) ||
       (llm.pastGiftingBrands?.length ? llm.pastGiftingBrands : undefined),
+    detectedOccasions:
+      (base.detectedOccasions?.length ? base.detectedOccasions : undefined) ||
+      (llm.detectedOccasions?.length ? llm.detectedOccasions : undefined),
     budgetBand: budget,
     giftBudget: budget,
     fitScore: known.fitScore ?? base.fitScore ?? llm.fitScore,
@@ -215,6 +220,8 @@ export async function enrichCompanyOverview(
   let keyContacts: { name: string; title: string | null }[] = [];
   let decisionChain: string[] | undefined;
   let overviewEnrichedAt: Date | null | undefined;
+  let existingDomain = domain;
+  let existingWebsite = website;
 
   if (accountId) {
     const ctx = await loadAccountContext(accountId);
@@ -230,6 +237,8 @@ export async function enrichCompanyOverview(
       dbPastGifting = normalizePastGifting(account.pastGifting);
       keyContacts = ctx.keyContacts;
       decisionChain = ctx.decisionChain;
+      existingDomain = existingDomain || account.domain || undefined;
+      existingWebsite = existingWebsite || account.website || undefined;
 
       if (storedOverview && isFresh(overviewEnrichedAt, force)) {
         const merged = mergeOverview(storedOverview, {}, {
@@ -241,14 +250,38 @@ export async function enrichCompanyOverview(
           pastGiftingBrands: dbPastGifting,
           decisionMaker: pickDecisionMaker(keyContacts, decisionChain, decisionMakerHint),
         });
+        const cachedSite = mergeResolvedWebsite({
+          companyName: name,
+          resolved: { source: "unresolved" },
+          existingDomain,
+          existingWebsite,
+        });
         return {
           overview: merged,
           cached: true,
           enrichedAt: overviewEnrichedAt?.toISOString(),
+          domain: cachedSite.domain,
+          website: cachedSite.website,
         };
       }
     }
   }
+
+  const domainResolution = await resolveCompanyDomain({
+    companyName: name,
+    domain: existingDomain,
+    website: existingWebsite,
+    city,
+    allowExternal: true,
+  });
+  const resolvedSite = mergeResolvedWebsite({
+    companyName: name,
+    resolved: domainResolution,
+    existingDomain,
+    existingWebsite,
+  });
+  const resolvedDomain = resolvedSite.domain;
+  const resolvedWebsite = resolvedSite.website;
 
   const knownDecisionMaker = pickDecisionMaker(
     keyContacts,
@@ -256,7 +289,9 @@ export async function enrichCompanyOverview(
     decisionMakerHint,
   );
 
-  const searchQuery = `"${name}" ${city ?? "India"} corporate gifting HR procurement employees vendor compliance`;
+  const searchQuery = `"${name}" ${city ?? "India"} ${resolvedDomain ?? ""} corporate gifting HR procurement employees vendor compliance`
+    .replace(/\s+/g, " ")
+    .trim();
   let webContext = "";
   try {
     const hits = await tavilySearch(searchQuery, 6);
@@ -271,8 +306,8 @@ export async function enrichCompanyOverview(
   const prompt = `Company: ${name}
 City: ${city ?? "India"}
 Industry/Sector: ${industry ?? "unknown"}
-Domain: ${domain ?? "unknown"}
-Website: ${website ?? "unknown"}
+Domain: ${resolvedDomain ?? "unknown"}
+Website: ${resolvedWebsite ?? "unknown"}
 Known employees: ${dbEmployees ?? "unknown"}
 Known gift budget: ${dbGiftBudget ?? "unknown"}
 Known intel: ${dbIntel ?? "none"}
@@ -286,7 +321,7 @@ Seller brand and offer will be supplied separately when drafting outreach; here 
 Output ONLY valid JSON with this shape:
 {
   "sector": "industry sector string",
-  "decisionMaker": "Name — Title or role likely to own procurement or partnership decisions",
+  "decisionMaker": "Name, Title or role likely to own procurement or partnership decisions",
   "employees": "employee count or range as string",
   "nextGiftingCalendarCycle": "next likely buying or recognition occasion and timing",
   "corporateMilestones": ["recent milestone 1", "milestone 2"],
@@ -346,6 +381,8 @@ Use "unknown" sparingly; infer reasonable India corporate context when web data 
         pastGifting: overview.pastGiftingBrands?.length
           ? overview.pastGiftingBrands
           : undefined,
+        domain: resolvedDomain ?? null,
+        website: resolvedWebsite ?? null,
         updatedAt: enrichedAt,
       })
       .where(eq(accounts.id, accountId));
@@ -355,5 +392,7 @@ Use "unknown" sparingly; infer reasonable India corporate context when web data 
     overview,
     cached: false,
     enrichedAt: enrichedAt.toISOString(),
+    domain: resolvedDomain,
+    website: resolvedWebsite,
   };
 }

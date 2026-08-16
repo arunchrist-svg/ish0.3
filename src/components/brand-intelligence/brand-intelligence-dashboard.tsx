@@ -27,13 +27,22 @@ import { toast } from "sonner";
 import {
   confirmGiftIntelMerge,
   fetchGiftIntelConfig,
+  fetchScoutLocations,
   runGiftIntelSweep,
   type GiftIntelConfigView,
   type GiftIntelResultRow,
   type GiftIntelSweepResult,
 } from "@/lib/api-client";
 import type { SourceTier } from "@/lib/brand-intel/types";
-import { SCOUT_CITY_GROUPS, type ScoutCity } from "@/lib/scouting-data";
+import {
+  citiesForGiftIntelSweep,
+  defaultLabelsFromLocationOptions,
+  isNationwideLabel,
+  locationOptionsFromSelection,
+  scoutPickerAllowedLabels,
+  type ScoutGeoSelection,
+  type ScoutLocationOption,
+} from "@/lib/geo/india";
 
 const TIER_OPTIONS: {
   tier: SourceTier;
@@ -93,11 +102,32 @@ function statusMeta(row: GiftIntelResultRow) {
   return { label: "No match", className: "border-brand-border/60 bg-white/60 text-brand-ink-soft" };
 }
 
+function groupLocationOptions(options: ScoutLocationOption[]): { label: string; cities: string[] }[] {
+  const groups: { label: string; cities: string[] }[] = [];
+  for (const option of options) {
+    const last = groups[groups.length - 1];
+    if (last && last.label === option.group) {
+      last.cities.push(option.label);
+    } else {
+      groups.push({ label: option.group, cities: [option.label] });
+    }
+  }
+  return groups;
+}
+
+function citySelectionLabel(selected: string[]): string {
+  if (selected.length === 0) return "No city filter";
+  if (selected.length === 1) return selected[0];
+  if (selected.every(isNationwideLabel)) return selected[0];
+  return `${selected.length} locations selected`;
+}
+
 export function BrandIntelligenceDashboard() {
   const [giftIntelConfig, setGiftIntelConfig] = useState<GiftIntelConfigView | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [selectedCompetitors, setSelectedCompetitors] = useState<string[]>([]);
-  const [selectedCities, setSelectedCities] = useState<ScoutCity[]>([]);
+  const [locationOptions, setLocationOptions] = useState<ScoutLocationOption[]>([]);
+  const [selectedCities, setSelectedCities] = useState<string[]>([]);
   const [enabledTiers, setEnabledTiers] = useState<SourceTier[]>([1, 2]);
   const [isExtracting, setIsExtracting] = useState(false);
   const [errorLogs, setErrorLogs] = useState<string[]>([]);
@@ -105,8 +135,20 @@ export function BrandIntelligenceDashboard() {
   const [pendingConfirmations, setPendingConfirmations] = useState<GiftIntelResultRow[]>([]);
   const [stats, setStats] = useState<GiftIntelSweepResult["stats"] | null>(null);
   const [filter, setFilter] = useState("");
+  const [occasionChip, setOccasionChip] = useState<string>("all");
+  const [sweepMode, setSweepMode] = useState<"competitors" | "occasions" | "upcoming_openings">("competitors");
   const [citySheetOpen, setCitySheetOpen] = useState(false);
   const isMobile = useIsMobileLayout();
+
+  function applyLocationOptions(locations: ScoutLocationOption[]) {
+    setLocationOptions(locations);
+    const allowed = scoutPickerAllowedLabels(locations);
+    setSelectedCities((prev) => {
+      const kept = prev.filter((city) => allowed.has(city));
+      if (kept.length) return kept;
+      return citiesForGiftIntelSweep(defaultLabelsFromLocationOptions(locations)) ?? [];
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -116,9 +158,13 @@ export function BrandIntelligenceDashboard() {
         if (cancelled) return;
         setGiftIntelConfig(cfg);
         setSelectedCompetitors((prev) => (prev.length ? prev : cfg.competitorBrands.slice(0, 1)));
+        applyLocationOptions((cfg.locations as ScoutLocationOption[] | undefined) ?? locationOptionsFromSelection());
       })
       .catch(() => {
-        if (!cancelled) toast.error("Could not load Brand Intelligence settings");
+        if (!cancelled) {
+          toast.error("Could not load Brand Intelligence settings");
+          applyLocationOptions(locationOptionsFromSelection());
+        }
       })
       .finally(() => {
         if (!cancelled) setConfigLoading(false);
@@ -128,19 +174,67 @@ export function BrandIntelligenceDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    function onScoutGeoUpdated(e: Event) {
+      const detail = (e as CustomEvent<{ scoutGeo?: ScoutGeoSelection }>).detail;
+      void fetchScoutLocations()
+        .then((data) => {
+          applyLocationOptions(
+            data.locations ?? locationOptionsFromSelection(data.scoutGeo ?? detail?.scoutGeo),
+          );
+        })
+        .catch(() => {
+          if (detail?.scoutGeo) applyLocationOptions(locationOptionsFromSelection(detail.scoutGeo));
+        });
+    }
+    window.addEventListener("scout-geo-updated", onScoutGeoUpdated);
+    return () => window.removeEventListener("scout-geo-updated", onScoutGeoUpdated);
+  }, []);
+
+
+  const occasionChips = useMemo(() => {
+    const values = new Set<string>();
+    for (const row of extractedIntelligence) {
+      const type = row.extraction_data?.occasion_type?.trim();
+      const context = row.extraction_data?.occasion_or_context?.trim();
+      const timing = row.extraction_data?.timing?.trim();
+      const signal = row.extraction_data?.signal_type?.trim();
+      if (type) values.add(type);
+      else if (context) values.add(context);
+      if (timing) values.add(timing);
+      if (signal) values.add(signal);
+    }
+    return [...values].sort();
+  }, [extractedIntelligence]);
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return extractedIntelligence;
     return extractedIntelligence.filter((row) => {
+      const type = row.extraction_data?.occasion_type?.toLowerCase() ?? "";
+      const occasion = row.extraction_data?.occasion_or_context?.toLowerCase() ?? "";
+      const timing = row.extraction_data?.timing?.toLowerCase() ?? "";
+      const signal = row.extraction_data?.signal_type?.toLowerCase() ?? "";
+      if (occasionChip !== "all") {
+        const chip = occasionChip.toLowerCase();
+        if (
+          type !== chip &&
+          occasion !== chip &&
+          timing !== chip &&
+          signal !== chip &&
+          !occasion.includes(chip) &&
+          !type.includes(chip)
+        ) {
+          return false;
+        }
+      }
+      if (!q) return true;
       const company = row.extraction_data?.giving_company?.toLowerCase() ?? "";
       const product = row.extraction_data?.specific_product_details?.toLowerCase() ?? "";
-      const occasion = row.extraction_data?.occasion_or_context?.toLowerCase() ?? "";
       const city = row.extraction_data?.giving_company_city?.toLowerCase() ?? "";
       const brand = row.extraction_data?.brand_identified?.toLowerCase() ?? "";
-      return company.includes(q) || product.includes(q) || occasion.includes(q) || city.includes(q) || brand.includes(q);
+      return company.includes(q) || product.includes(q) || occasion.includes(q) || type.includes(q) || city.includes(q) || brand.includes(q);
     });
-  }, [extractedIntelligence, filter]);
+  }, [extractedIntelligence, filter, occasionChip]);
 
   function toggleTier(tier: SourceTier) {
     setEnabledTiers((prev) =>
@@ -154,7 +248,10 @@ export function BrandIntelligenceDashboard() {
     );
   }
 
-  function toggleCity(city: ScoutCity) {
+  const locationGroups = useMemo(() => groupLocationOptions(locationOptions), [locationOptions]);
+  const locationSummary = giftIntelConfig?.locationSummary;
+
+  function toggleCity(city: string) {
     setSelectedCities((prev) =>
       prev.includes(city) ? prev.filter((c) => c !== city) : [...prev, city],
     );
@@ -173,7 +270,7 @@ export function BrandIntelligenceDashboard() {
   }
 
   async function handleSweep() {
-    if (!selectedCompetitors.length) {
+    if (sweepMode === "competitors" && !selectedCompetitors.length) {
       toast.error("Select at least one competitor brand");
       return;
     }
@@ -182,13 +279,15 @@ export function BrandIntelligenceDashboard() {
     setErrorLogs([]);
     try {
       const result = await runGiftIntelSweep({
-        competitorBrands: selectedCompetitors,
-        cities: selectedCities.length ? selectedCities : undefined,
+        competitorBrands: sweepMode === "competitors" ? selectedCompetitors : undefined,
+        cities: citiesForGiftIntelSweep(selectedCities),
         enabledSourceTiers: enabledTiers.length ? enabledTiers : [1, 2],
+        sweepMode,
       });
       setExtractedIntelligence(result.results);
       setPendingConfirmations(result.pendingConfirmations);
       setStats(result.stats);
+      setOccasionChip("all");
       if (result.errors.length) setErrorLogs(result.errors);
       toast.success(
         `Sweep complete: ${result.results.length} hits, ${result.autoMerged} auto-merged`,
@@ -202,18 +301,26 @@ export function BrandIntelligenceDashboard() {
     }
   }
 
-  async function handleConfirm(row: GiftIntelResultRow, accountId: string) {
+  async function handleConfirm(row: GiftIntelResultRow, accountId?: string) {
     try {
-      await confirmGiftIntelMerge({ accountId, extraction: row });
+      const result = await confirmGiftIntelMerge({
+        accountId,
+        extraction: row,
+      });
       setExtractedIntelligence((prev) =>
         prev.map((r) =>
           r.id === row.id
-            ? { ...r, mergeStatus: "auto_merged", matchedAccountId: accountId }
+            ? {
+                ...r,
+                mergeStatus: "auto_merged",
+                matchedAccountId: result.accountId,
+                matchedAccountName: result.name ?? row.matchedAccountName,
+              }
             : r,
         ),
       );
       setPendingConfirmations((prev) => prev.filter((r) => r.id !== row.id));
-      toast.success("Account updated with gifting intel");
+      toast.success(result.created ? "Account created from intel" : "Account updated with gifting intel");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update account");
     }
@@ -232,7 +339,7 @@ export function BrandIntelligenceDashboard() {
             <button
               type="button"
               onClick={handleSweep}
-              disabled={isExtracting || !selectedCompetitors.length}
+              disabled={isExtracting || (sweepMode === "competitors" && !selectedCompetitors.length)}
               className={cn(
                 "flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
                 "bg-brand-yellow-gradient text-brand-black shadow-brand-yellow-sm",
@@ -256,8 +363,7 @@ export function BrandIntelligenceDashboard() {
               <p className={cn(text.metaLabel, "mb-0.5 uppercase tracking-[0.14em]")}>Brand Intelligence</p>
               <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Corporate Gift Tracker</h1>
               <p className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-brand-ink-soft">
-                Discover which companies distributed your target brand as employee gifts across social,
-                news, and workplace sources.
+                Discover which companies gifted a competitor brand, announced a store opening, or are hiring for stores that are still coming up.
               </p>
             </div>
           </div>
@@ -283,9 +389,34 @@ export function BrandIntelligenceDashboard() {
           >
             <div className="settings-hero-stripe h-[3px] w-full rounded-none" aria-hidden />
             <div className="p-3 lg:p-5">
-              <div className="mb-4 flex items-center gap-2">
-                <Gift className="size-4 text-brand-stratus-blue" />
-                <h2 className={text.cardTitle}>Sweep parameters</h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Gift className="size-4 text-brand-stratus-blue" />
+                  <h2 className={text.cardTitle}>Sweep parameters</h2>
+                </div>
+                <div className="inline-flex overflow-hidden rounded-full border border-brand-border/70 bg-white text-[11px] font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setSweepMode("competitors")}
+                    className={cn("px-3 py-1.5", sweepMode === "competitors" ? "bg-brand-yellow text-brand-ink" : "text-brand-ink-soft")}
+                  >
+                    Competitors
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSweepMode("occasions")}
+                    className={cn("px-3 py-1.5", sweepMode === "occasions" ? "bg-brand-yellow text-brand-ink" : "text-brand-ink-soft")}
+                  >
+                    Occasions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSweepMode("upcoming_openings")}
+                    className={cn("px-3 py-1.5", sweepMode === "upcoming_openings" ? "bg-brand-yellow text-brand-ink" : "text-brand-ink-soft")}
+                  >
+                    Coming soon
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_2fr]">
@@ -297,6 +428,16 @@ export function BrandIntelligenceDashboard() {
                   <span className="text-[10.5px] text-brand-ink-faint">Set in Settings → Enrichment</span>
                 </div>
                 <div className="flex flex-col gap-2">
+                  {sweepMode === "upcoming_openings" ? (
+                    <p className="rounded-2xl border border-dashed border-brand-border/70 bg-white/50 px-3 py-4 text-[12px] leading-relaxed text-brand-ink-soft">
+                      Leading indicators 1 to 2 months ahead: store-manager hiring, coming-soon locators, mall leasing, and chain expansion press. No competitor brand. Results are tagged upcoming so Writer can pitch before opening week.
+                    </p>
+                  ) : sweepMode === "occasions" ? (
+                    <p className="rounded-2xl border border-dashed border-brand-border/70 bg-white/50 px-3 py-4 text-[12px] leading-relaxed text-brand-ink-soft">
+                      Searches news and social for new stores, office inaugurations, foundation days, and funding milestones. No competitor brand required. Pick cities below to keep results local.
+                    </p>
+                  ) : (
+                  <>
                   <div className="flex items-center justify-between gap-2">
                     <span className={text.label}>Competitor brands</span>
                     <div className="flex items-center gap-2">
@@ -338,6 +479,8 @@ export function BrandIntelligenceDashboard() {
                     </div>
                   )}
                   <span className="text-[10.5px] text-brand-ink-faint">Select one or more competitors per sweep</span>
+                  </>
+                  )}
                 </div>
               </div>
 
@@ -348,9 +491,12 @@ export function BrandIntelligenceDashboard() {
                     <MapPin className="size-4 text-brand-stratus-blue" />
                     <span className={text.label}>Gifting company city</span>
                   </div>
-                  {selectedCities.length > 0 ? (
-                    <button type="button" onClick={clearCities} className="text-[11px] font-semibold text-brand-stratus-blue">Clear</button>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {selectedCities.length > 0 ? (
+                      <button type="button" onClick={clearCities} className="text-[11px] font-semibold text-brand-stratus-blue">Clear</button>
+                    ) : null}
+                    <Link href="/settings?tab=enrichment" className="text-[11px] font-semibold text-brand-stratus-blue hover:underline">Settings</Link>
+                  </div>
                 </div>
                 {isMobile ? (
                   <>
@@ -360,28 +506,30 @@ export function BrandIntelligenceDashboard() {
                       className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-brand-border/60 bg-white/80 px-3.5 py-2.5 text-left active:scale-[0.99]"
                     >
                       <span className="text-[13px] font-semibold text-brand-ink">
-                        {selectedCities.length === 0
-                          ? "All cities"
-                          : selectedCities.length === 1
-                            ? selectedCities[0]
-                            : `${selectedCities.length} cities selected`}
+                        {citySelectionLabel(selectedCities)}
                       </span>
                       <ChevronDown className="size-4 text-brand-ink-faint" />
                     </button>
                     <BottomSheet open={citySheetOpen} onClose={() => setCitySheetOpen(false)} title="Select cities" contentClassName="px-0 py-0">
                       <div className="px-3 pb-4">
-                        <p className="mb-3 text-[12px] text-brand-ink-soft">Optional. Leave empty for all cities.</p>
-                        {SCOUT_CITY_GROUPS.map((group) => (
+                        <p className="mb-3 text-[12px] text-brand-ink-soft">
+                          Matches{" "}
+                          <Link href="/settings?tab=enrichment" className="font-semibold text-brand-stratus-blue">
+                            Settings → Enrichment
+                          </Link>
+                          {locationSummary ? ` (${locationSummary})` : ""}. Clear to search without a city filter.
+                        </p>
+                        {locationGroups.filter((g) => !g.cities.every(isNationwideLabel)).map((group) => (
                           <div key={group.label} className="mb-3">
                             <p className="mb-1.5 px-1 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">{group.label}</p>
                             <div className="grid grid-cols-2 gap-2">
-                              {group.cities.map((city) => {
+                              {group.cities.filter((city) => !isNationwideLabel(city)).map((city) => {
                                 const active = selectedCities.includes(city);
                                 return (
                                   <button
                                     key={city}
                                     type="button"
-                                    onClick={() => toggleCity(city as ScoutCity)}
+                                    onClick={() => toggleCity(city)}
                                     className={cn(
                                       "flex min-h-[44px] items-center justify-between rounded-xl border px-3 py-2 text-[12px] font-semibold transition-all active:scale-[0.98]",
                                       active
@@ -397,6 +545,11 @@ export function BrandIntelligenceDashboard() {
                             </div>
                           </div>
                         ))}
+                        {locationGroups.every((g) => g.cities.every(isNationwideLabel)) ? (
+                          <p className="text-[12px] text-brand-ink-soft">
+                            Settings location is Entire India. Sweeps run without pinning a city. Change it in Settings → Enrichment.
+                          </p>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => setCitySheetOpen(false)}
@@ -410,28 +563,44 @@ export function BrandIntelligenceDashboard() {
                 ) : (
                   <>
                     <p className="mb-2 text-[10.5px] text-brand-ink-faint">
-                      Optional. Leave empty for all cities, or select one or more.
+                      Matches{" "}
+                      <Link href="/settings?tab=enrichment" className="font-semibold text-brand-stratus-blue hover:underline">
+                        Settings → Enrichment
+                      </Link>
+                      {locationSummary ? ` (${locationSummary})` : ""}. Clear to search without a city filter.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {SCOUT_CITY_GROUPS.flatMap((g) => g.cities).map((city) => {
-                        const active = selectedCities.includes(city);
-                        return (
-                          <button
-                            key={city}
-                            type="button"
-                            onClick={() => toggleCity(city)}
-                            className={cn(
-                              "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all",
-                              active
-                                ? "border-[rgba(var(--brand-stratus-blue-rgb),0.4)] bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] text-brand-ink"
-                                : "border-brand-border/60 bg-white/70 text-brand-ink-soft hover:text-brand-ink",
-                            )}
-                          >
-                            {city}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {locationGroups.filter((g) => !g.cities.every(isNationwideLabel)).map((group) => (
+                      <div key={group.label} className={locationGroups.length > 1 ? "mb-2 last:mb-0" : undefined}>
+                        {locationGroups.length > 1 ? (
+                          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">{group.label}</p>
+                        ) : null}
+                        <div className="flex flex-wrap gap-2">
+                          {group.cities.filter((city) => !isNationwideLabel(city)).map((city) => {
+                            const active = selectedCities.includes(city);
+                            return (
+                              <button
+                                key={city}
+                                type="button"
+                                onClick={() => toggleCity(city)}
+                                className={cn(
+                                  "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-all",
+                                  active
+                                    ? "border-[rgba(var(--brand-stratus-blue-rgb),0.4)] bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] text-brand-ink"
+                                    : "border-brand-border/60 bg-white/70 text-brand-ink-soft hover:text-brand-ink",
+                                )}
+                              >
+                                {city}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    {locationGroups.every((g) => g.cities.every(isNationwideLabel)) ? (
+                      <p className="mt-2 text-[11px] text-brand-ink-soft">
+                        Settings location is Entire India. Sweeps run without pinning a city.
+                      </p>
+                    ) : null}
                   </>
                 )}
               </div>
@@ -439,8 +608,12 @@ export function BrandIntelligenceDashboard() {
               <div className="mt-4 lg:mt-5">
                 <p className={cn(text.label, "mb-2")}>Source tiers</p>
                 <div className={cn(isMobile ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2")}>
-                  {TIER_OPTIONS.map(({ tier, label, short, description, icon: Icon }) => {
+                    {TIER_OPTIONS.map(({ tier, label, short, description, icon: Icon }) => {
                     const active = enabledTiers.includes(tier);
+                    const desc =
+                      sweepMode === "upcoming_openings" && tier === 1
+                        ? "LinkedIn jobs, career pages"
+                        : description;
                     return (
                       <button
                         key={tier}
@@ -468,7 +641,7 @@ export function BrandIntelligenceDashboard() {
                           </span>
                         </span>
                         {!isMobile ? (
-                          <span className="mt-1 pl-9 text-[10.5px] leading-snug text-brand-ink-faint">{description}</span>
+                          <span className="mt-1 pl-9 text-[10.5px] leading-snug text-brand-ink-faint">{desc}</span>
                         ) : null}
                       </button>
                     );
@@ -480,7 +653,7 @@ export function BrandIntelligenceDashboard() {
                 <p className="mt-3 text-center text-[11px] text-brand-ink-faint">
                   {selectedCompetitors.length} brand{selectedCompetitors.length === 1 ? "" : "s"}
                   {" · "}
-                  {selectedCities.length === 0 ? "All cities" : `${selectedCities.length} cit${selectedCities.length === 1 ? "y" : "ies"}`}
+                  {selectedCities.length === 0 ? "No city filter" : `${selectedCities.length} cit${selectedCities.length === 1 ? "y" : "ies"}`}
                   {" · "}
                   {enabledTiers.length} tier{enabledTiers.length === 1 ? "" : "s"}
                 </p>
@@ -548,6 +721,37 @@ export function BrandIntelligenceDashboard() {
                 />
               </div>
             </div>
+            {occasionChips.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5 border-b border-brand-border/40 px-3 py-2 lg:px-5">
+                <button
+                  type="button"
+                  onClick={() => setOccasionChip("all")}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-[10.5px] font-semibold",
+                    occasionChip === "all"
+                      ? "border-brand-ink bg-brand-ink text-white"
+                      : "border-brand-border/70 bg-white text-brand-ink-soft",
+                  )}
+                >
+                  All occasions
+                </button>
+                {occasionChips.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setOccasionChip(chip)}
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[10.5px] font-semibold capitalize",
+                      occasionChip === chip
+                        ? "border-brand-ink bg-brand-ink text-white"
+                        : "border-brand-border/70 bg-white text-brand-ink-soft",
+                    )}
+                  >
+                    {chip.replace(/_/g, " ")}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             {filtered.length === 0 ? (
               <EmptyState isExtracting={isExtracting} hasSweep={extractedIntelligence.length > 0 && !!filter} />
@@ -606,7 +810,14 @@ export function BrandIntelligenceDashboard() {
                               "—"}
                           </td>
                           <td className="px-5 py-4 text-[12.5px] text-brand-ink-soft">
-                            {row.extraction_data?.occasion_or_context ?? "—"}
+                            <div>{row.extraction_data?.occasion_or_context ?? "—"}</div>
+                            {row.extraction_data?.timing === "upcoming" || row.extraction_data?.signal_type ? (
+                              <div className="mt-0.5 text-[10.5px] text-brand-ink-faint">
+                                {[row.extraction_data?.timing, row.extraction_data?.signal_type?.replace(/_/g, " ")]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="px-5 py-4">
                             <span className="inline-flex items-center gap-1 text-[12px] tabular-nums text-brand-ink-soft">
@@ -657,12 +868,26 @@ export function BrandIntelligenceDashboard() {
                               {row.mergeStatus === "pending_confirm" && row.matchedAccountId && (
                                 <button
                                   type="button"
-                                  onClick={() => handleConfirm(row, row.matchedAccountId!)}
+                                  onClick={() => handleConfirm(row, row.matchedAccountId)}
                                   className="text-left text-[11px] font-bold text-brand-ink hover:underline"
                                 >
                                   Confirm & update
                                 </button>
                               )}
+                              {row.mergeStatus === "pending_confirm" && !row.matchedAccountId && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirm(row)}
+                                  className="text-left text-[11px] font-bold text-brand-ink hover:underline"
+                                >
+                                  Create account
+                                </button>
+                              )}
+                              {row.matchedAccountId ? (
+                                <Link href="/scout" className="text-[11px] text-brand-stratus-blue hover:underline">
+                                  Scout people
+                                </Link>
+                              ) : null}
                               {row.evidence_rationale && (
                                 <p className="text-[10.5px] leading-relaxed text-brand-ink-faint line-clamp-3">
                                   {row.evidence_rationale}
@@ -697,7 +922,7 @@ function IntelResultCard({
   onConfirm,
 }: {
   row: GiftIntelResultRow;
-  onConfirm: (row: GiftIntelResultRow, accountId: string) => void;
+  onConfirm: (row: GiftIntelResultRow, accountId?: string) => void;
 }) {
   const tier = tierMeta(row.source_tier);
   const status = statusMeta(row);
@@ -725,6 +950,7 @@ function IntelResultCard({
         </p>
         <p className="line-clamp-1">
           <span className="font-semibold text-brand-ink">Occasion:</span> {row.extraction_data?.occasion_or_context ?? "—"}
+          {row.extraction_data?.timing === "upcoming" ? " · upcoming" : ""}
         </p>
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-brand-border/35 pt-2">
@@ -745,10 +971,18 @@ function IntelResultCard({
       {row.mergeStatus === "pending_confirm" && row.matchedAccountId ? (
         <button
           type="button"
-          onClick={() => onConfirm(row, row.matchedAccountId!)}
+          onClick={() => onConfirm(row, row.matchedAccountId)}
           className="mt-2.5 w-full rounded-xl bg-brand-black py-2 text-[12px] font-bold text-white active:scale-[0.98]"
         >
           Confirm & update
+        </button>
+      ) : row.mergeStatus === "pending_confirm" ? (
+        <button
+          type="button"
+          onClick={() => onConfirm(row)}
+          className="mt-2.5 w-full rounded-xl bg-brand-black py-2 text-[12px] font-bold text-white active:scale-[0.98]"
+        >
+          Create account
         </button>
       ) : null}
     </div>

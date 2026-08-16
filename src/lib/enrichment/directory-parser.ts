@@ -399,7 +399,10 @@ function extractCompanyFromTitle(title: string): string | null {
   }
 
   // Bare title that already looks like a company (e.g. "SingleStore", "Forward Networks")
-  const head = title.split(/\s*[|–—]\s*/)[0]?.trim() ?? "";
+  const head = title
+    .split(/\s*[|–—]\s*/)[0]
+    ?.replace(/\s+-\s+(?:company|cin|directors?|overview|profile)\b.*$/i, "")
+    .trim() ?? "";
   return cleanCompanyName(head);
 }
 
@@ -416,6 +419,32 @@ function slugToCompanyName(slug: string): string | null {
     .replace(/\s+/g, " ")
     .trim();
   return cleanCompanyName(name);
+}
+
+const REGISTRY_HOST =
+  /zaubacorp\.com|zauba\.com|tofler\.in|thecompanycheck\.com|instafinancials\.com/i;
+
+/** Zauba / Tofler company page slugs are legal names (…/company/INFOSYS-LIMITED/CIN). */
+export function extractFromRegistryUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (!REGISTRY_HOST.test(parsed.hostname)) return null;
+    const match = parsed.pathname.match(
+      /\/(?:company|organisation|organization)\/([A-Za-z0-9][A-Za-z0-9-]{2,90})(?:\/[A-Z0-9]+)?/i,
+    );
+    const slug = match?.[1];
+    if (!slug || /^(search|directors|list|companies|company|cin)$/i.test(slug)) return null;
+    const name = slug
+      .replace(/-cin-.*$/i, "")
+      .replace(/-+/g, " ")
+      .replace(/\b([a-z])/g, (letter) => letter.toUpperCase())
+      .replace(/\b(pvt|ltd|llp|inc|corp)\b/gi, (m) => m.toUpperCase())
+      .replace(/\s+/g, " ")
+      .trim();
+    return cleanCompanyName(name);
+  } catch {
+    return null;
+  }
 }
 
 function extractFromJustDialUrl(url: string): string | null {
@@ -499,20 +528,31 @@ export function parseCompaniesFromDirectoryResults(
     if (seen.has(key)) return;
     seen.add(key);
 
+    const registry = REGISTRY_HOST.test(host);
     out.push({
       name,
       city: inferCityFromSegment(raw, cities) ?? city,
       industry,
       employees: employees ?? extractEmployeesFromText(raw),
-      intelNotes: `Directory listing (${host}) — verify before outreach`,
-      fitScore: 62,
+      intelNotes: registry
+        ? `MCA / Zauba listing (${host})`
+        : `Directory listing (${host}) — verify before outreach`,
+      fitScore: registry ? 76 : 62,
       dataSource: "india_directories_heuristic",
     });
   };
 
-  for (const hit of hits) {
+  const rankedHits = [...hits].sort((a, b) => {
+    const score = (url: string) => (REGISTRY_HOST.test(url) ? 0 : 1);
+    return score(a.url) - score(b.url);
+  });
+
+  for (const hit of rankedHits) {
     const reviewHost = isReviewHost(hit.url);
-    const fromUrl = extractFromJustDialUrl(hit.url) ?? extractFromReviewSiteUrl(hit.url);
+    const fromUrl =
+      extractFromRegistryUrl(hit.url) ??
+      extractFromJustDialUrl(hit.url) ??
+      extractFromReviewSiteUrl(hit.url);
     const fromTitle = reviewHost ? null : extractCompanyFromTitle(hit.title);
     const candidates = [
       ...(fromUrl ? [fromUrl] : []),

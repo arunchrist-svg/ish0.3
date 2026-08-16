@@ -28,7 +28,9 @@ export function campaignModeOptionsForUser<T extends { value: CampaignMode }>(
   email?: string | null,
 ): T[] {
   if (!isSweetsOnlyOperator(email)) return options;
-  return options.filter((option) => option.value === "diwali_gifting");
+  return options.filter((option) =>
+    option.value === "diwali_gifting" || option.value === "year_round" || option.value === "mass_ordering",
+  );
 }
 
 export function defaultPlatformIntentForUser(email?: string | null): PlatformIntent {

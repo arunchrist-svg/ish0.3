@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadId, outreachTemplate, writerMode } = await req.json();
+    const { leadId, outreachTemplate, writerMode, occasionTheme } = await req.json();
     if (!leadId) {
       return new Response(JSON.stringify({ error: "leadId required" }), { status: 400 });
     }
@@ -39,6 +39,7 @@ export async function POST(req: Request) {
           const outreachId = await runWriter(leadId, {
             outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
             writerMode: resolveWriterMode(writerMode),
+            occasionTheme,
           });
 
           send({ type: "progress", message: "Scoring deliverability..." });

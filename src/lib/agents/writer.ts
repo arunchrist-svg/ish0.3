@@ -36,12 +36,14 @@ import {
 import { getBaselineEmail, TRANSFORMATION_RULES } from "@/lib/email/baseline-templates";
 import { fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
 import { companyNameForEmail } from "@/lib/email/company-display-name";
+import { latestDetectedOccasion, resolveWriteOccasion } from "@/lib/occasions/resolve";
+import { FESTIVE_OCCASION_SENTINEL } from "@/lib/occasions/catalog";
+import type { CompanyOverview } from "@/lib/company-overview";
 import {
   isNearParaphrase,
   BASELINE_PARAPHRASE_THRESHOLD,
   SEQUENCE_CLONE_THRESHOLD,
 } from "@/lib/email/email-similarity";
-import type { CompanyOverview } from "@/lib/company-overview";
 
 const PROMPT_VERSION = "v2.6-ish-template";
 const ISH_TEMPLATE_PROMPT_VERSION = "v2.7-ish-templates";
@@ -63,6 +65,7 @@ export type WriterOptions = {
   skipStatusUpdate?: boolean;
   forceNewAngle?: boolean;
   writerMode?: WriterMode;
+  occasionTheme?: string | null;
 };
 
 export function resolveWriterMode(mode?: string | null): WriterMode {
@@ -95,6 +98,14 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
 
   const writerMode = resolveWriterMode(options?.writerMode);
   const llmProvider: LLMProvider | undefined = writerMode === "ai" ? "openrouter" : undefined;
+  const overview = (account.companyOverview as CompanyOverview | null) ?? null;
+  const occasionId =
+    resolveWriteOccasion({
+      selected: options?.occasionTheme,
+      overview,
+      campaignMode: emailConfig.campaignMode,
+    }) ?? FESTIVE_OCCASION_SENTINEL;
+
   if (writerMode !== "ai" && packIdFromBrand(brandConfig) === "gifting-sweets") {
     return persistIshTemplateDraft({
       lead,
@@ -109,6 +120,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
       templateId: options?.followUpMode ?? options?.outreachTemplate ?? "gift_sampling",
       isFollowUp,
       skipStatusUpdate: options?.skipStatusUpdate,
+      occasionId,
     });
   }
 
@@ -175,6 +187,8 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     campaignNotes: emailConfig.campaignNotes,
     buyerPersonas: brandConfig.buyerPersonas,
     decisionChain: research?.decisionChain,
+    occasionTheme: options?.occasionTheme ?? occasionId,
+    icpSummary: brandConfig.websiteInsights?.icpSummary,
   });
   const baseline = getBaselineEmail({
     sequencePosition,
@@ -196,6 +210,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     companyDisplayName,
     brandConfig.productSummary,
     brandConfig.verticalPackId,
+    occasionId,
   );
 
   const antiSpamRules = getAntiSpamWritingRules({
@@ -218,7 +233,7 @@ ${tonePersona}
 - Open with "Hi ${contactFirstName}," (never "Dear")
 - Product truth to fold into the thesis, never announce as "${brandConfig.brandName} offers..." or "${brandConfig.brandName} specializes in...": ${writeup}
 ${keywordRule}
-- Subject A: punchy, under 50 characters, include first name OR company (e.g. Send happiness this Diwali, ${contactFirstName}); never use em dashes (—) or " - Company" suffix
+- Subject A: specific, under 50 characters, about a sample or tasting box (e.g. Sample box for festive tasting, ${contactFirstName}); never use em dashes (—) or " - Company" suffix; never slogan-style lines like "Send happiness" or "Happiness, handcrafted"
 - Email 2 and 3 subject A must be exactly Re: plus the Email 1 subject${options?.originalEmailSubject ? ` (${options.originalEmailSubject.replace(/^re:\s*/i, "")})` : ""}
 - Never use em dashes (—) in subject or body
 - In subject and body, use the short company name only (e.g. "${companyDisplayName}"). Never write Pvt Ltd, Private Limited, India Pvt Ltd, Ltd, LLP, or similar legal suffixes.
@@ -238,9 +253,9 @@ ${antiSpamRules}
   "templateVariant": "${options?.followUpMode}"
 }`
     : `{
-  "subjectA": "string (e.g. Send happiness this Diwali, {first})",
-  "subjectB": "string (e.g. {company}, make someone's Diwali better)",
-  "subjectC": "string (e.g. A taste of Diwali, before you decide)",
+  "subjectA": "string (e.g. Sample box for festive tasting, {first})",
+  "subjectB": "string (e.g. Festive sweets sample for {company})",
+  "subjectC": "string (e.g. A tasting box for your team)",
   "emailBody": "string (max 120 words, 3-beat body option 1)",
   "emailBodyB": "string (max 120 words, 3-beat body option 2, different hook)",
   "emailBodyC": "string (max 120 words, 3-beat body option 3, different hook)",
@@ -349,7 +364,7 @@ Return ONLY the rewritten email fields in JSON.`;
     const parsedWithFallback = {
       subjectA: parsed.subjectA ?? `Outreach for ${companyDisplayName}`,
       subjectB: parsed.subjectB ?? `Note for ${contactFirstName}`,
-      subjectC: parsed.subjectC ?? `A taste of Diwali, ${contactFirstName}`,
+      subjectC: parsed.subjectC ?? `A tasting box for your team`,
       emailBody: parsed.emailBody,
       emailBodyB: parsed.emailBodyB,
       emailBodyC: parsed.emailBodyC,
@@ -362,7 +377,7 @@ Return ONLY the rewritten email fields in JSON.`;
     emailBodyC = parsedWithFallback.emailBodyC ? normalizeEmailBody(parsedWithFallback.emailBodyC) : "";
     subjectA = parsedWithFallback.subjectA ?? `Outreach for ${companyDisplayName}`;
     subjectB = parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`;
-    subjectC = parsedWithFallback.subjectC ?? `A taste of Diwali, ${contactFirstName}`;
+    subjectC = parsedWithFallback.subjectC ?? `A tasting box for your team`;
     templateVariant = options?.followUpMode ?? template.id;
     outreachGoal = parsedWithFallback.outreachGoal ?? template.label;
     revisionCount = attempt;
@@ -462,6 +477,7 @@ async function persistIshTemplateDraft(params: {
   templateId: string;
   isFollowUp: boolean;
   skipStatusUpdate?: boolean;
+  occasionId?: import("@/lib/occasions/catalog").WriteOccasionId | null;
 }): Promise<string> {
   const {
     lead,
@@ -476,9 +492,17 @@ async function persistIshTemplateDraft(params: {
     templateId,
     isFollowUp,
     skipStatusUpdate,
+    occasionId,
   } = params;
   const { brandConfig, fromName } = emailConfig;
   const emailStyle = resolveOutreachEmailStyle(emailConfig.emailStyle);
+  const overview = (account.companyOverview as CompanyOverview | null) ?? null;
+  const detected = latestDetectedOccasion(overview);
+  const openingFamily =
+    occasionId === "store_opening" ||
+    occasionId === "office_inauguration" ||
+    occasionId === "foundation_day" ||
+    occasionId === "milestone";
   const copy = fillIshDraftVariants({
     contactFirstName,
     companyName: companyDisplayName,
@@ -486,6 +510,8 @@ async function persistIshTemplateDraft(params: {
     brandName: brandConfig.brandName,
     sequencePosition,
     templateId,
+    occasionId,
+    occasionTiming: openingFamily ? detected?.timing : undefined,
   });
   const emailBody = normalizeEmailBody(copy.emailBody);
   const emailBodyB = normalizeEmailBody(copy.emailBodyB);

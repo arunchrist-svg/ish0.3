@@ -19,6 +19,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "@/components/providers/session-provider";
+import { operationalSendState, sendStateLabel } from "@/lib/email/send-mode";
+import { statusToDisplayLabel } from "@/lib/pipeline-status";
+import { getCreditCost } from "@/lib/billing/credit-costs";
 import { useNotifications } from "@/hooks/use-notifications";
 import Link from "next/link";
 import { MobilePageLayout, PanelCard, text } from "@/design-system";
@@ -96,7 +99,7 @@ const AVATAR_COLORS = [
   "bg-brand-avatar-6",
 ];
 
-function StatusChip({ status }: { status: string }) {
+function StatusChip({ status, packId }: { status: string; packId?: string }) {
   return (
     <span
       className={cn(
@@ -104,7 +107,7 @@ function StatusChip({ status }: { status: string }) {
         STATUS_CHIP[status] ?? "bg-brand-border text-brand-ink-soft",
       )}
     >
-      {STATUS_LABELS[status] ?? status}
+      {statusToDisplayLabel(status, packId)}
     </span>
   );
 }
@@ -216,7 +219,7 @@ function UsageBar({
 
 // ─── Activity Item ────────────────────────────────────────────────────────────
 
-function ActivityItem({ lead, index }: { lead: LeadItem; index: number }) {
+function ActivityItem({ lead, index, packId }: { lead: LeadItem; index: number; packId?: string }) {
   const avatarBg = AVATAR_COLORS[index % AVATAR_COLORS.length];
   return (
     <div
@@ -237,7 +240,7 @@ function ActivityItem({ lead, index }: { lead: LeadItem; index: number }) {
         <div className={cn(text.body, "truncate font-bold")}>{lead.name}</div>
         <div className={cn(text.caption, "truncate")}>{lead.company}</div>
       </div>
-      <StatusChip status={lead.status} />
+      <StatusChip status={lead.status} packId={packId} />
     </div>
   );
 }
@@ -344,8 +347,32 @@ export function HomeApp() {
         <div className="mb-7 hidden items-end justify-between lg:flex">
           <div>
             <div className="mb-1 flex items-center gap-2">
-              <span className="size-2 rounded-full bg-brand-green animate-pulse" />
-              <span className={cn(text.caption, "font-semibold text-brand-green")}>Live</span>
+              {(() => {
+                const state = operationalSendState({
+                  emailConfigured: session?.emailConfigured,
+                  sendMode: session?.sendMode,
+                });
+                const live = state === "live";
+                return (
+                  <>
+                    <span
+                      className={cn(
+                        "size-2 rounded-full",
+                        live ? "bg-brand-green animate-pulse" : state === "unconfigured" ? "bg-sky-500" : "bg-amber-400",
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        text.caption,
+                        "font-semibold",
+                        live ? "text-brand-green" : state === "unconfigured" ? "text-sky-700" : "text-amber-800",
+                      )}
+                    >
+                      {sendStateLabel(state)}
+                    </span>
+                  </>
+                );
+              })()}
             </div>
             <h1 className={text.largeTitle}>{greeting}</h1>
             <p className={cn(text.bodySoft, "mt-0.5")}>{today}</p>
@@ -364,6 +391,64 @@ export function HomeApp() {
           </button>
         </div>
 
+        {(() => {
+          const counts = Object.fromEntries(
+            (funnel?.leadStatuses ?? []).map((row) => [row.status, Number(row.count)]),
+          );
+          const sendState = operationalSendState({
+            emailConfigured: session?.emailConfigured,
+            sendMode: session?.sendMode,
+          });
+          const actions: { href: string; label: string; detail: string }[] = [];
+          if (sendState === "unconfigured") {
+            actions.push({
+              href: "/settings?tab=email",
+              label: "Connect email",
+              detail: "Required before live outreach",
+            });
+          }
+          const draftReady = counts.draft_ready ?? 0;
+          const researched = counts.researched ?? 0;
+          const scouted = (counts.scouted ?? 0) + (counts.prefiltered ?? 0);
+          const unreplied = counts.outreached ?? 0;
+          if (inboxCount > 0) {
+            actions.push({ href: "/inbox", label: "Needs review", detail: `${inboxCount} in inbox` });
+          }
+          if (draftReady > 0) {
+            actions.push({ href: "/email", label: "Ready to send", detail: `${draftReady} drafts` });
+          } else if (researched > 0) {
+            actions.push({
+              href: "/leads",
+              label: "Write outreach",
+              detail: `${researched} researched · ${getCreditCost("writer.draft") * 3} credits per sequence`,
+            });
+          } else if (scouted > 0) {
+            actions.push({ href: "/leads", label: "Research contacts", detail: `${scouted} waiting` });
+          }
+          if (unreplied > 0) {
+            actions.push({ href: "/email?tab=active", label: "Awaiting reply", detail: `${unreplied} sent` });
+          }
+          if (actions.length === 0) {
+            actions.push({ href: "/scouting", label: "Scout companies", detail: "Start the outbound loop" });
+          }
+          return (
+            <div className="mb-5 grid gap-2 sm:grid-cols-2">
+              {actions.slice(0, 4).map((action) => (
+                <Link
+                  key={action.href + action.label}
+                  href={action.href}
+                  className="flex items-center justify-between rounded-[16px] border border-brand-border bg-white px-4 py-3 shadow-[var(--shadow-brand-sm)] hover:border-brand-ink/20"
+                >
+                  <div>
+                    <div className="text-[13px] font-bold text-brand-ink">{action.label}</div>
+                    <div className="text-[11px] text-brand-ink-soft">{action.detail}</div>
+                  </div>
+                  <ArrowRight className="size-4 text-brand-ink-faint" />
+                </Link>
+              ))}
+            </div>
+          );
+        })()}
 
         
         {hotReplyCount > 0 ? (
@@ -483,7 +568,7 @@ export function HomeApp() {
             ) : (
               <div className="mt-2">
                 {leads.map((lead, i) => (
-                  <ActivityItem key={lead.id} lead={lead} index={i} />
+                  <ActivityItem key={lead.id} lead={lead} index={i} packId={session?.verticalPackId} />
                 ))}
               </div>
             )}

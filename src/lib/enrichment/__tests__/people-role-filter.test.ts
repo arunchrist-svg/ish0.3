@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { filterPeopleByRoles, personMatchesRoles } from "@/lib/enrichment/people-role-filter";
+import {
+  assessPeopleFetchRisk,
+  filterPeopleByRoles,
+  peopleAndFilterWarning,
+  personMatchesRoles,
+} from "@/lib/enrichment/people-role-filter";
 import type { ScoutPersonResult } from "@/lib/enrichment/types";
 
 function person(partial: Partial<ScoutPersonResult> & { name: string; title?: string }): ScoutPersonResult {
@@ -64,5 +69,31 @@ describe("filterPeopleByRoles", () => {
     expect(result.relaxed).toBe(false);
     expect(result.people).toHaveLength(1);
     expect(result.people[0]?.name).toBe("Kavya");
+  });
+});
+
+describe("assessPeopleFetchRisk", () => {
+  it("does not confirm when only one filter stack is set", () => {
+    expect(
+      assessPeopleFetchRisk({
+        companyCount: 10,
+        seniority: ["Director", "Manager"],
+        departments: [],
+      }).needsConfirm,
+    ).toBe(false);
+    expect(peopleAndFilterWarning(["Director"], [])).toBeNull();
+  });
+
+  it("requires confirm when seniority and department are both set", () => {
+    const risk = assessPeopleFetchRisk({
+      companyCount: 10,
+      seniority: ["C-Level", "Founders", "Director"],
+      departments: ["HR", "Admin", "Procurement"],
+    });
+    expect(risk.needsConfirm).toBe(true);
+    expect(risk.stacked).toBe(true);
+    expect(risk.headline).toMatch(/0 leads/i);
+    expect(risk.costLine).toContain("10 people search credits");
+    expect(peopleAndFilterWarning(["Director"], ["HR"])).toMatch(/AND department/);
   });
 });

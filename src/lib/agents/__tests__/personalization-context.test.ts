@@ -39,6 +39,50 @@ describe("buildPersonalizationContext", () => {
     expect(ctx.recipientRoles).toMatch(/HR/i);
   });
 
+  it("uses detected store opening instead of Diwali dynamics", () => {
+    const ctx = buildPersonalizationContext({
+      accountName: "Reliance Retail",
+      city: "Bengaluru",
+      campaignMode: "diwali_gifting",
+      overview: {
+        detectedOccasions: [{ type: "store_opening", label: "New Trend store, Whitefield", timeframe: "2026-08" }],
+      },
+    });
+    expect(ctx.marketDynamics).toMatch(/Whitefield|store/i);
+    expect(ctx.companyProfile).toMatch(/Detected occasions/i);
+  });
+
+  it("flags upcoming store openings in dynamics", () => {
+    const ctx = buildPersonalizationContext({
+      accountName: "Reliance Retail",
+      city: "Bengaluru",
+      campaignMode: "year_round",
+      overview: {
+        detectedOccasions: [
+          {
+            type: "store_opening",
+            label: "Trend store, Phoenix Mall",
+            timeframe: "2026-10",
+            timing: "upcoming",
+            signalType: "hiring",
+          },
+        ],
+      },
+    });
+    expect(ctx.marketDynamics).toMatch(/upcoming/i);
+    expect(ctx.companyProfile).toMatch(/upcoming/i);
+    expect(ctx.marketDynamics.toLowerCase()).not.toMatch(/diwali corporate gifting window/);
+  });
+
+  it("uses year_round campaign when no occasion is set", () => {
+    const ctx = buildPersonalizationContext({
+      accountName: "Acme",
+      campaignMode: "year_round",
+    });
+    expect(ctx.marketDynamics).toMatch(/Year-round programs|empanelment|Vendor empanelment/i);
+    expect(ctx.marketDynamics.toLowerCase()).not.toMatch(/diwali corporate gifting window/);
+  });
+
   it("uses honest fallbacks when overview and title are missing", () => {
     const ctx = buildPersonalizationContext({
       accountName: "Unknown Co",
@@ -47,5 +91,14 @@ describe("buildPersonalizationContext", () => {
     expect(ctx.recipientRoles).toMatch(/unknown role/i);
     expect(ctx.companyProfile).toMatch(/unknown/i);
     expect(ctx.marketDynamics).toMatch(/festive gifting/i);
+  });
+
+  it("includes seller ICP so sweets emails target employee gifting buyers", () => {
+    const ctx = buildPersonalizationContext({
+      accountName: "Bosch",
+      campaignMode: "diwali_gifting",
+      icpSummary: "Companies that gift sweets to employees",
+    });
+    expect(ctx.marketDynamics).toMatch(/gift sweets to employees/i);
   });
 });

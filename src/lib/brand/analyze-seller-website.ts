@@ -5,6 +5,8 @@ import { SCOUT_DEPARTMENTS, SCOUT_INDUSTRIES, SCOUT_SENIORITY } from "@/lib/scou
 import {
   inferPlatformIntent,
   scoutDefaultsForIntent,
+  normalizeScoutRoleFilters,
+  defaultIcpSummary,
   verticalPackIdForIntent,
   type PlatformIntent,
 } from "@/lib/brand/platform-intent";
@@ -166,7 +168,8 @@ Return ONLY valid JSON:
   "differentiators": ["up to 3 concrete differentiators from the site"],
   "scoutIndustries": ["industries of IDEAL BUYER companies, ONLY from: ${industryList}"],
   "scoutDepartments": ["buyer departments to find, ONLY from: ${deptList}"],
-  "scoutSeniority": ["buyer seniority to find, ONLY from: ${senList}"]
+  "scoutSeniority": ["buyer seniority to find, ONLY from: ${senList}"],
+  "icpSummary": "one or two sentences: who you sell TO (buyer companies), not what you sell. Example: companies that gift sweets to employees, or companies that would buy this SaaS."
 }
 
 Rules:
@@ -177,6 +180,8 @@ Rules:
 - productSummary, productWriteup, and toneNotes must be grounded in the website text.
 - emailKeywords = concrete offer/occasion/proof/logistics phrases. Never spam words like free, guaranteed, act now.
 - Match buyer personas and scout roles to how this company actually sells (SaaS → sales/leadership buyers; gifting → HR/procurement).
+- icpSummary describes buyer companies (employers who gift, software customers). Never describe rival sellers.
+- Fill only ONE of scoutDepartments or scoutSeniority (department for gifting, seniority for SaaS). Never both.
 - Never invent competitor brands or fake stats.`;
 
   const raw = await callLLM({
@@ -263,8 +268,12 @@ Rules:
   });
   const intentDefaults = scoutDefaultsForIntent(platformIntent);
   const resolvedPersonas = buyerPersonas.length ? buyerPersonas : intentDefaults.buyerPersonas;
-  if (!scoutDepartments.length) scoutDepartments = intentDefaults.scoutDepartments;
-  if (!scoutSeniority.length) scoutSeniority = intentDefaults.scoutSeniority;
+  const roles = normalizeScoutRoleFilters(platformIntent, scoutDepartments, scoutSeniority);
+  scoutDepartments = roles.scoutDepartments;
+  scoutSeniority = roles.scoutSeniority;
+  const icpFromSite =
+    parsed.icpSummary != null ? String(parsed.icpSummary).trim() : "";
+  const icpSummary = icpFromSite || defaultIcpSummary(platformIntent);
 
   const insights: WebsiteBrandInsights = {
     analyzedAt: new Date().toISOString(),
@@ -284,6 +293,7 @@ Rules:
     platformIntent,
     productWriteup: productWriteup || undefined,
     emailKeywords: emailKeywords.length ? emailKeywords : undefined,
+    icpSummary,
   };
 
   const brandPatch: Partial<BrandConfig> = {

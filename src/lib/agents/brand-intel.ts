@@ -26,7 +26,9 @@ function parseExtractionRow(
 
   return {
     id: randomUUID(),
-    is_target_gifting_event: Boolean(raw.is_target_gifting_event ?? raw.isTargetGiftingEvent),
+    is_target_gifting_event: Boolean(
+      raw.is_target_gifting_event ?? raw.isTargetGiftingEvent ?? raw.is_target_occasion_event ?? raw.isTargetOccasionEvent,
+    ),
     confidence_score: Number.isFinite(confidence) ? confidence : 0,
     extraction_data: extraction
       ? {
@@ -44,6 +46,12 @@ function parseExtractionRow(
               ? String(extraction.occasion_or_context)
               : extraction.occasionOrContext != null
                 ? String(extraction.occasionOrContext)
+                : undefined,
+          occasion_type:
+            extraction.occasion_type != null
+              ? String(extraction.occasion_type)
+              : extraction.occasionType != null
+                ? String(extraction.occasionType)
                 : undefined,
           timeframe:
             extraction.timeframe != null ? String(extraction.timeframe) : undefined,

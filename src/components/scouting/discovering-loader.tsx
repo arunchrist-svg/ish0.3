@@ -10,6 +10,7 @@ type Props = {
   className?: string;
   compact?: boolean;
   progress?: { done: number; total: number };
+  onStop?: () => void;
 };
 
 const DEFAULT_HINTS = [
@@ -24,6 +25,7 @@ export function DiscoveringLoader({
   className,
   compact = false,
   progress,
+  onStop,
 }: Props) {
   const [hintIndex, setHintIndex] = useState(0);
   const [elapsedSec, setElapsedSec] = useState(0);
@@ -106,6 +108,16 @@ export function DiscoveringLoader({
         <Radar className="size-3 shrink-0 text-brand-green" strokeWidth={2.5} />
         {hints[hintIndex]}
       </p>
+
+      {onStop ? (
+        <button
+          type="button"
+          onClick={onStop}
+          className="mt-5 rounded-full border border-brand-border bg-white px-4 py-1.5 text-[12.5px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] hover:bg-brand-app"
+        >
+          Stop search
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -20,6 +20,8 @@ describe("vertical catalog for sweets-only operators", () => {
     expect(platformIntentOptionsForUser(email).map((o) => o.value)).toEqual(["corporate_gifting"]);
     expect(brandPresetOptionsForUser(email).map((o) => o.value)).toEqual(["ish"]);
     expect(campaignModeOptionsForUser(CAMPAIGN_MODE_OPTIONS, email).map((o) => o.value)).toEqual([
+      "year_round",
+      "mass_ordering",
       "diwali_gifting",
     ]);
     expect(defaultPlatformIntentForUser(email)).toBe("corporate_gifting");

@@ -1,5 +1,5 @@
 import { db, outreachSchedule, leads, contacts, accounts, leadOutreach, leadResearch } from "@/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { hasUsableEmail } from "@/lib/enrichment/contact-emails";
 import { sendEmail } from "@/lib/email/email-sender";
 import { buildEmailHtml } from "@/lib/email/templates";
@@ -36,9 +36,13 @@ export async function sendScheduledFollowUp(params: {
   overrideQualityGate?: boolean;
   actorId?: string;
 }): Promise<{ messageId: string; mode: string; outreachId: string }> {
-  const sched = await db.query.outreachSchedule.findFirst({
-    where: eq(outreachSchedule.id, params.scheduleId),
-  });
+  const [row] = await db
+    .select({ schedule: outreachSchedule, leadTenantId: leads.tenantId })
+    .from(outreachSchedule)
+    .innerJoin(leads, eq(leads.id, outreachSchedule.leadId))
+    .where(and(eq(outreachSchedule.id, params.scheduleId), eq(leads.tenantId, params.tenantId)))
+    .limit(1);
+  const sched = row?.schedule;
   if (!sched) throw new Error("Schedule not found");
   if (sched.status !== "scheduled" && sched.status !== "pending_review") {
     throw new Error("Schedule is not sendable");
@@ -85,6 +89,10 @@ export async function sendScheduledFollowUp(params: {
     outreachHook: research?.outreachHook,
     sequencePosition: generatedOutreach.sequencePosition ?? 2,
   });
+
+  if (emailConfig.sendMode === "live" && !quality.passes && !params.overrideQualityGate) {
+    throw new FollowUpQualityError(quality.delivScore, quality.rubricTotal);
+  }
 
   try {
     await assertSenderPreflight(emailConfig, params.workspaceId, {

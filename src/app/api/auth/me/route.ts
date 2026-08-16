@@ -6,6 +6,10 @@ import { getSmtpStatus, getResendStatus } from "@/lib/email/config";
 import { getPermissionFlags } from "@/lib/auth/permissions";
 import { db, tenants, users } from "@/db";
 import { eq } from "drizzle-orm";
+import {
+  defaultIcpSummary,
+  resolvePlatformIntent,
+} from "@/lib/brand/platform-intent";
 
 export async function GET() {
   try {
@@ -30,15 +34,23 @@ export async function GET() {
     const permissions = getPermissionFlags(ctx);
 
     const insights = emailConfig.brandConfig?.websiteInsights;
-    const scoutBrandDefaults = insights
-      ? {
-          industries: insights.scoutIndustries ?? [],
-          departments: insights.scoutDepartments ?? [],
-          seniority: insights.scoutSeniority ?? [],
-          brandName: emailConfig.brandConfig.brandName,
-          analyzedAt: insights.analyzedAt,
-        }
-      : null;
+    const platformIntent = resolvePlatformIntent(
+      emailConfig.brandConfig?.platformIntent ?? insights?.platformIntent,
+      emailConfig.brandConfig?.verticalPackId ?? emailConfig.brandConfig?.brandSlug,
+    );
+    const roles = {
+      scoutDepartments: insights?.scoutDepartments ?? [],
+      scoutSeniority: insights?.scoutSeniority ?? [],
+    };
+    const scoutBrandDefaults = {
+      industries: insights?.scoutIndustries ?? [],
+      departments: roles.scoutDepartments,
+      seniority: roles.scoutSeniority,
+      brandName: emailConfig.brandConfig.brandName,
+      analyzedAt: insights?.analyzedAt,
+      icpSummary: insights?.icpSummary?.trim() || defaultIcpSummary(platformIntent),
+      platformIntent,
+    };
 
     const smtpStatus = getSmtpStatus(emailConfig);
     const resendStatus = getResendStatus(emailConfig);
@@ -65,6 +77,10 @@ export async function GET() {
       sendMode: emailConfig.sendMode,
       emailConfigured,
       credits,
+      verticalPackId:
+        emailConfig.brandConfig?.verticalPackId ??
+        emailConfig.brandConfig?.brandSlug ??
+        "general",
       scoutBrandDefaults,
     });
   } catch (e) {

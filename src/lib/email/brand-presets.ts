@@ -32,6 +32,7 @@ export const VERTICAL_PACK_UI_OPTIONS = VERTICAL_PACK_OPTIONS;
 
 export const CAMPAIGN_MODE_OPTIONS: { value: CampaignMode; label: string; desc: string }[] = [
   { value: "custom", label: "Custom", desc: "Free-text campaign notes" },
+  { value: "year_round", label: "Year-round programs", desc: "Birthdays, onboarding, pantry, openings, empanelment" },
   { value: "mass_ordering", label: "Mass Ordering", desc: "Bulk orders, volume pricing, procurement CTAs" },
   { value: "festival_bundle", label: "Festival Bundle", desc: "Festival combos and limited-time bundles" },
   { value: "diwali_gifting", label: "Diwali Gifting", desc: "Seasonal employee gifting (sweets pack)" },
@@ -87,6 +88,7 @@ export function resolveBrandConfig(partial?: Partial<BrandConfig>): BrandConfig 
       brandSlug: "custom",
       verticalPackId: packId,
       platformIntent,
+      defaultOutreachCta: partial?.defaultOutreachCta ?? applied.defaultOutreachCta,
     };
   }
 
@@ -101,6 +103,7 @@ export function resolveBrandConfig(partial?: Partial<BrandConfig>): BrandConfig 
     toneNotes: partial?.toneNotes,
     websiteUrl,
     websiteInsights,
+    defaultOutreachCta: partial?.defaultOutreachCta,
   };
 }
 

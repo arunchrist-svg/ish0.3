@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Zap } from "lucide-react";
 import { useSession } from "@/components/providers/session-provider";
+import { LOW_CREDIT_THRESHOLD } from "@/lib/billing/credit-costs";
 
 export function CreditBalanceBanner() {
   const { session, loading } = useSession();
@@ -12,7 +13,7 @@ export function CreditBalanceBanner() {
   const credits = session.credits;
   const plan = session.tenant.plan ?? "";
 
-  if (credits > 50) return null;
+  if (credits > LOW_CREDIT_THRESHOLD) return null;
 
   return (
     <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">

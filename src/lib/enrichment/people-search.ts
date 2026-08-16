@@ -150,13 +150,11 @@ export function buildPeopleSearchQueries(params: {
     (name, index, all) => name && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === index,
   );
   const queries: string[] = [];
+  const geoTerm = params.hasCityFilter ? `(${params.cityClause})` : "India";
 
   for (const company of companies.slice(0, 2)) {
-    queries.push(`site:linkedin.com/in "${company}" ${params.roleTerm} India`);
-    if (params.hasCityFilter) {
-      queries.push(`site:linkedin.com/in "${company}" ${params.roleTerm} (${params.cityClause})`);
-    }
-    queries.push(`"${company}" ${params.roleTerm} LinkedIn profile India`);
+    queries.push(`site:linkedin.com/in "${company}" ${params.roleTerm} ${geoTerm}`);
+    queries.push(`"${company}" ${params.roleTerm} LinkedIn profile ${geoTerm}`);
   }
 
   if (!params.hasCityFilter) {
@@ -165,7 +163,7 @@ export function buildPeopleSearchQueries(params: {
 
   if (params.companyDomain) {
     queries.push(
-      `site:${params.companyDomain} leadership OR team OR "our people" OR contact India`,
+      `site:${params.companyDomain} leadership OR team OR "our people" OR contact ${geoTerm}`,
     );
   }
 

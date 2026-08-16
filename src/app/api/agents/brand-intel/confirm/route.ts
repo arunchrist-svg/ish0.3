@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { mergeExtractionToAccount } from "@/lib/brand-intel/merge-accounts";
+import { createAccountFromExtraction, mergeExtractionToAccount } from "@/lib/brand-intel/merge-accounts";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
@@ -15,8 +15,17 @@ export async function POST(req: Request) {
       extraction?: ExtractedGiftIntel;
     };
 
-    if (!accountId || !extraction) {
-      return NextResponse.json({ error: "accountId and extraction are required" }, { status: 400 });
+    if (!extraction) {
+      return NextResponse.json({ error: "extraction is required" }, { status: 400 });
+    }
+
+    if (!accountId) {
+      const created = await createAccountFromExtraction({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        extraction,
+      });
+      return NextResponse.json({ ok: true, accountId: created.accountId, created: true, name: created.name });
     }
 
     await mergeExtractionToAccount({

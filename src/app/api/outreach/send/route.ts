@@ -6,7 +6,8 @@ import { sendEmail } from "@/lib/email/email-sender";
 import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE, resolveOutreachEmailStyle } from "@/lib/email/config";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { requireTenantContext } from "@/lib/tenant";
+import { assertResourceTenant, requireTenantContext } from "@/lib/tenant";
+import { describeQualityBlock } from "@/lib/outreach/outreach-quality";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { checkLowBalanceAlerts } from "@/lib/billing/analytics";
@@ -37,39 +38,22 @@ export async function POST(req: Request) {
 
     const approval = await db.query.outreachApprovals.findFirst({
       where: eq(outreachApprovals.id, approvalId),
+      with: { lead: { with: { contact: true } }, outreach: true },
     });
-    if (!approval) return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+    if (!approval?.lead || approval.lead.tenantId !== ctx.tenantId) {
+      return NextResponse.json({ error: "Approval not found" }, { status: 404 });
+    }
+    await assertResourceTenant(approval.lead.tenantId, ctx);
     if (approval.status !== "approved") {
       return NextResponse.json({ error: "Approval not in approved state" }, { status: 400 });
     }
 
-    const outreach = await db.query.leadOutreach.findFirst({
+    const outreach = approval.outreach ?? await db.query.leadOutreach.findFirst({
       where: eq(leadOutreach.id, approval.leadOutreachId),
     });
     if (!outreach) return NextResponse.json({ error: "Outreach not found" }, { status: 404 });
 
-    if (overrideQualityGate && draftFailsQualityGate(outreach)) {
-      await logAudit({
-        tenantId: ctx.tenantId,
-        workspaceId: ctx.workspaceId,
-        actorId: ctx.userId,
-        action: "outreach.quality_override",
-        entityType: "lead_outreach",
-        entityId: outreach.id,
-        metadata: {
-          leadId: approval.leadId,
-          revisionTimeout: outreach.revisionTimeout,
-          deliverabilityScore: outreach.deliverabilityScore,
-          rubricTotal: outreach.rubricTotal,
-        },
-      });
-    }
-
-    const leadRow = await db.query.leads.findFirst({
-      where: eq(leads.id, approval.leadId),
-      with: { contact: true },
-    });
-    if (!leadRow || leadRow.tenantId !== ctx.tenantId) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    const leadRow = approval.lead;
 
     const isReplySend = outreach.templateVariant === "reply" || leadRow.status === "replied";
 
@@ -94,6 +78,32 @@ export async function POST(req: Request) {
     }
 
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+    if (emailConfig.sendMode === "live" && draftFailsQualityGate(outreach) && !overrideQualityGate) {
+      return NextResponse.json(
+        {
+          code: "QUALITY_GATE_FAILED",
+          error: describeQualityBlock(outreach),
+          canOverride: true,
+        },
+        { status: 422 },
+      );
+    }
+    if (overrideQualityGate && draftFailsQualityGate(outreach)) {
+      await logAudit({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        actorId: ctx.userId,
+        action: "outreach.quality_override",
+        entityType: "lead_outreach",
+        entityId: outreach.id,
+        metadata: {
+          leadId: approval.leadId,
+          revisionTimeout: outreach.revisionTimeout,
+          deliverabilityScore: outreach.deliverabilityScore,
+          rubricTotal: outreach.rubricTotal,
+        },
+      });
+    }
     const shouldCleanRecipients = emailConfig.sendMode === "live";
     let recipients = rawRecipients;
     if (shouldCleanRecipients) {

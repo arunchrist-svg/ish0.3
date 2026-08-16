@@ -9,7 +9,7 @@ const SHARED_FOLLOW_UPS: PackOutreachCta[] = [
     shortLabel: "Follow-up",
     description: "Second email with new value, not a generic check-in",
     ctaInstruction:
-      "Email 2 of 3. Subject must be Re: plus Email 1 subject. Do NOT say 'just following up', 'checking in', or 'circling back'. Use seasonal urgency (Diwali window, tasting slots filling) plus a sampler CTA. Max 4 sentences in the pitch body.",
+      "Email 2 of 3. Subject must be Re: plus Email 1 subject. Do NOT say 'just following up', 'checking in', or 'circling back'. Use seasonal or program urgency plus a sampler CTA. Max 4 sentences in the pitch body.",
   },
   {
     id: "final_reminder",

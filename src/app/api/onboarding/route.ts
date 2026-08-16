@@ -17,7 +17,10 @@ import {
 } from "@/lib/email/brand-presets";
 import {
   defaultCampaignModeForIntent,
+  defaultIcpSummary,
+  normalizeScoutRoleFilters,
   resolvePlatformIntent,
+  scoutDefaultsForIntent,
   type PlatformIntent,
 } from "@/lib/brand/platform-intent";
 import {
@@ -25,7 +28,7 @@ import {
   patchWorkspaceBrandConfig,
 } from "@/lib/settings/email-settings";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
-import type { BrandConfig, CampaignMode } from "@/lib/email/config";
+import type { BrandConfig, CampaignMode, WebsiteBrandInsights } from "@/lib/email/config";
 
 /** Map legacy 6-step onboarding (with email at step 3) to 5-step flow. */
 export function normalizeOnboardingStep(step: number): number {
@@ -66,6 +69,9 @@ export async function GET() {
       ),
       productWriteup: emailConfig.brandConfig?.websiteInsights?.productWriteup ?? "",
       emailKeywords: emailConfig.brandConfig?.websiteInsights?.emailKeywords ?? [],
+      icpSummary: emailConfig.brandConfig?.websiteInsights?.icpSummary ?? "",
+      scoutDepartments: emailConfig.brandConfig?.websiteInsights?.scoutDepartments ?? [],
+      scoutSeniority: emailConfig.brandConfig?.websiteInsights?.scoutSeniority ?? [],
     });
   } catch (e) {
     return handleApiError(e, "[onboarding/GET]");
@@ -81,6 +87,10 @@ type OnboardingBody =
       websiteUrl?: string;
       skipWebsiteAnalyze?: boolean;
       platformIntent?: PlatformIntent;
+      icpSummary?: string;
+      scoutDepartments?: string[];
+      scoutSeniority?: string[];
+      buyerPersonas?: string[];
     }
   | { step: 4; skip?: boolean }
   | { step: 5; complete?: boolean }
@@ -92,6 +102,67 @@ async function persistBrandConfig(
   extras?: { campaignMode?: CampaignMode },
 ) {
   await patchWorkspaceBrandConfig(brandConfig, workspaceId, extras);
+}
+
+function insightsWithIcp(
+  existing: WebsiteBrandInsights | undefined,
+  intent: PlatformIntent,
+  icpSummary?: string,
+  extras?: {
+    scoutDepartments?: string[];
+    scoutSeniority?: string[];
+    buyerPersonas?: string[];
+  },
+): WebsiteBrandInsights {
+  const defaults = scoutDefaultsForIntent(intent);
+  const roles = normalizeScoutRoleFilters(
+    intent,
+    extras?.scoutDepartments ?? existing?.scoutDepartments ?? [],
+    extras?.scoutSeniority ?? existing?.scoutSeniority ?? [],
+  );
+  const buyerPersonas = extras?.buyerPersonas?.length
+    ? extras.buyerPersonas
+    : existing?.buyerPersonas?.length
+      ? existing.buyerPersonas
+      : defaults.buyerPersonas;
+  return {
+    analyzedAt: existing?.analyzedAt ?? new Date().toISOString(),
+    vertical: existing?.vertical ?? "general",
+    productSummary: existing?.productSummary ?? "",
+    toneNotes: existing?.toneNotes ?? "",
+    scoutIndustries: existing?.scoutIndustries ?? [],
+    valueProposition: existing?.valueProposition,
+    differentiators: existing?.differentiators,
+    productCategory: existing?.productCategory,
+    productWriteup: existing?.productWriteup,
+    emailKeywords: existing?.emailKeywords,
+    brandName: existing?.brandName,
+    ...existing,
+    platformIntent: intent,
+    scoutDepartments: roles.scoutDepartments,
+    scoutSeniority: roles.scoutSeniority,
+    buyerPersonas,
+    icpSummary: icpSummary?.trim() || existing?.icpSummary?.trim() || defaultIcpSummary(intent),
+  };
+}
+
+async function persistIcpOntoBrand(
+  workspaceId: string,
+  intent: PlatformIntent,
+  icpSummary?: string,
+  extras?: {
+    scoutDepartments?: string[];
+    scoutSeniority?: string[];
+    buyerPersonas?: string[];
+  },
+) {
+  const current = await getResolvedEmailConfig(workspaceId);
+  await persistBrandConfig({
+    ...current.brandConfig,
+    platformIntent: intent,
+    buyerPersonas: extras?.buyerPersonas?.length ? extras.buyerPersonas : current.brandConfig.buyerPersonas,
+    websiteInsights: insightsWithIcp(current.brandConfig.websiteInsights, intent, icpSummary, extras),
+  }, workspaceId);
 }
 
 async function bumpOnboardingStep(tenantId: string, next: number) {
@@ -220,6 +291,18 @@ export async function POST(req: Request) {
         } catch (e) {
           console.warn("[onboarding] intent seed failed:", e);
         }
+      }
+
+      try {
+        await persistIcpOntoBrand(ctx.workspaceId, platformIntent, body.icpSummary, {
+          scoutDepartments: [],
+          scoutSeniority: [],
+          buyerPersonas: Array.isArray(body.buyerPersonas)
+            ? body.buyerPersonas.map(String).filter((s) => s.trim())
+            : undefined,
+        });
+      } catch (e) {
+        console.warn("[onboarding] ICP persist failed:", e);
       }
 
       return NextResponse.json({
