@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { importConnectionsFromFile } from "@/lib/linkedin/connections-import";
 import { LINKEDIN_MEMBER_COOKIE } from "@/lib/linkedin/oauth";
 import { requireTenantContext } from "@/lib/tenant";
-import { assertCredits, deductCredits } from "@/lib/billing/credits";
+import { assertCredits, creditActorFrom, deductCredits } from "@/lib/billing/credits";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 
@@ -37,6 +37,8 @@ export async function POST(req: Request) {
       action: "linkedin.import",
       referenceId: file.name,
       idempotencyKey: `linkedin-import-${ctx.tenantId}-${Date.now()}`,
+      userId: ctx.userId,
+      role: ctx.role,
     });
 
     return NextResponse.json({ ok: true, ...summary });
