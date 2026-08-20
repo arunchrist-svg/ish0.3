@@ -582,10 +582,12 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         leadId={lead.id}
         sequenceState={sequenceState}
         disabled={generating}
+        sending={composeActions?.sending}
         onUpdated={onSilentRefresh}
-        onStartSequence={() => {
+        onStartSequence={async () => {
           composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           if (approvalRef.current && composeActions && !composeActions.viewInEmailOnly) {
+            if (composeActions.sending) return;
             if (!composeActions.canSend) {
               if (!sequenceRecipients.length) {
                 toast.error(EMPTY_SEND_TO_HINT);
@@ -594,7 +596,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
               }
               return;
             }
-            approvalRef.current.send();
+            await approvalRef.current.send();
             return;
           }
           toast.message("Review the draft, then click Send to start the sequence");

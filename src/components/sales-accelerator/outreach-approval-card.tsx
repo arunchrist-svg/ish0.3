@@ -44,7 +44,7 @@ export type ComposeActionState = {
 
 export type OutreachApprovalHandle = {
   save: () => void;
-  send: () => void;
+  send: () => Promise<void>;
 };
 
 type Props = {
@@ -579,9 +579,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
       save: () => {
         void handleSave();
       },
-      send: () => {
-        void handleSendToOutreach();
-      },
+      send: () => handleSendToOutreach(),
     }),
     // Handlers close over latest state each render
     // eslint-disable-next-line react-hooks/exhaustive-deps

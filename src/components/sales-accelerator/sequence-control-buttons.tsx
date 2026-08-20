@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Loader2, Pause, Play, RotateCcw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { controlLeadSequence, type SequenceControlState } from "@/lib/api-client";
@@ -12,8 +12,9 @@ type Props = {
   leadId: string;
   sequenceState: SequenceControlState;
   disabled?: boolean;
+  sending?: boolean;
   onUpdated: () => void;
-  onStartSequence?: () => void;
+  onStartSequence?: () => void | Promise<void>;
 };
 
 const btnClass =
@@ -23,17 +24,28 @@ export function SequenceControlButtons({
   leadId,
   sequenceState,
   disabled,
+  sending,
   onUpdated,
   onStartSequence,
 }: Props) {
   const [loading, setLoading] = useState<"start" | "pause" | "cancel" | "reset" | null>(null);
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const inflightRef = useRef(false);
 
   async function run(action: "start" | "pause" | "cancel" | "reset") {
+    if (inflightRef.current || loading !== null) return;
     if (action === "start" && sequenceState === "not_started") {
-      onStartSequence?.();
+      inflightRef.current = true;
+      setLoading("start");
+      try {
+        await onStartSequence?.();
+      } finally {
+        inflightRef.current = false;
+        setLoading(null);
+      }
       return;
     }
+    inflightRef.current = true;
     setLoading(action);
     try {
       const result = await controlLeadSequence(leadId, action);
@@ -56,9 +68,12 @@ export function SequenceControlButtons({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update sequence");
     } finally {
+      inflightRef.current = false;
       setLoading(null);
     }
   }
+
+  const startBusy = loading === "start" || Boolean(sending);
 
   const showRestart = sequenceState === "cancelled" || sequenceState === "complete" || sequenceState === "active" || sequenceState === "paused";
 
@@ -68,7 +83,7 @@ export function SequenceControlButtons({
         {(sequenceState === "not_started" || sequenceState === "paused") && (
           <button
             type="button"
-            disabled={disabled || loading !== null}
+            disabled={disabled || loading !== null || Boolean(sending)}
             onClick={() => void run("start")}
             title={
               sequenceState === "not_started"
@@ -77,8 +92,14 @@ export function SequenceControlButtons({
             }
             className={cn(btnClass, "ish-scout-cta-blue hover:opacity-95")}
           >
-            {loading === "start" ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
-            {sequenceState === "not_started" ? "Start" : "Resume"}
+            {startBusy ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+            {sequenceState === "not_started"
+              ? startBusy
+                ? "Sending…"
+                : "Start"
+              : loading === "start"
+                ? "Resuming…"
+                : "Resume"}
           </button>
         )}
         {sequenceState === "active" && (

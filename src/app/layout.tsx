@@ -12,13 +12,29 @@ const inter = Inter({
 export const viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
-  themeColor: "#83a2db",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f7fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#f6f7fa" },
+  ],
 };
 
 export const metadata: Metadata = {
   title: "Nebula",
-  description: "Scout, enrich, and outreach for B2B sales teams",
+  description: "Scout, enrich, and approve AI outreach from anywhere.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Nebula",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({

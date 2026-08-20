@@ -1022,6 +1022,44 @@
 
 .ish-mobile-body {
   -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior-y: none;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+.ish-mobile-body input,
+.ish-mobile-body textarea,
+.ish-mobile-body [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (max-width: 1023px) {
+  .ish-mobile-body {
+    /* Native-like: avoid elastic bounce pulling the whole shell */
+    overscroll-behavior: none;
+  }
+
+  .ish-native-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    scroll-behavior: smooth;
+  }
+
+  .ish-native-card {
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow:
+      0 1px 2px rgba(20, 20, 30, 0.04),
+      0 8px 24px rgba(131, 162, 219, 0.08);
+    border: 1px solid rgba(131, 162, 219, 0.14);
+  }
+
+  .ish-native-press:active {
+    transform: scale(0.985);
+    opacity: 0.92;
+  }
 }
 
 .ish-scroll-tabs {
@@ -1113,7 +1151,24 @@
 }
 
 .ish-mobile-tab-bar {
-  box-shadow: 0 -1px 0 rgba(0, 0, 0, 0.06), 0 -4px 24px rgba(20, 20, 30, 0.06);
+  box-shadow:
+    0 -0.5px 0 rgba(131, 162, 219, 0.22),
+    0 -12px 32px rgba(20, 20, 30, 0.08);
+  background: rgba(255, 255, 255, 0.88) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+}
+
+.ish-tab-active-dot {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: #83a2db;
+  transform: translateX(-50%);
+  box-shadow: 0 0 8px rgba(131, 162, 219, 0.55);
 }
 
 .ish-mobile-header {
@@ -1121,9 +1176,10 @@
 }
 
 .ish-mobile-header-scrolled {
-  background: rgba(255, 255, 255, 0.95) !important;
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  background: rgba(255, 255, 255, 0.86) !important;
+  backdrop-filter: blur(22px) saturate(190%);
+  -webkit-backdrop-filter: blur(22px) saturate(190%);
+  box-shadow: 0 1px 0 rgba(131, 162, 219, 0.16);
 }
 
 @keyframes ish-sheet-in {
@@ -2226,4 +2282,18 @@
 
 .stratus .ish-email-logs-row:hover {
   background: rgba(var(--brand-stratus-blue-rgb), 0.08);
+}
+
+
+/* ── Capacitor native shell ─────────────────────────────────────────────── */
+
+.ish-native-app {
+  /* Kill rubber-band on the document; page scrollers use ish-native-scroll */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+.ish-native-app .ish-mobile-tab-bar {
+  /* Extra separation from content on physical devices */
+  padding-bottom: max(env(safe-area-inset-bottom), 10px);
 }

@@ -19,6 +19,9 @@ export async function applyNativeChrome(): Promise<void> {
   if (!isNativePlatform()) return;
   await whenCapacitorReady();
 
+  document.documentElement.classList.add("ish-native-app");
+  document.body.classList.add("ish-native-app");
+
   try {
     const { SplashScreen } = await import("@capacitor/splash-screen");
     await SplashScreen.hide();

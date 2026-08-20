@@ -37,7 +37,11 @@ export function AgentStatusBar({ runs, className }: AgentStatusBarProps) {
   const running = visible.filter((r) => r.status === "running");
 
   return (
-    <div className={cn("ish-agent-status-bar shrink-0 border-b border-brand-border/50 bg-white/90 px-4 py-2 backdrop-blur-md lg:px-6", className)}>
+    <div className={cn(
+      "ish-agent-status-bar shrink-0 border-b border-brand-border/40 bg-white/90 px-3 py-1.5 backdrop-blur-xl lg:px-6 lg:py-2",
+      "max-lg:mx-3 max-lg:mt-2 max-lg:mb-0 max-lg:rounded-2xl max-lg:border max-lg:border-brand-border/40 max-lg:shadow-[var(--shadow-brand-sm)]",
+      className,
+    )}>
       <div className="flex items-center gap-2 overflow-x-auto">
         <Sparkles className="size-4 shrink-0 text-brand-stratus-blue" />
         {running.length > 0 ? (

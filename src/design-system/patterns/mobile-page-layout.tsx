@@ -45,7 +45,7 @@ export function MobilePageLayout({
       <div
         ref={scrollRef}
         className={cn(
-          "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+          "ish-native-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain",
           contentClassName,
         )}
       >

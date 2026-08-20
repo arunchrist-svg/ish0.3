@@ -77,11 +77,11 @@ export function MobileNavDrawer({
     <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation menu">
       <button
         type="button"
-        className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[3px] transition-opacity"
         aria-label="Close menu"
         onClick={onClose}
       />
-      <div className="ish-mobile-drawer absolute inset-y-0 right-0 flex w-[min(340px,92vw)] flex-col bg-brand-canvas shadow-2xl">
+      <div className="ish-mobile-drawer absolute inset-y-0 right-0 flex w-[min(340px,94vw)] flex-col rounded-l-[28px] border-l border-brand-border/40 bg-brand-canvas/95 shadow-2xl backdrop-blur-2xl">
         <div className="flex items-center justify-between ish-page-padding pb-4 pt-[max(env(safe-area-inset-top),16px)]">
           <span className="text-[18px] font-extrabold tracking-tight text-brand-ink">{PRODUCT_NAME}</span>
           <button
