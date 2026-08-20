@@ -14,6 +14,7 @@ type Props = {
   onIndustrySelect?: (entry: IndustryCatalogEntry | null) => void;
   placeholder?: string;
   className?: string;
+  required?: boolean;
 };
 
 export function ProductCategoryPicker({
@@ -22,6 +23,7 @@ export function ProductCategoryPicker({
   onIndustrySelect,
   placeholder = "Start typing, e.g. kit",
   className,
+  required = true,
 }: Props) {
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -93,7 +95,7 @@ export function ProductCategoryPicker({
         aria-expanded={open}
         aria-controls={listboxId}
         aria-autocomplete="list"
-        required
+        required={required}
         className="w-full rounded-xl border border-brand-border px-4 py-3 text-[13px] outline-none focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)]"
         placeholder={placeholder}
       />

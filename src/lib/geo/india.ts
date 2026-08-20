@@ -182,6 +182,43 @@ export function summarizeScoutGeo(geo: ScoutGeoSelection): string {
   return `${parts[0]} +${parts.length - 1} more`;
 }
 
+export type ScoutGeoPickGroup = {
+  entireIndia: boolean;
+  regions: string[];
+  states: string[];
+  districtGroups: { state: string; districts: string[] }[];
+};
+
+/** Display groups for Settings. Uses stored picks, not the default fallback. */
+export function scoutGeoPickGroups(geo?: Partial<ScoutGeoSelection> | null): ScoutGeoPickGroup {
+  const sanitized = sanitizeScoutGeo(geo);
+  if (sanitized.entireIndia) {
+    return { entireIndia: true, regions: [], states: [], districtGroups: [] };
+  }
+  const regions = sanitized.regionIds
+    .map((id) => REGION_BY_ID.get(id as IndiaRegionId)?.name)
+    .filter((name): name is string => Boolean(name));
+  const states = sanitized.stateIds
+    .map((id) => STATE_BY_ID.get(id)?.name)
+    .filter((name): name is string => Boolean(name));
+  const byState = new Map<string, string[]>();
+  for (const id of sanitized.districtIds) {
+    const district = DISTRICT_BY_ID.get(id);
+    if (!district) continue;
+    const state = STATE_BY_ID.get(district.stateId);
+    const stateName = state?.name ?? district.stateId;
+    const list = byState.get(stateName) ?? [];
+    list.push(district.displayName);
+    byState.set(stateName, list);
+  }
+  return {
+    entireIndia: false,
+    regions,
+    states,
+    districtGroups: [...byState.entries()].map(([state, districts]) => ({ state, districts })),
+  };
+}
+
 function uniqueTerms(terms: Iterable<string>): string[] {
   const seen = new Set<string>();
   const out: string[] = [];

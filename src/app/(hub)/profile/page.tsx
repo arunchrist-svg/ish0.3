@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [orgName, setOrgName] = useState("");
+  const [role, setRole] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
 
@@ -25,6 +26,7 @@ export default function ProfilePage() {
           setUserEmail(data.user.email);
         }
         if (data.tenant) setOrgName(data.tenant.name);
+        if (typeof data.role === "string") setRole(data.role);
         if (typeof data.credits === "number") setCredits(data.credits);
         if (data.isSuperadmin) setIsSuperadmin(true);
       });
@@ -112,8 +114,8 @@ export default function ProfilePage() {
               <Shield className="size-4 text-brand-stratus-blue" />
               <span className="text-[13px] text-brand-ink-soft">Role</span>
             </div>
-            <span className="rounded-full bg-brand-black px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)]">
-              Owner
+            <span className="rounded-full bg-brand-black px-2.5 py-0.5 text-[11px] font-semibold capitalize text-white shadow-[var(--shadow-brand-sm)]">
+              {role || "Member"}
             </span>
           </SettingsRow>
         </SettingsGroup>

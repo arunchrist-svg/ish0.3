@@ -139,3 +139,38 @@ export function searchIndustries(query: string, limit = 8): IndustryCatalogEntry
 
   return scored.slice(0, limit).map(({ entry }) => entry);
 }
+
+export function parseProductCategories(raw: string | undefined | null): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[,|/]/)) {
+    const label = part.trim();
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
+}
+
+export function formatProductCategories(categories: string[]): string {
+  return parseProductCategories(categories.join(", ")).join(", ");
+}
+
+export function suggestedCompetitorsForCategories(raw: string | undefined | null): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const label of parseProductCategories(raw)) {
+    const entry = getIndustryByLabel(label);
+    if (!entry) continue;
+    for (const brand of entry.suggestedCompetitors) {
+      const key = brand.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(brand);
+    }
+  }
+  return out;
+}
