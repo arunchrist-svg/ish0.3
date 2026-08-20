@@ -81,6 +81,7 @@ export function BoardColumn({ stage, leads, action, queueByLeadId }: Props) {
               lead={lead}
               index={i}
               accent={accent}
+              stage={stage}
               sendStatus={queueByLeadId?.[lead.id]}
             />
           ))

@@ -12,27 +12,50 @@ type Props = {
   lead: LeadQueueItem;
   index: number;
   accent: PipelineStageAccent;
+  stage?: string;
   sendStatus?: SendQueueItem;
 };
 
-function sendStatusLabel(item: SendQueueItem): string {
+type CardSendBadge = {
+  label: string;
+  tone: "queued" | "waiting" | "sending" | "sent" | "failed" | "idle";
+};
+
+function queueBadge(item: SendQueueItem): CardSendBadge {
   switch (item.status) {
     case "waiting":
-      return item.gapMinutes ? `Sends in ${item.gapMinutes}m` : "Waiting";
+      return {
+        label: item.gapMinutes ? `Sends in ${item.gapMinutes}m` : "Waiting",
+        tone: "waiting",
+      };
     case "sending":
-      return "Sending now";
+      return { label: "Sending", tone: "sending" };
     case "sent":
-      return "Sent";
+      return { label: "Sent", tone: "sent" };
     case "failed":
-      return "Failed";
+      return { label: "Failed", tone: "failed" };
     case "cancelled":
-      return "Cancelled";
+      return { label: "Not sent", tone: "idle" };
     default:
-      return "Queued";
+      return { label: "Sending soon", tone: "queued" };
   }
 }
 
-export function BoardLeadCard({ lead, index, accent, sendStatus }: Props) {
+function cardSendBadge(
+  lead: LeadQueueItem,
+  stage: string | undefined,
+  sendStatus?: SendQueueItem,
+): CardSendBadge | null {
+  if (sendStatus) return queueBadge(sendStatus);
+  if (stage === "Email") return { label: "Not sent", tone: "idle" };
+  if (stage === "Email Sent" || lead.status === "outreached") {
+    return { label: "Sent", tone: "sent" };
+  }
+  return null;
+}
+
+export function BoardLeadCard({ lead, index, accent, stage, sendStatus }: Props) {
+  const badge = cardSendBadge(lead, stage, sendStatus);
   return (
     <Link
       href={`/leads?lead=${lead.id}`}
@@ -70,31 +93,24 @@ export function BoardLeadCard({ lead, index, accent, sendStatus }: Props) {
         )}
 
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-black/[0.04] pt-2.5">
-          {sendStatus ? (
-            <span
-              className={cn(
-                "inline-flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold",
-                sendStatus.status === "sent" && "bg-brand-green-soft text-brand-green",
-                sendStatus.status === "failed" && "bg-red-50 text-red-600",
-                sendStatus.status === "sending" && "bg-brand-stratus-blue/12 text-brand-stratus-blue",
-                (sendStatus.status === "queued" ||
-                  sendStatus.status === "waiting" ||
-                  sendStatus.status === "cancelled") &&
-                  "bg-brand-canvas text-brand-ink-soft",
-              )}
-              title={sendStatus.error}
-            >
-              {sendStatus.status === "sending" ? <Loader2 className="size-2.5 animate-spin" /> : null}
-              {sendStatus.status === "waiting" ? <Clock className="size-2.5" /> : null}
-              {sendStatus.status === "sent" ? <Check className="size-2.5" /> : null}
-              {sendStatus.status === "failed" ? <X className="size-2.5" /> : null}
-              <span className="truncate">{sendStatusLabel(sendStatus)}</span>
-            </span>
-          ) : (
-            <span className="rounded-md bg-brand-canvas px-2 py-0.5 text-[10px] font-bold text-brand-ink-soft">
-              {statusToDisplayLabel(lead.status)}
-            </span>
-          )}
+          <span
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold",
+              badge?.tone === "sent" && "bg-brand-green-soft text-brand-green",
+              badge?.tone === "failed" && "bg-red-50 text-red-600",
+              badge?.tone === "sending" && "bg-brand-stratus-blue/12 text-brand-stratus-blue",
+              badge?.tone === "waiting" && "bg-brand-stratus-yellow/25 text-brand-ink",
+              (badge?.tone === "queued" || badge?.tone === "idle" || !badge) &&
+                "bg-brand-canvas text-brand-ink-soft",
+            )}
+            title={sendStatus?.error}
+          >
+            {badge?.tone === "sending" ? <Loader2 className="size-2.5 animate-spin" /> : null}
+            {badge?.tone === "waiting" ? <Clock className="size-2.5" /> : null}
+            {badge?.tone === "sent" ? <Check className="size-2.5" /> : null}
+            {badge?.tone === "failed" ? <X className="size-2.5" /> : null}
+            <span className="truncate">{badge?.label ?? statusToDisplayLabel(lead.status)}</span>
+          </span>
           <IshAvatar name={lead.name} index={index} size={26} />
         </div>
       </div>

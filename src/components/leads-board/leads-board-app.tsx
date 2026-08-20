@@ -22,15 +22,25 @@ import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 
 const SEND_QUEUE_STORAGE_KEY = "ish-board-send-queue";
 
+function sendQueueStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function remainingGapMinutes(item: SendQueueItem, now = Date.now()): number | undefined {
   if (item.status !== "waiting" || !item.waitUntil) return item.gapMinutes;
   return Math.max(1, Math.ceil((item.waitUntil - now) / 60_000));
 }
 
 function loadStoredSendQueue(): SendQueueItem[] {
-  if (typeof window === "undefined") return [];
+  const storage = sendQueueStorage();
+  if (!storage) return [];
   try {
-    const raw = sessionStorage.getItem(SEND_QUEUE_STORAGE_KEY);
+    const raw = storage.getItem(SEND_QUEUE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as SendQueueItem[];
     if (!Array.isArray(parsed)) return [];
@@ -53,10 +63,11 @@ function loadStoredSendQueue(): SendQueueItem[] {
 }
 
 function persistSendQueue(queue: SendQueueItem[]) {
-  if (typeof window === "undefined") return;
+  const storage = sendQueueStorage();
+  if (!storage) return;
   try {
-    if (!queue.length) sessionStorage.removeItem(SEND_QUEUE_STORAGE_KEY);
-    else sessionStorage.setItem(SEND_QUEUE_STORAGE_KEY, JSON.stringify(queue));
+    if (!queue.length) storage.removeItem(SEND_QUEUE_STORAGE_KEY);
+    else storage.setItem(SEND_QUEUE_STORAGE_KEY, JSON.stringify(queue));
   } catch {
     /* ignore quota / private mode */
   }
@@ -91,11 +102,18 @@ export function LeadsBoardApp() {
   const [search, setSearch] = useState("");
   const [writingProgress, setWritingProgress] = useState<BoardBulkProgress | null>(null);
   const [sending, setSending] = useState(false);
-  const [sendQueue, setSendQueue] = useState<SendQueueItem[]>(() => loadStoredSendQueue());
+  const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
   const sendAbortRef = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const queueHydrated = useRef(false);
 
   useEffect(() => {
+    setSendQueue(loadStoredSendQueue());
+    queueHydrated.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!queueHydrated.current) return;
     persistSendQueue(sendQueue);
   }, [sendQueue]);
 
