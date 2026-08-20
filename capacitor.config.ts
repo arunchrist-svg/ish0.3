@@ -15,7 +15,7 @@ for (const file of [".env.local", ".env"]) {
 /** Stratus canvas background — matches web manifest + tokens.css */
 const STRATUS_CANVAS = "#f6f7fa";
 
-const PRODUCTION_APP_URL = "https://ish0-3.vercel.app";
+const PRODUCTION_APP_URL = "https://ish-sales-accelerator-d365.vercel.app";
 
 function resolveServerUrl(): string {
   const explicit = process.env.CAPACITOR_SERVER_URL?.trim();
