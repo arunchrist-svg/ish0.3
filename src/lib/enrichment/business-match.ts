@@ -1,5 +1,5 @@
 /**
- * Keep scout companies that match selected Businesses chips (Schools, Banks, …).
+ * Keep scout companies that match selected Businesses chips (Schools, Banks, etc).
  * Business mode previously skipped vertical filtering, so food shops could land
  * in a Schools/Colleges result set.
  */
@@ -15,11 +15,11 @@ type BusinessMatcher = {
 };
 
 const FOOD_OR_RETAIL_RE =
-  /\b(restaurant|cafe|caf[eé]|bakery|mithai|sweet|pizza|burger|roll|kati|bar|pub|dhaba|hotel|motel|resort|shop|store|mart|market|pharmacy|clinic)\b/i;
+  /\b(restaurant|cafe|bakery|mithai|sweet|pizza|burger|roll|kati|bar|pub|dhaba|hotel|motel|resort|shop|store|mart|market|pharmacy|clinic)\b/i;
 
 const BUSINESS_MATCHERS: Record<ScoutBusiness, BusinessMatcher> = {
   Banks: {
-    keep: /\b(bank|banking|co[-\s]?operative bank|grameen|sbi|hdfc|icici|axis|canara|pnb|bob)\b/i,
+    keep: /\b(bank|banking|co[- ]?operative bank|grameen|sbi|hdfc|icici|axis|canara|pnb|bob)\b/i,
     reject: /\b(school|college|university|hospital|hotel|restaurant)\b/i,
     industries: ["BFSI", "Financial Services", "Finance"],
   },
@@ -39,7 +39,7 @@ const BUSINESS_MATCHERS: Record<ScoutBusiness, BusinessMatcher> = {
     industries: ["Education"],
   },
   Hospitals: {
-    keep: /\b(hospital|hospitals|medical\s*centre|medical\s*center|nursing\s*home|multispeciali[st]y|super\s*speciali[st]y|clinic)\b/i,
+    keep: /\b(hospital|hospitals|medical\s*centre|medical\s*center|nursing\s*home|multispecialty|multispeciality|super\s*specialty|super\s*speciality|clinic)\b/i,
     reject: /\b(school|college|university|bank|restaurant|hotel|roll)\b/i,
     industries: ["Healthcare", "Pharma"],
   },

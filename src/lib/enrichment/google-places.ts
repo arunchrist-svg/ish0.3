@@ -149,7 +149,7 @@ async function placesTextSearchLegacy(query: string, bias?: PlacesLocationBias):
   if (!res.ok) throw new Error(`Google Places text search failed: ${res.status}`);
   const data = await res.json();
   if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-    throw new Error(`Google Places error: ${data.status} — ${data.error_message ?? ""}`);
+    throw new Error(`Google Places error: ${data.status} - ${data.error_message ?? ""}`);
   }
   return data.results ?? [];
 }
@@ -422,7 +422,7 @@ export async function googlePlacesSearchCompanies(params: {
             try {
               merged = { ...place, ...(await placeDetailsLegacy(place.place_id)) };
             } catch {
-              // New API usually includes websiteUri — legacy details optional
+              // New API usually includes websiteUri; legacy details are optional
             }
           }
 
