@@ -34,4 +34,11 @@ describe("sanitizeJobTitle", () => {
       sanitizeJobTitle("Ashok Leyland appoints Ganesh Mani as something very long and unrelated"),
     ).toBeUndefined();
   });
+
+  it("rejects Team Lead and Open to Work titles", () => {
+    expect(sanitizeJobTitle("HR Team Lead")).toBeUndefined();
+    expect(sanitizeJobTitle("People Teamlead")).toBeUndefined();
+    expect(sanitizeJobTitle("HR Director | Open to Work")).toBeUndefined();
+    expect(sanitizeJobTitle("HR Manager OPEN_TO_WORK")).toBeUndefined();
+  });
 });

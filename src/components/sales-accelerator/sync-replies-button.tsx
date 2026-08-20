@@ -40,9 +40,10 @@ export function SyncRepliesButton({ leadId, leadName, onSynced, className, compa
         return;
       }
 
+      const inboxLabel = result.provider === "resend" ? "Resend Receiving" : "inbox";
       toast.info("No new replies in inbox", {
         description: leadId
-          ? "Checked Gmail for this workspace. If they replied, confirm SMTP inbox matches where mail arrived."
+          ? `Checked ${inboxLabel} for this workspace. If they replied, confirm inbound mail is reaching the connected provider.`
           : `Checked ${result.checked} recent message(s).`,
       });
     } catch (e) {
@@ -57,10 +58,10 @@ export function SyncRepliesButton({ leadId, leadName, onSynced, className, compa
       type="button"
       onClick={() => void handleSync()}
       disabled={syncing}
-      title="Check Gmail inbox for new replies from outreached leads"
+      title="Check inbox for new replies from outreached leads"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-brand-border bg-white font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-all hover:border-brand-ink/20 disabled:opacity-60",
-        compact ? "h-7 px-3 text-[11px]" : "rounded-[14px] px-4 py-2.5 text-[12px]",
+        "inline-flex items-center gap-1.5 rounded-full border border-brand-stratus-blue/20 bg-white font-semibold text-brand-ink transition-all hover:border-brand-stratus-blue/35 hover:bg-brand-canvas disabled:opacity-60",
+        compact ? "h-7 px-2.5 text-[11px]" : "rounded-[14px] px-4 py-2.5 text-[12px]",
         className,
       )}
     >

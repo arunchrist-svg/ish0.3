@@ -1,7 +1,7 @@
 import { knownDomainForCompanyName } from "@/lib/company-logo";
 import { apolloSearchOrganizationByName } from "./apollo";
 import { companyDomainAliases, pickBestOrganizationMatch } from "./company-domain-aliases";
-import { isAcceptableCompanyDomain, normalizeHost } from "./company-domain-quality";
+import { isAcceptableCompanyDomain, isUnusableCompanyDomain, normalizeHost } from "./company-domain-quality";
 import { domainFromCompany, domainFromWebsite } from "./provider-utils";
 import { hasTavilyKeys } from "./tavily-keys";
 import { tavilySearch } from "./tavily-client";
@@ -12,6 +12,40 @@ export function normalizeDomain(domain?: string | null): string | undefined {
 
 function isUsableForCompany(domain: string | undefined, companyName: string): domain is string {
   return Boolean(domain && isAcceptableCompanyDomain(domain, companyName));
+}
+
+/** Stored or pasted hosts: drop Zauba/IndiaMART, keep a real site even if the slug differs. */
+function isKeepableProvidedHost(domain: string | undefined): domain is string {
+  return Boolean(domain && !isUnusableCompanyDomain(domain));
+}
+
+const URL_IN_TEXT = /https?:\/\/[^\s"'<>)\]]+/gi;
+const LABELED_SITE =
+  /(?:official\s+)?(?:web\s*)?site\s*(?:is|:|-)?\s*(?:https?:\/\/)?((?:www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z]{2,})+)/gi;
+const WWW_HOST = /\bwww\.[a-z0-9][a-z0-9.-]+\.[a-z]{2,}\b/gi;
+
+export function extractOfficialWebsiteFromHits(
+  hits: { title: string; url: string; content: string }[],
+  companyName: string,
+): { domain: string; website: string } | undefined {
+  const candidates: string[] = [];
+  for (const hit of hits) {
+    candidates.push(hit.url);
+    const blob = `${hit.title}\n${hit.content}`;
+    for (const match of blob.match(URL_IN_TEXT) ?? []) candidates.push(match);
+    for (const match of blob.matchAll(LABELED_SITE)) {
+      if (match[1]) candidates.push(match[1]);
+    }
+    for (const match of blob.match(WWW_HOST) ?? []) candidates.push(match);
+  }
+
+  for (const raw of candidates) {
+    const domain = domainFromWebsite(raw) ?? normalizeDomain(raw);
+    if (isUsableForCompany(domain, companyName)) {
+      return { domain, website: officialWebsiteForDomain(domain, raw, companyName) };
+    }
+  }
+  return undefined;
 }
 
 /** Keep an official URL when it matches the resolved host; never keep directories or social. */
@@ -62,7 +96,7 @@ export async function resolveCompanyDomain(params: {
   const known = normalizeDomain(knownDomainForCompanyName(params.companyName));
   const naiveGuess = domainFromCompany(params.companyName);
   const provided = normalizeDomain(params.domain);
-  if (isUsableForCompany(provided, params.companyName)) {
+  if (isKeepableProvidedHost(provided)) {
     // Prefer curated domains over naive slug guesses stored on the account.
     if (known && provided === naiveGuess && known !== naiveGuess) {
       return withAliases(
@@ -86,7 +120,7 @@ export async function resolveCompanyDomain(params: {
   }
 
   const fromWebsite = domainFromWebsite(params.website);
-  if (isUsableForCompany(fromWebsite, params.companyName)) {
+  if (isKeepableProvidedHost(fromWebsite)) {
     if (known && fromWebsite === naiveGuess && known !== naiveGuess) {
       return withAliases(
         {
@@ -153,20 +187,16 @@ export async function resolveCompanyDomain(params: {
   }
 
   if (hasTavilyKeys() && params.companyName.trim()) {
+    const queries = [
+      `"${params.companyName}" official website India`,
+      `"${params.companyName}" (website OR "official site") India -site:zaubacorp.com -site:indiamart.com -site:linkedin.com`,
+    ];
     try {
-      const cityHint = params.city ? ` ${params.city}` : " India";
-      const hits = await tavilySearch(`"${params.companyName}" official website${cityHint}`, 5);
-      for (const hit of hits) {
-        const domain = domainFromWebsite(hit.url);
-        if (isUsableForCompany(domain, params.companyName)) {
-          return withAliases(
-            {
-              domain,
-              website: officialWebsiteForDomain(domain, hit.url, params.companyName),
-              source: "tavily",
-            },
-            params.companyName,
-          );
+      for (const query of queries) {
+        const hits = await tavilySearch(query, 5);
+        const found = extractOfficialWebsiteFromHits(hits, params.companyName);
+        if (found) {
+          return withAliases({ ...found, source: "tavily" }, params.companyName);
         }
       }
     } catch (e) {

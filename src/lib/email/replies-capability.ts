@@ -12,6 +12,6 @@ export function repliesCapability(config: Pick<EmailConfig, "provider">): {
   }
   return {
     supported: true,
-    hint: "Replies arrive through the Resend inbound webhook. Point inbound mail on your sending domain at Resend.",
+    hint: "Replies are matched from Resend Receiving. Sync replies, or point the email.received webhook at this app.",
   };
 }

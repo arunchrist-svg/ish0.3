@@ -5,6 +5,7 @@ export const AGENTS = {
   notifyReply: "notify-reply",
   searchAgent: "search-agent",
   relatedLeads: "related-leads",
+  preferenceChat: "preference-chat",
 } as const;
 
 export type AgentName = (typeof AGENTS)[keyof typeof AGENTS];

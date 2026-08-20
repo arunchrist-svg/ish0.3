@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 import { getCreditBalance } from "@/lib/billing/credits";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { getWhatsAppConnection } from "@/lib/settings/whatsapp-settings";
 import { getSmtpStatus, getResendStatus } from "@/lib/email/config";
 import { getPermissionFlags } from "@/lib/auth/permissions";
 import { db, tenants, users } from "@/db";
@@ -10,12 +11,14 @@ import {
   defaultIcpSummary,
   resolvePlatformIntent,
 } from "@/lib/brand/platform-intent";
+import { isSweetsGiftingSlug, isSweetsOnlyOperator } from "@/lib/brand/vertical-catalog";
+import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
 
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
 
-    const [user, tenant, credits, emailConfig] = await Promise.all([
+    const [user, tenant, credits, emailConfig, whatsapp] = await Promise.all([
       db
         .select({ id: users.id, email: users.email, name: users.name })
         .from(users)
@@ -25,6 +28,7 @@ export async function GET() {
       db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1).then((rows) => rows[0]),
       getCreditBalance(ctx.tenantId),
       getResolvedEmailConfig(ctx.workspaceId),
+      getWhatsAppConnection(ctx.workspaceId),
     ]);
 
     if (!user) {
@@ -34,10 +38,18 @@ export async function GET() {
     const permissions = getPermissionFlags(ctx);
 
     const insights = emailConfig.brandConfig?.websiteInsights;
-    const platformIntent = resolvePlatformIntent(
-      emailConfig.brandConfig?.platformIntent ?? insights?.platformIntent,
-      emailConfig.brandConfig?.verticalPackId ?? emailConfig.brandConfig?.brandSlug,
-    );
+    const sweetsGifting =
+      isSweetsOnlyOperator(user.email) ||
+      isSweetsGiftingSlug(tenant?.slug) ||
+      isSweetsGiftingSlug(ctx.tenantSlug) ||
+      isSweetsGiftingSlug(emailConfig.brandConfig?.brandSlug) ||
+      isSweetsGiftingSlug(emailConfig.brandConfig?.verticalPackId);
+    const platformIntent = sweetsGifting
+      ? "corporate_gifting"
+      : resolvePlatformIntent(
+          emailConfig.brandConfig?.platformIntent ?? insights?.platformIntent,
+          emailConfig.brandConfig?.verticalPackId ?? emailConfig.brandConfig?.brandSlug,
+        );
     const roles = {
       scoutDepartments: insights?.scoutDepartments ?? [],
       scoutSeniority: insights?.scoutSeniority ?? [],
@@ -50,6 +62,7 @@ export async function GET() {
       analyzedAt: insights?.analyzedAt,
       icpSummary: insights?.icpSummary?.trim() || defaultIcpSummary(platformIntent),
       platformIntent,
+      defaultOutreachCta: resolveDefaultOutreachCta(emailConfig.brandConfig),
     };
 
     const smtpStatus = getSmtpStatus(emailConfig);
@@ -76,6 +89,7 @@ export async function GET() {
       permissions,
       sendMode: emailConfig.sendMode,
       emailConfigured,
+      whatsappConnected: whatsapp.connected,
       credits,
       verticalPackId:
         emailConfig.brandConfig?.verticalPackId ??

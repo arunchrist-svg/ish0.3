@@ -3,6 +3,7 @@ import {
   brandPresetOptionsForUser,
   campaignModeOptionsForUser,
   defaultPlatformIntentForUser,
+  isSweetsGiftingSlug,
   isSweetsOnlyOperator,
   platformIntentOptionsForUser,
 } from "@/lib/brand/vertical-catalog";
@@ -12,7 +13,15 @@ describe("vertical catalog for sweets-only operators", () => {
   it("recognizes srilaksha.ish emails", () => {
     expect(isSweetsOnlyOperator("srilaksha.ish@gmail.com")).toBe(true);
     expect(isSweetsOnlyOperator("Srilaksha.ISH@india.com")).toBe(true);
+    expect(isSweetsOnlyOperator("srlaksha.ish@gmail.com")).toBe(true);
     expect(isSweetsOnlyOperator("arun@indiasweethouse.com")).toBe(false);
+  });
+
+  it("recognizes festive sweets tenant slugs", () => {
+    expect(isSweetsGiftingSlug("ish")).toBe(true);
+    expect(isSweetsGiftingSlug("srilaksha-ish")).toBe(true);
+    expect(isSweetsGiftingSlug("srlaksha.ish")).toBe(true);
+    expect(isSweetsGiftingSlug("acme-saas")).toBe(false);
   });
 
   it("shows only sweets intent, ISH preset, and Diwali campaign", () => {

@@ -34,8 +34,8 @@ export function recordTavilySearch(keyId: string, credits = BASIC_SEARCH_CREDITS
   entry.sessionUsed += credits;
   entry.lastUsedAt = Date.now();
   sessionByKeyId.set(keyId, entry);
-  // Do not invalidate Tavily /usage cache here. Search volume is tracked in-session;
-  // re-fetching /usage on every search made scouting dramatically slower.
+  // Stay on the same key until it hits plan quota (432).
+  // Rate-limit 429 must not advance or reject the key: credits are still there.
 }
 
 /** Mark key unavailable for this session after a quota rejection (rotation only). */
@@ -45,7 +45,8 @@ export function markKeyRejectedForSession(keyId: string): void {
 
 /**
  * Mark keys Tavily reports as exhausted. Do not clear session rejects:
- * a search 429/432 is authoritative even when GET /usage is stale or failed.
+ * a search 432 (plan quota) is authoritative even when GET /usage is stale.
+ * Rate-limit 429 is not stored here.
  */
 export function syncSessionKeysFromAccount(accountKeys: TavilyAccountKeyUsage[]): void {
   for (const account of accountKeys) {
@@ -77,7 +78,7 @@ export function takeTavilyKeySwitchMessage(): string | null {
   }
   const { fromLabel, toLabel } = pendingKeySwitch;
   pendingKeySwitch = null;
-  return `Primary Tavily key exhausted (${fromLabel}). Switched to backup key (${toLabel}).`;
+  return `Tavily key exhausted (${fromLabel}). Switched to next key (${toLabel}).`;
 }
 
 export function allTavilyKeysExhausted(accountKeys?: TavilyAccountKeyUsage[]): boolean {
@@ -115,18 +116,50 @@ export function getNextTavilyKey(
   return null;
 }
 
+/** Jump to the first key that still has credits instead of always starting on key-1. */
+export function bootstrapActiveTavilyKey(accountKeys?: TavilyAccountKeyUsage[]): void {
+  if (!accountKeys?.length) return;
+  syncSessionKeysFromAccount(accountKeys);
+  const keys = getTavilyKeys();
+  const accountById = new Map(accountKeys.map((k) => [k.keyId, k]));
+  for (let i = 0; i < keys.length; i++) {
+    const candidate = keys[i];
+    if (sessionRejectedKeys.has(candidate.id)) continue;
+    const account = accountById.get(candidate.id);
+    if (account && !account.fetchError && account.exhausted) continue;
+    activeKeyIndex = i;
+    return;
+  }
+}
+
+function advanceActiveKey(fromKeyId: string): void {
+  const keys = getTavilyKeys();
+  const fromIdx = keys.findIndex((k) => k.id === fromKeyId);
+  activeKeyIndex = fromIdx >= 0 ? (fromIdx + 1) % Math.max(keys.length, 1) : 0;
+}
+
 export function rotateToNextKey(
   failedKeyId: string,
   accountKeys?: TavilyAccountKeyUsage[],
   skipIds?: ReadonlySet<string>,
 ) {
   markKeyRejectedForSession(failedKeyId);
-  const keys = getTavilyKeys();
-  const failedIdx = keys.findIndex((k) => k.id === failedKeyId);
-  activeKeyIndex = failedIdx >= 0 ? (failedIdx + 1) % Math.max(keys.length, 1) : 0;
+  advanceActiveKey(failedKeyId);
   const next = getNextTavilyKey(accountKeys, skipIds);
   recordKeySwitch(failedKeyId, next?.id ?? null);
   return next;
+}
+
+/** Move off a rate-limited key for this request without treating it as out of credits. */
+export function skipRateLimitedKey(
+  currentKeyId: string,
+  accountKeys?: TavilyAccountKeyUsage[],
+  skipIds?: ReadonlySet<string>,
+) {
+  const skip = new Set(skipIds);
+  skip.add(currentKeyId);
+  advanceActiveKey(currentKeyId);
+  return getNextTavilyKey(accountKeys, skip);
 }
 
 /** Clears in-memory rotation state. Used by tests; a process restart does the same. */

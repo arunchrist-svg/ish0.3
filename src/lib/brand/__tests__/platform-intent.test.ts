@@ -4,6 +4,8 @@ import {
   campaignModesForIntent,
   defaultIcpSummary,
   icpCompanyFilterInstructions,
+  expandPeopleFiltersForOffer,
+  festiveSweetsBuyerGuidance,
   inferPlatformIntent,
   normalizeScoutRoleFilters,
   scoutDefaultsForIntent,
@@ -52,7 +54,7 @@ describe("platform intent", () => {
 
   it("uses department-only scout defaults for corporate gifting", () => {
     const defaults = scoutDefaultsForIntent("corporate_gifting");
-    expect(defaults.scoutDepartments).toEqual(["HR", "Procurement", "Admin"]);
+    expect(defaults.scoutDepartments).toEqual(["HR", "Procurement"]);
     expect(defaults.scoutSeniority).toEqual([]);
     expect(defaultIcpSummary("corporate_gifting")).toMatch(/employees/);
     expect(defaultIcpSummary("corporate_gifting")).toMatch(/not other sweet shops/);
@@ -74,5 +76,33 @@ describe("platform intent", () => {
     });
     expect(text).toMatch(/mithai shops/i);
     expect(text).toMatch(/employees/i);
+  });
+
+  it("maps Director-only sweets fetch to HR and Procurement buyers", () => {
+    const expanded = expandPeopleFiltersForOffer("corporate_gifting", ["Director"], []);
+    expect(expanded.expanded).toBe(true);
+    expect(expanded.seniority).toEqual(["Director"]);
+    expect(expanded.departments).toEqual(["HR", "Procurement"]);
+    expect(festiveSweetsBuyerGuidance("corporate_gifting")).toMatch(/HR, Procurement/);
+  });
+
+  it("does not expand HR or Procurement when Scout Businesses is on", () => {
+    const expanded = expandPeopleFiltersForOffer("corporate_gifting", ["Director"], [], {
+      treatAsGifting: true,
+      searchKind: "business",
+      businesses: ["Banks"],
+    });
+    expect(expanded.expanded).toBe(false);
+    expect(expanded.departments).toEqual([]);
+    expect(expanded.note).toMatch(/branch managers/i);
+    expect(festiveSweetsBuyerGuidance("corporate_gifting", "business")).toMatch(/branch managers/i);
+  });
+
+  it("maps Director-only fetch to HR and Procurement when the tenant slug is festive sweets", () => {
+    const expanded = expandPeopleFiltersForOffer("general_b2b", ["Director"], [], {
+      treatAsGifting: true,
+    });
+    expect(expanded.departments).toEqual(["HR", "Procurement"]);
+    expect(expanded.seniority).toEqual(["Director"]);
   });
 });

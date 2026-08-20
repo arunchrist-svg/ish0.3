@@ -9,9 +9,9 @@ export const AGENT_LLM_TIER: Record<string, LLMTier> = {
   "search.parseQuery": "fast",
   "search.verifyMatch": "quality",
   "search.extract": "quality",
-  "writer.plan": "quality",
   "writer.write": "quality",
   "writer.revise": "quality",
+  "preference.chat": "quality",
 };
 
 export function tierForAgentStep(step: string): LLMTier {

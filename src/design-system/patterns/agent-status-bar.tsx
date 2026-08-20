@@ -24,7 +24,9 @@ function labelForAgent(agent: string): string {
   if (agent === "writer") return "Smart emails";
   if (agent === "scout") return "Scout";
   if (agent === "gift-intel" || agent === "brand-intel") return "Brand Intelligence";
+  if (agent === "occasion-intel") return "Occasion Intel";
   if (agent === "sequencer") return "Sequencer";
+  if (agent === "reply-writer" || agent === "reply-planner" || agent === "reply-orchestrator") return "Reply Writer";
   return agent;
 }
 

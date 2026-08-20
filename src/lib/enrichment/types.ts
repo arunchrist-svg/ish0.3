@@ -18,6 +18,13 @@ export type ScoutCompanyResult = {
   companyOverview?: CompanyOverview;
   dataSource: string;
   externalId?: string;
+  leadabilityScore?: number;
+  leadabilityBand?: "high" | "medium" | "low" | "unknown";
+  leadabilityMatchedPeople?: number;
+  leadabilityMatchedInCity?: number;
+  leadabilityProbeSource?: string;
+  /** Set when returned under a Focus Area Places location bias circle. */
+  scoutGeoVerified?: boolean;
 };
 
 export type ScoutPersonResult = {

@@ -6,6 +6,7 @@ import { MapPin, Check, ChevronRight } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
 import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
 import { CompanyLogo } from "@/components/company/company-logo";
+import { LeadabilityBadge } from "@/components/company/leadability-badge";
 import { scoutCardSurface } from "./scout-card-surface";
 
 function SizePill({ employees, compact = false }: { employees?: string; compact?: boolean }) {
@@ -122,6 +123,14 @@ export function CompanyTile({
               {company.type}
             </span>
             <SizePill employees={company.employees} compact />
+            <LeadabilityBadge
+              compact
+              leadabilityBand={company.leadabilityBand}
+              leadabilityScore={company.leadabilityScore}
+              leadabilityMatchedPeople={company.leadabilityMatchedPeople}
+              leadabilityMatchedInCity={company.leadabilityMatchedInCity}
+              leadabilityProbeSource={company.leadabilityProbeSource}
+            />
           </div>
           <div className="mt-1 flex items-center gap-1 text-[10px] text-brand-ink-soft">
             <MapPin className="size-3 shrink-0" />
@@ -205,6 +214,13 @@ export function CompanyTile({
             {company.type}
           </span>
           <SizePill employees={company.employees} />
+          <LeadabilityBadge
+            leadabilityBand={company.leadabilityBand}
+            leadabilityScore={company.leadabilityScore}
+            leadabilityMatchedPeople={company.leadabilityMatchedPeople}
+            leadabilityMatchedInCity={company.leadabilityMatchedInCity}
+            leadabilityProbeSource={company.leadabilityProbeSource}
+          />
         </div>
       </div>
 

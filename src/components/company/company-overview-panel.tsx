@@ -1,15 +1,17 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Globe, Lightbulb, MapPin, RefreshCw } from "lucide-react";
+import { Check, ExternalLink, Globe, Lightbulb, MapPin, Pencil, RefreshCw, X } from "lucide-react";
 import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
 import type { CompanyOverview, CompanyOverviewInput } from "@/lib/company-overview";
 import { displayValue } from "@/lib/company-overview";
 import { useCompanyOverview } from "@/hooks/use-company-overview";
-import { displayCompanyWebsite } from "@/lib/enrichment/company-domain-quality";
+import { displayCompanyWebsite, parsePastedCompanyWebsite } from "@/lib/enrichment/company-domain-quality";
 import { PanelCard, SectionHeader } from "@/design-system";
 import { CompanyLogo } from "@/components/company/company-logo";
+import { LeadabilityBadge } from "@/components/company/leadability-badge";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -20,6 +22,11 @@ type Props = {
   city?: string;
   fitScore?: number;
   industry?: string;
+  leadabilityScore?: number;
+  leadabilityBand?: "high" | "medium" | "low" | "unknown";
+  leadabilityMatchedPeople?: number;
+  leadabilityMatchedInCity?: number;
+  leadabilityProbeSource?: string;
   overviewInput: CompanyOverviewInput | null;
   initialOverview?: CompanyOverview;
   enabled?: boolean;
@@ -84,6 +91,165 @@ function BentoCell({
   return <div className={cn("min-h-0 min-w-0", className)}>{children}</div>;
 }
 
+function PasteWebsiteField({
+  onSave,
+}: {
+  onSave: (website: string) => boolean;
+}) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  return (
+    <form
+      className="mt-1.5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!onSave(value)) {
+          setError("Use company.com, not a Zauba or IndiaMART page.");
+          return;
+        }
+        setError(null);
+      }}
+    >
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+        Paste company website
+      </label>
+      <div className="flex gap-1">
+        <input
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            setError(null);
+          }}
+          placeholder="https://company.com"
+          autoComplete="url"
+          inputMode="url"
+          className="h-8 min-w-0 flex-1 rounded-md border border-brand-border bg-white px-2 text-[11.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
+        />
+        <button
+          type="submit"
+          disabled={!value.trim()}
+          className="h-8 rounded-md bg-brand-ink px-2 text-[10px] font-semibold text-white disabled:opacity-50"
+        >
+          Save
+        </button>
+      </div>
+      {error ? <p className="mt-1 text-[10px] text-red-600">{error}</p> : null}
+    </form>
+  );
+}
+
+function WebsiteField({
+  site,
+  onWebsiteResolved,
+  showWebsiteUnknown,
+}: {
+  site: { href: string; label: string } | null | undefined;
+  onWebsiteResolved?: ((resolved: { domain?: string; website?: string }) => void) | undefined;
+  showWebsiteUnknown: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSave() {
+    if (!onWebsiteResolved) return;
+    const parsed = parsePastedCompanyWebsite(draft);
+    if (!parsed.domain) { setError("Use company.com, not Zauba or IndiaMART."); return; }
+    onWebsiteResolved(parsed);
+    setEditing(false);
+    setError(null);
+  }
+
+  if (editing) {
+    return (
+      <form
+        className="mt-1.5"
+        onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+      >
+        <div className="flex gap-1">
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => { setDraft(e.target.value); setError(null); }}
+            placeholder={site?.href ?? "https://company.com"}
+            autoComplete="url"
+            inputMode="url"
+            className="h-7 min-w-0 flex-1 rounded-md border border-brand-border bg-white px-2 text-[11.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim()}
+            className="flex size-7 items-center justify-center rounded-md bg-brand-ink text-white disabled:opacity-40"
+            title="Save"
+          >
+            <Check className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => { setEditing(false); setError(null); }}
+            className="flex size-7 items-center justify-center rounded-md border border-brand-border bg-white text-brand-ink-soft hover:text-brand-ink"
+            title="Cancel"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+        {error ? <p className="mt-1 text-[10px] text-red-600">{error}</p> : null}
+      </form>
+    );
+  }
+
+  if (site) {
+    return (
+      <div className="mt-1 inline-flex max-w-full items-center gap-1">
+        <a
+          href={site.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex max-w-full items-center gap-1 text-[11.5px] font-medium text-blue-600 hover:underline"
+        >
+          <Globe className="size-3 shrink-0" />
+          <span className="truncate">{site.label}</span>
+        </a>
+        {onWebsiteResolved ? (
+          <button
+            type="button"
+            onClick={() => { setDraft(site.href); setEditing(true); }}
+            className="flex size-4 shrink-0 items-center justify-center rounded text-brand-ink-faint hover:text-brand-ink"
+            title="Edit website"
+          >
+            <Pencil className="size-3" />
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (onWebsiteResolved) {
+    return (
+      <PasteWebsiteField
+        onSave={(raw) => {
+          const parsed = parsePastedCompanyWebsite(raw);
+          if (!parsed.domain) return false;
+          onWebsiteResolved(parsed);
+          return true;
+        }}
+      />
+    );
+  }
+
+  if (showWebsiteUnknown) {
+    return (
+      <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-brand-ink-faint">
+        <Globe className="size-3 shrink-0" />
+        <span>Website unknown</span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function OverviewSkeleton({ wide, compact }: { wide?: boolean; compact?: boolean }) {
   return (
     <div
@@ -115,6 +281,11 @@ export function CompanyOverviewPanel({
   website,
   city,
   industry,
+  leadabilityScore,
+  leadabilityBand,
+  leadabilityMatchedPeople,
+  leadabilityMatchedInCity,
+  leadabilityProbeSource,
   overviewInput,
   initialOverview,
   enabled = true,
@@ -187,22 +358,11 @@ export function CompanyOverviewPanel({
               <span>{city}</span>
             </div>
           ) : null}
-          {site ? (
-            <a
-              href={site.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-1 inline-flex max-w-full items-center gap-1 text-[11.5px] font-medium text-blue-600 hover:underline"
-            >
-              <Globe className="size-3 shrink-0" />
-              <span className="truncate">{site.label}</span>
-            </a>
-          ) : showWebsiteUnknown ? (
-            <div className="mt-1 inline-flex items-center gap-1 text-[11.5px] text-brand-ink-faint">
-              <Globe className="size-3 shrink-0" />
-              <span>Website unknown</span>
-            </div>
-          ) : null}
+          <WebsiteField
+            site={site}
+            onWebsiteResolved={onWebsiteResolved}
+            showWebsiteUnknown={showWebsiteUnknown}
+          />
           <div className="mt-2 flex flex-wrap gap-1.5">
             {industry ? (
               <span className="inline-block rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
@@ -219,6 +379,14 @@ export function CompanyOverviewPanel({
             >
               {sizeLine}
             </span>
+            <LeadabilityBadge
+              showSummary
+              leadabilityBand={leadabilityBand}
+              leadabilityScore={leadabilityScore}
+              leadabilityMatchedPeople={leadabilityMatchedPeople}
+              leadabilityMatchedInCity={leadabilityMatchedInCity}
+              leadabilityProbeSource={leadabilityProbeSource}
+            />
           </div>
         </div>
       </div>

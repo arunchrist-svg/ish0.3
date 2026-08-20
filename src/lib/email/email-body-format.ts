@@ -52,4 +52,4 @@ export function normalizeEmailBody(body: string): string {
 }
 
 export const EMAIL_BODY_FORMAT_RULE =
-  "Format emailBody with blank lines between paragraphs (use \\n\\n): greeting, then the ISH beats (Email 1: hook / taste-first / one CTA; Email 2: urgency / sampler CTA; Email 3: last note / won't email further / Diwali close), then sign-off. No No worries line on Email 1.";
+  "Format emailBody with blank lines between paragraphs (use \\n\\n): greeting, then the ISH beats (Email 1: hook / taste-first / one CTA; Email 2: urgency / sampler CTA; Email 3: last note / won't email further / happy festival season close), then sign-off. No No worries line on Email 1.";

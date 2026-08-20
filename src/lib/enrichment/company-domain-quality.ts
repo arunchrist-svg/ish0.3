@@ -1,6 +1,7 @@
 import { compactCompanyName, nameMatchesQuery, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
 import { knownDomainForCompanyName } from "@/lib/company-logo";
 import { domainFromCompany } from "@/lib/enrichment/provider-utils";
+import { isPersonalInboxDomain } from "@/lib/email/sender-domain";
 
 /** Directories, social, and news/publisher hosts that are not a company's email domain. */
 const UNUSABLE_COMPANY_DOMAINS = [
@@ -152,6 +153,32 @@ const GENERIC_BRAND_TOKENS = new Set([
   "enterprise",
   "enterprises",
   "ventures",
+  // Industry nouns: never treat as the brand for employment matching
+  // (e.g. "Trilife Hospital" must not match every "… Hospital" profile).
+  "hospital",
+  "hospitals",
+  "clinic",
+  "clinics",
+  "healthcare",
+  "health",
+  "school",
+  "schools",
+  "college",
+  "university",
+  "bank",
+  "banks",
+  "hotel",
+  "hotels",
+  "resort",
+  "resorts",
+  "foundation",
+  "trust",
+  "society",
+  "institute",
+  "institutes",
+  "centre",
+  "center",
+  "medical",
 ]);
 
 export function distinctiveBrandTokens(name: string): string[] {
@@ -201,6 +228,14 @@ export function emailBelongsToCompany(email: string | null | undefined, companyN
   return isAcceptableCompanyDomain(host, companyName);
 }
 
+/** Spreadsheet/person emails may be Gmail/Yahoo and still belong on the contact. */
+export function isKeepableContactEmail(email: string | null | undefined, companyName?: string | null): boolean {
+  const cleaned = email?.trim();
+  if (!cleaned || !cleaned.includes("@")) return false;
+  if (isPersonalInboxDomain(cleaned)) return true;
+  return emailBelongsToCompany(cleaned, companyName);
+}
+
 /** Persist only a domain that actually belongs to this company. */
 export function usableStoredDomain(
   domain: string | null | undefined,
@@ -209,6 +244,18 @@ export function usableStoredDomain(
   const host = normalizeHost(domain);
   if (!host || !isAcceptableCompanyDomain(host, companyName)) return null;
   return host;
+}
+
+/**
+ * User-pasted website: keep any real host except directories, social, and news.
+ * Brand-slug matching is skipped because holding-company sites often differ from the legal name.
+ */
+export function parsePastedCompanyWebsite(raw: string): { domain?: string; website?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  const host = normalizeHost(trimmed.includes(".") ? trimmed : undefined);
+  if (!host || isUnusableCompanyDomain(host) || !host.includes(".")) return {};
+  return { domain: host, website: canonicalWebsiteUrl(host, trimmed) };
 }
 
 function canonicalWebsiteUrl(domain: string, website?: string | null): string {

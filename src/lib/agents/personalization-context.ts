@@ -24,6 +24,7 @@ export type PersonalizationContextInput = {
   decisionChain?: string[] | null;
   occasionTheme?: string | null;
   icpSummary?: string | null;
+  companyWebsite?: string | null;
 };
 
 function campaignDynamics(mode?: string | null): string | null {
@@ -82,6 +83,7 @@ export function buildPersonalizationContext(input: PersonalizationContextInput):
   }
 
   const profile: string[] = [`${input.accountName}`];
+  if (input.companyWebsite?.trim()) profile.push(`website: ${input.companyWebsite.trim()}`);
   if (input.overview?.sector?.trim()) profile.push(input.overview.sector.trim());
   if (input.intelNotes?.trim()) profile.push(input.intelNotes.trim().slice(0, 220));
   if (input.overview?.intelligenceNotes?.trim() && input.overview.intelligenceNotes !== input.intelNotes) {

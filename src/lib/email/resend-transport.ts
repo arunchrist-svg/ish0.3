@@ -6,7 +6,7 @@ import type { MailTransport, ProviderStatus, SendParams, SendResult } from "@/li
 
 const resendClients = new Map<string, Resend>();
 
-function getResend(apiKey?: string): Resend {
+export function getResend(apiKey?: string): Resend {
   const key = apiKey?.trim() || process.env.RESEND_API_KEY?.trim();
   if (!key) throw new Error("Resend API key not configured");
   let client = resendClients.get(key);

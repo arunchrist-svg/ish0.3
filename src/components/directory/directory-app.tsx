@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { MobileHeader, MobilePageLayout, SearchBar, SegmentedTabs } from "@/design-system";
+import { AppPageHeader, MobileHeader, MobilePageLayout, SearchBar, SegmentedTabs } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { CompaniesGrid } from "@/components/scouting/companies-grid";
@@ -10,6 +10,7 @@ import { LeadsGrid } from "@/components/scouting/leads-grid";
 import { PeopleList } from "@/components/scouting/people-list";
 import { CompanyOverviewPanel } from "@/components/company/company-overview-panel";
 import { fetchDirectory, type DirectoryCompany, type DirectoryContact } from "@/lib/api-client";
+import { subscribeCrmRecordsRefresh } from "@/lib/crm-refresh";
 import { directoryCompanyToCard, directoryContactToPerson } from "@/lib/directory-mappers";
 import { Building2, Users, Search } from "lucide-react";
 import { toast } from "sonner";
@@ -45,6 +46,9 @@ export function DirectoryApp() {
 
   useEffect(() => {
     load();
+    return subscribeCrmRecordsRefresh(() => {
+      void load();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -117,37 +121,33 @@ export function DirectoryApp() {
 
   return (
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="flex items-center gap-4 border-b border-brand-border bg-white px-5 py-2.5">
-            <div className="shrink-0">
-              <span className="text-[14px] font-bold text-brand-ink">Scout Directory</span>
-            </div>
-
-            <div className="mx-1 h-5 w-px shrink-0 bg-brand-border" aria-hidden />
-
-            <SegmentedTabs
-              value={tab}
-              onChange={(value) => setTab(value as "companies" | "contacts")}
-              items={[
-                { value: "companies", label: "Companies", icon: <Building2 className="size-3.5" /> },
-                { value: "contacts", label: "Lead Contacts", icon: <Users className="size-3.5" /> },
-              ]}
-            />
-
-            <div className="relative w-[220px] shrink-0">
-              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
-              <input
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={tab === "companies" ? "Search companies…" : "Search contacts…"}
-                className="w-full rounded-full border border-brand-border bg-brand-app py-1.5 pl-9 pr-3 text-[12px] text-brand-ink outline-none focus:border-brand-ink-soft"
-              />
-            </div>
-
-            <div className="ml-auto shrink-0 text-[11.5px] font-semibold text-brand-ink-faint">
-              {companies.length} companies · {contacts.length} contacts
-            </div>
-          </div>
+          <AppPageHeader
+            icon={Building2}
+            title="Accounts"
+            subtitle={`${companies.length} companies · ${contacts.length} contacts`}
+            actions={
+              <>
+                <SegmentedTabs
+                  value={tab}
+                  onChange={(value) => setTab(value as "companies" | "contacts")}
+                  items={[
+                    { value: "companies", label: "Companies", icon: <Building2 className="size-3.5" /> },
+                    { value: "contacts", label: "Lead Contacts", icon: <Users className="size-3.5" /> },
+                  ]}
+                />
+                <div className="relative w-[220px] shrink-0">
+                  <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={tab === "companies" ? "Search companies…" : "Search contacts…"}
+                    className="w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
+                  />
+                </div>
+              </>
+            }
+          />
 
           <div className="min-h-0 flex-1 overflow-y-auto bg-transparent">
             {loading ? (

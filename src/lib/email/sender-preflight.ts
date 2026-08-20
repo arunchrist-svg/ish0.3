@@ -57,7 +57,9 @@ function buildDnsIssues(auth: DomainAuthResult): SenderIssue[] {
       id: "spf",
       label: spf.warning
         ? `SPF problem for ${auth.domain}: ${spf.warning}`
-        : `No SPF record found for ${auth.domain}`,
+        : spf.error
+          ? `Could not look up SPF for ${auth.domain} (${spf.error})`
+          : `No SPF record found for ${auth.domain}`,
       severity: "critical",
     });
   } else if (spf.warning) {
@@ -67,7 +69,9 @@ function buildDnsIssues(auth: DomainAuthResult): SenderIssue[] {
   if (!dmarc.valid) {
     issues.push({
       id: "dmarc",
-      label: `No DMARC record found for ${auth.domain}`,
+      label: dmarc.error
+        ? `Could not look up DMARC for ${auth.domain} (${dmarc.error})`
+        : `No DMARC record found for ${auth.domain}`,
       severity: "critical",
     });
   } else if (dmarc.warning) {

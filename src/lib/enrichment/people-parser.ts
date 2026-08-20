@@ -3,9 +3,13 @@ import { computeSeniorityScore } from "./seniority-score";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import {
   hitShowsCurrentEmployment,
+  isOpenToWorkProfile,
+  personAppearsOnOpenToWorkHit,
+  personLooksOpenToWork,
   personTitleConflictsWithCompany,
 } from "@/lib/enrichment/person-company-match";
 import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
+import { inferRoleFromTitle, isTeamLeadTitle } from "@/lib/enrichment/people-role-filter";
 
 type SearchHit = { title: string; url: string; content: string };
 
@@ -71,13 +75,14 @@ function isKeyDM(title?: string): boolean {
 function collectLinkedInHits(
   hits: SearchHit[],
   companyName?: string,
-): { name: string; title?: string; linkedIn: string; location?: string }[] {
-  const out: { name: string; title?: string; linkedIn: string; location?: string }[] = [];
+): { name: string; title?: string; linkedIn: string; location?: string; bio?: string }[] {
+  const out: { name: string; title?: string; linkedIn: string; location?: string; bio?: string }[] = [];
   const seen = new Set<string>();
 
   for (const hit of hits) {
-    if (companyName && !hitShowsCurrentEmployment(hit, companyName)) continue;
     const blob = `${hit.title}\n${hit.url}\n${hit.content}`;
+    if (isOpenToWorkProfile(blob) || isTeamLeadTitle(`${hit.title}\n${hit.content}`)) continue;
+    if (companyName && !hitShowsCurrentEmployment(hit, companyName)) continue;
     const fromTitle = parseLinkedInTitle(hit.title);
 
     for (const match of blob.matchAll(LINKEDIN_IN_RE)) {
@@ -92,6 +97,9 @@ function collectLinkedInHits(
         ? fromTitle.name
         : slugToName(slug);
       if (!name || JUNK_NAME.test(name)) continue;
+      if (personLooksOpenToWork({ name, title: fromTitle.title, bio: hit.content, linkedIn })) {
+        continue;
+      }
       if (
         companyName &&
         fromTitle.title &&
@@ -100,12 +108,15 @@ function collectLinkedInHits(
         continue;
       }
 
+      if (personAppearsOnOpenToWorkHit({ name, linkedIn }, hits)) continue;
+
       seen.add(key);
       out.push({
         name,
         title: fromTitle.title,
         linkedIn,
         location: fromTitle.location ?? extractLocation(blob),
+        bio: hit.content.slice(0, 400) || undefined,
       });
     }
   }
@@ -121,20 +132,26 @@ export function parsePeopleFromSearchResults(
   companyName?: string,
 ): ScoutPersonResult[] {
   const candidates = collectLinkedInHits(hits, companyName);
-  return candidates.slice(0, limit).map((c) => ({
-    name: c.name,
-    title: c.title,
-    location: c.location,
-    linkedIn: c.linkedIn,
-    email: undefined,
-    emailStatus: "missing" as const,
-    isKeyDM: isKeyDM(c.title),
-    matchScore: computeSeniorityScore({
+  return candidates.slice(0, limit).map((c) => {
+    const inferred = inferRoleFromTitle(c.title);
+    return {
+      name: c.name,
       title: c.title,
-      isKeyDM: isKeyDM(c.title),
-      emailStatus: "missing",
+      department: inferred.department,
+      seniority: inferred.seniority,
+      location: c.location,
       linkedIn: c.linkedIn,
-    }).total,
-    dataSource,
-  }));
+      bio: c.bio,
+      email: undefined,
+      emailStatus: "missing" as const,
+      isKeyDM: isKeyDM(c.title),
+      matchScore: computeSeniorityScore({
+        title: c.title,
+        isKeyDM: isKeyDM(c.title),
+        emailStatus: "missing",
+        linkedIn: c.linkedIn,
+      }).total,
+      dataSource,
+    };
+  });
 }

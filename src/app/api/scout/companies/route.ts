@@ -12,6 +12,22 @@ import {
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
 import { MAX_SCOUT_COMPANIES_LIMIT } from "@/lib/enrichment/config";
 
+/** Empty-result copy that names the actual lever to pull for the mode that was run. */
+function emptyResultMessage(params: {
+  cities: string[];
+  industries: string[];
+  locationScope?: "focus" | "interest";
+}): string {
+  if (params.locationScope === "focus") {
+    return "No companies found near your focus area. Widen the focus radius, or switch to Area of Interest to search the whole city.";
+  }
+  const where = params.cities.length ? ` in ${params.cities.slice(0, 3).join(", ")}` : "";
+  if (params.industries.length > 3) {
+    return `No companies found${where}. Narrow to 2-3 industries: long industry lists dilute the search.`;
+  }
+  return `No companies found${where}. Try a nearby larger city, or switch data mode to Auto for paid providers.`;
+}
+
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
@@ -25,11 +41,16 @@ export async function POST(req: Request) {
       searchProvider,
       enrichProvider,
       excludeNames = [],
+      excludeSavedAccounts,
       skipInternal = false,
       fetchSeed = 0,
       limit: requestedLimit,
       companyName,
       employeeBands: rawEmployeeBands = [],
+      seniority = [],
+      departments = [],
+      locationScope,
+      searchKind,
     } = body;
     const employeeBands = normalizeEmployeeBandIds(
       Array.isArray(rawEmployeeBands) ? rawEmployeeBands.map(String) : [],
@@ -78,10 +99,15 @@ export async function POST(req: Request) {
       config: discoveryConfig,
       limit,
       excludeNames,
+      excludeSavedAccounts,
       skipInternal,
       fetchSeed,
       ...(companyName ? { companyName } : {}),
       employeeBands,
+      seniority: Array.isArray(seniority) ? seniority.map(String) : [],
+      departments: Array.isArray(departments) ? departments.map(String) : [],
+      locationScope: locationScope === "interest" || locationScope === "focus" ? locationScope : undefined,
+      searchKind: searchKind === "business" || searchKind === "industry" ? searchKind : undefined,
     };
 
     if (stream) {
@@ -108,13 +134,19 @@ export async function POST(req: Request) {
 
           if (!result.companies.length && !allErrors.length && !allWarnings.length) {
             allWarnings.push(
-              "No companies matched the current filters. Try different cities or leave industries unselected for broader results.",
+              emptyResultMessage({
+                cities,
+                industries,
+                locationScope: discoverParams.locationScope,
+              }),
             );
           }
 
           if (result.companies.length > 0) {
             await deductCredits({
               tenantId: ctx.tenantId,
+              userId: ctx.userId,
+              role: ctx.role,
               action: "scout.company",
               quantity: result.companies.length,
               referenceId: `scout-companies-${Date.now()}`,
@@ -132,7 +164,11 @@ export async function POST(req: Request) {
           await writer.close();
         } catch (e) {
           console.error("[api/scout/companies:stream]", e);
-          const message = e instanceof Error ? e.message : "Discovery failed";
+          const { handleApiError } = await import("@/lib/api-errors");
+          const errRes = handleApiError(e, "[api/scout/companies:stream]");
+          const body = await errRes.json().catch(() => ({ error: "Discovery failed" }));
+          const message =
+            typeof body.error === "string" ? body.error : e instanceof Error ? e.message : "Discovery failed";
           try {
             await write({ type: "done", companies: [], hasMore: false, limit, warnings: [], errors: [message] });
             await writer.close();
@@ -158,13 +194,15 @@ export async function POST(req: Request) {
 
     if (!companies.length && !allErrors.length && !allWarnings.length) {
       allWarnings.push(
-        "No companies matched the current filters. Try different cities or leave industries unselected for broader results.",
+        emptyResultMessage({ cities, industries, locationScope: discoverParams.locationScope }),
       );
     }
 
     if (companies.length > 0) {
       await deductCredits({
         tenantId: ctx.tenantId,
+        userId: ctx.userId,
+        role: ctx.role,
         action: "scout.company",
         quantity: companies.length,
         referenceId: `scout-companies-${Date.now()}`,

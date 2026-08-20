@@ -8,7 +8,7 @@ import {
   getResolvedEnrichmentConfigForWorkspace,
   getResolvedWorkspaceEnrichmentConfig,
 } from "@/lib/settings/workspace-settings";
-import { locationOptionsFromSelection } from "@/lib/geo/india";
+import { scoutLocationOptions, defaultLabelsFromLocationOptions } from "@/lib/geo/india";
 import type { DataMode } from "@/lib/enrichment/types";
 import { mapWithConcurrency } from "@/lib/async";
 import { db, accounts } from "@/db";
@@ -39,7 +39,11 @@ const AGENT_COMPANY_CONCURRENCY = 4;
 export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
   const runId = randomUUID();
   const workspaceCfg = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
-  const locationLabels = locationOptionsFromSelection(workspaceCfg.scoutGeo).map((o) => o.label);
+  const locationOptions = scoutLocationOptions(
+    workspaceCfg.scoutGeo,
+    workspaceCfg.scoutAreasOfFocus ?? workspaceCfg.scoutAreaOfFocus,
+  );
+  const locationLabels = defaultLabelsFromLocationOptions(locationOptions);
   const cities = params.cities?.length ? params.cities : locationLabels;
   const dataMode = params.dataMode ?? (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free";
   const companyLimit = params.companyLimit ?? getScoutCompaniesLimit();
@@ -48,10 +52,29 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
   const industries = params.industries ?? [];
   const seniority = params.seniority ?? [];
   const departments = params.departments ?? [];
-
   const errors: string[] = [];
   let leadsSaved = 0;
   let leadsSkipped = 0;
+
+  if (!cities.length) {
+    const emptyMessage = locationOptions.some((option) => option.kind === "area")
+      ? "Select at least one nearby area"
+      : "Select at least one city";
+    await logAudit({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      action: "scout.batch.started",
+      entityType: "scout_run",
+      metadata: { runId, cities, industries, seniority, departments, dataMode, companyLimit, maxCompanies },
+    });
+    return {
+      runId,
+      companiesDiscovered: 0,
+      leadsSaved: 0,
+      leadsSkipped: 0,
+      errors: [emptyMessage],
+    };
+  }
 
   await logAudit({
     tenantId: params.tenantId,
@@ -69,6 +92,8 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     dataMode,
     limit: companyLimit,
     skipInternal: true,
+    seniority,
+    departments,
   });
 
   errors.push(...discovery.errors, ...discovery.warnings);

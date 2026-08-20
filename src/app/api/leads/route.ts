@@ -7,6 +7,7 @@ import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { createManualLead } from "@/lib/leads/crud";
+import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 
 export async function GET(req: Request) {
   try {
@@ -84,6 +85,9 @@ export async function POST(req: Request) {
     if (!body.name?.trim() || !body.company?.trim()) {
       return NextResponse.json({ error: "Name and company are required" }, { status: 400 });
     }
+    if (body.email?.trim() && !sanitizeEmail(body.email)) {
+      return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
+    }
 
     const result = await createManualLead({
       tenantId: ctx.tenantId,
@@ -100,6 +104,7 @@ export async function POST(req: Request) {
       employees: body.employees,
       score: body.score,
       tags: body.tags,
+      trustProvidedEmail: true,
     });
 
     return NextResponse.json(

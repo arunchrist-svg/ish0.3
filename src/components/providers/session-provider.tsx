@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { PermissionFlags } from "@/hooks/use-permissions";
@@ -29,8 +30,16 @@ export type SessionData = {
   permissions: PermissionFlags;
   sendMode: string;
   emailConfigured?: boolean;
+  whatsappConnected?: boolean;
   credits: number;
   verticalPackId?: string;
+  scoutBrandDefaults?: {
+    icpSummary?: string;
+    platformIntent?: string;
+    industries?: string[];
+    departments?: string[];
+    seniority?: string[];
+  };
 };
 
 type SessionContextValue = {
@@ -41,9 +50,12 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+const SESSION_STALE_MS = 60_000;
+
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<SessionData | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastRefreshRef = useRef(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,6 +66,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
       const data = (await res.json()) as SessionData;
       setSession(data);
+      lastRefreshRef.current = Date.now();
     } catch {
       setSession(null);
     } finally {
@@ -65,7 +78,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     void refresh();
 
     function onVisible() {
-      if (document.visibilityState === "visible") void refresh();
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRefreshRef.current < SESSION_STALE_MS) return;
+      void refresh();
     }
 
     window.addEventListener("focus", onVisible);

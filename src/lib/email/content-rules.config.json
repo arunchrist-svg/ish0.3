@@ -58,6 +58,7 @@
     "icloud.com"
   ],
   "dkimSelectors": [
+    "resend",
     "google",
     "default",
     "selector1",

@@ -12,19 +12,21 @@
 - 1,001+: ₹400–₹750 per person
 
 ## Differentiators
-- Organic milk sourced from our own dairy farm (farm-to-counter freshness)
-- Zero preservatives; sweets prepared fresh daily
+- Organic milk, ghee, and khova from our own farm
+- Sweets crafted fresh every morning
+- We never add preservatives or chemicals
+- Highly hygienic production (automated milking; hygienic kitchens)
 - 200+ traditional sweets and namkeens, including diet-conscious options (Jaggery Kaju Katli, Sugarfree Honey Laddu)
-- Export-grade hygiene (USA and Australia)
-- Pure ghee, no palm oil
 - Pan-India delivery for 200+ units
-- Complimentary tasting sample for HR decision-makers
+- Tasting sample for HR decision-makers
 - 4–6 week lead time before Diwali
 
 ## Outreach tone
 - Friendly but professional. Festive but plain. Not salesy.
 - Hi {firstName}, not Dear
-- Lead with authenticity: own dairy, organic milk, zero preservatives, farm-to-counter
+- Lead with authenticity: own farm, organic milk, never add preservatives or chemicals
+- Only claim what appears on indiasweethouse.in. Never say export-grade, farm-to-counter, zero preservatives, no artificial flavors, 100% pure ghee, no palm oil, no mass production, or that you send boxes to the USA or Australia.
+- Name the company in every email.
 - Focus on mithai, Diwali timing, tasting samples
 - One soft question CTA (sample offer or quick note on options)
 - Sign with Thanks & Regards, name, brand

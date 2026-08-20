@@ -1,19 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { MapPin } from "lucide-react";
+import { Check, Clock, Loader2, MapPin, X } from "lucide-react";
 import { IshAvatar, ScoreBadge } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { statusToDisplayLabel, type PipelineStageAccent } from "@/lib/pipeline-status";
+import type { SendQueueItem } from "./board-bulk-actions";
 
 type Props = {
   lead: LeadQueueItem;
   index: number;
   accent: PipelineStageAccent;
+  sendStatus?: SendQueueItem;
 };
 
-export function BoardLeadCard({ lead, index, accent }: Props) {
+function sendStatusLabel(item: SendQueueItem): string {
+  switch (item.status) {
+    case "waiting":
+      return item.gapMinutes ? `Sends in ${item.gapMinutes}m` : "Waiting";
+    case "sending":
+      return "Sending now";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Queued";
+  }
+}
+
+export function BoardLeadCard({ lead, index, accent, sendStatus }: Props) {
   return (
     <Link
       href={`/leads?lead=${lead.id}`}
@@ -51,9 +70,31 @@ export function BoardLeadCard({ lead, index, accent }: Props) {
         )}
 
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-black/[0.04] pt-2.5">
-          <span className="rounded-md bg-brand-canvas px-2 py-0.5 text-[10px] font-bold text-brand-ink-soft">
-            {statusToDisplayLabel(lead.status)}
-          </span>
+          {sendStatus ? (
+            <span
+              className={cn(
+                "inline-flex min-w-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-bold",
+                sendStatus.status === "sent" && "bg-brand-green-soft text-brand-green",
+                sendStatus.status === "failed" && "bg-red-50 text-red-600",
+                sendStatus.status === "sending" && "bg-brand-stratus-blue/12 text-brand-stratus-blue",
+                (sendStatus.status === "queued" ||
+                  sendStatus.status === "waiting" ||
+                  sendStatus.status === "cancelled") &&
+                  "bg-brand-canvas text-brand-ink-soft",
+              )}
+              title={sendStatus.error}
+            >
+              {sendStatus.status === "sending" ? <Loader2 className="size-2.5 animate-spin" /> : null}
+              {sendStatus.status === "waiting" ? <Clock className="size-2.5" /> : null}
+              {sendStatus.status === "sent" ? <Check className="size-2.5" /> : null}
+              {sendStatus.status === "failed" ? <X className="size-2.5" /> : null}
+              <span className="truncate">{sendStatusLabel(sendStatus)}</span>
+            </span>
+          ) : (
+            <span className="rounded-md bg-brand-canvas px-2 py-0.5 text-[10px] font-bold text-brand-ink-soft">
+              {statusToDisplayLabel(lead.status)}
+            </span>
+          )}
           <IshAvatar name={lead.name} index={index} size={26} />
         </div>
       </div>

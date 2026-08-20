@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  filterNewScoutCompanies,
   pickMatchingAccount,
   scoutAccountDedupeKey,
+  scoutCompanyMatchesSaved,
   uniqueScoutCompanies,
 } from "@/lib/scout/account-match";
 
@@ -88,5 +90,42 @@ describe("pickMatchingAccount", () => {
       { name: "Wipro", city: "Bengaluru" },
     );
     expect(match?.id).toBe("4");
+  });
+});
+
+describe("scoutCompanyMatchesSaved", () => {
+  const saved = [
+    { name: "Titan Company Ltd", city: "Hosur", domain: "titan.co.in" },
+    { name: "Bosch", city: "Bengaluru", domain: null },
+  ];
+
+  it("matches saved companies by domain even with a different display name", () => {
+    expect(
+      scoutCompanyMatchesSaved(
+        { name: "Titan", city: "Bengaluru", domain: "titan.co.in" },
+        saved,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match a new company with a different domain", () => {
+    expect(
+      scoutCompanyMatchesSaved({ name: "Fresh Foods", city: "Hosur", domain: "freshfoods.in" }, saved),
+    ).toBe(false);
+  });
+});
+
+describe("filterNewScoutCompanies", () => {
+  it("removes scout hits that already exist in saved accounts", () => {
+    const saved = [{ name: "Titan", city: "Hosur", domain: "titan.co.in" }];
+    const fresh = filterNewScoutCompanies(
+      [
+        { name: "Titan Company Ltd", city: "Hosur", domain: "titan.co.in" },
+        { name: "New Mill", city: "Hosur", domain: "newmill.in" },
+      ],
+      saved,
+    );
+    expect(fresh).toHaveLength(1);
+    expect(fresh[0]?.name).toBe("New Mill");
   });
 });

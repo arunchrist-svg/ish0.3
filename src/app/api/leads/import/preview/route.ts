@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
-import { aiMapColumns, mappingHasRequiredFields, parseLeadImportFile } from "@/lib/leads/import";
+import { aiMapColumns, applyColumnMapping, mappingHasRequiredFields, parseLeadImportFile } from "@/lib/leads/import";
+import { INLINE_ENRICH_MAX, MAX_IMPORT_ROWS } from "@/lib/leads/import/types";
 
 export async function POST(req: Request) {
   try {
@@ -33,12 +34,27 @@ export async function POST(req: Request) {
     });
 
     const required = mappingHasRequiredFields(mapping.mappings);
+    const applied = applyColumnMapping(parsed.rows, mapping.mappings);
     const warnings: string[] = [];
     if (!required.ok) {
       warnings.push(`Required fields not mapped yet: ${required.missing.join(", ")}`);
     }
-    if (parsed.rowCount > 100) {
-      warnings.push(`Large import (${parsed.rowCount} rows). Enrichment may take a few minutes.`);
+    if (applied.skipped.length) {
+      warnings.push(
+        `Skipping ${applied.skipped.length} row${applied.skipped.length === 1 ? "" : "s"} with no email. ${applied.rows.length} will load.`,
+      );
+    } else if (applied.rows.length) {
+      warnings.push(`${applied.rows.length} row${applied.rows.length === 1 ? "" : "s"} have an email and will load.`);
+    }
+    if (applied.invalid.length) {
+      warnings.push(
+        `${applied.invalid.length} row${applied.invalid.length === 1 ? "" : "s"} are missing company and will fail.`,
+      );
+    }
+    if (applied.rows.length > INLINE_ENRICH_MAX) {
+      warnings.push(
+        `Large import (${applied.rows.length} of ${parsed.rowCount} rows, max ${MAX_IMPORT_ROWS}). Leads load as uploaded.`,
+      );
     }
 
     return NextResponse.json({
@@ -56,6 +72,9 @@ export async function POST(req: Request) {
       warnings,
       requiredOk: required.ok,
       missingRequired: required.missing,
+      loadCount: applied.rows.length,
+      skipCount: applied.skipped.length,
+      failCount: applied.invalid.length,
     });
   } catch (e) {
     return handleApiError(e, "[api/leads/import/preview]");

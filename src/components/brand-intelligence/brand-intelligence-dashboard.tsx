@@ -21,7 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ActionBar, BottomSheet, MobilePageLayout, PanelCard, text } from "@/design-system";
+import { ActionBar, BottomSheet, MobilePageLayout, PanelCard, AppPageHeader, text } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { toast } from "sonner";
 import {
@@ -352,23 +352,13 @@ export function BrandIntelligenceDashboard() {
         ) : undefined
       }
     >
-      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
-        <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
-        <div className="relative flex flex-wrap items-start justify-between gap-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
-              <Radar className="size-5 text-brand-ink" strokeWidth={2.25} />
-            </div>
-            <div className="min-w-0">
-              <p className={cn(text.metaLabel, "mb-0.5 uppercase tracking-[0.14em]")}>Brand Intelligence</p>
-              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Corporate Gift Tracker</h1>
-              <p className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-brand-ink-soft">
-                Discover which companies gifted a competitor brand, announced a store opening, or are hiring for stores that are still coming up.
-              </p>
-            </div>
-          </div>
-
-          {stats && (
+      <AppPageHeader
+        icon={Radar}
+        eyebrow="Brand Intelligence"
+        title="Corporate Gift Tracker"
+        subtitle="Discover which companies gifted a competitor brand, announced a store opening, or are hiring for stores that are still coming up."
+        actions={
+          stats ? (
             <div className="flex flex-wrap gap-2">
               {stats.combinationsRun != null && stats.combinationsRun > 1 && (
                 <StatPill label="Combinations" value={stats.combinationsRun} />
@@ -377,9 +367,9 @@ export function BrandIntelligenceDashboard() {
               <StatPill label="Posts" value={stats.hitsAfterPreFilter} />
               <StatPill label="Verified" value={stats.hitsExtracted} accent />
             </div>
-          )}
-        </div>
-      </header>
+          ) : null
+        }
+      />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-24 lg:px-6 lg:py-5 lg:pb-5">
         <div className="mx-auto flex max-w-[1280px] flex-col gap-3 lg:gap-5">

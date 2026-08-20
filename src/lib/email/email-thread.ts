@@ -1,5 +1,6 @@
 import type { leads, leadOutreach, outreachSchedule } from "@/db/schema";
-import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
+import { normalizeReplySubject } from "@/lib/email/threading";
+import { resolveDraftSubject } from "@/lib/email/draft-variants";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
 
 export type ThreadEventKind = "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
@@ -194,10 +195,14 @@ export function buildEmailThread(params: {
     });
   }
 
+  const email1Draft =
+    sequenceDrafts.find((d) => d.sequencePosition === 1) ??
+    (latestOutreach?.sequencePosition === 1 ? latestOutreach : undefined);
+  const email1Subject = email1Draft ? resolveDraftSubject(email1Draft) : "";
   const threadRootSubject =
     lead.threadRootSubject ??
     sorted.find((r) => r.sequenceDay === 0)?.subjectSent ??
-    (latestOutreach?.subjectA ? stripReplyPrefix(latestOutreach.subjectA) : undefined);
+    (email1Subject || (latestOutreach ? resolveDraftSubject(latestOutreach) : undefined) || undefined);
 
   let phase: ThreadPhase = "compose";
   if (["tasting_sent", "negotiate", "closed", "po_closed", "meeting"].includes(lead.status)) {
@@ -364,7 +369,8 @@ function buildBarNodes(params: {
       const linkedDraft = sortedDrafts.find((d) => d.sequencePosition === emailNum);
       nodes.push({
         id: `e${emailNum}`,
-        label: isSent ? `E${emailNum}` : isPaused ? `E${emailNum} (paused)` : `E${emailNum} (${days ?? day}D)`,
+        // Keep the base label stable; the countdown suffix is computed dynamically in the UI.
+        label: isSent ? `E${emailNum}` : isPaused ? `E${emailNum} (paused)` : `E${emailNum}`,
         state: isSent ? "done" : isPaused ? "paused" : isScheduled ? "scheduled" : "upcoming",
         kind: isSent ? "sent" : "scheduled",
         scheduleId: row?.id,

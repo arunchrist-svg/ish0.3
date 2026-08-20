@@ -13,14 +13,18 @@ import {
 import { LeadSwitcherRail } from "@/components/sales-accelerator/lead-switcher-rail";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
 import { createLead, deleteLead, fetchLeads, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
-import type { LeadDetailRecord, LeadQueueItem } from "@/lib/api-client";
+import type { LeadDetailRecord, LeadFormInput, LeadQueueItem } from "@/lib/api-client";
+import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
+import { deriveQueueAction } from "@/lib/pipeline-status";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { LeadFormModal } from "@/components/sales-accelerator/lead-form-modal";
 import { LeadImportModal } from "@/components/sales-accelerator/lead-import-modal";
-import { Button, MobileStackLayout } from "@/design-system";
-import { Plus, Upload } from "lucide-react";
+import { LinkedInLeadModal } from "@/components/sales-accelerator/linkedin-lead-modal";
+import { AppPageHeader, Button, MobileStackLayout } from "@/design-system";
+import { LinkedInGlyph } from "@/components/icons/linkedin-glyph";
+import { Plus, Rocket, Upload } from "lucide-react";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 
 function leadUrl(pathname: string, params: URLSearchParams): string {
@@ -31,6 +35,26 @@ function leadUrl(pathname: string, params: URLSearchParams): string {
 function readSearchParams(): URLSearchParams {
   if (typeof window === "undefined") return new URLSearchParams();
   return new URLSearchParams(window.location.search);
+}
+
+function queueItemFromDetail(lead: LeadDetailRecord): LeadQueueItem {
+  return {
+    id: lead.id,
+    name: lead.name,
+    title: lead.title || "—",
+    company: lead.company,
+    employees: lead.employees,
+    city: lead.city || "—",
+    score: lead.score ?? 60,
+    status: lead.status,
+    action: deriveQueueAction(lead.status),
+    emailStatus: lead.emailStatus || "missing",
+  };
+}
+
+function ensureLeadInList(list: LeadQueueItem[], lead: LeadDetailRecord): LeadQueueItem[] {
+  if (list.some((item) => item.id === lead.id)) return list;
+  return [queueItemFromDetail(lead), ...list];
 }
 
 export function SalesAcceleratorApp() {
@@ -50,6 +74,8 @@ export function SalesAcceleratorApp() {
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [editingLead, setEditingLead] = useState<LeadDetailRecord | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [linkedInOpen, setLinkedInOpen] = useState(false);
+  const [createDraft, setCreateDraft] = useState<LeadFormInput | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [queueSort, setQueueSort] = useState<LeadQueueSort>("score");
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
@@ -100,6 +126,34 @@ export function SalesAcceleratorApp() {
   function openCreateLead() {
     setFormMode("create");
     setEditingLead(null);
+    setCreateDraft(null);
+    setFormOpen(true);
+  }
+
+  function openLinkedInLead() {
+    setLinkedInOpen(true);
+  }
+
+  async function handleLinkedInLeadCreated(leadId: string, existing: boolean) {
+    toast.success(existing ? "Lead already in your list" : "Lead added from LinkedIn");
+    notifyCrmRecordsChanged({ source: "leads_create", savedLeads: existing ? 0 : 1 });
+    await refreshLeadList({ silent: true });
+    await selectLead(leadId);
+  }
+
+  function handleLinkedInLeadIncomplete(partial: import("@/lib/api-client").LinkedInLeadPartialProfile) {
+    toast.message("Add company to finish this lead");
+    setFormMode("create");
+    setEditingLead(null);
+    setCreateDraft({
+      name: partial.name,
+      title: partial.title,
+      email: partial.email,
+      phone: partial.phone,
+      linkedIn: partial.linkedIn,
+      company: partial.company ?? "",
+      city: partial.city,
+    });
     setFormOpen(true);
   }
 
@@ -113,6 +167,7 @@ export function SalesAcceleratorApp() {
     if (formMode === "create") {
       const { id, existing } = await createLead(values);
       toast.success(existing ? "Lead already in your list" : "Lead created");
+      notifyCrmRecordsChanged({ source: "leads_create", savedLeads: existing ? 0 : 1 });
       await refreshLeadList({ silent: true });
       await selectLead(id);
       return;
@@ -134,6 +189,7 @@ export function SalesAcceleratorApp() {
     try {
       await deleteLead(leadId);
       toast.success("Lead deleted");
+      notifyCrmRecordsChanged({ source: "leads_delete" });
       const remaining = leads.filter((l) => l.id !== leadId);
       setLeads(remaining);
       if (activeLeadIdRef.current === leadId) {
@@ -190,13 +246,18 @@ export function SalesAcceleratorApp() {
     if (!opts?.silent) setListLoading(true);
     try {
       const data = await fetchLeads();
-      setLeads(data);
-
       const current = activeLeadIdRef.current;
       if (current && !data.some((l) => l.id === current)) {
+        const stillOpen = await fetchLead(current).catch(() => null);
+        if (stillOpen) {
+          setLeads(ensureLeadInList(data, stillOpen));
+          setPrefetchedLead(stillOpen);
+          return;
+        }
         const nextId = isMobileLayout ? null : data[0]?.id ?? null;
         activeLeadIdRef.current = nextId;
         setActiveLeadId(nextId);
+        setLeads(data);
         if (nextId) {
           syncLeadToUrl(nextId);
           setPrefetchedLead(await fetchLead(nextId).catch(() => null));
@@ -204,7 +265,9 @@ export function SalesAcceleratorApp() {
           if (isMobileLayout) router.replace(pathname);
           setPrefetchedLead(null);
         }
+        return;
       }
+      setLeads(data);
     } catch {
       showError("Couldn't load leads", { id: "leads-load", description: "Refresh the page or check your connection." });
     } finally {
@@ -227,15 +290,20 @@ export function SalesAcceleratorApp() {
         const [list, detail] = await Promise.all([listPromise, detailPromise]);
         if (cancelled) return;
 
-        setLeads(list);
-        if (detail) setPrefetchedLead(detail);
+        if (detail) {
+          setPrefetchedLead(detail);
+          setLeads(ensureLeadInList(list, detail));
+        } else {
+          setLeads(list);
+        }
 
-        const activeId =
-          leadFromUrl && list.some((l) => l.id === leadFromUrl)
-            ? leadFromUrl
-            : isMobileLayout
-              ? null
-              : list[0]?.id ?? null;
+        const urlLeadExists =
+          Boolean(detail) || Boolean(leadFromUrl && list.some((l) => l.id === leadFromUrl));
+        const activeId = urlLeadExists
+          ? leadFromUrl
+          : isMobileLayout
+            ? null
+            : list[0]?.id ?? null;
         activeLeadIdRef.current = activeId;
         setActiveLeadId(activeId);
 
@@ -302,7 +370,7 @@ export function SalesAcceleratorApp() {
           <div className="text-4xl">🎯</div>
           <div>
             <div className="font-semibold text-brand-ink">No leads yet</div>
-            <div className="mt-1">Scout companies, or add a lead manually.</div>
+            <div className="mt-1">Scout companies, add a lead, or import an Excel / CSV list.</div>
           </div>
           {canWritePipeline ? (
             <div className="flex flex-wrap items-center justify-center gap-2">
@@ -356,6 +424,7 @@ export function SalesAcceleratorApp() {
       onSelect={selectLead}
       onRefresh={() => refreshLeadList({ silent: true })}
       onAddLead={openCreateLead}
+      onAddFromLinkedIn={openLinkedInLead}
       onImportLeads={() => setImportOpen(true)}
       canWrite={canWritePipeline}
       searchQuery={searchQuery}
@@ -398,12 +467,49 @@ export function SalesAcceleratorApp() {
 
   return (
     <>
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden lg:hidden">
-        <MobileStackLayout showDetail={!!activeLeadId} list={listPane} detail={detailPane ?? <div />} onBack={handleBackToList} />
-      </div>
-      <div className="hidden min-h-0 min-w-0 flex-1 overflow-hidden lg:flex">
-        {listPane}
-        {detailPane}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <AppPageHeader
+          icon={Rocket}
+          title="Leads"
+          subtitle="Queue and work every opportunity"
+          actions={
+            canWritePipeline ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setLinkedInOpen(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-brand-border/70 bg-white/70 px-3.5 text-[12px] font-semibold text-brand-ink transition-all hover:bg-white"
+                >
+                  <LinkedInGlyph className="size-3.5" />
+                  LinkedIn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportOpen(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-brand-border/70 bg-white/70 px-3.5 text-[12px] font-semibold text-brand-ink transition-all hover:bg-white"
+                >
+                  <Upload className="size-3.5" />
+                  Import
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreateLead}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-brand-yellow px-3.5 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] transition-all hover:opacity-95"
+                >
+                  <Plus className="size-3.5" />
+                  Add lead
+                </button>
+              </>
+            ) : null
+          }
+        />
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden lg:hidden">
+          <MobileStackLayout showDetail={!!activeLeadId} list={listPane} detail={detailPane ?? <div />} onBack={handleBackToList} />
+        </div>
+        <div className="hidden min-h-0 min-w-0 flex-1 overflow-hidden lg:flex">
+          {listPane}
+          {detailPane}
+        </div>
       </div>
       {canWritePipeline && !activeLeadId ? (
         <button
@@ -419,8 +525,15 @@ export function SalesAcceleratorApp() {
         open={formOpen}
         mode={formMode}
         initial={editingLead}
+        createDraft={createDraft}
         onClose={() => setFormOpen(false)}
         onSubmit={handleLeadFormSubmit}
+      />
+      <LinkedInLeadModal
+        open={linkedInOpen}
+        onClose={() => setLinkedInOpen(false)}
+        onCreated={handleLinkedInLeadCreated}
+        onIncomplete={handleLinkedInLeadIncomplete}
       />
       <LeadImportModal
         open={importOpen}

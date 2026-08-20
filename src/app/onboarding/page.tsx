@@ -22,6 +22,7 @@ import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wiz
 import { SettingsHero } from "@/components/settings/settings-hero";
 import { DEFAULT_SCOUT_GEO, type ScoutGeoSelection } from "@/lib/geo/india";
 import { OnboardingConnectEmail } from "@/components/onboarding/connect-email-step";
+import { OnboardingPreferenceCoach } from "@/components/onboarding/onboarding-preference-coach";
 
 function looksLikeWebsite(raw: string): boolean {
   const trimmed = raw.trim();
@@ -49,6 +50,7 @@ const STEPS = [
   { id: 1, label: "Organization", icon: Building2 },
   { id: 2, label: "Plan", icon: CreditCard },
   { id: 3, label: "Brand", icon: Radar },
+  { id: 3.4, label: "Preferences", icon: Sparkles },
   { id: 3.5, label: "Location", icon: MapPin },
   { id: 4, label: "Team", icon: Users },
   { id: 5, label: "Email", icon: Mail },
@@ -61,8 +63,10 @@ const SETUP_CTA =
 const SETUP_FIELD =
   "ish-onboarding-field w-full rounded-xl border border-brand-border bg-brand-canvas px-4 py-3 text-[15px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue focus:bg-white focus:ring-2 focus:ring-brand-stratus-blue/20";
 
-function viewRank(step: number, showLocation: boolean): number {
-  return showLocation ? 3.5 : step;
+function viewRank(step: number, showCoach: boolean, showLocation: boolean): number {
+  if (showCoach) return 3.4;
+  if (showLocation) return 3.5;
+  return step;
 }
 
 function onboardingStepState(stepId: number, currentRank: number, reachedRank: number) {
@@ -86,6 +90,8 @@ export default function OnboardingPage() {
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [websiteStatus, setWebsiteStatus] = useState("");
   const [showLocation, setShowLocation] = useState(false);
+  const [showCoach, setShowCoach] = useState(false);
+  const [locationGeo, setLocationGeo] = useState<ScoutGeoSelection>(DEFAULT_SCOUT_GEO);
   const [reachedRank, setReachedRank] = useState(1);
   const [analyzedWebsiteUrl, setAnalyzedWebsiteUrl] = useState("");
   const [intentFromWebsite, setIntentFromWebsite] = useState(false);
@@ -100,7 +106,7 @@ export default function OnboardingPage() {
   const sweetsOnly = isSweetsOnlyOperator(operatorEmail);
   const websiteAnalysed =
     Boolean(analyzedWebsiteUrl) && websiteKey(websiteUrl) === websiteKey(analyzedWebsiteUrl);
-  const currentRank = viewRank(step, showLocation);
+  const currentRank = viewRank(step, showCoach, showLocation);
 
   useEffect(() => {
     setReachedRank((prev) => Math.max(prev, currentRank));
@@ -111,10 +117,18 @@ export default function OnboardingPage() {
     setError("");
     if (stepId === 3.5) {
       setStep(3);
+      setShowCoach(false);
       setShowLocation(true);
       return;
     }
+    if (stepId === 3.4) {
+      setStep(3);
+      setShowLocation(false);
+      setShowCoach(true);
+      return;
+    }
     setShowLocation(false);
+    setShowCoach(false);
     setStep(stepId);
   }
 
@@ -128,11 +142,21 @@ export default function OnboardingPage() {
         const data = await onbRes.json();
         const loaded = data.step ?? 1;
         setStep(loaded);
-        if (loaded === 3 && data.brandReady) {
+        if (loaded === 3 && data.brandReady && !data.preferenceReady) {
+          setShowCoach(true);
+          setShowLocation(false);
+          setReachedRank(3.4);
+        } else if (loaded === 3 && data.brandReady && data.preferenceReady && data.needsLocation) {
+          setShowCoach(false);
           setShowLocation(true);
           setReachedRank(3.5);
         } else {
+          setShowCoach(false);
+          setShowLocation(false);
           setReachedRank(loaded);
+        }
+        if (data.scoutGeo) {
+          setLocationGeo(data.scoutGeo as ScoutGeoSelection);
         }
         if (data.orgName) setOrgName(data.orgName);
         if (data.websiteUrl) setWebsiteUrl(data.websiteUrl);
@@ -388,8 +412,16 @@ export default function OnboardingPage() {
     } else if (data.brandAnalyzed || alreadyAnalyzed) {
       setWebsiteStatus("Writer and Scout are now tuned from your website.");
     }
+    if (data.needsPreferenceCoach) {
+      setShowCoach(true);
+      setShowLocation(false);
+      setReachedRank(3.4);
+      return;
+    }
     if (data.needsLocation) {
+      setShowCoach(false);
       setShowLocation(true);
+      setReachedRank(3.5);
       return;
     }
     setStep(data.nextStep);
@@ -399,8 +431,19 @@ export default function OnboardingPage() {
     const data = await submitStep({ step: "location", scoutGeo });
     if (data) {
       setShowLocation(false);
+      setShowCoach(false);
       setStep(data.nextStep);
     }
+  }
+
+  function handleCoachComplete(result: { needsLocation: boolean; nextStep?: number }) {
+    setShowCoach(false);
+    if (result.needsLocation) {
+      setShowLocation(true);
+      setReachedRank(3.5);
+      return;
+    }
+    setStep(result.nextStep ?? 4);
   }
 
   async function handleTeamSkip() {
@@ -535,16 +578,23 @@ export default function OnboardingPage() {
         </div>
       )}
 
+      {step === 3 && showCoach && !showLocation && (
+        <OnboardingPreferenceCoach
+          onComplete={handleCoachComplete}
+          onError={(message) => setError(message)}
+        />
+      )}
+
       {step === 3 && showLocation && (
         <div className="ish-onboarding-card space-y-4 rounded-2xl border border-brand-border bg-white p-6">
           {websiteStatus ? (
             <p className="ish-onboarding-note rounded-xl bg-brand-app/80 px-4 py-3 text-[12px] text-brand-ink-soft">{websiteStatus}</p>
           ) : null}
-          <AreaOfInterestWizard value={DEFAULT_SCOUT_GEO} onComplete={handleLocationComplete} />
+          <AreaOfInterestWizard value={locationGeo} onComplete={handleLocationComplete} />
         </div>
       )}
 
-      {step === 3 && !showLocation && (
+      {step === 3 && !showLocation && !showCoach && (
         <form onSubmit={handlePrefsSubmit} className="ish-onboarding-card space-y-8 rounded-2xl border border-brand-border bg-white p-8">
           <div>
             <p className={cn(text.metaLabel, "mb-1 uppercase tracking-[0.14em] text-brand-stratus-blue")}>

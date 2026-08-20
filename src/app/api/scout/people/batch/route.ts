@@ -42,6 +42,10 @@ export async function POST(req: Request) {
       seniority = [],
       departments = [],
       cities = [],
+      peopleCities = [],
+      searchKind,
+      businesses = [],
+      locationScope,
     } = body;
 
     if (!Array.isArray(companies) || companies.length === 0) {
@@ -70,7 +74,11 @@ export async function POST(req: Request) {
       seniority,
       departments,
       cities,
-      concurrency: Math.min(parseInt(process.env.SCOUT_PEOPLE_CONCURRENCY ?? "8", 10) || 8, 10),
+      peopleCities: Array.isArray(peopleCities) ? peopleCities.map(String) : [],
+      searchKind: searchKind === "business" || searchKind === "industry" ? searchKind : undefined,
+      businesses: Array.isArray(businesses) ? businesses.map(String) : [],
+      locationScope: locationScope === "focus" || locationScope === "interest" ? locationScope : undefined,
+      concurrency: Math.min(parseInt(process.env.SCOUT_PEOPLE_CONCURRENCY ?? "3", 10) || 3, 6),
     };
 
     if (stream) {
@@ -108,6 +116,8 @@ export async function POST(req: Request) {
     if (contactCount > 0) {
       await deductCredits({
         tenantId: ctx.tenantId,
+        userId: ctx.userId,
+        role: ctx.role,
         action: "scout.contact",
         quantity: contactCount,
         referenceId: `scout-batch-${Date.now()}`,

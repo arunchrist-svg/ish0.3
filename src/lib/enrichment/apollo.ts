@@ -1,7 +1,49 @@
+import { LOCALITY_CATALOG } from "@/lib/geo/area-of-focus";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { computeSeniorityScore } from "./seniority-score";
 import { apolloEmployeeRanges } from "./employee-size";
+import { personLooksOpenToWork } from "@/lib/enrichment/person-company-match";
+
+const METRO_ALIASES: Record<string, string[]> = {
+  Bengaluru: ["Bangalore"],
+  Bangalore: ["Bengaluru"],
+};
+
+/** Apollo matches HQ cities, not neighborhood labels like Kasturi Nagar. */
+function apolloOrganizationLocations(cities: string[]): string[] {
+  const out = new Set<string>();
+  for (const city of cities) {
+    const trimmed = city.trim();
+    if (!trimmed) continue;
+    out.add(trimmed);
+    const locality = LOCALITY_CATALOG.find(
+      (entry) =>
+        entry.name.toLowerCase() === trimmed.toLowerCase() ||
+        entry.aliases?.some((alias) => alias.toLowerCase() === trimmed.toLowerCase()),
+    );
+    if (locality?.city) {
+      out.add(locality.city);
+      for (const alias of METRO_ALIASES[locality.city] ?? []) out.add(alias);
+    }
+  }
+  return [...out].slice(0, 12);
+}
+
+function mapApolloOrganization(a: Record<string, unknown>, fallbackCity?: string): ScoutCompanyResult {
+  return {
+    name: a.name as string,
+    domain: a.primary_domain as string | undefined,
+    website: a.website_url as string | undefined,
+    industry: a.industry as string | undefined,
+    city: (a.city as string | undefined) ?? fallbackCity,
+    employees: a.estimated_num_employees ? String(a.estimated_num_employees) : undefined,
+    logo: a.logo_url as string | undefined,
+    fitScore: estimateFitScore(a),
+    dataSource: "apollo",
+    externalId: a.id as string | undefined,
+  };
+}
 
 const BASE = "https://api.apollo.io/v1";
 
@@ -34,6 +76,11 @@ async function apolloPost(path: string, body: object) {
     if (res.status === 401 || res.status === 403) {
       throw new ApolloAuthError(res.status, text);
     }
+    if (res.status === 422) {
+      // 422 means invalid parameter combination (e.g. bad industry tag IDs). Log and return empty.
+      console.warn(`[apollo] 422 on ${path} — bad params, skipping:`, text);
+      return { accounts: [], organizations: [], people: [] };
+    }
     throw new Error(`Apollo ${path} failed: ${res.status} ${text}`);
   }
   return res.json();
@@ -46,25 +93,19 @@ export async function apolloSearchCompanies(params: {
   employeeBands?: string[];
 }): Promise<ScoutCompanyResult[]> {
   const employeeRanges = apolloEmployeeRanges(params.employeeBands);
-  const data = await apolloPost("/accounts/search", {
-    q_organization_city_locations: params.cities,
-    organization_industry_tag_ids: params.industries,
-    ...(employeeRanges.length ? { organization_num_employees_ranges: employeeRanges } : {}),
+  const body: Record<string, unknown> = {
     per_page: params.limit ?? 25,
-  });
+  };
+  const locations = apolloOrganizationLocations(params.cities);
+  if (locations.length) body.organization_locations = locations;
+  if (params.industries.length) body.q_organization_keyword_tags = params.industries;
+  if (employeeRanges.length) body.organization_num_employees_ranges = employeeRanges;
+  // /accounts/search only searches saved Apollo accounts. Use organization search for discovery.
+  const data = await apolloPost("/organizations/search", body);
 
-  return (data.accounts ?? []).map((a: Record<string, unknown>) => ({
-    name: a.name as string,
-    domain: a.primary_domain as string | undefined,
-    website: a.website_url as string | undefined,
-    industry: a.industry as string | undefined,
-    city: a.city as string | undefined,
-    employees: a.estimated_num_employees ? String(a.estimated_num_employees) : undefined,
-    logo: a.logo_url as string | undefined,
-    fitScore: estimateFitScore(a),
-    dataSource: "apollo",
-    externalId: a.id as string | undefined,
-  }));
+  return (data.organizations ?? data.accounts ?? []).map((a: Record<string, unknown>) =>
+    mapApolloOrganization(a),
+  );
 }
 
 function mapApolloPerson(p: Record<string, unknown>): ScoutPersonResult {
@@ -130,7 +171,7 @@ export async function apolloSearchPeople(params: {
     }
   }
 
-  return raw.map(mapApolloPerson);
+  return raw.map(mapApolloPerson).filter((p) => !personLooksOpenToWork(p));
 }
 
 function classifyEmail(email: string): "verified" | "unverified" | "generic" {
@@ -179,18 +220,9 @@ export async function apolloSearchOrganizationByName(params: {
   if (params.city) body.organization_locations = [params.city];
 
   const data = await apolloPost("/organizations/search", body);
-  return (data.organizations ?? data.accounts ?? []).map((a: Record<string, unknown>) => ({
-    name: a.name as string,
-    domain: (a.primary_domain as string | undefined) ?? params.domain,
-    website: a.website_url as string | undefined,
-    industry: a.industry as string | undefined,
-    city: (a.city as string | undefined) ?? params.city,
-    employees: a.estimated_num_employees ? String(a.estimated_num_employees) : undefined,
-    logo: a.logo_url as string | undefined,
-    fitScore: estimateFitScore(a),
-    dataSource: "apollo",
-    externalId: a.id as string | undefined,
-  }));
+  return (data.organizations ?? data.accounts ?? []).map((a: Record<string, unknown>) =>
+    mapApolloOrganization(a, params.city),
+  );
 }
 
 export async function apolloSearchPersonByName(params: {
@@ -205,7 +237,7 @@ export async function apolloSearchPersonByName(params: {
     per_page: params.limit ?? 5,
   });
 
-  return (data.people ?? []).map((p: Record<string, unknown>) => {
+  const people: ScoutPersonResult[] = (data.people ?? []).map((p: Record<string, unknown>) => {
     const email = p.email as string | undefined;
     return {
       name: p.name as string,
@@ -225,4 +257,6 @@ export async function apolloSearchPersonByName(params: {
       externalId: p.id as string | undefined,
     };
   });
+
+  return people.filter((p) => !personLooksOpenToWork(p));
 }

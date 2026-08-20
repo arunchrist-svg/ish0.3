@@ -1,11 +1,13 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, displayPersonTitle, isBlankPersonField, personLinkedInHref } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
 import { Check } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
+import { COMPANIES } from "@/lib/scouting-data";
 import { IshAvatar } from "@/design-system";
 import { scoutCardSurface } from "./scout-card-surface";
+import { LinkedInGlyph } from "@/components/icons/linkedin-glyph";
 
 type Props = {
   person: Person;
@@ -27,6 +29,13 @@ export function PersonTile({
   selectable = true,
 }: Props) {
   const scoreColor = getScoreColor(person.matchScore);
+  const companyName = COMPANIES.find((c) => c.id === person.companyId)?.name;
+  const linkedIn = personLinkedInHref({
+    linkedIn: person.linkedIn,
+    name: person.name,
+    companyName,
+  });
+  const roleLine = [person.department, person.seniority].filter((value) => !isBlankPersonField(value)).join(" · ");
 
   function handleRowClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest("[data-card-action]")) return;
@@ -76,9 +85,23 @@ export function PersonTile({
             </span>
           )}
         </div>
-        <div className="mt-0.5 truncate text-[11.5px] text-brand-ink-soft">{person.title}</div>
-        <div className="mt-0.5 text-[10.5px] text-brand-ink-faint">{person.department} · {person.seniority}</div>
+        <div className="mt-0.5 truncate text-[11.5px] text-brand-ink-soft">{displayPersonTitle(person.title)}</div>
+        {roleLine ? (
+          <div className="mt-0.5 text-[10.5px] text-brand-ink-faint">{roleLine}</div>
+        ) : null}
       </div>
+
+      <a
+        href={linkedIn.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-card-action
+        onClick={(e) => e.stopPropagation()}
+        aria-label={linkedIn.hasProfile ? `Open ${person.name} on LinkedIn` : `Search LinkedIn for ${person.name}`}
+        className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#0A66C2] text-white transition-opacity hover:opacity-90 active:scale-95"
+      >
+        <LinkedInGlyph className="size-3.5" />
+      </a>
 
       {selectable && (
         <button

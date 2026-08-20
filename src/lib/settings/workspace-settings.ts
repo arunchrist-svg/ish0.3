@@ -2,6 +2,7 @@ import { db, workspaceSettings } from "@/db";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { getEnrichmentConfig, resolveEnrichmentConfig } from "@/lib/enrichment/config";
 import { normalizeScoutGeo } from "@/lib/geo/india";
+import { normalizeScoutAreasOfFocus } from "@/lib/geo/area-of-focus";
 import { requireTenantContext } from "@/lib/tenant";
 import { eq } from "drizzle-orm";
 
@@ -29,6 +30,19 @@ export async function saveWorkspaceEnrichmentOverrides(
   const merged = { ...existing, ...partial };
   if (partial.scoutGeo !== undefined || existing.scoutGeo) {
     merged.scoutGeo = normalizeScoutGeo(merged.scoutGeo);
+  }
+  if (partial.scoutAreasOfFocus !== undefined) {
+    merged.scoutAreasOfFocus = normalizeScoutAreasOfFocus(partial.scoutAreasOfFocus);
+    merged.scoutAreaOfFocus = merged.scoutAreasOfFocus[0] ?? null;
+  } else if (partial.scoutAreaOfFocus !== undefined) {
+    merged.scoutAreasOfFocus = normalizeScoutAreasOfFocus(
+      existing.scoutAreasOfFocus?.length ? existing.scoutAreasOfFocus : partial.scoutAreaOfFocus,
+      existing.scoutAreasOfFocus?.length ? null : partial.scoutAreaOfFocus,
+    );
+    merged.scoutAreaOfFocus = merged.scoutAreasOfFocus[0] ?? null;
+  } else if (existing.scoutAreasOfFocus?.length || existing.scoutAreaOfFocus) {
+    merged.scoutAreasOfFocus = normalizeScoutAreasOfFocus(existing.scoutAreasOfFocus, existing.scoutAreaOfFocus);
+    merged.scoutAreaOfFocus = merged.scoutAreasOfFocus[0] ?? null;
   }
 
   await db

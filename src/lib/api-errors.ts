@@ -3,6 +3,11 @@ import { UnauthorizedError, ForbiddenError } from "@/lib/tenant";
 import { InsufficientCreditsError } from "@/lib/billing/credits";
 import { SenderPreflightError } from "@/lib/email/sender-preflight";
 
+function isMissingSchemaError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return /column .* does not exist/i.test(message) || /relation .* does not exist/i.test(message);
+}
+
 export function handleApiError(e: unknown, logPrefix: string) {
   if (e instanceof UnauthorizedError) {
     return NextResponse.json({ error: e.message }, { status: 401 });
@@ -23,6 +28,16 @@ export function handleApiError(e: unknown, logPrefix: string) {
     );
   }
   console.error(logPrefix, e);
+  if (isMissingSchemaError(e)) {
+    return NextResponse.json(
+      {
+        error:
+          "Database is missing a recent schema update. Apply the latest SQL migrations, then retry Scout.",
+        code: "SCHEMA_DRIFT",
+      },
+      { status: 503 },
+    );
+  }
   const message = e instanceof Error ? e.message : "Request failed";
   return NextResponse.json({ error: message }, { status: 500 });
 }

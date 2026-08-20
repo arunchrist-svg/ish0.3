@@ -19,7 +19,7 @@ export const ensureGeminiApiKeyForOcr = ensureGeminiApiKey;
 
 export function geminiModelId(tier: "fast" | "quality"): string {
   if (tier === "fast") {
-    return sanitizeModelId(process.env.GEMINI_MODEL_FLASH_LITE, "gemini-2.5-flash-lite");
+    return sanitizeModelId(process.env.GEMINI_MODEL_FLASH_LITE, "gemini-3.5-flash-lite");
   }
-  return sanitizeModelId(process.env.GEMINI_MODEL_FLASH, "gemini-2.5-flash");
+  return sanitizeModelId(process.env.GEMINI_MODEL_FLASH, "gemini-3.5-flash");
 }

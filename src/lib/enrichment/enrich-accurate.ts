@@ -3,7 +3,10 @@ import {
   FREE_ENRICH_PROVIDER_ORDER,
   PAID_ENRICH_PROVIDER_ORDER,
   PAID_PROVIDER_IDS,
+  candidatesHaveWhatsAppMobile,
   isProviderConfigured,
+  shouldStopOnPersonalEmail,
+  withZintlrPhoneProvider,
 } from "./provider-config";
 import { scoreContactCandidate } from "./confidence";
 import type {
@@ -13,7 +16,6 @@ import type {
   EnrichmentResult,
 } from "./enrich-types";
 import {
-  isGenericCompanyEmail,
   pickBestEmail,
   pickBestPhone,
   sanitizeEmail,
@@ -43,22 +45,28 @@ export interface ScoredCandidate {
   raw?: unknown;
 }
 
+function isKeyedProvider(id: EnrichmentProviderId): boolean {
+  return PAID_PROVIDER_IDS.has(id) || id === "zintlr";
+}
+
 function getProviderChain(options: EnrichContactAccurateOptions): EnrichmentProviderId[] {
   if (options.preferredChain?.length) {
     return options.preferredChain.filter((id) =>
-      PAID_PROVIDER_IDS.has(id) ? isProviderConfigured(id) : true,
+      isKeyedProvider(id) ? isProviderConfigured(id) : true,
     );
   }
   if (options.paidOnly) {
-    return PAID_ENRICH_PROVIDER_ORDER.filter(isProviderConfigured);
+    return withZintlrPhoneProvider(PAID_ENRICH_PROVIDER_ORDER.filter(isProviderConfigured));
   }
   if (options.freeOnly || options.allowPaid === false) {
-    return FREE_ENRICH_PROVIDER_ORDER;
+    return withZintlrPhoneProvider(FREE_ENRICH_PROVIDER_ORDER);
   }
-  return [...PAID_ENRICH_PROVIDER_ORDER, ...FREE_ENRICH_PROVIDER_ORDER].filter((id) => {
-    if (PAID_PROVIDER_IDS.has(id)) return isProviderConfigured(id);
-    return true;
-  });
+  return withZintlrPhoneProvider(
+    [...PAID_ENRICH_PROVIDER_ORDER, ...FREE_ENRICH_PROVIDER_ORDER].filter((id) => {
+      if (PAID_PROVIDER_IDS.has(id)) return isProviderConfigured(id);
+      return true;
+    }),
+  );
 }
 
 function hasUsableContact(contact: Partial<EnrichedContact>): boolean {
@@ -114,7 +122,7 @@ export async function enrichContactAccurate(
       contact: null as Partial<EnrichedContact> | null,
       source: "none" as const,
       message: options.paidOnly
-        ? "No paid enrichment keys configured. Add APOLLO_API_KEY or HUNTER_API_KEY."
+        ? "No paid enrichment keys configured. Add PROSPEO_API_KEY, HUNTER_API_KEY, or APOLLO_API_KEY."
         : "No enrichment providers configured.",
       candidates: [] as ScoredCandidate[],
       attempts: [] as ProviderAttempt[],
@@ -131,6 +139,14 @@ export async function enrichContactAccurate(
       continue;
     }
 
+    if (
+      providerId === "zintlr" &&
+      candidatesHaveWhatsAppMobile(candidates.map((c) => c.contact.phone))
+    ) {
+      attempts.push({ providerId, status: "empty", message: "Skipped, mobile already found" });
+      continue;
+    }
+
     try {
       const result: EnrichmentResult | null = await provider.enrich(normalizedInput);
       if (!result?.contact || !hasUsableContact(result.contact)) {
@@ -142,13 +158,13 @@ export async function enrichContactAccurate(
       candidates.push({ providerId, contact: result.contact, score, raw: result.raw });
       attempts.push({ providerId, status: "success" });
 
-      const email = sanitizeEmail(result.contact.email);
-      if (
-        options.stopOnPersonalEmail &&
-        email &&
-        !isGenericCompanyEmail(email) &&
-        score >= 35
-      ) {
+      if (shouldStopOnPersonalEmail({
+        stopOnPersonalEmail: options.stopOnPersonalEmail,
+        email: result.contact.email,
+        score,
+        phone: result.contact.phone,
+        candidatePhones: candidates.map((c) => c.contact.phone),
+      })) {
         break;
       }
     } catch (error) {

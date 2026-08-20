@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { FileText, Inbox, MessageSquare, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { EmptyState, MobilePageLayout, ScrollableTabs } from "@/design-system";
+import { AppPageHeader, EmptyState, MobilePageLayout, ScrollableTabs } from "@/design-system";
 import { SkeletonList } from "@/design-system";
 import {
   approveOutreach,
@@ -157,6 +157,21 @@ export function MobileInboxApp() {
       }
       contentClassName="!pb-0 ish-inbox-page"
     >
+      <AppPageHeader
+        icon={Inbox}
+        title="Inbox"
+        subtitle="Review drafts and replies waiting for you"
+        actions={
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95"
+            aria-label="Refresh inbox"
+          >
+            <RefreshCw className={cn("size-3.5 text-brand-stratus-blue", loading && "animate-spin")} />
+          </button>
+        }
+      />
       <div className="border-b border-brand-border/40 bg-white/60 ish-page-padding py-2 backdrop-blur-xl">
         <ScrollableTabs
           tabs={tabLabels}

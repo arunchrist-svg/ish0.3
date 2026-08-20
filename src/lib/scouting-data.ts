@@ -18,6 +18,11 @@ export type Company = {
   intelligenceNotes: string;
   overview?: CompanyOverview;
   accountId?: string;
+  leadabilityScore?: number;
+  leadabilityBand?: "high" | "medium" | "low" | "unknown";
+  leadabilityMatchedPeople?: number;
+  leadabilityMatchedInCity?: number;
+  leadabilityProbeSource?: string;
 };
 
 export type Person = {
@@ -89,21 +94,64 @@ export const SCOUT_CITY_GROUPS: { label: string; cities: ScoutCity[] }[] = [
   { label: "North Karnataka", cities: ["Hubli", "Belgaum", "Bellary"] },
   { label: "Tamil Nadu border", cities: ["Hosur"] },
 ];
+/** Employer industries that gift to staff at volume (festive sweets ICP). */
 export const SCOUT_INDUSTRIES = [
   "Manufacturing",
-  "Real Estate",
+  "Automotive",
+  "Textiles",
+  "Electronics",
+  "Steel & Metals",
+  "Chemicals",
+  "Energy & Power",
   "Technology",
   "Financial Services",
   "Healthcare",
-  "Retail",
-  "FMCG",
-  "Construction",
-  "Automotive",
   "Pharmaceuticals",
+  "FMCG",
+  "Retail",
+  "Real Estate",
+  "Construction",
+  "Logistics",
   "Education",
   "Hospitality",
-  "Logistics",
 ] as const;
+
+/** Establishment types that gift to staff, not employer industries. */
+export const SCOUT_BUSINESSES = [
+  "Banks",
+  "Schools",
+  "Colleges",
+  "Universities",
+  "Hospitals",
+  "Hotels",
+  "Government offices",
+  "Clubs",
+  "Housing societies",
+  "Hostels",
+] as const;
+
+export type ScoutBusiness = (typeof SCOUT_BUSINESSES)[number];
+export type ScoutVerticalScope = "industries" | "businesses";
+
+/** Google Places (New) includedType for Table A types when it is a clean match. */
+export const SCOUT_BUSINESS_PLACES_TYPE: Partial<Record<ScoutBusiness, string>> = {
+  Banks: "bank",
+  Schools: "school",
+  Colleges: "university",
+  Universities: "university",
+  Hospitals: "hospital",
+  Hotels: "lodging",
+  "Government offices": "local_government_office",
+  Hostels: "lodging",
+};
+
+export function placesTypeForScoutBusiness(label: string): string | undefined {
+  return SCOUT_BUSINESS_PLACES_TYPE[label as ScoutBusiness];
+}
+
+export function parseScoutVerticalScope(raw: unknown): ScoutVerticalScope | null {
+  return raw === "industries" || raw === "businesses" ? raw : null;
+}
 
 export const SCOUT_SENIORITY = ["C-Level", "Founders", "VP", "Director", "Manager"] as const;
 export type ScoutSeniority = (typeof SCOUT_SENIORITY)[number];

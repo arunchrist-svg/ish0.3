@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  distinctiveBrandTokens,
   domainBelongsToCompany,
   displayCompanyWebsite,
   isAcceptableCompanyDomain,
@@ -8,10 +9,19 @@ import {
   persistableCompanyWebsite,
   officialWebsiteForScoutCompany,
   usableStoredDomain,
+  parsePastedCompanyWebsite,
+  isKeepableContactEmail,
+  emailBelongsToCompany,
 } from "@/lib/enrichment/company-domain-quality";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
 
 describe("company domain quality", () => {
+  it("does not treat Hospital or Bank as distinctive brand tokens", () => {
+    expect(distinctiveBrandTokens("Trilife Hospital")).toEqual(["trilife"]);
+    expect(distinctiveBrandTokens("HDFC Bank")).toEqual(["hdfc"]);
+    expect(distinctiveBrandTokens("Manav Charitable Hospital")).toEqual(["manav", "charitable"]);
+  });
+
   it("rejects news and directory hosts", () => {
     expect(isUnusableCompanyDomain("manufacturingtodayindia.com")).toBe(true);
     expect(isUnusableCompanyDomain("www.tracxn.com")).toBe(true);
@@ -31,6 +41,15 @@ describe("company domain quality", () => {
     expect(isAcceptableCompanyDomain("jindalsteel.in", "Jindal Steel")).toBe(true);
     expect(usableStoredDomain("jindalsteel.in", "Hosur Steel Industries")).toBeNull();
     expect(usableStoredDomain("tatasteel.com", "Tata Steel")).toBe("tatasteel.com");
+  });
+
+  it("accepts a pasted company website and rejects directory pages", () => {
+    expect(parsePastedCompanyWebsite("https://www.familygroup.in/about")).toEqual({
+      domain: "familygroup.in",
+      website: "https://www.familygroup.in",
+    });
+    expect(parsePastedCompanyWebsite("zaubacorp.com")).toEqual({});
+    expect(parsePastedCompanyWebsite("https://www.indiamart.com/sansu")).toEqual({});
   });
 
   it("rejects directory hosts and accepts SCHUNK's official site", () => {
@@ -100,6 +119,23 @@ describe("company domain quality", () => {
     ).toBe("pavnaindustries.com");
   });
 
+  it("uses autoaxle.com for Automotive Axles, not the name slug", () => {
+    expect(isAcceptableCompanyDomain("autoaxle.com", "Automotive Axles Limited")).toBe(true);
+    expect(isAcceptableCompanyDomain("automotiveaxles.com", "Automotive Axles Limited")).toBe(false);
+    expect(
+      resolveAccountDomain({
+        companyName: "Automotive Axles Limited",
+      }),
+    ).toBe("autoaxle.com");
+    expect(
+      resolveAccountDomain({
+        domain: "automotiveaxles.com",
+        website: "https://www.automotiveaxles.com",
+        companyName: "Automotive Axles Limited",
+      }),
+    ).toBe("autoaxle.com");
+  });
+
   it("uses CUMI Murugappa domain for Carborundum Universal, not the name slug", () => {
     expect(isAcceptableCompanyDomain("cumi-murugappa.com", "Carborundum Universal")).toBe(true);
     expect(isAcceptableCompanyDomain("carborundumuniversal.com", "Carborundum Universal")).toBe(false);
@@ -132,5 +168,13 @@ describe("company domain quality", () => {
       fitScore: 60,
     });
     expect(matched.domain).toBe("titancompany.in");
+  });
+
+  it("keeps personal inboxes even when they do not match the company domain", () => {
+    expect(isKeepableContactEmail("abgupta89@gmail.com", "ABHIJIT GUPTA")).toBe(true);
+    expect(isKeepableContactEmail("buyer@yahoo.com", "Paris Panini")).toBe(true);
+    expect(emailBelongsToCompany("abgupta89@gmail.com", "ABHIJIT GUPTA")).toBe(false);
+    expect(isKeepableContactEmail("sandeep.yadav@tatasteel.com", "Tata Steel")).toBe(true);
+    expect(isKeepableContactEmail("sandeep.yadav@jindalsteel.in", "Tata Steel")).toBe(false);
   });
 });

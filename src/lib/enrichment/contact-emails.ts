@@ -1,6 +1,6 @@
 import { isEmailOutreachStarted } from "@/lib/pipeline-status";
 import { isGenericCompanyEmail } from "@/lib/enrichment/validate-contact";
-import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
+import { isKeepableContactEmail } from "@/lib/enrichment/company-domain-quality";
 import {
   generateEmailPermutations,
   resolveAccountDomain,
@@ -36,7 +36,7 @@ export function formatEnrichmentSourceWithPattern(pattern: string): string {
 
 export type ContactEmailEntry = {
   email: string;
-  emailStatus: "verified" | "unverified" | "generic" | "missing" | "bounced";
+  emailStatus: "verified" | "unverified" | "generic" | "missing" | "bounced" | (string & {});
   emailConfidence?: number;
   enrichmentSource?: string;
   enrichmentProvider?: string;
@@ -239,6 +239,13 @@ function isPermutationGuess(entry: {
   );
 }
 
+export function isPermutationGuessEmail(entry: {
+  enrichmentProvider?: string | null;
+  enrichmentSource?: string | null;
+}): boolean {
+  return isPermutationGuess(entry);
+}
+
 function emailDomain(email?: string | null): string | undefined {
   const host = email?.split("@")[1]?.trim().toLowerCase();
   return host || undefined;
@@ -256,6 +263,8 @@ export function refreshPermutationEmails(input: {
   enrichmentProvider?: string | null;
   enrichmentSource?: string | null;
   alternateEmails?: ContactEmailEntry[] | null;
+  /** Keep a user-typed address even when the domain does not match the company. */
+  preservePrimary?: boolean;
 }): {
   email: string | null;
   emailStatus: ContactEmailEntry["emailStatus"];
@@ -273,8 +282,16 @@ export function refreshPermutationEmails(input: {
   };
   const resolvedDomain = resolveAccountDomain(identity);
   const rejectedKeys = rejectedEmailKeys(input.alternateEmails);
+  const userProvided =
+    input.preservePrimary ||
+    input.enrichmentProvider === "manual" ||
+    input.enrichmentSource === "manual";
   const keptAlts = (input.alternateEmails ?? []).filter(
-    (entry) => isRejectedEmailEntry(entry) || emailBelongsToCompany(entry.email, input.companyName),
+    (entry) =>
+      isRejectedEmailEntry(entry) ||
+      isKeepableContactEmail(entry.email, input.companyName) ||
+      entry.enrichmentProvider === "manual" ||
+      entry.pattern === "custom",
   );
 
   let email = input.primaryEmail?.trim() || null;
@@ -287,10 +304,10 @@ export function refreshPermutationEmails(input: {
   const primaryMismatched =
     Boolean(email) &&
     (
-      !emailBelongsToCompany(email, input.companyName) ||
+      !isKeepableContactEmail(email, input.companyName) ||
       (primaryIsGuess && (!resolvedDomain || primaryHost !== resolvedDomain))
     );
-  if (primaryMismatched || (email && rejectedKeys.has(email.toLowerCase()))) {
+  if (!userProvided && (primaryMismatched || (email && rejectedKeys.has(email.toLowerCase())))) {
     email = null;
     emailStatus = "missing";
     enrichmentProvider = null;

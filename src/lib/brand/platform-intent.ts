@@ -52,8 +52,8 @@ export function verticalPackIdForIntent(intent: PlatformIntent): VerticalPackId 
 }
 
 export function intentFromVerticalPackId(packId?: VerticalPackId | string | null): PlatformIntent {
-  if (packId === "gifting-sweets") return "corporate_gifting";
-  if (packId === "gifting-appliances") return "appliances";
+  if (packId === "gifting-sweets" || packId === "ish") return "corporate_gifting";
+  if (packId === "gifting-appliances" || packId === "prestige") return "appliances";
   return "general_b2b";
 }
 
@@ -114,7 +114,7 @@ export type IntentScoutDefaults = {
 export function defaultIcpSummary(intent: PlatformIntent): string {
   switch (intent) {
     case "corporate_gifting":
-      return "Companies that gift sweets, mithai, or hampers to employees for festivals, onboarding, and office occasions. Buyers are HR, Admin, and Procurement at those employers, not other sweet shops.";
+      return "Companies that gift sweets, mithai, or hampers to employees for festivals, onboarding, and office occasions. Buyers are HR Directors, HR Heads, and Procurement at those employers, not other sweet shops.";
     case "b2b_saas":
       return "Companies that would buy this software for their own team. Typical buyers are founders, sales, marketing, operations, or IT. Skip retailers that are unrelated, and skip vendors that sell competing software.";
     case "appliances":
@@ -135,7 +135,7 @@ export function scoutDefaultsForIntent(intent: PlatformIntent): IntentScoutDefau
       };
     case "corporate_gifting":
       return {
-        buyerPersonas: ["HR Director", "HR Manager", "Procurement Manager", "Admin Head"],
+        buyerPersonas: ["HR Director", "Head of HR", "Procurement Head", "Procurement Manager"],
         scoutDepartments: ["HR", "Procurement"],
         scoutSeniority: [],
       };
@@ -172,6 +172,65 @@ export function normalizeScoutRoleFilters(
   return { scoutDepartments, scoutSeniority };
 }
 
+export const FESTIVE_SWEETS_BUYER_DEPARTMENTS = ["HR", "Procurement"] as const;
+
+export function isGiftingBuyerIntent(intent?: PlatformIntent | null): boolean {
+  return intent === "corporate_gifting" || intent === "appliances";
+}
+
+/**
+ * Preferred festive-sweets search titles: HR Director and Procurement Head.
+ * Matching is a waterfall (Director+HR/Procurement, then Director, VP, C-level), not stacked AND.
+ */
+export const BUSINESS_LOCAL_SENIOR_GUIDANCE =
+  "Best contacts: branch managers, principals, and unit heads in this area. Skip Head of HR and CHRO at corporate HQ.";
+
+export function expandPeopleFiltersForOffer(
+  intent: PlatformIntent | null | undefined,
+  seniority: string[],
+  departments: string[],
+  opts?: { treatAsGifting?: boolean; searchKind?: "industry" | "business"; businesses?: string[] },
+): { seniority: string[]; departments: string[]; expanded: boolean; note?: string } {
+  if (opts?.searchKind === "business") {
+    return {
+      seniority,
+      departments,
+      expanded: false,
+      note: BUSINESS_LOCAL_SENIOR_GUIDANCE,
+    };
+  }
+  const giftingIntent: PlatformIntent | null | undefined =
+    isGiftingBuyerIntent(intent) ? intent : opts?.treatAsGifting ? "corporate_gifting" : intent;
+  if (!isGiftingBuyerIntent(giftingIntent)) {
+    return { seniority, departments, expanded: false };
+  }
+  const buying =
+    giftingIntent === "appliances"
+      ? ["Procurement", "HR", "Facilities"]
+      : [...FESTIVE_SWEETS_BUYER_DEPARTMENTS];
+  const note =
+    giftingIntent === "corporate_gifting"
+      ? "Festive sweets buyers: HR, Procurement, Admin, or Facilities at Manager level or above at the plant or nearby HQ. Finance, CTO, VP Operations, and CEO are skipped."
+      : "Volume buyers: HR, Procurement, and Facilities Directors and Heads first. Team Leads and Open to Work are skipped.";
+  const seniorityFloor = seniority.length ? seniority : ["Director"];
+  if (departments.length && seniority.length) {
+    return { seniority, departments, expanded: false, note };
+  }
+  if (departments.length) {
+    return { seniority: seniorityFloor, departments, expanded: seniority.length === 0, note };
+  }
+  return { seniority: seniorityFloor, departments: buying, expanded: true, note };
+}
+
+export function festiveSweetsBuyerGuidance(
+  intent?: PlatformIntent | null,
+  searchKind?: "industry" | "business",
+): string | null {
+  if (searchKind === "business") return BUSINESS_LOCAL_SENIOR_GUIDANCE;
+  if (intent !== "corporate_gifting") return null;
+  return "Best festive-sweets buyers: HR, Procurement, Admin, or Facilities managers at the plant or nearby HQ. Empty is better than Finance or CEO.";
+}
+
 export type DecisionMakerChoice = {
   id: string;
   label: string;
@@ -185,9 +244,17 @@ export function decisionMakerChoicesForIntent(intent: PlatformIntent): DecisionM
   switch (intent) {
     case "corporate_gifting":
       return [
+        {
+          id: "hr-procurement",
+          label: "HR + Procurement",
+          hint: "Recommended festive sweets buyers (Directors, Heads, Managers)",
+          departments: ["HR", "Procurement"],
+          seniority: [],
+        },
         { id: "hr", label: "HR / People", hint: "HR Manager, HR Director, CHRO", departments: ["HR"], seniority: [] },
-        { id: "admin", label: "Admin", hint: "Admin Head", departments: ["Admin"], seniority: [] },
         { id: "procurement", label: "Procurement", hint: "Purchase, Sourcing", departments: ["Procurement"], seniority: [] },
+        { id: "marketing", label: "Marketing", hint: "Brand and gifting programs", departments: ["Marketing"], seniority: [] },
+        { id: "vp", label: "VP", hint: "Use with a department, or skip department", departments: [], seniority: ["VP"] },
       ];
     case "appliances":
       return [
@@ -258,7 +325,7 @@ export function icpCompanyFilterInstructions(params: {
   }
   if (intent === "corporate_gifting") {
     lines.push(
-      "This seller sells corporate sweets or hampers. Keep employer companies (factories, offices, IT, manufacturing, healthcare, banks) that could gift to employees. Drop mithai shops, bakeries, sweet retailers, hamper stores, and other gift sellers.",
+      "This seller sells corporate sweets or hampers. Keep employer companies (factories, mills, offices, IT, manufacturing, textiles, electronics, steel, chemicals, energy, healthcare, banks) that could gift to employees. Drop mithai shops, bakeries, sweet retailers, hamper stores, and other gift sellers.",
     );
   } else if (intent === "b2b_saas") {
     lines.push(

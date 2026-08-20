@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchLeads } from "@/lib/api-client";
@@ -11,8 +11,56 @@ import {
 } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
-import { MobilePageLayout, SearchBar } from "@/design-system";
+import {
+  sendEmailsForLeads,
+  writeEmailsForLeads,
+  type BoardBulkProgress,
+  type SendQueueItem,
+} from "./board-bulk-actions";
+import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
+
+const SEND_QUEUE_STORAGE_KEY = "ish-board-send-queue";
+
+function remainingGapMinutes(item: SendQueueItem, now = Date.now()): number | undefined {
+  if (item.status !== "waiting" || !item.waitUntil) return item.gapMinutes;
+  return Math.max(1, Math.ceil((item.waitUntil - now) / 60_000));
+}
+
+function loadStoredSendQueue(): SendQueueItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(SEND_QUEUE_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as SendQueueItem[];
+    if (!Array.isArray(parsed)) return [];
+    const now = Date.now();
+    return parsed.map((item) => {
+      if (item.status === "waiting" && item.waitUntil) {
+        if (item.waitUntil <= now) {
+          return { ...item, status: "queued", gapMinutes: undefined, waitUntil: undefined };
+        }
+        return { ...item, gapMinutes: remainingGapMinutes(item, now) };
+      }
+      if (item.status === "sending") {
+        return { ...item, status: "queued", gapMinutes: undefined, waitUntil: undefined };
+      }
+      return item;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function persistSendQueue(queue: SendQueueItem[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!queue.length) sessionStorage.removeItem(SEND_QUEUE_STORAGE_KEY);
+    else sessionStorage.setItem(SEND_QUEUE_STORAGE_KEY, JSON.stringify(queue));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 function matchesQuery(item: LeadQueueItem, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -21,11 +69,45 @@ function matchesQuery(item: LeadQueueItem, query: string): boolean {
     .some((field) => field?.toLowerCase().includes(q));
 }
 
+function sendBusyLabel(queue: SendQueueItem[]): string {
+  const total = queue.length;
+  if (!total) return "Sending…";
+  const done = queue.filter((item) =>
+    item.status === "sent" || item.status === "failed" || item.status === "cancelled",
+  ).length;
+  const current = Math.min(done + 1, total);
+  const waiting = queue.find((item) => item.status === "waiting");
+  const waitMins = waiting ? remainingGapMinutes(waiting) : undefined;
+  if (waitMins) {
+    return `Waiting ${waitMins}m · ${done} of ${total}`;
+  }
+  return `Sending ${current} of ${total}`;
+}
+
 export function LeadsBoardApp() {
   const [leads, setLeads] = useState<LeadQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [writingProgress, setWritingProgress] = useState<BoardBulkProgress | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendQueue, setSendQueue] = useState<SendQueueItem[]>(() => loadStoredSendQueue());
+  const sendAbortRef = useRef<AbortController | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    persistSendQueue(sendQueue);
+  }, [sendQueue]);
+
+  useEffect(() => {
+    if (!sendQueue.some((item) => item.status === "waiting" && item.waitUntil)) return;
+    const id = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, [sendQueue]);
+
+  useEffect(() => {
+    return () => sendAbortRef.current?.abort();
+  }, []);
 
   async function load(opts?: { silent?: boolean }) {
     if (!opts?.silent) setLoading(true);
@@ -55,6 +137,93 @@ export function LeadsBoardApp() {
     [filteredLeads],
   );
 
+  const sendQueueByLeadId = useMemo(
+    () =>
+      Object.fromEntries(
+        sendQueue.map((item) => [
+          item.leadId,
+          item.status === "waiting"
+            ? { ...item, gapMinutes: remainingGapMinutes(item, now) }
+            : item,
+        ]),
+      ),
+    [sendQueue, now],
+  );
+
+  const boardBusy = Boolean(writingProgress) || sending;
+
+  const handleWriteAll = useCallback(async () => {
+    const targets = grouped["Contact Ready"] ?? [];
+    if (!targets.length || writingProgress || sending) return;
+
+    setWritingProgress({ current: 0, total: targets.length });
+    try {
+      const result = await writeEmailsForLeads(targets, setWritingProgress);
+      if (result.failed === 0) {
+        toast.success(
+          result.ok === 1
+            ? "Wrote email for 1 lead"
+            : `Wrote emails for ${result.ok} leads`,
+        );
+      } else {
+        toast.error(
+          `Wrote ${result.ok} of ${targets.length}. ${result.failed} failed.`,
+          { description: result.errors.slice(0, 3).join(" · ") },
+        );
+      }
+      await load({ silent: true });
+    } finally {
+      setWritingProgress(null);
+    }
+  }, [grouped, writingProgress, sending]);
+
+  const cancelSendAll = useCallback(() => {
+    sendAbortRef.current?.abort();
+  }, []);
+
+  const handleSendAll = useCallback(async () => {
+    const targets = grouped.Email ?? [];
+    if (!targets.length || writingProgress || sending) return;
+
+    const confirmed = window.confirm(
+      targets.length === 1
+        ? "Send the ready email for this lead now?"
+        : `Send ready emails for all ${targets.length} leads in Email? Sends are spaced 1–5 minutes apart.`,
+    );
+    if (!confirmed) return;
+
+    const controller = new AbortController();
+    sendAbortRef.current?.abort();
+    sendAbortRef.current = controller;
+    setSending(true);
+    setSendQueue(targets.map((lead) => ({ leadId: lead.id, name: lead.name, status: "queued" })));
+
+    try {
+      const result = await sendEmailsForLeads(targets, {
+        signal: controller.signal,
+        onQueueChange: setSendQueue,
+      });
+      if (result.cancelled > 0 && result.ok === 0 && result.failed === 0) {
+        toast.message("Send queue cancelled");
+      } else if (result.failed === 0 && result.cancelled === 0) {
+        toast.success(
+          result.ok === 1 ? "Sent 1 email" : `Sent ${result.ok} emails`,
+        );
+      } else {
+        toast.error(
+          `Sent ${result.ok} of ${targets.length}. ${result.failed} failed${
+            result.cancelled ? `, ${result.cancelled} cancelled` : ""
+          }.`,
+          { description: result.errors.slice(0, 3).join(" · ") },
+        );
+      }
+      await load({ silent: true });
+    } finally {
+      sendAbortRef.current = null;
+      setSending(false);
+    }
+  }, [grouped, writingProgress, sending]);
+
   const isEmpty = !loading && leads.length === 0;
   const noResults = !loading && leads.length > 0 && filteredLeads.length === 0;
 
@@ -69,21 +238,14 @@ export function LeadsBoardApp() {
         <LeadsViewToggle />
       </div>
       <SearchBar value={search} onChange={setSearch} placeholder="Search leads" sticky className="lg:hidden" />
-      <header className="ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-4 lg:block">
-        <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
-        <div className="relative flex flex-wrap items-center gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
-              <Columns3 className="size-4 text-brand-ink" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-[18px] font-extrabold tracking-tight text-brand-ink">Leads</h1>
-              <p className="text-[11px] text-brand-ink-soft">Board view</p>
-            </div>
-            <LeadsViewToggle className="ml-1" />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+      <AppPageHeader
+        compact
+        icon={Columns3}
+        title="Leads"
+        subtitle="Board view"
+        actions={
+          <>
+            <LeadsViewToggle />
             <div className="relative w-[220px] max-w-full">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
               <input
@@ -97,17 +259,17 @@ export function LeadsBoardApp() {
             <button
               type="button"
               onClick={() => load({ silent: true })}
-              disabled={refreshing}
+              disabled={refreshing || boardBusy}
               className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95"
               aria-label="Refresh"
             >
               <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
             </button>
-          </div>
-        </div>
-
-        {!loading && !isEmpty && (
-          <div className="relative mt-3 flex flex-wrap gap-2">
+          </>
+        }
+      >
+        {!loading && !isEmpty ? (
+          <div className="flex flex-wrap gap-2">
             {PIPELINE_STAGES.map((stage) => (
               <span
                 key={stage}
@@ -118,8 +280,8 @@ export function LeadsBoardApp() {
               </span>
             ))}
           </div>
-        )}
-      </header>
+        ) : null}
+      </AppPageHeader>
 
       <div className="min-h-0 flex-1 overflow-hidden px-6 py-5">
         {loading ? (
@@ -134,9 +296,45 @@ export function LeadsBoardApp() {
           </div>
         ) : (
           <div className="flex h-full gap-4 overflow-x-auto pb-2 scrollbar-none">
-            {PIPELINE_STAGES.map((stage) => (
-              <BoardColumn key={stage} stage={stage} leads={grouped[stage]} />
-            ))}
+            {PIPELINE_STAGES.map((stage) => {
+              const columnLeads = grouped[stage] ?? [];
+              const writeBusy = Boolean(writingProgress);
+              const sendBusy = sending;
+              const action =
+                stage === "Contact Ready"
+                  ? {
+                      label: "Email Write All",
+                      busyLabel:
+                        writingProgress && writingProgress.current > 0
+                          ? `Writing ${writingProgress.current} of ${writingProgress.total}`
+                          : "Writing…",
+                      busy: writeBusy,
+                      disabled: boardBusy && !writeBusy,
+                      onClick: () => void handleWriteAll(),
+                    }
+                  : stage === "Email"
+                    ? {
+                        label: "Send All",
+                        busyLabel: sendBusyLabel(sendQueue),
+                        busy: sendBusy,
+                        disabled: boardBusy && !sendBusy,
+                        onClick: () => void handleSendAll(),
+                        onCancel: cancelSendAll,
+                      }
+                    : undefined;
+
+              return (
+                <BoardColumn
+                  key={stage}
+                  stage={stage}
+                  leads={columnLeads}
+                  action={action}
+                  queueByLeadId={
+                    stage === "Email" || stage === "Email Sent" ? sendQueueByLeadId : undefined
+                  }
+                />
+              );
+            })}
           </div>
         )}
       </div>

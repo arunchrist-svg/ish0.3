@@ -66,13 +66,20 @@ async function hunterVerify(email: string): Promise<"verified" | "unverified" | 
   return promise;
 }
 
-export async function verifyEmail(email: string): Promise<EmailVerifyResult> {
+export async function verifyEmail(
+  email: string,
+  options?: { network?: boolean },
+): Promise<EmailVerifyResult> {
   if (!email || !isValidFormat(email)) {
     return { email, status: "missing", isPersonal: false };
   }
 
   if (isGenericEmail(email)) {
     return { email, status: "generic", isPersonal: false };
+  }
+
+  if (options?.network === false) {
+    return { email, status: "unverified", isPersonal: true, provider: "format" };
   }
 
   // Hunter verify (best accuracy, optional)

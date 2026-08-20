@@ -3,8 +3,10 @@ import {
   generateEmailPermutations,
   generateEmailPermutationsForContact,
   isValidPermutationForContact,
+  normalizeDomain,
   normalizeNamePart,
   resolveAccountDomain,
+  suggestionsAfterDomainChange,
 } from "@/lib/enrichment/email-permutations";
 
 describe("email-permutations", () => {
@@ -102,5 +104,69 @@ describe("email-permutations", () => {
 
     expect(isValidPermutationForContact("john.smith@acme.com", input)).toBe(true);
     expect(isValidPermutationForContact("random@acme.com", input)).toBe(false);
+  });
+
+  it("strips protocol, www, and paths from a typed or pasted domain", () => {
+    expect(normalizeDomain("https://www.autoaxle.com/")).toBe("autoaxle.com");
+    expect(normalizeDomain("http://www.autoaxle.com/about?ref=1")).toBe("autoaxle.com");
+    expect(normalizeDomain("www.autoaxle.com")).toBe("autoaxle.com");
+    expect(normalizeDomain("AUTOAXLE.COM")).toBe("autoaxle.com");
+    expect(normalizeDomain("")).toBeUndefined();
+    expect(normalizeDomain("not a domain")).toBeUndefined();
+    expect(normalizeDomain("goto")).toBeUndefined();
+    expect(normalizeDomain("emmanuel@autoaxle.com")).toBeUndefined();
+  });
+
+  it("regenerates guesses when the domain is edited and keeps matching selections", () => {
+    const fromWrongHost = generateEmailPermutations({
+      firstName: "Emmanuel",
+      lastName: "Suresh Kumar",
+      domain: "automotiveaxles.com",
+    });
+    expect(fromWrongHost[0]?.email).toBe("emmanuel.sureshkumar@automotiveaxles.com");
+
+    const next = suggestionsAfterDomainChange({
+      firstName: "Emmanuel",
+      lastName: "Suresh Kumar",
+      domain: "https://www.autoaxle.com/",
+      selected: [fromWrongHost[0]!.email, fromWrongHost[2]!.email],
+      primaryEmail: fromWrongHost[0]!.email,
+    });
+
+    expect(next.domain).toBe("autoaxle.com");
+    expect(next.suggestions.map((item) => item.email)).toEqual([
+      "emmanuel.sureshkumar@autoaxle.com",
+      "emmanuelsureshkumar@autoaxle.com",
+      "esureshkumar@autoaxle.com",
+      "e.sureshkumar@autoaxle.com",
+      "emmanuel@autoaxle.com",
+      "sureshkumar.emmanuel@autoaxle.com",
+      "emmanuel_sureshkumar@autoaxle.com",
+      "sureshkumar@autoaxle.com",
+    ]);
+    expect(next.selected).toEqual([
+      "emmanuel.sureshkumar@autoaxle.com",
+      "esureshkumar@autoaxle.com",
+    ]);
+    expect(next.primaryEmail).toBe("emmanuel.sureshkumar@autoaxle.com");
+  });
+
+  it("does not generate emails for empty or unusable domains", () => {
+    expect(
+      generateEmailPermutations({
+        firstName: "Emmanuel",
+        lastName: "Kumar",
+        domain: "",
+      }),
+    ).toEqual([]);
+    expect(
+      suggestionsAfterDomainChange({
+        firstName: "Emmanuel",
+        lastName: "Kumar",
+        domain: "linkedin.com",
+        selected: ["emmanuel.kumar@automotiveaxles.com"],
+        primaryEmail: "emmanuel.kumar@automotiveaxles.com",
+      }),
+    ).toEqual({ domain: undefined, suggestions: [], selected: [], primaryEmail: "" });
   });
 });

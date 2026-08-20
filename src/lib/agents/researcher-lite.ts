@@ -3,7 +3,6 @@ import { db, leadResearch, leads, contacts, accounts, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { parseResearcherOutput } from "@/lib/agents/schemas/researcher-output";
-import { generateWriterPlan } from "@/lib/agents/writer-plan";
 import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 
@@ -122,12 +121,6 @@ Output ONLY valid JSON with this shape:
 
   await db.update(leads).set({ status: "researched" }).where(eq(leads.id, leadId));
   await db.insert(yieldFunnel).values({ leadId, stage: "researched" });
-
-  try {
-    await generateWriterPlan(leadId);
-  } catch (e) {
-    console.warn("[researcher-lite] writer plan generation failed", leadId, e);
-  }
 
   await deductCredits({
     tenantId: lead.tenantId,

@@ -9,12 +9,47 @@ export const OPENROUTER_FALLBACK_MODELS = [
 ] as const;
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
+export type OpenRouterKeyEntry = {
+  id: string;
+  key: string;
+  label: string;
+};
+
+function maskKey(key: string): string {
+  if (key.length <= 10) return "••••";
+  return `${key.slice(0, 8)}…${key.slice(-4)}`;
+}
+
+/** Collect OpenRouter keys from env: primary, numbered fallbacks, or comma-separated list. */
+export function getOpenRouterKeys(): OpenRouterKeyEntry[] {
+  const keys: OpenRouterKeyEntry[] = [];
+  const seen = new Set<string>();
+
+  const add = (raw: string | undefined, id: string) => {
+    const key = sanitizeEnvValue(raw);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    keys.push({ id, key, label: maskKey(key) });
+  };
+
+  const list = process.env.OPENROUTER_API_KEYS;
+  if (list) {
+    list.split(",").forEach((part, i) => add(part, `openrouter-${i + 1}`));
+  }
+
+  add(process.env.OPENROUTER_API_KEY, "openrouter-1");
+  add(process.env.OPENROUTER_API_KEY_2, "openrouter-2");
+  add(process.env.OPENROUTER_API_KEY_3, "openrouter-3");
+
+  return keys;
+}
+
 export function openrouterApiKey(): string | undefined {
-  return sanitizeEnvValue(process.env.OPENROUTER_API_KEY);
+  return getOpenRouterKeys()[0]?.key;
 }
 
 export function hasOpenRouterKey(): boolean {
-  return !!openrouterApiKey();
+  return getOpenRouterKeys().length > 0;
 }
 
 export function openrouterModelId(): string {
@@ -35,8 +70,7 @@ export function ensureOpenRouterApiKey(): string {
   return key;
 }
 
-export function getOpenRouterChatModel(modelId = openrouterModelId()) {
-  const apiKey = ensureOpenRouterApiKey();
+export function getOpenRouterChatModel(modelId = openrouterModelId(), apiKey = ensureOpenRouterApiKey()) {
   const openrouter = createOpenAI({
     name: "openrouter",
     apiKey,

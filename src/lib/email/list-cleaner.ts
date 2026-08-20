@@ -7,8 +7,8 @@
  * block outbound port 25 / treat probes as abuse).
  */
 
-import { promises as dns } from "dns";
-import net from "net";
+import { promises as dns } from "node:dns";
+import net from "node:net";
 import { mapWithConcurrency } from "@/lib/async";
 import { isValidEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
 
@@ -49,8 +49,12 @@ async function resolveMxHosts(domain: string): Promise<string[]> {
         .sort((a, b) => a.priority - b.priority)
         .map((r) => r.exchange)
         .filter(Boolean);
-    } catch {
-      return [];
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? String(err.code) : "";
+      if (code === "ENOTFOUND" || code === "ENODATA" || code === "ENOTIMP") {
+        return [];
+      }
+      throw err;
     }
   })();
   mxCache.set(key, promise);
@@ -191,7 +195,14 @@ export async function cleanEmailAddress(
 
   const promise = (async (): Promise<CleanResult> => {
     const domain = normalized.split("@")[1] ?? "";
-    const mxHosts = await resolveMxHosts(domain);
+    let mxHosts: string[];
+    try {
+      mxHosts = await resolveMxHosts(domain);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.warn("[list-cleaner] MX lookup unavailable, not blocking send", detail);
+      return { email: normalized, ok: true, reason: "probe_error", detail };
+    }
     if (!mxHosts.length) {
       return { email: normalized, ok: false, reason: "no_mx" };
     }

@@ -1,4 +1,5 @@
 export { AppShell } from "./app-shell";
+export { AppPageHeader } from "./app-page-header";
 export { NavItem } from "./nav-item";
 export { NavSection } from "./nav-section";
 export { ThemeToggle } from "./theme-toggle";

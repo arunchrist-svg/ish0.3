@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import * as dns from "dns";
 import {
   checkDomainAuth,
+  isDkimTxt,
   isPersonalInboxDomain,
   parseDmarcRecord,
   parseSpfRecord,
@@ -54,6 +55,25 @@ describe("parseDmarcRecord", () => {
   });
 });
 
+describe("isDkimTxt", () => {
+  it("accepts v=DKIM1 records", () => {
+    expect(isDkimTxt("v=DKIM1; k=rsa; p=abc")).toBe(true);
+  });
+
+  it("accepts Resend-style p= keys without v=DKIM1", () => {
+    expect(
+      isDkimTxt(
+        "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDBGoEY9XGLLphEXoTmMFxw+ANG6gqgLC8mwtqSTu9YQ7gT2EQsupkNjIlhbg",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects DMARC p=none and short junk", () => {
+    expect(isDkimTxt("v=DMARC1; p=none;")).toBe(false);
+    expect(isDkimTxt("hello")).toBe(false);
+  });
+});
+
 describe("checkDomainAuth", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -92,6 +112,24 @@ describe("checkDomainAuth", () => {
     const result = await checkDomainAuth("acme.com");
     expect(result.checks.dmarc.valid).toBe(true);
     expect(result.checks.dmarc.warning).toContain("none");
+  });
+
+  it("accepts Resend SPF on send. subdomain and DKIM at resend._domainkey", async () => {
+    vi.spyOn(dns.promises, "resolveTxt").mockImplementation(async (host: string) => {
+      if (host === "acme.com") throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+      if (host === "send.acme.com") return [["v=spf1 include:amazonses.com ~all"]];
+      if (host === "_dmarc.acme.com") return [["v=DMARC1; p=none; rua=mailto:hello@acme.com"]];
+      if (host === "resend._domainkey.acme.com") return [["v=DKIM1; k=rsa; p=abc"]];
+      throw Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" });
+    });
+
+    const result = await checkDomainAuth("hello@acme.com");
+    expect(result.checks.spf.valid).toBe(true);
+    expect(result.checks.spf.record).toContain("send.acme.com");
+    expect(result.checks.dkim.valid).toBe(true);
+    expect(result.checks.dkim.selector).toBe("resend");
+    expect(result.checks.dmarc.valid).toBe(true);
+    expect(result.status).toBe("pass");
   });
 
   it("fails SPF with +all", async () => {

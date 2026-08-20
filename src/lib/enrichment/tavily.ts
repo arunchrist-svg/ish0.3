@@ -179,11 +179,21 @@ async function tavilyDiscoverCompanies(params: {
   limit: number;
   meta?: DirectorySearchMeta;
   employeeBands?: string[];
+  searchKind?: "industry" | "business";
 }): Promise<ScoutCompanyResult[]> {
   const cityStr = citySearchClause(params.cities);
-  const indStr = params.industries.length > 0 ? params.industries.join(" OR ") : "corporate";
+  const searchKind = params.searchKind ?? "industry";
+  const indStr =
+    params.industries.length > 0
+      ? params.industries.join(" OR ")
+      : searchKind === "business"
+        ? "establishments"
+        : "corporate";
   const sizeStr = employeeSizeSearchClause(params.employeeBands);
-  const query = `${indStr} companies ${cityStr}${sizeStr ? ` ${sizeStr}` : ""} India`;
+  const query =
+    searchKind === "business"
+      ? `${indStr} ${cityStr}${sizeStr ? ` ${sizeStr}` : ""} India`
+      : `${indStr} companies ${cityStr}${sizeStr ? ` ${sizeStr}` : ""} India`;
   const meta = params.meta;
 
   const results = await tavilySearch(query, params.limit);
@@ -213,7 +223,7 @@ Never use UI labels, job categories, neighborhoods, building blocks, or NIC acti
 If a result is a hiring or reviews page for Acme, return "Acme" only. Do NOT invent companies.
 Do not score or filter for corporate gifting.`;
       const prompt = `Extract companies from these search results.
-Target: ${indStr} companies in ${cityStr}, India${sizeStr ? `. Scale target: ${sizeStr}` : ""}.
+Target: ${indStr}${searchKind === "business" ? "" : " companies"} in ${cityStr}, India${sizeStr ? `. Scale target: ${sizeStr}` : ""}.
 Prefer established businesses; include manufacturers and corporate offices when listed.
 Always fill "employees" with a headcount or one of: Micro Industries, Small scale, Medium scale, Large scale. Use null if unknown.
 Skip any result that is not clearly a company name.
@@ -271,6 +281,7 @@ export async function tavilySearchCompanies(params: {
   meta?: DirectorySearchMeta;
   nameQuery?: string;
   employeeBands?: string[];
+  searchKind?: "industry" | "business";
 }): Promise<ScoutCompanyResult[]> {
   const limit = params.limit ?? 10;
 
@@ -292,6 +303,7 @@ export async function tavilySearchCompanies(params: {
     limit,
     meta: params.meta,
     employeeBands: params.employeeBands,
+    searchKind: params.searchKind,
   });
 }
 

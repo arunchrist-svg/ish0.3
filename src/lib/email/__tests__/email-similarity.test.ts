@@ -18,11 +18,11 @@ const baseline = getBaselineEmail({
 
 const VIJETHA_NOUN_SWAP = `Hi Vijetha,
 
-Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for your team this year.
+Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for the team at Acme Auto this year.
 
-At India Sweet House, we handcraft traditional sweets straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite.
+At India Sweet House, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.
 
-Since tasting is believing, I would love to send a sample box to your office as our treat. What is the best delivery address to ship it to?
+Since tasting is believing, I would love to send a sample box to Acme Auto as our treat. What is the best delivery address to ship it to?
 
 Best,
 Srilaksha

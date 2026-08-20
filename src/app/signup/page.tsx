@@ -8,7 +8,9 @@ import { Button, text } from "@/design-system";
 import { AuthField } from "@/components/auth/auth-field";
 import { PasswordStrengthMeter } from "@/components/auth/password-strength-meter";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { InboxSetupSteps } from "@/components/settings/inbox-setup-steps";
 import { cn } from "@/lib/utils";
+import { isSmtpServerId } from "@/lib/email/inbox-setup-guide";
 
 type InviteInfo = { email: string; tenantName: string; role: string };
 
@@ -16,6 +18,8 @@ function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("invite");
+  const mailParam = searchParams.get("mail");
+  const mailHost = isSmtpServerId(mailParam) ? mailParam : null;
   const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [inviteError, setInviteError] = useState("");
   const [loadingInvite, setLoadingInvite] = useState(Boolean(inviteToken));
@@ -175,6 +179,12 @@ function SignupForm() {
             "Sign up"
           )}
         </Button>
+
+        {mailHost ? (
+          <div className="mt-6 rounded-2xl border border-brand-border bg-brand-app/70 px-4 py-3 text-left">
+            <InboxSetupSteps mailHost={mailHost} />
+          </div>
+        ) : null}
 
         <p className="text-center text-[12px] text-brand-ink-faint">
           Already have an account?{" "}

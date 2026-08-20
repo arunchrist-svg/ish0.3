@@ -39,7 +39,7 @@ async function seed() {
     buyingContext:
       "Diwali 2026 corporate gifting campaign. ISH offers premium pure-ghee mithai, dry fruit hampers, and gift boxes for corporates. Focus on bulk orders for 100–10,000 employees. Key hook: festival tradition, employee appreciation, premium local artisan quality.",
     targetCities: ["Bangalore", "Hosur", "Mysore", "Pune", "Chennai"],
-    targetIndustries: ["IT", "Manufacturing", "Real Estate", "Pharma", "Retail", "BFSI"],
+    targetIndustries: ["IT", "Manufacturing", "Textiles", "Electronics", "Automotive", "Real Estate", "Pharma", "Retail", "BFSI"],
     cadenceDays: [4, 8, 14],
     isActive: true,
   }).onConflictDoNothing();

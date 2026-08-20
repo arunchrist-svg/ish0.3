@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
 import { applyBounceRejectionUpdates } from "@/lib/enrichment/email-candidate-queue";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
+import { extractEmailAddresses, normalizeEmailSubject } from "@/lib/email/email-address";
 import {
   bounceMetaFromEvent,
   isBounceLikeEvent,
@@ -20,69 +21,83 @@ function toDbEmailStatus(
   return undefined;
 }
 
-function firstRecipient(to?: string[]): string | undefined {
-  const raw = to?.find((value) => typeof value === "string" && value.includes("@"));
-  return raw?.trim().toLowerCase();
+export async function findScheduleForBounce(params: {
+  emailId?: string;
+  recipient?: string;
+  subject?: string;
+  createdAt?: Date | string;
+}): Promise<typeof outreachSchedule.$inferSelect | undefined> {
+  const emailId = params.emailId?.trim();
+  const recipient = params.recipient?.trim().toLowerCase();
+  const subject = normalizeEmailSubject(params.subject);
+  const createdAt = params.createdAt ? new Date(params.createdAt).getTime() : null;
+
+  if (emailId) {
+    const byProviderId = await db.query.outreachSchedule.findFirst({
+      where: eq(outreachSchedule.resendId, emailId),
+    });
+    if (byProviderId) return byProviderId;
+  }
+
+  if (!recipient) return undefined;
+
+  const matches = await db
+    .select({ schedule: outreachSchedule, contactEmail: contacts.email })
+    .from(outreachSchedule)
+    .innerJoin(leads, eq(leads.id, outreachSchedule.leadId))
+    .innerJoin(contacts, eq(contacts.id, leads.contactId))
+    .where(
+      and(
+        eq(outreachSchedule.status, "sent"),
+        or(
+          sql`lower(${outreachSchedule.recipientEmail}) = ${recipient}`,
+          sql`lower(${contacts.email}) = ${recipient}`,
+        ),
+      ),
+    )
+    .orderBy(desc(outreachSchedule.sentAt))
+    .limit(10);
+
+  const scored = matches.map((item) => {
+    let score = 0;
+    if (!item.schedule.bouncedAt) score += 2;
+    if (subject && normalizeEmailSubject(item.schedule.subjectSent) === subject) score += 3;
+    if (createdAt && item.schedule.sentAt) {
+      const delta = Math.abs(item.schedule.sentAt.getTime() - createdAt);
+      if (delta < 15 * 60 * 1000) score += 4;
+      else if (delta < 6 * 60 * 60 * 1000) score += 1;
+    }
+    return { row: item.schedule, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.row;
 }
 
-export async function processResendBounceEvent(event: ResendWebhookEvent): Promise<{
-  ok: true;
-  skipped?: boolean;
-  reason?: string;
-  scheduleId?: string;
-}> {
-  if (!isBounceLikeEvent(event.type)) {
-    return { ok: true, skipped: true, reason: "ignored_event" };
-  }
-
-  const emailId = event.data?.email_id?.trim();
-  const recipient = firstRecipient(event.data?.to);
-  const meta = bounceMetaFromEvent(event);
-  const bouncedAt = event.created_at ? new Date(event.created_at) : new Date();
-
-  let row = emailId
-    ? await db.query.outreachSchedule.findFirst({
-        where: eq(outreachSchedule.resendId, emailId),
-      })
-    : undefined;
-
-  if (!row && recipient) {
-    const matches = await db
-      .select({ schedule: outreachSchedule, contactEmail: contacts.email })
-      .from(outreachSchedule)
-      .innerJoin(leads, eq(leads.id, outreachSchedule.leadId))
-      .innerJoin(contacts, eq(contacts.id, leads.contactId))
-      .where(
-        and(
-          eq(outreachSchedule.status, "sent"),
-          or(
-            sql`lower(${outreachSchedule.recipientEmail}) = ${recipient}`,
-            sql`lower(${contacts.email}) = ${recipient}`,
-          ),
-        ),
-      )
-      .orderBy(desc(outreachSchedule.sentAt))
-      .limit(5);
-    row = matches.find((item) => !item.schedule.bouncedAt)?.schedule ?? matches[0]?.schedule;
-  }
-
-  if (!row) {
-    return { ok: true, skipped: true, reason: "schedule_not_found" };
-  }
+export async function applyScheduleBounce(params: {
+  row: typeof outreachSchedule.$inferSelect;
+  bouncedAt: Date;
+  bounceType: string;
+  bounceReason: string;
+  recipient?: string;
+  emailId?: string;
+  eventType?: string;
+}): Promise<{ scheduleId: string }> {
+  const { row, bouncedAt, bounceType, bounceReason, recipient, emailId, eventType } = params;
 
   if (!row.bouncedAt) {
     await db
       .update(outreachSchedule)
       .set({
         bouncedAt,
-        bounceType: meta.bounceType,
-        bounceReason: meta.bounceReason.slice(0, 500),
+        bounceType,
+        bounceReason: bounceReason.slice(0, 500),
         recipientEmail: row.recipientEmail ?? recipient ?? null,
+        resendId: row.resendId ?? emailId ?? null,
       })
       .where(eq(outreachSchedule.id, row.id));
   }
 
-  if (shouldPauseSequenceForBounce(meta.bounceType)) {
+  if (shouldPauseSequenceForBounce(bounceType)) {
     const pending = await db
       .select({ id: outreachSchedule.id })
       .from(outreachSchedule)
@@ -157,11 +172,50 @@ export async function processResendBounceEvent(event: ResendWebhookEvent): Promi
       sequenceDay: row.sequenceDay,
       emailId,
       recipient: bouncedAddress,
-      bounceType: meta.bounceType,
-      bounceReason: meta.bounceReason,
-      eventType: event.type,
+      bounceType,
+      bounceReason,
+      eventType,
     },
   });
 
-  return { ok: true, scheduleId: row.id };
+  return { scheduleId: row.id };
+}
+
+export async function processResendBounceEvent(event: ResendWebhookEvent): Promise<{
+  ok: true;
+  skipped?: boolean;
+  reason?: string;
+  scheduleId?: string;
+}> {
+  if (!isBounceLikeEvent(event.type)) {
+    return { ok: true, skipped: true, reason: "ignored_event" };
+  }
+
+  const emailId = event.data?.email_id?.trim();
+  const recipient = extractEmailAddresses(event.data?.to)[0];
+  const meta = bounceMetaFromEvent(event);
+  const bouncedAt = event.created_at ? new Date(event.created_at) : new Date();
+
+  const row = await findScheduleForBounce({
+    emailId,
+    recipient,
+    subject: event.data?.subject,
+    createdAt: event.created_at,
+  });
+
+  if (!row) {
+    return { ok: true, skipped: true, reason: "schedule_not_found" };
+  }
+
+  const result = await applyScheduleBounce({
+    row,
+    bouncedAt,
+    bounceType: meta.bounceType,
+    bounceReason: meta.bounceReason,
+    recipient,
+    emailId,
+    eventType: event.type,
+  });
+
+  return { ok: true, scheduleId: result.scheduleId };
 }

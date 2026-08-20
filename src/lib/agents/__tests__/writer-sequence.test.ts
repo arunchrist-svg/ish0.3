@@ -67,7 +67,7 @@ I don't want to keep filling your inbox, so I'll leave it here. If festive gifti
 
 I won't email further, but a tasting box stays available if you want to reach out.
 
-Wishing you a great Diwali either way.
+Wishing you a happy festival season.
 
 Srilaksha
 Partnerships, India Sweet House`;

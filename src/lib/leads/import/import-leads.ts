@@ -1,21 +1,28 @@
-import { db, contacts, accounts, leads } from "@/db";
-import { eq } from "drizzle-orm";
-import { createManualLead } from "@/lib/leads/crud";
+import { db, contacts, accounts, leads, yieldFunnel } from "@/db";
+import { and, eq } from "drizzle-orm";
 import { enrichLeadById } from "@/lib/enrichment/enrich-lead";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
+import { sanitizeEmail, isGenericCompanyEmail, sanitizePhone } from "@/lib/enrichment/validate-contact";
+import { toDbEmailStatus } from "@/lib/enrichment/contact-emails";
+import { normalizeLinkedInUrl } from "@/lib/utils";
+import { logAudit } from "@/lib/audit";
 import { applyColumnMapping, mappingHasRequiredFields } from "./apply-mapping";
-import type {
-  ColumnMapping,
-  ImportLeadsSummary,
-  ImportRowResult,
-  NormalizedImportRow,
+import { planBulkImport } from "./bulk-plan";
+import {
+  INLINE_ENRICH_MAX,
+  RESEARCH_ENQUEUE_MAX,
+  type ColumnMapping,
+  type ImportLeadsSummary,
+  type ImportRowResult,
 } from "./types";
 
+const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
+const INSERT_CHUNK = 250;
 const ENRICH_CONCURRENCY = 3;
 
-function needsEnrichment(row: {
+export function needsEnrichment(row: {
   email: string | null;
   emailStatus: string | null;
   phone: string | null;
@@ -28,7 +35,7 @@ function needsEnrichment(row: {
     !!row.email &&
     row.emailStatus !== "missing" &&
     row.emailStatus !== "generic";
-  const phoneOk = !!row.phone?.trim();
+  const phoneOk = Boolean(sanitizePhone(row.phone));
   const titleOk = !!row.title?.trim();
   const linkedInOk = !!row.linkedIn?.trim();
   const domainOk = !!(row.domain?.trim() || row.website?.trim());
@@ -51,58 +58,10 @@ async function mapPool<T, R>(items: T[], concurrency: number, fn: (item: T) => P
   return results;
 }
 
-async function createOne(
-  row: NormalizedImportRow,
-  ctx: { tenantId: string; workspaceId: string; actorId?: string },
-): Promise<ImportRowResult> {
-  try {
-    const result = await createManualLead({
-      tenantId: ctx.tenantId,
-      workspaceId: ctx.workspaceId,
-      actorId: ctx.actorId,
-      name: row.name,
-      company: row.company,
-      title: row.title,
-      email: row.email,
-      phone: row.phone,
-      linkedIn: row.linkedIn,
-      city: row.city,
-      industry: row.industry,
-      employees: row.employees,
-      score: row.score,
-      tags: row.tags,
-      rating: row.rating,
-      owner: row.owner,
-      leadSource: "csv_import",
-      dataSource: "csv_import",
-    });
-
-    if (result.existing) {
-      return {
-        rowIndex: row.rowIndex,
-        name: row.name,
-        company: row.company,
-        status: "skipped",
-        leadId: result.id,
-        error: "Duplicate lead (same name + company)",
-      };
-    }
-
-    return {
-      rowIndex: row.rowIndex,
-      name: row.name,
-      company: row.company,
-      status: "created",
-      leadId: result.id,
-    };
-  } catch (error) {
-    return {
-      rowIndex: row.rowIndex,
-      name: row.name,
-      company: row.company,
-      status: "failed",
-      error: error instanceof Error ? error.message : String(error),
-    };
+async function insertChunks<T>(items: T[], insert: (chunk: T[]) => Promise<unknown>): Promise<void> {
+  for (let i = 0; i < items.length; i += INSERT_CHUNK) {
+    const chunk = items.slice(i, i + INSERT_CHUNK);
+    if (chunk.length) await insert(chunk);
   }
 }
 
@@ -119,30 +78,185 @@ export async function importMappedLeads(params: {
     throw new Error(`Missing required column mappings: ${required.missing.join(", ")}`);
   }
 
-  const { rows, invalid } = applyColumnMapping(params.rawRows, params.mapping);
-  const results: ImportRowResult[] = invalid.map((inv) => ({
-    rowIndex: inv.rowIndex,
-    name: "",
-    company: "",
-    status: "failed" as const,
-    error: inv.reason,
-  }));
+  const { rows, invalid, skipped: missingEmail } = applyColumnMapping(params.rawRows, params.mapping);
+  const results: ImportRowResult[] = [
+    ...invalid.map((inv) => ({
+      rowIndex: inv.rowIndex,
+      name: "",
+      company: "",
+      status: "failed" as const,
+      error: inv.reason,
+    })),
+    ...missingEmail.map((skip) => ({
+      rowIndex: skip.rowIndex,
+      name: "",
+      company: "",
+      status: "skipped" as const,
+      error: skip.reason,
+    })),
+  ];
   const errors: string[] = invalid.map((inv) => `Row ${inv.rowIndex}: ${inv.reason}`);
+  const warnings: string[] = [];
+  if (missingEmail.length) {
+    warnings.push(
+      `Skipped ${missingEmail.length} row${missingEmail.length === 1 ? "" : "s"} with no email. Loading ${rows.length}.`,
+    );
+  }
 
-  const createdResults: ImportRowResult[] = [];
-  for (const row of rows) {
-    const result = await createOne(row, {
+  const [existingAccounts, existingLeadRows] = await Promise.all([
+    db
+      .select({ id: accounts.id, name: accounts.name })
+      .from(accounts)
+      .where(and(eq(accounts.tenantId, params.tenantId), eq(accounts.workspaceId, params.workspaceId))),
+    db
+      .select({
+        id: leads.id,
+        contactId: contacts.id,
+        name: contacts.name,
+        company: accounts.name,
+        email: contacts.email,
+        enrichmentProvider: contacts.enrichmentProvider,
+        enrichmentSource: contacts.enrichmentSource,
+      })
+      .from(leads)
+      .innerJoin(contacts, eq(contacts.id, leads.contactId))
+      .innerJoin(accounts, eq(accounts.id, leads.accountId))
+      .where(and(eq(leads.tenantId, params.tenantId), eq(leads.workspaceId, params.workspaceId))),
+  ]);
+
+  const plan = planBulkImport({
+    rows,
+    existingAccounts,
+    existingLeads: existingLeadRows,
+  });
+
+  for (const skipped of plan.skipped) {
+    results.push(skipped);
+  }
+
+  if (plan.toInsert.length || plan.toUpdateEmail.length) {
+    await db.transaction(async (tx) => {
+      await insertChunks(plan.newAccounts, (chunk) =>
+        tx.insert(accounts).values(
+          chunk.map((account) => ({
+            id: account.id,
+            tenantId: params.tenantId,
+            workspaceId: params.workspaceId,
+            name: account.name,
+            city: account.city,
+            industry: account.industry,
+            employees: account.employees,
+            dataSource: "csv_import",
+          })),
+        ),
+      );
+
+      await insertChunks(plan.toInsert, (chunk) =>
+        tx.insert(contacts).values(
+          chunk.map(({ row, accountId, contactId }) => {
+            const parts = row.name.split(/\s+/);
+            const email = sanitizeEmail(row.email);
+            const emailStatus = !email
+              ? "missing"
+              : isGenericCompanyEmail(email)
+                ? "generic"
+                : "unverified";
+            return {
+              id: contactId,
+              tenantId: params.tenantId,
+              workspaceId: params.workspaceId,
+              accountId,
+              name: row.name,
+              firstName: parts[0] || null,
+              lastName: parts.slice(1).join(" ") || null,
+              title: row.title?.trim() || null,
+              email: email ?? null,
+              emailStatus: toDbEmailStatus(emailStatus),
+              phone: row.phone?.trim() || null,
+              linkedIn: normalizeLinkedInUrl(row.linkedIn) ?? null,
+              dataSource: "csv_import",
+              enrichmentProvider: email ? "manual" : null,
+              enrichmentSource: email ? "manual" : null,
+            };
+          }),
+        ),
+      );
+
+      await insertChunks(plan.toInsert, (chunk) =>
+        tx.insert(leads).values(
+          chunk.map(({ row, accountId, contactId, leadId }) => ({
+            id: leadId,
+            tenantId: params.tenantId,
+            workspaceId: params.workspaceId,
+            contactId,
+            accountId,
+            campaignId: DEFAULT_CAMPAIGN,
+            status: "scouted" as const,
+            score: row.score ?? 60,
+            leadSource: "csv_import",
+            rating: row.rating?.trim() || null,
+            owner: row.owner?.trim() || null,
+            researcherEligible: true,
+            tags: Array.from(new Set(["Lead", "Excel Import", ...(row.tags ?? [])])),
+          })),
+        ),
+      );
+
+      const funnelRows = plan.toInsert.flatMap(({ leadId }) => [
+        { leadId, stage: "scouted" as const },
+        {
+          leadId,
+          stage: "prefiltered" as const,
+          metadata: { reason: "csv import" },
+        },
+      ]);
+      await insertChunks(funnelRows, (chunk) => tx.insert(yieldFunnel).values(chunk));
+
+      for (const item of plan.toUpdateEmail) {
+        const emailStatus = isGenericCompanyEmail(item.email) ? "generic" : "unverified";
+        await tx
+          .update(contacts)
+          .set({
+            email: item.email,
+            emailStatus: toDbEmailStatus(emailStatus),
+            enrichmentProvider: "manual",
+            enrichmentSource: "manual",
+            updatedAt: new Date(),
+          })
+          .where(eq(contacts.id, item.contactId));
+      }
+    });
+  }
+
+  const createdResults: ImportRowResult[] = plan.toInsert.map(({ row, leadId }) => ({
+    rowIndex: row.rowIndex,
+    name: row.name,
+    company: row.company,
+    status: "created",
+    leadId,
+  }));
+  results.push(...createdResults);
+
+  if (plan.toUpdateEmail.length) {
+    warnings.push(
+      `Updated email on ${plan.toUpdateEmail.length} existing lead${plan.toUpdateEmail.length === 1 ? "" : "s"} from the spreadsheet.`,
+    );
+  }
+
+  if (createdResults.length || plan.toUpdateEmail.length) {
+    void logAudit({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       actorId: params.actorId,
+      action: "lead.imported",
+      entityType: "lead",
+      metadata: {
+        created: createdResults.length,
+        skipped: plan.skipped.length + missingEmail.length,
+        updatedEmail: plan.toUpdateEmail.length,
+        failed: invalid.length,
+      },
     });
-    results.push(result);
-    if (result.status === "failed" && result.error) {
-      errors.push(`Row ${result.rowIndex}: ${result.error}`);
-    }
-    if (result.status === "created" && result.leadId) {
-      createdResults.push(result);
-    }
   }
 
   let enrichedCount = 0;
@@ -150,12 +264,20 @@ export async function importMappedLeads(params: {
 
   if (shouldEnrich && createdResults.length) {
     const cfg = await getResolvedWorkspaceEnrichmentConfig();
-    if (cfg.enrichOnImport && cfg.enrichProvider !== "none") {
+    const canEnrich = cfg.enrichOnImport && cfg.enrichProvider !== "none";
+
+    if (!canEnrich) {
+      warnings.push("Enrichment is off in Settings, so missing fields were left as uploaded.");
+    } else if (createdResults.length > INLINE_ENRICH_MAX) {
+      warnings.push(
+        `Loaded ${createdResults.length} leads without auto-enrichment. Open a lead and use Enrich for missing contacts.`,
+      );
+    } else {
       const mode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
       const enrichOutcomes = await mapPool(createdResults, ENRICH_CONCURRENCY, async (item) => {
         if (!item.leadId) return { leadId: "", enriched: false };
 
-        const rows = await db
+        const leadRows = await db
           .select({
             email: contacts.email,
             emailStatus: contacts.emailStatus,
@@ -171,7 +293,7 @@ export async function importMappedLeads(params: {
           .where(eq(leads.id, item.leadId))
           .limit(1);
 
-        const contactRow = rows[0];
+        const contactRow = leadRows[0];
         if (!contactRow || !needsEnrichment(contactRow)) {
           return { leadId: item.leadId, enriched: false };
         }
@@ -199,15 +321,18 @@ export async function importMappedLeads(params: {
       }
     }
 
-    void enqueueResearchForLeads(createdResults.map((r) => r.leadId!).filter(Boolean));
+    if (createdResults.length <= RESEARCH_ENQUEUE_MAX) {
+      void enqueueResearchForLeads(createdResults.map((r) => r.leadId!).filter(Boolean));
+    }
   }
 
   return {
-    created: results.filter((r) => r.status === "created").length,
+    created: createdResults.length,
     skipped: results.filter((r) => r.status === "skipped").length,
     failed: results.filter((r) => r.status === "failed").length,
     enriched: enrichedCount,
-    results,
+    results: results.filter((r) => r.status !== "created").concat(createdResults.slice(0, 50)),
     errors,
+    warnings,
   };
 }

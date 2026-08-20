@@ -1,19 +1,49 @@
 import { db, leads, contacts, outreachSchedule } from "@/db";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { extractEmailAddress } from "@/lib/email/email-address";
+import { replyContentFromBodies } from "@/lib/email/inbound-match";
 import { processLeadReply } from "@/lib/email/process-reply";
-import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { getReceivedEmail } from "@/lib/email/resend-receiving";
 import { isInboundLikeEvent, type ResendWebhookEvent } from "@/lib/email/resend-webhook";
 import { REPLY_WATCH_STATUSES } from "@/lib/pipeline-status";
+import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 
-function normalizeEmail(value: string): string {
-  const angle = value.match(/<([^>]+)>/);
-  return (angle?.[1] ?? value).trim().toLowerCase();
+export function inboundFromMatchSql(from: string) {
+  return or(
+    sql`lower(${contacts.email}) = ${from}`,
+    sql`lower(${outreachSchedule.recipientEmail}) = ${from}`,
+    sql`exists (
+      select 1
+      from jsonb_array_elements(coalesce(${contacts.alternateEmails}, '[]'::jsonb)) as alt
+      where lower(alt->>'email') = ${from}
+    )`,
+  );
 }
 
-function firstFrom(from?: string): string | undefined {
-  if (!from?.trim()) return undefined;
-  const normalized = normalizeEmail(from);
-  return normalized.includes("@") ? normalized : undefined;
+async function replyContentForInboundEvent(
+  event: ResendWebhookEvent,
+  workspaceId: string,
+): Promise<string> {
+  const fromPayload = replyContentFromBodies(event.data?.text, event.data?.html);
+  if (fromPayload) return fromPayload;
+
+  const emailId = event.data?.email_id?.trim();
+  if (!emailId) return "";
+
+  let apiKey: string | undefined;
+  try {
+    apiKey = (await getResolvedEmailConfig(workspaceId)).resendApiKey;
+  } catch (e) {
+    console.error("[process-inbound] email config lookup failed", e);
+  }
+
+  try {
+    const detail = await getReceivedEmail(emailId, apiKey);
+    return replyContentFromBodies(detail?.text, detail?.html);
+  } catch (e) {
+    console.error("[process-inbound] fetch received email failed", e);
+    return "";
+  }
 }
 
 export async function processResendInboundEvent(event: ResendWebhookEvent): Promise<{
@@ -26,12 +56,9 @@ export async function processResendInboundEvent(event: ResendWebhookEvent): Prom
     return { ok: true, skipped: true, reason: "ignored_event" };
   }
 
-  const from = firstFrom(event.data?.from);
+  const from = extractEmailAddress(event.data?.from);
   if (!from) return { ok: true, skipped: true, reason: "missing_from" };
 
-  const text = event.data?.text?.trim() || "";
-  const html = typeof event.data?.html === "string" ? event.data.html.replace(/<[^>]+>/g, " ") : "";
-  const replyContent = extractLatestReplyText(text || html.replace(/\s+/g, " ").trim());
   const inboundMessageId = event.data?.email_id?.trim() || undefined;
 
   const matches = await db
@@ -44,20 +71,14 @@ export async function processResendInboundEvent(event: ResendWebhookEvent): Prom
     .from(leads)
     .innerJoin(contacts, eq(contacts.id, leads.contactId))
     .leftJoin(outreachSchedule, eq(outreachSchedule.leadId, leads.id))
-    .where(
-      and(
-        inArray(leads.status, [...REPLY_WATCH_STATUSES]),
-        or(
-          sql`lower(${contacts.email}) = ${from}`,
-          sql`lower(${outreachSchedule.recipientEmail}) = ${from}`,
-        ),
-      ),
-    )
+    .where(and(inArray(leads.status, [...REPLY_WATCH_STATUSES]), inboundFromMatchSql(from)))
     .orderBy(desc(outreachSchedule.sentAt))
     .limit(5);
 
   const lead = matches[0];
   if (!lead) return { ok: true, skipped: true, reason: "lead_not_found" };
+
+  const replyContent = await replyContentForInboundEvent(event, lead.workspaceId);
 
   const result = await processLeadReply({
     leadId: lead.leadId,

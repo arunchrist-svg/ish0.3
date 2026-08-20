@@ -4,17 +4,18 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { SettingsNav, type SettingsNavItem } from "@/components/settings/settings-nav";
-import { SettingsHero } from "@/components/settings/settings-hero";
 import { UnsavedChangesModal } from "@/components/settings/unsaved-changes-modal";
 import { EnrichmentTab } from "@/components/settings/enrichment-tab";
+import { SettingsStickySaveBar } from "@/components/settings/settings-sticky-save-bar";
 import { EmailTab } from "@/components/settings/email-tab";
 import { AppearanceTab } from "@/components/settings/appearance-tab";
 import { AiUsageTab } from "@/components/settings/ai-usage-tab";
 import { LinkedInIntegration } from "@/components/settings/linkedin-integration";
+import { WhatsAppIntegration } from "@/components/settings/whatsapp-integration";
 import { TeamTab } from "@/components/settings/team-tab";
 import { BillingTab } from "@/components/settings/billing-tab";
 import { cn } from "@/lib/utils";
-import { ListGroup, ListRow, MobileHeader, MobileStackLayout } from "@/design-system";
+import { AppPageHeader, ListGroup, ListRow, MobileHeader, MobileStackLayout } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
@@ -37,7 +38,7 @@ const TAB_SUBTITLES: Record<string, string> = {
   email: "Sending, connection, and sequence",
   billing: "Balance and top-ups",
   team: "Members and invites",
-  integrations: "LinkedIn connections",
+  integrations: "LinkedIn and WhatsApp",
   "ai-usage": "Search and LLM keys",
   appearance: "Theme",
 };
@@ -70,6 +71,8 @@ function SettingsAppInner() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "enrichment");
   const [config, setConfig] = useState<EnrichmentConfig | null>(null);
+  const [prospeoConfigured, setProspeoConfigured] = useState(false);
+  const [zintlrConfigured, setZintlrConfigured] = useState(false);
   const [emailConfig, setEmailConfig] = useState<EmailConfigResponse | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -77,8 +80,6 @@ function SettingsAppInner() {
   const [smtpPassDraft, setSmtpPassDraft] = useState("");
   const [resendApiKeyDraft, setResendApiKeyDraft] = useState("");
   const [verifyingEmail, setVerifyingEmail] = useState(false);
-  const [scoutVolumeDirty, setScoutVolumeDirty] = useState(false);
-  const [savingVolume, setSavingVolume] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const pendingHrefRef = useRef<string | null>(null);
   const hasUnsavedRef = useRef(false);
@@ -98,7 +99,19 @@ function SettingsAppInner() {
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((data) => setConfig(data));
+      .then((data) => {
+        const {
+          prospeoConfigured: prospeoReady,
+          zintlrConfigured: zintlrReady,
+          ...rest
+        } = data as EnrichmentConfig & {
+          prospeoConfigured?: boolean;
+          zintlrConfigured?: boolean;
+        };
+        setProspeoConfigured(Boolean(prospeoReady));
+        setZintlrConfigured(Boolean(zintlrReady));
+        setConfig(rest);
+      });
     fetch("/api/settings/email")
       .then((r) => r.json())
       .then((data) => {
@@ -147,37 +160,7 @@ function SettingsAppInner() {
           }
         : prev,
     );
-    setScoutVolumeDirty(true);
     setDirty(true);
-  }
-
-  async function saveScoutVolume() {
-    if (!config) return;
-    setSavingVolume(true);
-    try {
-      await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          scoutCompaniesLimit: config.scoutCompaniesLimit,
-          scoutLeadsLimit: config.scoutLeadsLimit,
-        }),
-      });
-      setScoutVolumeDirty(false);
-      window.dispatchEvent(
-        new CustomEvent("scout-volume-updated", {
-          detail: {
-            scoutCompaniesLimit: config.scoutCompaniesLimit,
-            scoutLeadsLimit: config.scoutLeadsLimit,
-          },
-        }),
-      );
-      toast.success("Scout volume saved — applies to the next scout run");
-    } catch {
-      toast.error("Could not save scout volume");
-    } finally {
-      setSavingVolume(false);
-    }
   }
 
   const hasUnsaved =
@@ -215,7 +198,6 @@ function SettingsAppInner() {
     setLeaveOpen(false);
     setDirty(false);
     setEmailDirty(false);
-    setScoutVolumeDirty(false);
     setSmtpPassDraft("");
     setResendApiKeyDraft("");
     if (href) router.push(href);
@@ -235,7 +217,6 @@ function SettingsAppInner() {
         return false;
       }
       setDirty(false);
-      setScoutVolumeDirty(false);
       window.dispatchEvent(
         new CustomEvent("scout-volume-updated", {
           detail: {
@@ -246,7 +227,11 @@ function SettingsAppInner() {
       );
       window.dispatchEvent(
         new CustomEvent("scout-geo-updated", {
-          detail: { scoutGeo: config.scoutGeo },
+          detail: {
+            scoutGeo: config.scoutGeo,
+            scoutAreaOfFocus: config.scoutAreaOfFocus ?? null,
+            scoutAreasOfFocus: config.scoutAreasOfFocus ?? [],
+          },
         }),
       );
       toast.success("Settings saved — applies to next Scout run");
@@ -450,31 +435,28 @@ function SettingsAppInner() {
             rightSlot={saveAction}
           />
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-10 lg:px-6 lg:py-8">
+        {(() => {
+          const item = NAV_ITEMS.find((i) => i.value === activeTab);
+          const Icon = (item?.icon ?? Wrench) as typeof Wrench;
+          return (
+            <AppPageHeader
+              icon={Icon}
+              title={item?.label ?? "Settings"}
+              subtitle={TAB_SUBTITLES[activeTab]}
+              actions={saveAction}
+            />
+          );
+        })()}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-10 lg:px-6 lg:py-6">
           <div className="mx-auto w-full max-w-2xl">
-            <div className="hidden lg:block">
-              {(() => {
-                const item = NAV_ITEMS.find((i) => i.value === activeTab);
-                const Icon = item?.icon ?? Wrench;
-                return (
-                  <SettingsHero
-                    compact
-                    icon={Icon}
-                    title={item?.label ?? "Settings"}
-                    action={saveAction}
-                  />
-                );
-              })()}
-            </div>
           <div key={activeTab} className="animate-brand-tab-in">
           {activeTab === "enrichment" && (
             <EnrichmentTab
               config={config}
-              scoutVolumeDirty={scoutVolumeDirty}
-              savingVolume={savingVolume}
+              prospeoConfigured={prospeoConfigured}
+              zintlrConfigured={zintlrConfigured}
               onUpdate={update}
               onUpdateScoutVolume={updateScoutVolume}
-              onSaveScoutVolume={saveScoutVolume}
             />
           )}
 
@@ -487,6 +469,7 @@ function SettingsAppInner() {
 
           {activeTab === "integrations" && (
             <Suspense fallback={<div className="py-12 text-center text-brand-ink-faint">Loading…</div>}>
+              <WhatsAppIntegration />
               <LinkedInIntegration />
             </Suspense>
           )}
@@ -497,6 +480,12 @@ function SettingsAppInner() {
           </div>
           </div>
         </div>
+        <SettingsStickySaveBar
+          visible={activeTab === "enrichment" && dirty && Boolean(config)}
+          saving={saving}
+          disabled={!dirty || saving || !config}
+          onSave={() => void save()}
+        />
       </div>
   );
 

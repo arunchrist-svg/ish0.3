@@ -87,11 +87,11 @@ Subject A: Sample box for festive tasting, ${contactFirstName}
 Body A:
 Hi ${contactFirstName},
 
-Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for your team this year.
+Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for the team at ${companyName} this year.
 
-At ${brandName}, we handcraft traditional sweets straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite.
+At ${brandName}, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.
 
-Since tasting is believing, I would love to send a sample box to your office as our treat. What is the best delivery address to ship it to?
+Since tasting is believing, I would love to send a sample box to ${companyName} as our treat. What is the best delivery address to ship it to?
 
 Best,
 ${senderFirstName}
@@ -101,9 +101,9 @@ Subject B: Festive sweets sample for ${companyName}
 Body B:
 Hi ${contactFirstName},
 
-A good Diwali gift for employees and clients should feel authentic. ${brandName} can bring that to ${companyName}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy rather than outsourced supply.
+A good Diwali gift for employees and clients should feel authentic. ${brandName} can bring that to ${companyName}: sweets crafted fresh every morning, using organic milk from our own farm. We never add preservatives or chemicals.
 
-Taste it before you trust it. Send me an address and I'll ship a sampler this week.
+Taste it before you trust it. Send me an address and I'll ship a sampler to ${companyName} this week.
 
 Thanks & Regards
 ${senderFirstName}
@@ -113,7 +113,7 @@ Subject C: A tasting box for your team
 Body C:
 Hi ${contactFirstName},
 
-No fillers. No mass production. For Diwali gifting to employees and clients, ${brandName} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.
+For Diwali gifting to employees and clients at ${companyName}, ${brandName} can bring farm-fresh mithai: organic milk from our own farm, and we never add preservatives or chemicals. Production is highly hygienic.
 
 Happy to send a small sampler your way, no obligation, just proof.
 

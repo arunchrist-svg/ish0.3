@@ -7,45 +7,100 @@ import { DiscoveringLoader } from "./discovering-loader";
 import { SavingLeadsLoader } from "./saving-leads-loader";
 import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
+import { MissingWebsitePrompt } from "./missing-website-prompt";
 import { LeadsGrid } from "./leads-grid";
 import { PersonDetailPanel } from "./person-detail-panel";
-import { scoutCompanies, scoutCompaniesStream, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutSaveBatchStream, scoutSaveCompanies, scoutSavedCompanies, scoutExactSearch } from "@/lib/api-client";
+import { scoutCompanies, scoutCompaniesStream, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutSaveBatchStream, scoutSaveCompanies, scoutSavedCompanies, scoutBootstrap, scoutExactSearch } from "@/lib/api-client";
+import { useSession } from "@/components/providers/session-provider";
+import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { mapWithConcurrency } from "@/lib/async";
 import { isLogoUrl } from "@/lib/company-logo";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
 import { toast } from "sonner";
-import { normalizeLinkedInUrl, cn } from "@/lib/utils";
+import { normalizeLinkedInUrl, personFieldOrEmpty, cn } from "@/lib/utils";
+import {
+  assessPeopleFetchRisk,
+  inferRoleFromTitle,
+  peopleAndFilterWarning,
+} from "@/lib/enrichment/people-role-filter";
 import {
   ActionBar,
+  AppPageHeader,
   BottomSheet,
   EmptyState,
   MobileHeader,
   MobilePageLayout,
 } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
-import { Compass, Bookmark, BookmarkPlus, MapPin, MoreVertical, Search, TriangleAlert, Users } from "lucide-react";
-import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS } from "@/lib/scouting-data";
+import { Compass, Bookmark, BookmarkPlus, MapPin, MoreVertical, Search, Telescope, TriangleAlert, Users } from "lucide-react";
+import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS, parseScoutVerticalScope, type ScoutVerticalScope } from "@/lib/scouting-data";
 import { extractEmployeesFromText, normalizeEmployeeField } from "@/lib/enrichment/employee-size";
 import {
   peoplePerCompanyLimit,
   scoutPeopleCoverage,
   selectPeopleByCompanyCap,
 } from "@/lib/enrichment/people-diversity";
-import {
-  assessPeopleFetchRisk,
-  peopleAndFilterWarning,
-} from "@/lib/enrichment/people-role-filter";
 import { summarizeEmptyPeopleFetch } from "@/lib/enrichment/people-fetch-notice";
+import { isUnusableCompanyDomain, parsePastedCompanyWebsite } from "@/lib/enrichment/company-domain-quality";
 import {
+  defaultLabelsFromLocationOptions,
+  defaultScoutLocationScope,
+  locationOptionsFromAreaOfFocus,
   locationOptionsFromSelection,
+  parseScoutLocationScope,
+  scoutLocationOptions,
   scoutPickerAllowedLabels,
   type ScoutGeoSelection,
   type ScoutLocationOption,
+  type ScoutLocationScope,
 } from "@/lib/geo/india";
+import { applyNearbyAreaSelectionToFocuses, type ScoutAreaOfFocus } from "@/lib/geo/area-of-focus";
+import {
+  expandPeopleFiltersForOffer,
+  FESTIVE_SWEETS_BUYER_DEPARTMENTS,
+  festiveSweetsBuyerGuidance,
+  type PlatformIntent,
+} from "@/lib/brand/platform-intent";
+import {
+  scoutCompanyMatchesSaved,
+  uniqueScoutCompanies,
+  type AccountMatchShape,
+} from "@/lib/scout/account-match";
 
 type View = "companies" | "people";
 
 type CompanyShape = ReturnType<typeof toCompanyShape>;
+
+const SCOUT_FILTER_SESSION_KEY = "ish-scout-filter-scopes";
+
+type ScoutFilterSession = {
+  locationScope?: ScoutLocationScope;
+  verticalScope?: ScoutVerticalScope;
+  industries?: string[];
+  businesses?: string[];
+  citiesByScope?: Partial<Record<ScoutLocationScope, string[]>>;
+};
+
+function readScoutFilterSession(): ScoutFilterSession {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = sessionStorage.getItem(SCOUT_FILTER_SESSION_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as ScoutFilterSession;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeScoutFilterSession(patch: ScoutFilterSession) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(SCOUT_FILTER_SESSION_KEY, JSON.stringify({ ...readScoutFilterSession(), ...patch }));
+  } catch {
+    /* ignore quota */
+  }
+}
 
 
 function resolveCompanyDomain(raw: ScoutCompanyResult): string | undefined {
@@ -59,6 +114,11 @@ function resolveCompanyDomain(raw: ScoutCompanyResult): string | undefined {
 }
 
 
+function companyNeedsOfficialWebsite(company: { _raw: ScoutCompanyResult }): boolean {
+  const host = resolveCompanyDomain(company._raw);
+  return !host || isUnusableCompanyDomain(host);
+}
+
 function noticeKey(msg: string): string {
   if (/quota|usage limit/i.test(msg)) return "tavily-quota";
   if (/google places/i.test(msg)) return "google-places-fallback";
@@ -70,14 +130,27 @@ function noticeKey(msg: string): string {
 function pickPeopleNotice(
   messages: string[],
   companyCount = 1,
-  filters?: { cities?: string[]; seniority?: string[]; departments?: string[] },
+  filters?: {
+    cities?: string[];
+    seniority?: string[];
+    departments?: string[];
+    platformIntent?: PlatformIntent | null;
+    searchKind?: "industry" | "business";
+  },
 ): { headline: string; detail: string } {
+  const expanded = expandPeopleFiltersForOffer(
+    filters?.platformIntent,
+    filters?.seniority ?? [],
+    filters?.departments ?? [],
+    { treatAsGifting: filters?.platformIntent === "corporate_gifting", searchKind: filters?.searchKind },
+  );
   return summarizeEmptyPeopleFetch({
     companyCount,
     warnings: messages,
     cities: filters?.cities,
-    seniority: filters?.seniority,
-    departments: filters?.departments,
+    seniority: expanded.seniority,
+    departments: expanded.departments,
+    searchKind: filters?.searchKind,
   });
 }
 
@@ -135,6 +208,11 @@ function toCompanyShape(c: ScoutCompanyResult, index = 0) {
     budgetBand: c.budgetBand ?? "—",
     pastGifting: (c.pastGifting ?? []) as { year: string; occasion: string; items: string; perPerson: string }[],
     intelligenceNotes: c.intelNotes ?? "",
+    leadabilityScore: c.leadabilityScore,
+    leadabilityBand: c.leadabilityBand,
+    leadabilityMatchedPeople: c.leadabilityMatchedPeople,
+    leadabilityMatchedInCity: c.leadabilityMatchedInCity,
+    leadabilityProbeSource: c.leadabilityProbeSource,
     _raw: c,
   };
 }
@@ -143,14 +221,16 @@ function toPersonShape(p: ScoutPersonResult, companyId: string, idx: number) {
   const id = isUsableExternalId(p.externalId)
     ? p.externalId!.trim()
     : slugifyKey("p", companyId, p.name, idx) || `p-${companyId}-${idx}`;
+  const title = personFieldOrEmpty(p.title);
+  const inferred = inferRoleFromTitle(title);
 
   return {
     id,
     companyId,
     name: p.name,
-    title: p.title ?? "—",
-    department: p.department ?? "—",
-    seniority: p.seniority ?? "—",
+    title,
+    department: personFieldOrEmpty(p.department) || inferred.department || "",
+    seniority: personFieldOrEmpty(p.seniority) || inferred.seniority || "",
     isKeyDecisionMaker: p.isKeyDM ?? false,
     matchScore: p.matchScore ?? 55,
     engagementSignals: p.engagementSignals ?? [],
@@ -211,19 +291,29 @@ function dedupeCompanyShapes(shapes: CompanyShape[]): CompanyShape[] {
    Role Picker Modal
 ───────────────────────────────────────────── */
 
+
 function RolePickerModal({
   initialSeniority = [],
   initialDepartments = [],
+  initialPeopleCities = [],
+  platformIntent,
+  verticalScope,
   onConfirm,
   onSkip,
 }: {
   initialSeniority?: string[];
   initialDepartments?: string[];
-  onConfirm: (seniority: string[], departments: string[]) => void;
+  initialPeopleCities?: string[];
+  platformIntent?: PlatformIntent | null;
+  verticalScope?: ScoutVerticalScope;
+  onConfirm: (seniority: string[], departments: string[], peopleCities: string[]) => void;
   onSkip: () => void;
 }) {
   const [chosenSeniority, setChosenSeniority] = useState<string[]>(initialSeniority);
   const [chosenDepts, setChosenDepts] = useState<string[]>(initialDepartments);
+
+  const isBusiness = verticalScope === "businesses";
+  const sweetsGuidance = festiveSweetsBuyerGuidance(platformIntent, isBusiness ? "business" : "industry");
 
   function toggleSeniority(s: string) {
     setChosenSeniority((prev) =>
@@ -237,100 +327,169 @@ function RolePickerModal({
   }
 
   const hasSelection = chosenSeniority.length > 0 || chosenDepts.length > 0;
-  const andWarning = peopleAndFilterWarning(chosenSeniority, chosenDepts);
+  const andWarning = peopleAndFilterWarning(
+    chosenSeniority,
+    chosenDepts,
+    [],
+    { searchKind: isBusiness ? "business" : "industry" },
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className="mx-4 w-full max-w-md rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-float)]">
-        {/* Header */}
-        <div className="border-b border-brand-border px-6 py-4">
-          <p className="text-[15px] font-bold text-brand-ink">Who are you looking for?</p>
-          <p className="mt-0.5 text-[12px] text-brand-ink-soft">
-            Pick seniority or department. Matching both is stricter and often returns nobody.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,24,36,0.42)] backdrop-blur-[3px]">
+      <div className="ish-role-picker mx-4 w-full max-w-lg">
+        <div className="ish-role-picker-head px-6 py-4">
+          <p className="text-[16px] font-bold tracking-tight text-brand-ink">Who are you looking for?</p>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-brand-ink-soft">
+            {sweetsGuidance ??
+              "Pick seniority or department. Matching both is stricter and often returns nobody."}
           </p>
         </div>
 
-        {/* Body */}
         <div className="flex flex-col gap-5 px-6 py-5">
-          {/* Seniority */}
-          <div>
-            <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-              Seniority
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {SCOUT_SENIORITY.map((s) => {
-                const active = chosenSeniority.includes(s);
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => toggleSeniority(s)}
-                    className={cn(
-                      "rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all duration-150",
-                      active
-                        ? "bg-brand-ink text-white shadow-[var(--shadow-brand)]"
-                        : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
-                    )}
-                  >
-                    {s}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {!isBusiness ? (
+            <>
+              <div>
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
+                    Seniority
+                  </p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setChosenSeniority([...SCOUT_SENIORITY])}
+                      disabled={chosenSeniority.length === SCOUT_SENIORITY.length}
+                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChosenSeniority([])}
+                      disabled={chosenSeniority.length === 0}
+                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+                <div className="ish-scout-chip-grid">
+                  {SCOUT_SENIORITY.map((s) => {
+                    const active = chosenSeniority.includes(s);
+                    return (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => toggleSeniority(s)}
+                        className={cn(
+                          "ish-scout-filter-chip",
+                          active ? "ish-role-picker-chip-on-yellow" : "ish-scout-chip-off",
+                        )}
+                      >
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Department */}
-          <div>
-            <p className="mb-2 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-              Department
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {SCOUT_DEPARTMENTS.map((d) => {
-                const active = chosenDepts.includes(d);
-                return (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => toggleDept(d)}
-                    className={cn(
-                      "rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-all duration-150",
-                      active
-                        ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
-                        : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
-                    )}
-                  >
-                    {d}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+              <div>
+                <div className="mb-2.5 flex items-center justify-between gap-2">
+                  <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
+                    Department
+                  </p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setChosenDepts([...SCOUT_DEPARTMENTS])}
+                      disabled={chosenDepts.length === SCOUT_DEPARTMENTS.length}
+                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChosenDepts([])}
+                      disabled={chosenDepts.length === 0}
+                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+                    >
+                      Clear all
+                    </button>
+                  </div>
+                </div>
+                <div className="ish-scout-chip-grid">
+                  {SCOUT_DEPARTMENTS.map((d) => {
+                    const active = chosenDepts.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => toggleDept(d)}
+                        className={cn(
+                          "ish-scout-filter-chip",
+                          active ? "ish-role-picker-chip-on-blue" : "ish-scout-chip-off",
+                        )}
+                      >
+                        {d}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {sweetsGuidance && !isBusiness ? (
+            <button
+              type="button"
+              onClick={() => {
+                setChosenSeniority([]);
+                setChosenDepts([...FESTIVE_SWEETS_BUYER_DEPARTMENTS]);
+              }}
+              className="ish-role-picker-recommend px-3.5 py-2.5 text-left text-[12px] font-semibold"
+            >
+              Use recommended: HR + Procurement
+            </button>
+          ) : null}
+          {isBusiness ? (
+            <button
+              type="button"
+              onClick={() => {
+                setChosenSeniority([]);
+                setChosenDepts([]);
+                onConfirm([], [], []);
+              }}
+              className="ish-role-picker-recommend px-3.5 py-2.5 text-left text-[12px] font-semibold"
+            >
+              Use local seniors for this area
+            </button>
+          ) : null}
 
           {andWarning ? (
-            <p className="rounded-xl bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
+            <p className="ish-role-picker-warn px-3.5 py-2.5 text-[12px] leading-snug">
               {andWarning}
             </p>
           ) : null}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-brand-border px-6 py-4">
+        <div className="ish-role-picker-foot flex items-center justify-between gap-3 px-6 py-4">
           <button
             type="button"
             onClick={onSkip}
-            className="text-[12px] font-semibold text-brand-ink-faint hover:text-brand-ink"
+            className="text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
           >
             Skip, find any role
           </button>
           <button
             type="button"
-            onClick={() => onConfirm(chosenSeniority, chosenDepts)}
-            disabled={!hasSelection}
+            onClick={() => {
+              onConfirm(chosenSeniority, chosenDepts, [...initialPeopleCities]);
+            }}
+            disabled={!hasSelection && !isBusiness}
             className={cn(
-              "flex items-center gap-1.5 rounded-xl px-5 py-2 text-[12.5px] font-bold transition-all duration-150",
-              hasSelection
-                ? "bg-brand-green text-white shadow-[var(--shadow-brand)] hover:opacity-90"
-                : "cursor-not-allowed bg-brand-app text-brand-ink-faint",
+              "flex items-center gap-1.5 rounded-full px-5 py-2 text-[12.5px] font-bold transition-all duration-150",
+              hasSelection || isBusiness
+                ? "ish-role-picker-cta hover:opacity-95"
+                : "ish-role-picker-cta-muted",
             )}
           >
             Find Decision-Makers →
@@ -343,29 +502,44 @@ function RolePickerModal({
 
 function FetchLeadsRiskModal({
   companyCount,
+  cities,
   seniority,
   departments,
+  searchKind,
+  locationScope,
   onCancel,
+  onUseSuggestedFilters,
   onFetchWithoutFilters,
   onFetchAnyway,
 }: {
   companyCount: number;
+  cities: string[];
   seniority: string[];
   departments: string[];
+  searchKind?: ScoutVerticalScope;
+  locationScope?: ScoutLocationScope;
   onCancel: () => void;
+  onUseSuggestedFilters: (() => void) | null;
   onFetchWithoutFilters: () => void;
   onFetchAnyway: () => void;
 }) {
-  const risk = assessPeopleFetchRisk({ companyCount, seniority, departments });
+  const risk = assessPeopleFetchRisk({
+    companyCount,
+    cities,
+    seniority,
+    departments,
+    searchKind: searchKind === "businesses" ? "business" : "industry",
+    locationScope: locationScope === "focus" ? "focus" : "interest",
+  });
   const senLabel = seniority.join(", ");
   const deptLabel = departments.join(", ");
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-      <div className="mx-4 w-full max-w-md rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-float)]">
-        <div className="border-b border-brand-border px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,24,36,0.42)] backdrop-blur-[3px]">
+      <div className="ish-role-picker mx-4 w-full max-w-md">
+        <div className="ish-role-picker-head px-6 py-4">
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--brand-stratus-yellow-rgb),0.35)] text-brand-ink">
               <TriangleAlert className="size-4" />
             </div>
             <div>
@@ -378,32 +552,46 @@ function FetchLeadsRiskModal({
           <p className="text-[13px] leading-snug text-brand-ink">
             {risk.emptyRiskLine}
           </p>
-          <p className="rounded-xl bg-brand-app px-3 py-2 text-[12px] leading-snug text-brand-ink-soft">
-            Current filters: {senLabel} + {deptLabel}. Cancel and keep one stack (seniority or department) if you want matches without dropping all People filters.
+          {risk.suggestionLine ? (
+            <p className="rounded-xl bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] px-3 py-2 text-[12px] leading-snug text-brand-ink shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.22)]">
+              {risk.suggestionLine}
+            </p>
+          ) : null}
+          <p className="rounded-xl bg-[rgba(255,255,255,0.7)] px-3 py-2 text-[12px] leading-snug text-brand-ink-soft shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.12)]">
+            Your filters: {senLabel} + {deptLabel}. Too many seniority and department chips at once often matches nobody.
           </p>
         </div>
-        <div className="flex flex-col gap-2 border-t border-brand-border px-6 py-4">
+        <div className="ish-role-picker-foot flex flex-col gap-2 px-6 py-4">
+          {risk.suggestedFilters && onUseSuggestedFilters ? (
+            <button
+              type="button"
+              onClick={onUseSuggestedFilters}
+              className="rounded-full border border-[rgba(var(--brand-stratus-blue-rgb),0.28)] bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] px-4 py-2.5 text-[12.5px] font-bold text-brand-ink hover:bg-[rgba(var(--brand-stratus-blue-rgb),0.18)]"
+            >
+              Use suggested filters and fetch
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onFetchWithoutFilters}
-            className="rounded-xl bg-brand-green px-4 py-2.5 text-[12.5px] font-bold text-white shadow-[var(--shadow-brand)] hover:opacity-90"
+            className="ish-role-picker-cta rounded-full px-4 py-2.5 text-[12.5px] font-bold hover:opacity-95"
           >
-            Fetch without People filters
+            Fetch with no People filters
           </button>
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-3 pt-1">
             <button
               type="button"
               onClick={onCancel}
-              className="text-[12px] font-semibold text-brand-ink-faint hover:text-brand-ink"
+              className="text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onFetchAnyway}
-              className="text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
+              className="text-[12px] font-semibold text-brand-stratus-blue hover:opacity-90"
             >
-              Fetch anyway
+              Keep my filters and fetch
             </button>
           </div>
         </div>
@@ -419,12 +607,14 @@ function ScoutCompaniesEmpty({
   fetchMessage,
   showingSaved,
   icpHint,
+  locationScope,
 }: {
   hasFetched: boolean;
   scoutMode: ScoutMode;
   fetchMessage: string | null;
   showingSaved?: boolean;
   icpHint?: string | null;
+  locationScope?: ScoutLocationScope;
 }) {
   if (showingSaved) {
     return (
@@ -474,7 +664,9 @@ function ScoutCompaniesEmpty({
             ? "Try again in a few minutes or adjust settings."
             : scoutMode === "search"
               ? "Try a different spelling or company name."
-              : "Try different cities or leave industry unselected."
+              : locationScope === "focus"
+                ? "Widen the focus radius, or switch to Area of Interest to search the whole city."
+                : "Narrow to 2-3 industries, or try a nearby larger city."
         }
         className="py-0"
       />
@@ -485,9 +677,15 @@ function ScoutCompaniesEmpty({
 function ScoutPeopleEmpty({
   headline,
   detail,
+  missingWebsites,
+  applyingWebsiteId,
+  onApplyWebsite,
 }: {
   headline: string;
   detail: string;
+  missingWebsites: { id: string; name: string }[];
+  applyingWebsiteId?: string | null;
+  onApplyWebsite: (companyId: string, website: string) => void | Promise<void>;
 }) {
   return (
     <div className="mx-4 mt-4 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish">
@@ -495,6 +693,11 @@ function ScoutPeopleEmpty({
         <Users className="size-7" />
       </div>
       <EmptyState title={headline} description={detail} className="py-0" />
+      <MissingWebsitePrompt
+        companies={missingWebsites}
+        applyingId={applyingWebsiteId}
+        onApply={onApplyWebsite}
+      />
     </div>
   );
 }
@@ -502,18 +705,27 @@ function ScoutPeopleEmpty({
 
 export function ScoutingApp() {
   const isMobileLayout = useIsMobileLayout();
+  const { session } = useSession();
   const [view, setView] = useState<View>("companies");
   const [cities, setCities] = useState<string[]>([]);
   const [locationOptions, setLocationOptions] = useState<ScoutLocationOption[]>([]);
+  const [areasOfFocus, setAreasOfFocus] = useState<ScoutAreaOfFocus[]>([]);
+  const [scoutGeo, setScoutGeo] = useState<ScoutGeoSelection | null>(null);
+  const [locationScope, setLocationScope] = useState<ScoutLocationScope>("interest");
+  const [verticalScope, setVerticalScope] = useState<ScoutVerticalScope>("industries");
   const [industries, setIndustries] = useState<string[]>([]);
+  const [businesses, setBusinesses] = useState<string[]>([]);
   const [employeeBands, setEmployeeBands] = useState<string[]>([]);
   const [seniority, setSeniority] = useState<string[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
+  const [peopleCities, setPeopleCities] = useState<string[]>([]);
   const [dataMode, setDataMode] = useState<DataMode>("free");
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [icpHint, setIcpHint] = useState<string | null>(null);
+  const [platformIntent, setPlatformIntent] = useState<PlatformIntent | null>(null);
   const [scoutCompaniesLimit, setScoutCompaniesLimit] = useState(1);
   const [scoutLeadsLimit, setScoutLeadsLimit] = useState(1);
+  const [savedAccountShapes, setSavedAccountShapes] = useState<AccountMatchShape[]>([]);
 
   const [companies, setCompanies] = useState<CompanyShape[]>([]);
   const [people, setPeople] = useState<ReturnType<typeof toPersonShape>[]>([]);
@@ -530,6 +742,7 @@ export function ScoutingApp() {
   const [fetchMessage, setFetchMessage] = useState<string | null>(null);
   const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<{ headline: string; detail: string } | null>(null);
+  const [applyingWebsiteId, setApplyingWebsiteId] = useState<string | null>(null);
   const [fetchSeed, setFetchSeed] = useState(0);
   const shownNoticesRef = useRef(new Set<string>());
 
@@ -552,23 +765,111 @@ export function ScoutingApp() {
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
 
+  const persistAreaSelectionTimer = useRef<number | null>(null);
+  const locationScopeRef = useRef<ScoutLocationScope>(locationScope);
+  locationScopeRef.current = locationScope;
+  const verticalScopeRef = useRef<ScoutVerticalScope>(verticalScope);
+  verticalScopeRef.current = verticalScope;
+  const peopleFiltersByScopeRef = useRef<Record<ScoutVerticalScope, { seniority: string[]; departments: string[] }>>({
+    industries: { seniority: [], departments: [] },
+    businesses: { seniority: [], departments: [] },
+  });
+  const citiesByScopeRef = useRef<Partial<Record<ScoutLocationScope, string[]>>>({});
+
+  function applyLocationOptions(
+    locations: ScoutLocationOption[],
+    focuses?: ScoutAreaOfFocus[] | null,
+    preferredCities?: string[],
+  ) {
+    setLocationOptions(locations);
+    if (focuses !== undefined) setAreasOfFocus(focuses ?? []);
+    const allowed = scoutPickerAllowedLabels(locations);
+    setCities((prev) => {
+      if (!locations.length) return [];
+      const source = preferredCities ?? prev;
+      const kept = source.filter((c) => allowed.has(c));
+      if (kept.length) return kept;
+      return defaultLabelsFromLocationOptions(locations);
+    });
+  }
+
   useEffect(() => {
-    void (async () => {
-      try {
-        const leadsRes = await fetch("/api/leads/dedupe");
-        const leadsData = await leadsRes.json();
-        if (!leadsData.leads) return;
-        const map = new Map<string, string>();
-        for (const lead of leadsData.leads as { id: string; name: string; company: string }[]) {
-          map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
-          map.set(lead.name.toLowerCase(), lead.id);
+    const defaults = session?.scoutBrandDefaults;
+    if (!defaults) return;
+    const intent = defaults.platformIntent as PlatformIntent | undefined;
+    if (intent) setPlatformIntent(intent);
+    const summary = defaults.icpSummary?.trim();
+    if (summary) setIcpHint(summary);
+    const guidance = festiveSweetsBuyerGuidance(intent);
+    if (guidance && verticalScopeRef.current !== "businesses") setIcpHint(guidance);
+    if (defaults.industries?.length) {
+      setIndustries((prev) => (prev.length ? prev : defaults.industries!));
+    }
+    if (defaults.departments?.length) {
+      setDepartments((prev) => (prev.length ? prev : defaults.departments!));
+    }
+    if (defaults.seniority?.length) {
+      setSeniority((prev) => (prev.length ? prev : defaults.seniority!));
+    }
+  }, [session]);
+
+  useEffect(() => {
+    const stored = readScoutFilterSession();
+    const storedVertical = parseScoutVerticalScope(stored.verticalScope);
+    if (storedVertical) setVerticalScope(storedVertical);
+    if (Array.isArray(stored.industries)) setIndustries(stored.industries.filter((v) => typeof v === "string"));
+    if (Array.isArray(stored.businesses)) setBusinesses(stored.businesses.filter((v) => typeof v === "string"));
+    if (stored.citiesByScope) citiesByScopeRef.current = stored.citiesByScope;
+
+    void scoutBootstrap()
+      .then((data) => {
+        if (data.leads?.length) {
+          const map = new Map<string, string>();
+          for (const lead of data.leads) {
+            map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
+            map.set(lead.name.toLowerCase(), lead.id);
+          }
+          setCrmLeadIdsByKey(map);
+          setExistingContactNames(new Set(data.leads.map((l) => l.name.toLowerCase())));
         }
-        setCrmLeadIdsByKey(map);
-        setExistingContactNames(new Set((leadsData.leads as { name: string }[]).map((l) => l.name.toLowerCase())));
-      } catch {
-        // non-critical
-      }
-    })();
+        if (data.companies?.length) {
+          setSavedAccountShapes(
+            uniqueScoutCompanies(
+              data.companies.map((company) => ({
+                name: company.name,
+                city: company.city,
+                domain: resolveCompanyDomain(company),
+              })),
+            ),
+          );
+        }
+        if (data.dataMode) setDataMode(data.dataMode);
+        if (typeof data.scoutCompaniesLimit === "number") setScoutCompaniesLimit(data.scoutCompaniesLimit);
+        if (typeof data.scoutLeadsLimit === "number") setScoutLeadsLimit(data.scoutLeadsLimit);
+        if (Array.isArray(data.scoutPeopleCities) && data.scoutPeopleCities.length) {
+          setPeopleCities(data.scoutPeopleCities);
+        }
+        const focuses = data.scoutAreasOfFocus?.length
+          ? data.scoutAreasOfFocus
+          : data.scoutAreaOfFocus
+            ? [data.scoutAreaOfFocus]
+            : [];
+        if (data.scoutGeo) setScoutGeo(data.scoutGeo);
+        const storedScope = parseScoutLocationScope(stored.locationScope);
+        const scope = storedScope ?? parseScoutLocationScope(data.scope) ?? defaultScoutLocationScope(focuses);
+        setLocationScope(scope);
+        const locations =
+          scope === "focus"
+            ? (data.focusLocations ?? scoutLocationOptions(data.scoutGeo, focuses, "focus"))
+            : (data.interestLocations ?? scoutLocationOptions(data.scoutGeo, focuses, "interest"));
+        applyLocationOptions(locations, focuses, citiesByScopeRef.current[scope]);
+      })
+      .catch(() => {
+        const fallback = (process.env.NEXT_PUBLIC_DEFAULT_DATA_MODE as DataMode) ?? "free";
+        setDataMode(fallback);
+        applyLocationOptions(locationOptionsFromSelection(), []);
+      })
+      .finally(() => setSettingsLoaded(true));
   }, []);
 
   const primaryCompany = useMemo(
@@ -615,38 +916,6 @@ export function ScoutingApp() {
   // const currentStep: 1 | 2 | 3 = view === "companies" ? 1 : selectedPersonIds.size > 0 ? 3 : 2;
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((data: { dataMode?: DataMode; scoutCompaniesLimit?: number; scoutLeadsLimit?: number }) => {
-        if (data.dataMode) setDataMode(data.dataMode);
-        if (typeof data.scoutCompaniesLimit === "number") setScoutCompaniesLimit(data.scoutCompaniesLimit);
-        if (typeof data.scoutLeadsLimit === "number") setScoutLeadsLimit(data.scoutLeadsLimit);
-      })
-      .catch(() => {
-        const fallback = (process.env.NEXT_PUBLIC_DEFAULT_DATA_MODE as DataMode) ?? "free";
-        setDataMode(fallback);
-      })
-      .finally(() => setSettingsLoaded(true));
-  }, []);
-
-  function applyLocationOptions(locations: ScoutLocationOption[]) {
-    setLocationOptions(locations);
-    const allowed = scoutPickerAllowedLabels(locations);
-    setCities((prev) => prev.filter((c) => allowed.has(c)));
-  }
-
-  useEffect(() => {
-    fetch("/api/scout/locations")
-      .then((r) => r.json())
-      .then((data: { locations?: ScoutLocationOption[] }) => {
-        applyLocationOptions(data.locations ?? locationOptionsFromSelection());
-      })
-      .catch(() => {
-        applyLocationOptions(locationOptionsFromSelection());
-      });
-  }, []);
-
-  useEffect(() => {
     function onScoutVolumeUpdated(e: Event) {
       const detail = (e as CustomEvent<{ scoutCompaniesLimit?: number; scoutLeadsLimit?: number }>).detail;
       if (typeof detail?.scoutCompaniesLimit === "number") setScoutCompaniesLimit(detail.scoutCompaniesLimit);
@@ -656,11 +925,36 @@ export function ScoutingApp() {
       const detail = (e as CustomEvent<{ scoutGeo?: ScoutGeoSelection }>).detail;
       void fetch("/api/scout/locations")
         .then((r) => r.json())
-        .then((data: { locations?: ScoutLocationOption[]; scoutGeo?: ScoutGeoSelection }) => {
-          applyLocationOptions(data.locations ?? locationOptionsFromSelection(data.scoutGeo ?? detail?.scoutGeo));
+        .then((data: {
+          locations?: ScoutLocationOption[];
+          focusLocations?: ScoutLocationOption[];
+          interestLocations?: ScoutLocationOption[];
+          scoutGeo?: ScoutGeoSelection;
+          scoutAreaOfFocus?: ScoutAreaOfFocus | null;
+          scoutAreasOfFocus?: ScoutAreaOfFocus[];
+        }) => {
+          const focuses = data.scoutAreasOfFocus?.length
+            ? data.scoutAreasOfFocus
+            : data.scoutAreaOfFocus
+              ? [data.scoutAreaOfFocus]
+              : [];
+          const geo = data.scoutGeo ?? detail?.scoutGeo;
+          if (geo) setScoutGeo(geo);
+          const scope = locationScopeRef.current;
+          const locations =
+            scope === "focus"
+              ? (data.focusLocations ?? scoutLocationOptions(geo, focuses, "focus"))
+              : (data.interestLocations ?? scoutLocationOptions(geo, focuses, "interest"));
+          applyLocationOptions(locations, focuses, citiesByScopeRef.current[scope]);
         })
         .catch(() => {
-          if (detail?.scoutGeo) applyLocationOptions(locationOptionsFromSelection(detail.scoutGeo));
+          if (detail?.scoutGeo) {
+            setScoutGeo(detail.scoutGeo);
+            applyLocationOptions(
+              scoutLocationOptions(detail.scoutGeo, null, locationScopeRef.current),
+              undefined,
+            );
+          }
         });
     }
     window.addEventListener("scout-volume-updated", onScoutVolumeUpdated);
@@ -677,7 +971,15 @@ export function ScoutingApp() {
       nextCities: string[],
       nextIndustries: string[],
       nextEmployeeBands: string[],
-      options?: { append?: boolean; skipInternal?: boolean; excludeNames?: string[]; seed?: number; forceMainLoader?: boolean; companyName?: string },
+      options?: {
+        append?: boolean;
+        skipInternal?: boolean;
+        excludeNames?: string[];
+        excludeSavedAccounts?: boolean;
+        seed?: number;
+        forceMainLoader?: boolean;
+        companyName?: string;
+      },
     ) => {
       const append = options?.append ?? false;
       const setLoading = append && !options?.forceMainLoader ? setLoadingMore : setLoadingCompanies;
@@ -685,24 +987,43 @@ export function ScoutingApp() {
       setLoading(true);
 
       try {
+        const batchExclude = append ? companies.map((c) => c.name) : [];
+        const savedExclude = savedAccountShapes.map((c) => c.name);
         const excludeNames =
-          options?.excludeNames ?? (append ? companies.map((c) => c.name) : []);
+          options?.excludeNames ?? [...new Set([...batchExclude, ...savedExclude])];
+        const excludeSavedAccounts = options?.excludeSavedAccounts ?? !options?.companyName;
         const seed = options?.seed ?? fetchSeed;
         const requestParams = {
           cities: nextCities,
           industries: nextIndustries,
           dataMode,
+          seniority,
+          departments,
           excludeNames,
+          excludeSavedAccounts,
           skipInternal: options?.skipInternal ?? append,
           fetchSeed: seed,
           limit: scoutCompaniesLimit,
           employeeBands: nextEmployeeBands,
+          locationScope: locationScopeRef.current,
+          searchKind: verticalScopeRef.current === "businesses" ? "business" as const : "industry" as const,
           ...(options?.companyName ? { companyName: options.companyName } : {}),
         };
 
         let sawPartial = false;
         const applyCompanies = (rawCompanies: ScoutCompanyResult[], _finalize: boolean) => {
-          const shaped = dedupeCompanyShapes(rawCompanies.map((c, i) => toCompanyShape(c, i)));
+          const freshCompanies = rawCompanies.filter(
+            (company) =>
+              !scoutCompanyMatchesSaved(
+                {
+                  name: company.name,
+                  city: company.city,
+                  domain: resolveCompanyDomain(company),
+                },
+                savedAccountShapes,
+              ),
+          );
+          const shaped = dedupeCompanyShapes(freshCompanies.map((c, i) => toCompanyShape(c, i)));
           setCompanies((prev) => (append ? mergeCompanies(prev, shaped) : shaped));
           if (!append) {
             setSelectedCompanyIds(new Set(shaped.map((c) => c.id)));
@@ -747,7 +1068,16 @@ export function ScoutingApp() {
         setHasMore(response.hasMore);
 
         if (append && !shaped.length && !response.errors?.length) {
-          toast.info("No additional companies found for these filters. Try other cities or industries.");
+          const helpfulWarning =
+            response.warnings?.find((w) =>
+              /verified city|already saved|Found \d+ candidate|directory|parse|no companies matched|listings found/i.test(
+                w,
+              ),
+            ) ?? response.warnings?.[0];
+          toast.info(
+            helpfulWarning ??
+              "No additional companies found for these filters. Try other cities or industries.",
+          );
         }
 
         const allNotices = [...(response.errors ?? []), ...(response.warnings ?? [])];
@@ -773,12 +1103,9 @@ export function ScoutingApp() {
         if (!append && !shaped.length && !primaryNotice) {
           const helpfulWarning =
             response.warnings?.find((w) =>
-              /verified city|directory|parse|no companies matched|listings found/i.test(w),
+              /verified city|directory|parse|no companies found|listings found/i.test(w),
             ) ?? response.warnings?.[0];
-          setFetchMessage(
-            helpfulWarning ??
-              "No companies matched the current filters. Try different cities or leave industries unselected.",
-          );
+          setFetchMessage(helpfulWarning ?? null);
         }
 
         window.dispatchEvent(new Event("tavily-usage-refresh"));
@@ -793,7 +1120,7 @@ export function ScoutingApp() {
         if (!append) setHasFetched(true);
       }
     },
-    [dataMode, companies, fetchSeed, scoutCompaniesLimit],
+    [dataMode, companies, fetchSeed, scoutCompaniesLimit, savedAccountShapes],
   );
 
   function toggleEmployeeBand(bandId: string) {
@@ -802,15 +1129,88 @@ export function ScoutingApp() {
     );
   }
 
+  function persistNearbyAreaSelection(nextCities: string[], focuses: ScoutAreaOfFocus[]) {
+    const nextFocuses = applyNearbyAreaSelectionToFocuses(focuses, nextCities);
+    setAreasOfFocus(nextFocuses);
+    setLocationOptions((prev) =>
+      prev.map((option) =>
+        option.kind === "area" ? { ...option, selected: nextCities.includes(option.label) } : option,
+      ),
+    );
+    if (persistAreaSelectionTimer.current) window.clearTimeout(persistAreaSelectionTimer.current);
+    persistAreaSelectionTimer.current = window.setTimeout(() => {
+      void fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scoutAreasOfFocus: nextFocuses,
+          scoutAreaOfFocus: nextFocuses[0] ?? null,
+        }),
+      }).catch(() => {
+        /* session selection still applies */
+      });
+    }, 400);
+  }
+
   function handleCitiesChange(nextCities: string[]) {
     setCities(nextCities);
+    citiesByScopeRef.current[locationScope] = nextCities;
+    writeScoutFilterSession({ citiesByScope: { ...citiesByScopeRef.current } });
+    if (locationScope === "focus" && areasOfFocus.length && locationOptions.some((option) => option.kind === "area")) {
+      persistNearbyAreaSelection(nextCities, areasOfFocus);
+    }
+  }
+
+  function handleLocationScopeChange(next: ScoutLocationScope) {
+    citiesByScopeRef.current[locationScope] = cities;
+    setLocationScope(next);
+    writeScoutFilterSession({ locationScope: next, citiesByScope: { ...citiesByScopeRef.current } });
+    const locations =
+      next === "focus"
+        ? locationOptionsFromAreaOfFocus(areasOfFocus)
+        : locationOptionsFromSelection(scoutGeo);
+    applyLocationOptions(locations, undefined, citiesByScopeRef.current[next]);
+  }
+
+  function handleVerticalScopeChange(next: ScoutVerticalScope) {
+    peopleFiltersByScopeRef.current[verticalScope] = { seniority, departments };
+    setVerticalScope(next);
+    writeScoutFilterSession({ verticalScope: next });
+    if (next === "businesses") {
+      setSeniority([]);
+      setDepartments([]);
+    } else {
+      const restored = peopleFiltersByScopeRef.current.industries;
+      setSeniority(restored.seniority);
+      setDepartments(restored.departments);
+    }
+  }
+
+  function toggleBusiness(label: string) {
+    setBusinesses((prev) => {
+      const next = prev.includes(label) ? prev.filter((i) => i !== label) : [...prev, label];
+      writeScoutFilterSession({ businesses: next });
+      return next;
+    });
+  }
+
+  function missingLocationToast() {
+    toast.error(
+      locationScope === "focus"
+        ? locationOptions.some((option) => option.kind === "area")
+          ? "Select at least one nearby area"
+          : "Set Areas of focus in Settings"
+        : "Select at least one city",
+    );
   }
 
 
   function toggleIndustry(ind: string) {
-    setIndustries((prev) =>
-      prev.includes(ind) ? prev.filter((i) => i !== ind) : [...prev, ind],
-    );
+    setIndustries((prev) => {
+      const next = prev.includes(ind) ? prev.filter((i) => i !== ind) : [...prev, ind];
+      writeScoutFilterSession({ industries: next });
+      return next;
+    });
   }
 
   function toggleSeniority(s: string) {
@@ -825,13 +1225,17 @@ export function ScoutingApp() {
     );
   }
 
+  function activeDiscoveryTerms() {
+    return verticalScope === "businesses" ? businesses : industries;
+  }
+
   function handleFetchNewCompanies() {
     if (!settingsLoaded) {
       toast.error("Still loading settings — try again in a moment.");
       return;
     }
     if (!cities.length) {
-      toast.error("Select at least one city");
+      missingLocationToast();
       return;
     }
     const nextSeed = fetchSeed + 1;
@@ -846,10 +1250,9 @@ export function ScoutingApp() {
     setFetchMessage(null);
 
     // Fresh scout with current filters — Load More handles appending more results.
-    loadCompanies(cities, industries, employeeBands, {
+    loadCompanies(cities, activeDiscoveryTerms(), employeeBands, {
       append: false,
       skipInternal: true,
-      excludeNames: [],
       seed: nextSeed,
     });
   }
@@ -859,7 +1262,7 @@ export function ScoutingApp() {
     setSelectedCompanyIds(new Set());
     setFetchSeed(0);
     setDiscoveryNotice(null);
-    loadCompanies(cities, industries, employeeBands, { append: false, skipInternal: false, excludeNames: [], seed: 0 });
+    loadCompanies(cities, activeDiscoveryTerms(), employeeBands, { append: false, skipInternal: true, seed: 0 });
   }
 
   function handleScoutModeChange(mode: ScoutMode) {
@@ -886,7 +1289,7 @@ export function ScoutingApp() {
       return;
     }
     if (!cities.length) {
-      toast.error("Select at least one city");
+      missingLocationToast();
       return;
     }
     setSelectedCompanyIds(new Set());
@@ -926,10 +1329,10 @@ export function ScoutingApp() {
       }
     }
 
-    loadCompanies(cities, industries, employeeBands, {
+    loadCompanies(cities, activeDiscoveryTerms(), employeeBands, {
       append: false,
       skipInternal: false,
-      excludeNames: [],
+      excludeSavedAccounts: false,
       seed: 0,
       companyName: query,
     });
@@ -938,10 +1341,9 @@ export function ScoutingApp() {
   function handleLoadMore() {
     const nextSeed = fetchSeed + 1;
     setFetchSeed(nextSeed);
-    loadCompanies(cities, industries, employeeBands, {
+    loadCompanies(cities, activeDiscoveryTerms(), employeeBands, {
       append: true,
       skipInternal: true,
-      excludeNames: companies.map((c) => c.name),
       seed: nextSeed,
     });
   }
@@ -952,10 +1354,9 @@ export function ScoutingApp() {
     setPrimaryPersonId(null);
     const nextSeed = fetchSeed + 1;
     setFetchSeed(nextSeed);
-    loadCompanies(cities, industries, employeeBands, {
+    loadCompanies(cities, activeDiscoveryTerms(), employeeBands, {
       append: true,
       skipInternal: true,
-      excludeNames: companies.map((c) => c.name),
       seed: nextSeed,
     });
   }
@@ -1023,8 +1424,12 @@ export function ScoutingApp() {
   ) {
     const risk = assessPeopleFetchRisk({
       companyCount: selected.length,
+      cities,
       seniority: activeSeniority,
       departments: activeDepartments,
+      searchKind: verticalScope === "businesses" ? "business" : "industry",
+      businesses,
+      locationScope: locationScope === "focus" ? "focus" : "interest",
     });
     if (!risk.needsConfirm) {
       beginFetchLeads(selected, activeSeniority, activeDepartments);
@@ -1039,13 +1444,21 @@ export function ScoutingApp() {
     const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
     if (!selected.length) return;
 
+    if (verticalScope === "businesses") {
+      setSeniority([]);
+      setDepartments([]);
+      beginFetchLeads(selected, [], []);
+      return;
+    }
+
     setPendingFetchIds(new Set(selected.map((c) => c.id)));
-    confirmFetchIfRisky(selected, seniority, departments);
+    setShowRolePicker(true);
   }
 
-  function handleRolePickerConfirm(chosenSeniority: string[], chosenDepartments: string[]) {
+  function handleRolePickerConfirm(chosenSeniority: string[], chosenDepartments: string[], chosenPeopleCities: string[]) {
     setSeniority(chosenSeniority);
     setDepartments(chosenDepartments);
+    setPeopleCities(chosenPeopleCities);
     setShowRolePicker(false);
     confirmFetchIfRisky(companiesForPendingFetch(), chosenSeniority, chosenDepartments);
   }
@@ -1067,6 +1480,27 @@ export function ScoutingApp() {
     beginFetchLeads(companiesForPendingFetch(), roles.seniority, roles.departments);
   }
 
+  function handleUseSuggestedFilters() {
+    const roles = pendingFetchRoles ?? { seniority, departments };
+    const risk = assessPeopleFetchRisk({
+      companyCount: companiesForPendingFetch().length,
+      cities,
+      seniority: roles.seniority,
+      departments: roles.departments,
+      searchKind: verticalScope === "businesses" ? "business" : "industry",
+      businesses,
+      locationScope: locationScope === "focus" ? "focus" : "interest",
+    });
+    if (!risk.suggestedFilters) return;
+    setSeniority(risk.suggestedFilters.seniority);
+    setDepartments(risk.suggestedFilters.departments);
+    beginFetchLeads(
+      companiesForPendingFetch(),
+      risk.suggestedFilters.seniority,
+      risk.suggestedFilters.departments,
+    );
+  }
+
   async function handleSaveCompanies() {
     const selected = companies.filter((c) => selectedCompanyIds.has(c.id));
     if (!selected.length || savingCompanies) return;
@@ -1076,7 +1510,18 @@ export function ScoutingApp() {
         companies: selected.map((c) => c._raw),
         dataMode,
       });
+      setSavedAccountShapes((prev) =>
+        uniqueScoutCompanies([
+          ...prev,
+          ...selected.map((company) => ({
+            name: company.name,
+            city: company.city,
+            domain: company.domain ?? resolveCompanyDomain(company._raw),
+          })),
+        ]),
+      );
       toast.success(`Saved ${result.saved} companies. Fetch Leads later from Saved.`);
+      notifyCrmRecordsChanged({ source: "scout_save_companies", savedAccounts: result.saved });
     } catch (e) {
       toast.error("Could not save companies. Try again.");
       console.error(e);
@@ -1145,6 +1590,29 @@ export function ScoutingApp() {
     );
   }
 
+  async function handlePastedWebsite(companyId: string, raw: string) {
+    const company = companies.find((c) => c.id === companyId);
+    if (!company) return;
+    const parsed = parsePastedCompanyWebsite(raw);
+    if (!parsed.domain) {
+      toast.error("Use the company website (company.com). Zauba and IndiaMART pages are not accepted.");
+      return;
+    }
+    applyResolvedCompanyDomain(companyId, parsed.domain, parsed.website);
+    const updated: CompanyShape = {
+      ...company,
+      domain: parsed.domain,
+      website: parsed.website,
+      _raw: { ...company._raw, domain: parsed.domain, website: parsed.website },
+    };
+    setApplyingWebsiteId(companyId);
+    try {
+      await runFetchLeads([updated], seniority, departments, { append: people.length > 0 });
+    } finally {
+      setApplyingWebsiteId(null);
+    }
+  }
+
   async function fetchLeadsParallel(
     selected: CompanyShape[],
     activeSeniority: string[],
@@ -1164,6 +1632,10 @@ export function ScoutingApp() {
           seniority: activeSeniority,
           departments: activeDepartments,
           cities,
+          peopleCities,
+          searchKind: verticalScope === "businesses" ? "business" : "industry",
+          businesses,
+          locationScope: locationScope === "focus" ? "focus" : "interest",
         });
         applyResolvedCompanyDomain(company.id, resolvedDomain, resolvedWebsite);
         peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
@@ -1181,21 +1653,29 @@ export function ScoutingApp() {
     });
   }
 
-  async function runFetchLeads(selected: CompanyShape[], activeSeniority: string[], activeDepartments: string[]) {
+  async function runFetchLeads(
+    selected: CompanyShape[],
+    activeSeniority: string[],
+    activeDepartments: string[],
+    opts?: { append?: boolean },
+  ) {
+    const append = Boolean(opts?.append);
     setView("people");
     setLoadingPeople(true);
     setFetchProgress({ done: 0, total: selected.length });
-    setPeople([]);
-    setPeopleNotice(null);
-    setSelectedPersonIds(new Set());
-    setPrimaryPersonId(null);
+    if (!append) {
+      setPeople([]);
+      setPeopleNotice(null);
+      setSelectedPersonIds(new Set());
+      setPrimaryPersonId(null);
+    }
 
     const leadsDedupePromise = fetch("/api/leads/dedupe")
       .then((res) => res.json())
       .catch(() => null);
 
     try {
-      const allPeople: ReturnType<typeof toPersonShape>[] = [];
+      const allPeople: ReturnType<typeof toPersonShape>[] = append ? [...people] : [];
       const peopleWarnings: string[] = [];
 
       if (selected.length > 1) {
@@ -1214,6 +1694,10 @@ export function ScoutingApp() {
               seniority: activeSeniority,
               departments: activeDepartments,
               cities,
+              peopleCities,
+              searchKind: verticalScope === "businesses" ? "business" : "industry",
+              businesses,
+              locationScope: locationScope === "focus" ? "focus" : "interest",
             },
             (companyId, batchResult) => {
               const company = selected.find((c) => c.id === companyId);
@@ -1285,9 +1769,11 @@ export function ScoutingApp() {
           cities,
           seniority: activeSeniority,
           departments: activeDepartments,
+          platformIntent,
+          searchKind: verticalScope === "businesses" ? "business" : "industry",
         });
         setPeopleNotice(notice);
-        const switchMsg = peopleWarnings.find((w) => /switched to backup key/i.test(w));
+        const switchMsg = peopleWarnings.find((w) => /switched to (?:backup|next) key/i.test(w));
         if (switchMsg) {
           const key = noticeKey(switchMsg);
           if (!shownNoticesRef.current.has(key)) {
@@ -1389,7 +1875,10 @@ export function ScoutingApp() {
       }
 
       if (totalSaved > 0) {
-        toast.success(`${totalSaved} lead${totalSaved > 1 ? "s" : ""} saved — check Leads queue`);
+        toast.success(
+          `${totalSaved} lead${totalSaved > 1 ? "s" : ""} saved — updated Leads, Accounts, and Contacts`,
+        );
+        notifyCrmRecordsChanged({ source: "scout_add_leads", savedLeads: totalSaved });
         // mark saved people so they show as already-added if user returns
         const savedNames = selectedPeople.map((p) => p.name.toLowerCase());
         setExistingContactNames((prev) => new Set([...prev, ...savedNames]));
@@ -1441,7 +1930,13 @@ export function ScoutingApp() {
     ((view === "companies" && companies.length > 0) || (view === "people" && people.length > 0));
 
   const mobileSubtitle = useMemo(() => {
-    if (!cities.length) return "Pick a city to start scouting";
+    if (!cities.length) {
+      return locationScope === "focus"
+        ? locationOptions.some((option) => option.kind === "area")
+          ? "Pick a nearby area to start scouting"
+          : "Set Areas of focus in Settings"
+        : "Pick a city to start scouting";
+    }
     const cityPart =
       cities.length === 1 ? cities[0] : `${cities.length} cities`;
     if (view === "people") {
@@ -1451,7 +1946,7 @@ export function ScoutingApp() {
       return `${cityPart} · ${companies.length} compan${companies.length === 1 ? "y" : "ies"}`;
     }
     return cityPart;
-  }, [cities, view, people.length, companies.length]);
+  }, [cities, view, people.length, companies.length, locationOptions, locationScope]);
 
   const canScoutMobile = settingsLoaded && cities.length > 0 && !loadingCompanies;
   const canSearchMobile =
@@ -1480,6 +1975,7 @@ export function ScoutingApp() {
     scoutLeadsLimit,
     loadingCompanies,
     loadingMore,
+    loadingPeople,
     saving,
     savingCompanies,
     showingSaved,
@@ -1503,7 +1999,17 @@ export function ScoutingApp() {
     onSearchByName: handleSearchByName,
     onFilterPanelChange: setFilterPanelOpen,
     locationOptions,
+    locationScope,
+    onLocationScopeChange: handleLocationScopeChange,
+    verticalScope,
+    onVerticalScopeChange: handleVerticalScopeChange,
+    businesses,
+    onBusinessToggle: toggleBusiness,
   } as const;
+
+  const missingWebsiteCompanies = companies
+    .filter((c) => selectedCompanyIds.has(c.id) && companyNeedsOfficialWebsite(c))
+    .map((c) => ({ id: c.id, name: c.name }));
 
   const companiesResults = view === "companies" ? (
     loadingCompanies ? (
@@ -1514,7 +2020,11 @@ export function ScoutingApp() {
             ? ["Loading saved companies"]
             : [
                 cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
-                industries.length ? `Filtering ${industries.join(", ")}` : "Matching all industries",
+                activeDiscoveryTerms().length
+                  ? `Filtering ${activeDiscoveryTerms().join(", ")}`
+                  : verticalScope === "businesses"
+                    ? "Matching all businesses"
+                    : "Matching all industries",
                 employeeBands.length
                   ? `Matching ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
                   : "Any company scale",
@@ -1529,6 +2039,7 @@ export function ScoutingApp() {
         fetchMessage={fetchMessage}
         showingSaved={showingSaved}
         icpHint={icpHint}
+        locationScope={locationScope}
       />
     ) : companies.length === 0 ? (
       null
@@ -1556,7 +2067,13 @@ export function ScoutingApp() {
                 {companies.length} {scoutMode === "search" ? "result" : "compan"}{companies.length === 1 ? (scoutMode === "search" ? "" : "y") : (scoutMode === "search" ? "s" : "ies")}
                 {scoutMode === "search" && companySearchQuery ? ` · "${companySearchQuery}"` : ""}
                 {" · "}{cities.join(", ")}
-                {industries.length > 0 ? ` · ${industries.join(", ")}` : scoutMode === "autopilot" ? " · all industries" : ""}
+                {activeDiscoveryTerms().length > 0
+                  ? ` · ${activeDiscoveryTerms().join(", ")}`
+                  : scoutMode === "autopilot"
+                    ? verticalScope === "businesses"
+                      ? " · all businesses"
+                      : " · all industries"
+                    : ""}
                 {employeeBands.length > 0
                   ? ` · ${SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label).join(", ")}`
                   : ""}
@@ -1622,6 +2139,11 @@ export function ScoutingApp() {
       {people.length > 0 && peopleNotice ? (
         <div className="mx-3 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
           <span className="font-semibold">{peopleNotice.headline}.</span> {peopleNotice.detail}
+          <MissingWebsitePrompt
+            companies={missingWebsiteCompanies}
+            applyingId={applyingWebsiteId}
+            onApply={handlePastedWebsite}
+          />
         </div>
       ) : null}
       {loadingPeople ? (
@@ -1643,6 +2165,9 @@ export function ScoutingApp() {
         <ScoutPeopleEmpty
           headline={peopleNotice?.headline ?? "No decision-makers found"}
           detail={peopleNotice?.detail ?? "Try companies with websites or well-known brands."}
+          missingWebsites={missingWebsiteCompanies}
+          applyingWebsiteId={applyingWebsiteId}
+          onApplyWebsite={handlePastedWebsite}
         />
       ) : saving ? (
         <SavingLeadsLoader count={selectedPersonIds.size} progress={saveProgress} />
@@ -1656,6 +2181,7 @@ export function ScoutingApp() {
           onSetPrimary={setPersonAsPrimary}
           onContact={(p) => toast.info(`Opening contact for ${p.name}`)}
           onBookmark={(p) => toast.info(`Bookmarked ${p.name}`)}
+          getCompanyName={(p) => companies.find((c) => c.id === p.companyId)?.name}
           compact={isMobileLayout}
         />
       )}
@@ -1666,8 +2192,11 @@ export function ScoutingApp() {
     <RolePickerModal
       initialSeniority={seniority}
       initialDepartments={departments}
+      initialPeopleCities={peopleCities}
+      platformIntent={platformIntent}
+      verticalScope={verticalScope}
       onConfirm={handleRolePickerConfirm}
-      onSkip={() => beginFetchLeads(companiesForPendingFetch(), [], [])}
+      onSkip={() => { setPeopleCities([]); beginFetchLeads(companiesForPendingFetch(), [], []); }}
     />
   ) : null;
 
@@ -1675,9 +2204,13 @@ export function ScoutingApp() {
     showFetchRisk && pendingFetchRoles ? (
       <FetchLeadsRiskModal
         companyCount={companiesForPendingFetch().length}
+        cities={cities}
         seniority={pendingFetchRoles.seniority}
         departments={pendingFetchRoles.departments}
+        searchKind={verticalScope}
+        locationScope={locationScope}
         onCancel={handleFetchRiskCancel}
+        onUseSuggestedFilters={handleUseSuggestedFilters}
         onFetchWithoutFilters={handleFetchWithoutPeopleFilters}
         onFetchAnyway={handleFetchAnyway}
       />
@@ -1697,10 +2230,7 @@ export function ScoutingApp() {
       return "Select people to save";
     }
     if (selectedCompanyIds.size > 0) {
-      const andStacked = seniority.length > 0 && departments.length > 0;
-      return andStacked
-        ? `Check first · ${selectedCompanyIds.size}`
-        : `Fetch Leads · ${selectedCompanyIds.size}`;
+      return `Fetch Leads · ${selectedCompanyIds.size}`;
     }
     if (scoutMode === "search") {
       return loadingCompanies ? "Searching…" : "Search";
@@ -1754,7 +2284,17 @@ export function ScoutingApp() {
                 }
               />
             ) : view === "people" && primaryPerson ? (
-              <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
+              <PersonDetailPanel
+                person={primaryPerson}
+                index={primaryPersonIndex}
+                companyName={companies.find((c) => c.id === primaryPerson.companyId)?.name}
+                companyWebsite={companies.find((c) => c.id === primaryPerson.companyId)?.website}
+                companyDomain={companies.find((c) => c.id === primaryPerson.companyId)?.domain}
+                onWebsiteResolved={(resolved) => {
+                  const cid = primaryPerson.companyId;
+                  if (cid) applyResolvedCompanyDomain(cid, resolved.domain, resolved.website);
+                }}
+              />
             ) : null}
           </div>
         </div>
@@ -1894,6 +2434,15 @@ export function ScoutingApp() {
   return (
     <>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <AppPageHeader
+          icon={Telescope}
+          title="Scouting"
+          subtitle={
+            view === "people"
+              ? "Review decision-makers and add them as leads"
+              : "Discover companies in your focus areas, then fetch leads"
+          }
+        />
         <ScoutingToolbar {...toolbarProps} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">{companiesResults}</div>
@@ -1908,7 +2457,17 @@ export function ScoutingApp() {
                 }
               />
             ) : view === "people" && primaryPerson ? (
-              <PersonDetailPanel person={primaryPerson} index={primaryPersonIndex} />
+              <PersonDetailPanel
+                person={primaryPerson}
+                index={primaryPersonIndex}
+                companyName={companies.find((c) => c.id === primaryPerson.companyId)?.name}
+                companyWebsite={companies.find((c) => c.id === primaryPerson.companyId)?.website}
+                companyDomain={companies.find((c) => c.id === primaryPerson.companyId)?.domain}
+                onWebsiteResolved={(resolved) => {
+                  const cid = primaryPerson.companyId;
+                  if (cid) applyResolvedCompanyDomain(cid, resolved.domain, resolved.website);
+                }}
+              />
             ) : (
               <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-brand-ink-faint">
                 {view === "companies"

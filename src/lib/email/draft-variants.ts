@@ -1,3 +1,5 @@
+import { normalizeReplySubject } from "@/lib/email/threading";
+
 export type VariantKey = "A" | "B" | "C";
 
 export type DraftCopyFields = {
@@ -48,4 +50,23 @@ export function resolveDraftBody(draft: DraftCopyFields, key?: string | null): s
   if (k === "B") return (draft.emailBodyB || draft.emailBody || "").trim();
   if (k === "C") return (draft.emailBodyC || draft.emailBody || "").trim();
   return (draft.emailBody || "").trim();
+}
+
+/** Follow-ups (Email 2/3) stay on Email 1's subject / thread, with no A/B/C picker. */
+export function isSequenceFollowUpDraft(sequencePosition?: number | null): boolean {
+  return sequencePosition != null && sequencePosition > 1;
+}
+
+export function followUpThreadSubject(params: {
+  threadRootSubject?: string | null;
+  email1Draft?: DraftCopyFields | null;
+  chosenSubjectKey?: string | null;
+}): string {
+  if (params.threadRootSubject?.trim()) {
+    return normalizeReplySubject(params.threadRootSubject);
+  }
+  const email1Subject = params.email1Draft
+    ? resolveDraftSubject(params.email1Draft, params.chosenSubjectKey)
+    : "";
+  return email1Subject ? normalizeReplySubject(email1Subject) : "";
 }

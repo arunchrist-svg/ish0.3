@@ -1,12 +1,21 @@
 import { generateText } from "ai";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { startAgentRun, completeAgentRun } from "@/lib/agents/log-agent-run";
-import { anthropic } from "@ai-sdk/anthropic";
-import { google } from "@ai-sdk/google";
 import { ensureGeminiApiKey, geminiModelId, sanitizeModelId } from "@/lib/llm/gemini-env";
 import { getOpenRouterChatModel, openrouterModelsToAttempt } from "@/lib/llm/openrouter";
+import type { LLMProvider, LLMTier } from "@/lib/llm/tiers";
+import {
+  getAvailableGeminiKeys,
+  getAvailableOpenRouterKeys,
+  isLLMQuotaOrAuthError,
+  markGeminiKeyRejected,
+  markOpenRouterKeyRejected,
+  markProviderRejected,
+  providersToAttempt,
+} from "@/lib/llm/provider-chain";
 
-type LLMTier = "fast" | "quality";
-export type LLMProvider = "anthropic" | "gemini" | "openrouter";
+export type { LLMProvider, LLMTier } from "@/lib/llm/tiers";
 
 export type LLMTraceContext = {
   agent: string;
@@ -17,48 +26,34 @@ export type LLMTraceContext = {
 };
 
 export function getLLMProvider(): string {
-  return "anthropic";
-}
-
-function hasGeminiKey(): boolean {
-  return !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+  return "gemini";
 }
 
 function getAnthropicModel(tier: LLMTier) {
   const haiku = sanitizeModelId(process.env.ANTHROPIC_MODEL_HAIKU, "claude-haiku-4-5");
   const sonnet = sanitizeModelId(process.env.ANTHROPIC_MODEL_SONNET, "claude-sonnet-4-6");
-  return tier === "fast" ? anthropic(haiku) : anthropic(sonnet);
+  const modelId = tier === "fast" ? haiku : sonnet;
+  const anthropic = createAnthropic();
+  return anthropic(modelId);
 }
 
-function getGeminiModel(tier: LLMTier) {
-  ensureGeminiApiKey();
+function getGeminiModel(tier: LLMTier, apiKey: string) {
+  const google = createGoogleGenerativeAI({ apiKey });
   return google(geminiModelId(tier));
 }
 
 function getMaxTokens(requested?: number, provider?: LLMProvider): number {
   const base = requested ?? 2048;
-  if (provider === "openrouter") return base;
+  if (provider === "openrouter" || provider === "gemini") return base;
   const envCap = process.env.ANTHROPIC_MAX_OUTPUT_TOKENS
     ? parseInt(process.env.ANTHROPIC_MAX_OUTPUT_TOKENS, 10)
     : undefined;
   return envCap ? Math.min(base, envCap) : base;
 }
 
-function isQuotaOrRateLimitError(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error);
-  return /quota|rate.?limit|resource_exhausted|429|exceeded your current quota|too many requests/i.test(msg);
-}
-
-function isBillingOrAuthError(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error);
-  return /credit|billing|insufficient|402|api.?key|unauthorized|401|invalid.?x-api-key|authentication/i.test(msg);
-}
-
-function shouldFallbackToGemini(error: unknown): boolean {
-  return hasGeminiKey() && (isQuotaOrRateLimitError(error) || isBillingOrAuthError(error));
-}
-
-function tiersToAttempt(requested: LLMTier): LLMTier[] {
+function tiersToAttempt(requested: LLMTier, provider: LLMProvider): LLMTier[] {
+  if (provider === "openrouter") return [requested];
+  if (provider === "gemini") return [requested === "quality" ? "quality" : "fast"];
   return requested === "quality" ? ["quality", "fast"] : ["fast"];
 }
 
@@ -69,12 +64,14 @@ async function generateWithTier(params: {
   prompt: string;
   maxTokens?: number;
   openrouterModel?: string;
+  openrouterApiKey?: string;
+  geminiApiKey?: string;
 }): Promise<{ text: string; inputTokens?: number; outputTokens?: number; modelId?: string; latencyMs: number }> {
   const model =
     params.provider === "openrouter"
-      ? getOpenRouterChatModel(params.openrouterModel)
+      ? getOpenRouterChatModel(params.openrouterModel, params.openrouterApiKey)
       : params.provider === "gemini"
-        ? getGeminiModel(params.tier)
+        ? getGeminiModel(params.tier, params.geminiApiKey ?? "")
         : getAnthropicModel(params.tier);
   const started = Date.now();
   const result = await generateText({
@@ -91,6 +88,96 @@ async function generateWithTier(params: {
   return { text: result.text, inputTokens, outputTokens, modelId, latencyMs: Date.now() - started };
 }
 
+async function generateWithProvider(params: {
+  provider: LLMProvider;
+  tier: LLMTier;
+  system: string;
+  prompt: string;
+  maxTokens?: number;
+}): Promise<{ text: string; inputTokens?: number; outputTokens?: number; modelId?: string; latencyMs: number }> {
+  if (params.provider === "gemini") {
+    const keys = getAvailableGeminiKeys();
+    if (!keys.length) throw new Error("GEMINI_API_KEY is missing");
+    let lastError: unknown;
+    for (const keyEntry of keys) {
+      for (const tier of tiersToAttempt(params.tier, "gemini")) {
+        try {
+          return await generateWithTier({
+            ...params,
+            tier,
+            geminiApiKey: keyEntry.key,
+          });
+        } catch (error) {
+          lastError = error;
+          if (isLLMQuotaOrAuthError(error)) {
+            console.warn(`[callLLM] Gemini key ${keyEntry.id} unavailable, rotating`);
+            markGeminiKeyRejected(keyEntry.id);
+            break;
+          }
+          throw error;
+        }
+      }
+    }
+    markProviderRejected("gemini");
+    throw lastError ?? new Error("All Gemini keys exhausted");
+  }
+
+  if (params.provider === "openrouter") {
+    const keys = getAvailableOpenRouterKeys();
+    if (!keys.length) throw new Error("OPENROUTER_API_KEY is missing");
+    const models = openrouterModelsToAttempt();
+    let lastError: unknown;
+    for (const keyEntry of keys) {
+      for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+        try {
+          return await generateWithTier({
+            ...params,
+            openrouterModel: models[modelIndex],
+            openrouterApiKey: keyEntry.key,
+          });
+        } catch (error) {
+          lastError = error;
+          const hasModelFallback = modelIndex < models.length - 1;
+          console.warn(
+            "[callLLM] OpenRouter",
+            keyEntry.id,
+            "model failed",
+            models[modelIndex],
+            error instanceof Error ? error.message : error,
+          );
+          if (hasModelFallback && isLLMQuotaOrAuthError(error)) continue;
+          if (isLLMQuotaOrAuthError(error)) {
+            markOpenRouterKeyRejected(keyEntry.id);
+            break;
+          }
+          throw error;
+        }
+      }
+    }
+    markProviderRejected("openrouter");
+    throw lastError ?? new Error("All OpenRouter keys exhausted");
+  }
+
+  const attemptTiers = tiersToAttempt(params.tier, "anthropic");
+  let lastError: unknown;
+  for (let i = 0; i < attemptTiers.length; i++) {
+    const tier = attemptTiers[i];
+    try {
+      return await generateWithTier({ ...params, tier });
+    } catch (error) {
+      lastError = error;
+      const hasTierFallback = i < attemptTiers.length - 1;
+      if (hasTierFallback && isLLMQuotaOrAuthError(error)) {
+        console.warn(`[callLLM] ${tier} tier unavailable, falling back to ${attemptTiers[i + 1]}`);
+        continue;
+      }
+      if (isLLMQuotaOrAuthError(error)) markProviderRejected("anthropic");
+      throw error;
+    }
+  }
+  throw lastError ?? new Error("Anthropic call failed");
+}
+
 export async function callLLM(params: {
   tier: LLMTier;
   system: string;
@@ -99,12 +186,12 @@ export async function callLLM(params: {
   provider?: LLMProvider;
   trace?: LLMTraceContext;
 }): Promise<string> {
-  const attemptTiers = params.provider === "openrouter" ? [params.tier] : tiersToAttempt(params.tier);
-  const openrouterModels = params.provider === "openrouter" ? openrouterModelsToAttempt() : [undefined];
-  let lastError: unknown;
-  let runId: string | undefined;
-  let provider: LLMProvider = params.provider ?? "anthropic";
+  const providerOrder = providersToAttempt(params.provider);
+  if (!providerOrder.length) {
+    throw new Error("No LLM provider configured. Add GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.");
+  }
 
+  let runId: string | undefined;
   if (params.trace) {
     runId = await startAgentRun({
       tenantId: params.trace.tenantId,
@@ -116,63 +203,40 @@ export async function callLLM(params: {
     });
   }
 
-  for (let providerPass = 0; providerPass < 2; providerPass++) {
-    for (let modelIndex = 0; modelIndex < openrouterModels.length; modelIndex++) {
-    for (let i = 0; i < attemptTiers.length; i++) {
-      const tier = attemptTiers[i];
-      try {
-        const result = await generateWithTier({
-          ...params,
-          provider,
-          tier,
-          openrouterModel: openrouterModels[modelIndex],
+  let lastError: unknown;
+  for (let i = 0; i < providerOrder.length; i++) {
+    const provider = providerOrder[i];
+    const nextProvider = providerOrder[i + 1];
+    try {
+      const result = await generateWithProvider({ ...params, provider });
+      if (runId) {
+        await completeAgentRun(runId, {
+          status: "completed",
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          latencyMs: result.latencyMs,
+          model: result.modelId,
+          tier: params.tier,
         });
-        if (runId) {
-          await completeAgentRun(runId, {
-            status: "completed",
-            inputTokens: result.inputTokens,
-            outputTokens: result.outputTokens,
-            latencyMs: result.latencyMs,
-            model: result.modelId,
-            tier,
-          });
-        }
-        return result.text;
-      } catch (error) {
-        lastError = error;
-        const hasTierFallback = i < attemptTiers.length - 1;
-        if (provider === "anthropic" && hasTierFallback && isQuotaOrRateLimitError(error)) {
-          console.warn(`[callLLM] ${tier} tier quota/rate limit, falling back to ${attemptTiers[i + 1]}`);
-          continue;
-        }
-        if (provider === "anthropic" && !hasTierFallback && shouldFallbackToGemini(error)) {
-          console.warn("[callLLM] Anthropic unavailable, falling back to Gemini");
-          provider = "gemini";
-          break;
-        }
-        if (provider === "openrouter") {
-          const hasModelFallback = modelIndex < openrouterModels.length - 1;
-          console.warn(
-            "[callLLM] OpenRouter model failed",
-            openrouterModels[modelIndex],
-            error instanceof Error ? error.message : error,
-          );
-          if (hasModelFallback && (isQuotaOrRateLimitError(error) || /unavailable|no endpoint|404/i.test(String(error)))) {
-            break;
-          }
-        }
-        if (runId) {
-          await completeAgentRun(runId, {
-            status: "failed",
-            tier,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-        throw error;
       }
-    }
-    if (provider === "openrouter" && modelIndex < openrouterModels.length - 1) continue;
-    if (provider !== "gemini") break;
+      if (i > 0) {
+        console.warn(`[callLLM] Using ${provider} after earlier provider quota`);
+      }
+      return result.text;
+    } catch (error) {
+      lastError = error;
+      if (nextProvider && isLLMQuotaOrAuthError(error)) {
+        console.warn(`[callLLM] ${provider} unavailable, rotating to ${nextProvider}`);
+        continue;
+      }
+      if (runId) {
+        await completeAgentRun(runId, {
+          status: "failed",
+          tier: params.tier,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      throw error;
     }
   }
 
@@ -190,12 +254,23 @@ export function llmErrorHttpStatus(error: unknown): 429 | 500 {
 
 export function friendlyLLMError(error: unknown): string {
   const msg = error instanceof Error ? error.message : "AI request failed";
+  if (/No LLM provider configured/i.test(msg)) {
+    return "Add GEMINI_API_KEY in .env.local to use AI features.";
+  }
+  if (/GEMINI_API_KEY is missing|generativeai|google/i.test(msg)) {
+    if (/quota|rate.?limit|429|resource_exhausted|exceeded your current quota/i.test(msg)) {
+      return "Gemini quota reached. Wait a minute or add a backup GEMINI_API_KEY_2.";
+    }
+    if (/api.?key|unauthorized|401|authentication/i.test(msg)) {
+      return "Gemini API key was rejected. Check GEMINI_API_KEY in .env.local.";
+    }
+  }
   if (/OPENROUTER_API_KEY is missing/i.test(msg)) {
     return "Add OPENROUTER_API_KEY in .env.local to use AI Writer.";
   }
   if (/openrouter/i.test(msg)) {
     if (/quota|rate.?limit|429|too many requests/i.test(msg)) {
-      return "OpenRouter free models are busy. Wait a minute and try AI Writer again.";
+      return "OpenRouter models are busy. Wait a minute and try again.";
     }
     if (/api.?key|unauthorized|401|authentication/i.test(msg)) {
       return "OpenRouter API key was rejected. Check OPENROUTER_API_KEY in .env.local.";
@@ -205,7 +280,7 @@ export function friendlyLLMError(error: unknown): string {
     return "Anthropic billing issue. Check credits at console.anthropic.com.";
   }
   if (/quota|rate.?limit|resource_exhausted|exceeded your current quota|too many requests/i.test(msg)) {
-    return "Claude rate limit hit. Wait about a minute and try again.";
+    return "LLM rate limit hit. Wait about a minute and try again.";
   }
   if (/api.?key|unauthorized|401|invalid.?x-api-key|authentication/i.test(msg)) {
     return "Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.local.";
@@ -216,3 +291,6 @@ export function friendlyLLMError(error: unknown): string {
   }
   return msg.length > 220 ? `${msg.slice(0, 220)}…` : msg;
 }
+
+// Legacy helper for OCR paths that set GOOGLE_GENERATIVE_AI_API_KEY globally.
+export { ensureGeminiApiKey } from "@/lib/llm/gemini-env";

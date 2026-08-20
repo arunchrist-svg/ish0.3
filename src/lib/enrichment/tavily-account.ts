@@ -17,8 +17,13 @@ type UsageCache = {
 };
 
 let cache: UsageCache | null = null;
+let inFlight: Promise<TavilyAccountKeyUsage[]> | null = null;
 const CACHE_MS = 5 * 60_000;
 const KEY_FETCH_GAP_MS = 400;
+
+export function getCachedTavilyAccountUsage(): TavilyAccountKeyUsage[] | null {
+  return cache?.keys ?? null;
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -100,10 +105,9 @@ async function fetchKeyUsage(entry: { id: string; key: string; label: string }):
   }
 }
 
-/** Live credits from Tavily GET /usage — matches the dashboard, not local session flags. */
-export async function fetchTavilyAccountUsage(options?: { force?: boolean }): Promise<TavilyAccountKeyUsage[]> {
+async function loadTavilyAccountUsage(force: boolean): Promise<TavilyAccountKeyUsage[]> {
   const now = Date.now();
-  if (!options?.force && cache && now - cache.fetchedAt < CACHE_MS) {
+  if (!force && cache && now - cache.fetchedAt < CACHE_MS) {
     return cache.keys;
   }
 
@@ -136,6 +140,22 @@ export async function fetchTavilyAccountUsage(options?: { force?: boolean }): Pr
   return results;
 }
 
+/** Live credits from Tavily GET /usage — matches the dashboard, not local session flags. */
+export async function fetchTavilyAccountUsage(options?: { force?: boolean }): Promise<TavilyAccountKeyUsage[]> {
+  const force = Boolean(options?.force);
+  const now = Date.now();
+  if (!force && cache && now - cache.fetchedAt < CACHE_MS) {
+    return cache.keys;
+  }
+  if (inFlight) return inFlight;
+
+  inFlight = loadTavilyAccountUsage(force).finally(() => {
+    inFlight = null;
+  });
+  return inFlight;
+}
+
 export function invalidateTavilyAccountUsageCache(): void {
   cache = null;
+  inFlight = null;
 }

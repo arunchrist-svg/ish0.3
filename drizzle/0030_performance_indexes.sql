@@ -1,0 +1,16 @@
+CREATE INDEX IF NOT EXISTS "workspaces_tenant_idx" ON "workspaces" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "accounts_tenant_workspace_idx" ON "accounts" ("tenant_id", "workspace_id");
+CREATE INDEX IF NOT EXISTS "contacts_tenant_idx" ON "contacts" ("tenant_id");
+CREATE INDEX IF NOT EXISTS "contacts_account_idx" ON "contacts" ("account_id");
+CREATE INDEX IF NOT EXISTS "leads_tenant_created_idx" ON "leads" ("tenant_id", "created_at");
+CREATE INDEX IF NOT EXISTS "leads_workspace_status_idx" ON "leads" ("workspace_id", "status");
+CREATE INDEX IF NOT EXISTS "leads_contact_idx" ON "leads" ("contact_id");
+CREATE INDEX IF NOT EXISTS "lead_outreach_lead_idx" ON "lead_outreach" ("lead_id");
+CREATE INDEX IF NOT EXISTS "lead_outreach_template_variant_idx" ON "lead_outreach" ("template_variant");
+CREATE INDEX IF NOT EXISTS "outreach_schedule_lead_idx" ON "outreach_schedule" ("lead_id");
+CREATE INDEX IF NOT EXISTS "outreach_schedule_channel_status_idx" ON "outreach_schedule" ("channel", "status");
+CREATE INDEX IF NOT EXISTS "outreach_schedule_email_kind_status_idx" ON "outreach_schedule" ("email_kind", "status");
+CREATE INDEX IF NOT EXISTS "yield_funnel_lead_stage_idx" ON "yield_funnel" ("lead_id", "stage");
+CREATE INDEX IF NOT EXISTS "notifications_user_unread_idx" ON "notifications" ("tenant_id", "user_id", "read_at");
+CREATE INDEX IF NOT EXISTS "agent_runs_tenant_started_idx" ON "agent_runs" ("tenant_id", "started_at");
+CREATE INDEX IF NOT EXISTS "agent_runs_workspace_idx" ON "agent_runs" ("workspace_id");

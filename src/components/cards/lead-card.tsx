@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn, displayPersonTitle, isBlankPersonField, personLinkedInHref } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
 import { Bookmark, MessageCircle, Zap, ExternalLink, Check, ChevronRight } from "lucide-react";
 import type { Person } from "@/lib/scouting-data";
@@ -9,6 +9,7 @@ import { COMPANIES } from "@/lib/scouting-data";
 import { getInitials } from "@/lib/data";
 import { getAvatarColor } from "@/design-system/tokens";
 import { scoutCardSurface } from "./scout-card-surface";
+import { LinkedInGlyph } from "@/components/icons/linkedin-glyph";
 
 type Props = {
   person: Person;
@@ -25,6 +26,42 @@ type Props = {
   directoryLeadId?: string;
   compact?: boolean;
 };
+
+function personMetaChips(person: Person): string[] {
+  return [person.department, person.seniority, person.location].filter(
+    (value): value is string => !isBlankPersonField(value),
+  );
+}
+
+function LinkedInCardButton({
+  href,
+  name,
+  hasProfile,
+  size,
+}: {
+  href: string;
+  name: string;
+  hasProfile: boolean;
+  size: "sm" | "md";
+}) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-card-action
+      onClick={(e) => e.stopPropagation()}
+      aria-label={hasProfile ? `Open ${name} on LinkedIn` : `Search LinkedIn for ${name}`}
+      title={hasProfile ? "Open LinkedIn profile" : "Search on LinkedIn"}
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-xl bg-[#0A66C2] text-white transition-opacity hover:opacity-90 active:scale-95",
+        size === "sm" ? "size-7" : "size-9",
+      )}
+    >
+      <LinkedInGlyph className={size === "sm" ? "size-3" : "size-3.5"} />
+    </a>
+  );
+}
 
 export function LeadCard({
   person,
@@ -46,6 +83,13 @@ export function LeadCard({
     : COMPANIES.find((c) => c.id === person.companyId);
   const signalsCount = person.engagementSignals.length;
   const scoreColor = getScoreColor(person.matchScore);
+  const title = displayPersonTitle(person.title);
+  const chips = personMetaChips(person);
+  const linkedIn = personLinkedInHref({
+    linkedIn: person.linkedIn,
+    name: person.name,
+    companyName: company?.name,
+  });
 
   function handleCardClick(e: React.MouseEvent) {
     if (alreadyAdded) return;
@@ -101,6 +145,7 @@ export function LeadCard({
             >
               <span className="text-[11px] font-extrabold leading-none">{person.matchScore}</span>
             </div>
+            <LinkedInCardButton href={linkedIn.href} name={person.name} hasProfile={linkedIn.hasProfile} size="sm" />
             <button
               type="button"
               data-card-action
@@ -119,12 +164,20 @@ export function LeadCard({
               <span className="mt-0.5 shrink-0 rounded bg-brand-black px-1 py-0.5 text-[8px] font-bold text-white">KEY</span>
             ) : null}
           </div>
-          <p className="mt-0.5 line-clamp-1 text-[10px] font-medium text-brand-ink-soft">{person.title}</p>
+          <p className="mt-0.5 line-clamp-1 text-[10px] font-medium text-brand-ink-soft">{title}</p>
           {company ? <p className="mt-0.5 line-clamp-1 text-[10px] text-brand-ink-faint">{company.name}</p> : null}
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <span className="rounded-full bg-brand-canvas px-1.5 py-0.5 text-[9px] font-medium text-brand-ink-soft">{person.department}</span>
-            <span className="rounded-full bg-brand-canvas px-1.5 py-0.5 text-[9px] font-medium text-brand-ink-soft">{person.seniority}</span>
-          </div>
+          {chips.length > 0 ? (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {chips.map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-full bg-brand-canvas px-1.5 py-0.5 text-[9px] font-medium text-brand-ink-soft"
+                >
+                  {chip}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
         {alreadyAdded ? (
           <div className="mt-2.5 rounded-xl border border-brand-border/60 bg-brand-canvas py-2 text-center text-[10px] font-semibold text-brand-ink-faint">
@@ -216,7 +269,7 @@ export function LeadCard({
         </div>
 
         <div className="mb-0.5 text-[12px] font-medium leading-snug text-brand-ink-soft line-clamp-1">
-          {person.title}
+          {title}
         </div>
 
         {company && (
@@ -224,12 +277,14 @@ export function LeadCard({
         )}
 
         <div className="flex flex-wrap gap-1.5">
-          <span className="rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
-            {person.department}
-          </span>
-          <span className="rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
-            {person.seniority}
-          </span>
+          {chips.map((chip) => (
+            <span
+              key={chip}
+              className="rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft"
+            >
+              {chip}
+            </span>
+          ))}
           {alreadyAdded && (
             <span className="rounded-full bg-brand-border px-2.5 py-0.5 text-[10px] font-semibold text-brand-ink-faint">
               Already added
@@ -241,14 +296,15 @@ export function LeadCard({
       <div className="mx-4 h-px bg-brand-border/60" />
 
       {directoryLeadId ? (
-        <div className="px-4 py-3" data-card-action>
+        <div className="flex items-center gap-2 px-4 py-3" data-card-action>
           <Link
             href={`/?lead=${directoryLeadId}`}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-canvas py-2 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-brand-border active:scale-[0.98]"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-brand-canvas py-2 text-[12px] font-semibold text-blue-600 transition-colors hover:bg-brand-border active:scale-[0.98]"
           >
             Open lead
             <ExternalLink className="size-3.5" />
           </Link>
+          <LinkedInCardButton href={linkedIn.href} name={person.name} hasProfile={linkedIn.hasProfile} size="md" />
         </div>
       ) : (
         <div className="flex flex-col gap-2 px-4 py-3">
@@ -289,6 +345,7 @@ export function LeadCard({
               <MessageCircle className="size-3.5 text-brand-ink-soft" />
               Get in touch
             </button>
+            <LinkedInCardButton href={linkedIn.href} name={person.name} hasProfile={linkedIn.hasProfile} size="md" />
             <button
               type="button"
               data-card-action

@@ -33,6 +33,9 @@ const KNOWN_DOMAINS: Record<string, string> = {
   "schunk": "schunk.com",
   "terex india": "terex.com",
   "terex": "terex.com",
+  // Listed as Automotive Axles; public site is autoaxle.com (automotiveaxles.com does not exist)
+  "automotive axles": "autoaxle.com",
+  "automotive axle": "autoaxle.com",
   "tata electronics": "tataelectronics.com",
   "tata semiconductor": "tataelectronics.com",
   "tvsscs": "tvsscs.com",
@@ -102,6 +105,7 @@ export function companyLogoLookupSrc(input: {
   const website = input.website?.trim();
   if (domain) params.set("domain", domain);
   if (website) params.set("website", website);
+  params.set("format", "json");
   return `/api/company-logo?${params.toString()}`;
 }
 

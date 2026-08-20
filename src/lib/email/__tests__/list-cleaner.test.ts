@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import * as dns from "dns";
+import * as dns from "node:dns";
 import {
   cleanEmailAddress,
   _resetListCleanerCachesForTests,
@@ -34,5 +34,12 @@ describe("cleanEmailAddress", () => {
     const r = await cleanEmailAddress("person@acme-corp.test");
     expect(r.ok).toBe(true);
     expect(r.reason).toBe("probe_disabled");
+  });
+
+  it("does not block send when MX lookup throws an unexpected error", async () => {
+    vi.spyOn(dns.promises, "resolveMx").mockRejectedValue(new Error("dns module unavailable"));
+    const r = await cleanEmailAddress("person@acme-corp.test");
+    expect(r.ok).toBe(true);
+    expect(r.reason).toBe("probe_error");
   });
 });

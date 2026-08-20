@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Loader2, Mail, Save, Send, Sparkles, XCircle } from "lucide-react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContactEmailEntry, EmailThread, WriterDraft } from "@/lib/api-client";
 import {
@@ -13,6 +12,11 @@ import {
   EmailSendRejectedError,
 } from "@/lib/api-client";
 import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
+import {
+  defaultSelectedContactEmails,
+  EMPTY_SEND_TO_HINT,
+  retainSelectedRecipientEmails,
+} from "@/lib/outreach/send-recipients";
 import { text } from "@/design-system/tokens";
 import { toast } from "sonner";
 import { EmailEditChat } from "./email-edit-chat";
@@ -20,10 +24,28 @@ import {
   asVariantKey,
   draftBodyOptions,
   draftSubjectOptions,
+  followUpThreadSubject,
+  isSequenceFollowUpDraft,
   resolveDraftBody,
   resolveDraftSubject,
   type VariantKey,
 } from "@/lib/email/draft-variants";
+
+export type ComposeActionState = {
+  dirty: boolean;
+  saving: boolean;
+  sending: boolean;
+  canSave: boolean;
+  canSend: boolean;
+  showSave: boolean;
+  sendLabel: string;
+  viewInEmailOnly: boolean;
+};
+
+export type OutreachApprovalHandle = {
+  save: () => void;
+  send: () => void;
+};
 
 type Props = {
   draft: WriterDraft;
@@ -35,10 +57,15 @@ type Props = {
   contactEmails?: ContactEmailEntry[];
   onDraftUpdated: (draft: WriterDraft) => void;
   onSavingChange?: (saving: boolean) => void;
+  onComposeActionsChange?: (state: ComposeActionState | null) => void;
   onSent?: () => void;
   onSendFailed?: () => void;
   /** Position-1 draft used when starting the sequence from Draft 2/3. */
   startSequenceDraft?: WriterDraft;
+  selectedEmails?: string[];
+  onSelectedEmailsChange?: (emails: string[]) => void;
+  chosenSubjectKey?: VariantKey;
+  onChosenSubjectKeyChange?: (key: VariantKey) => void;
   onGenerateReply?: () => void;
   generatingReply?: boolean;
   contentScore?: number;
@@ -46,47 +73,38 @@ type Props = {
   scheduleIdForFollowUp?: string;
 };
 
-function useAutoGrowTextarea(value: string) {
-  const ref = useRef<HTMLTextAreaElement>(null);
-  const resize = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight}px`;
-  }, []);
-  useEffect(() => {
-    resize();
-  }, [value, resize]);
-  return { ref, resize };
-}
+export { defaultSelectedContactEmails };
 
-function AutoGrowBodyTextarea({
+function CompareBodyField({
   value,
   onChange,
   disabled,
+  editable,
   placeholder,
 }: {
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  editable: boolean;
   placeholder?: string;
 }) {
-  const { ref, resize } = useAutoGrowTextarea(value);
+  if (!editable || disabled) {
+    return (
+      <p className={cn(text.body, "whitespace-pre-wrap text-[13px] leading-[1.65] text-brand-ink-soft")}>
+        {value || placeholder}
+      </p>
+    );
+  }
   return (
     <textarea
-      ref={ref}
       value={value}
-      onChange={(e) => {
-        onChange(e.target.value);
-        requestAnimationFrame(resize);
-      }}
+      onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      rows={1}
       disabled={disabled}
       className={cn(
-        "block w-full resize-none overflow-hidden border-0 bg-transparent px-0 py-0",
+        "block h-full min-h-[14rem] w-full resize-none overflow-y-auto border-0 bg-transparent px-0 py-0",
         text.body,
-        "min-h-[9rem] whitespace-pre-wrap leading-[1.7] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60",
+        "whitespace-pre-wrap text-[13px] leading-[1.65] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60",
       )}
     />
   );
@@ -101,43 +119,116 @@ function EnvelopeRow({ label, children }: { label: string; children: React.React
   );
 }
 
-export function OutreachApprovalCard({
+function draftPatchPayload(
+  draft: WriterDraft,
+  subjectKey: VariantKey,
+  bodyKey: VariantKey,
+  payload?: Partial<
+    Pick<
+      WriterDraft,
+      | "emailBody"
+      | "emailBodyB"
+      | "emailBodyC"
+      | "subjectA"
+      | "subjectB"
+      | "subjectC"
+      | "chosenSubjectKey"
+      | "chosenBodyKey"
+    >
+  >,
+) {
+  return {
+    leadOutreachId: draft.id,
+    subjectA: payload?.subjectA ?? draft.subjectA,
+    subjectB: payload?.subjectB ?? draft.subjectB,
+    subjectC: payload?.subjectC ?? draft.subjectC,
+    emailBody: payload?.emailBody ?? draft.emailBody,
+    emailBodyB: payload?.emailBodyB ?? draft.emailBodyB,
+    emailBodyC: payload?.emailBodyC ?? draft.emailBodyC,
+    chosenSubjectKey: payload?.chosenSubjectKey ?? subjectKey,
+    chosenBodyKey: payload?.chosenBodyKey ?? bodyKey,
+  };
+}
+
+export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(function OutreachApprovalCard({
   draft,
   leadId,
   leadStatus,
-  contactName,
-  companyName,
+  contactName: _contactName,
+  companyName: _companyName,
   contactEmail,
   contactEmails,
   onDraftUpdated,
   onSavingChange,
+  onComposeActionsChange,
   onSent,
   onSendFailed,
   startSequenceDraft,
+  selectedEmails: selectedEmailsProp,
+  onSelectedEmailsChange,
+  chosenSubjectKey: chosenSubjectKeyProp,
+  onChosenSubjectKeyChange,
   onGenerateReply,
   generatingReply,
   contentScore,
   emailThread,
   scheduleIdForFollowUp,
-}: Props) {
-  const [subjectKey, setSubjectKey] = useState<VariantKey>(() => asVariantKey(draft.chosenSubjectKey));
+}, ref) {
+  const [subjectKeyLocal, setSubjectKeyLocal] = useState<VariantKey>(() => asVariantKey(draft.chosenSubjectKey));
+  const subjectKey = chosenSubjectKeyProp ?? subjectKeyLocal;
+  function setSubjectKey(key: VariantKey) {
+    if (onChosenSubjectKeyChange) onChosenSubjectKeyChange(key);
+    else setSubjectKeyLocal(key);
+  }
   const [bodyKey, setBodyKey] = useState<VariantKey>(() => asVariantKey(draft.chosenBodyKey));
   const [displayDraft, setDisplayDraft] = useState(draft);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [sending, setSending] = useState(false);
-  const [rejecting, setRejecting] = useState(false);
   const [outreachPaused, setOutreachPaused] = useState(false);
-  const [fromLabel, setFromLabel] = useState<string | null>(null);
+  const [bodyPage, setBodyPage] = useState(1);
+  const dirtyRef = useRef(false);
+  const displayDraftRef = useRef(displayDraft);
+  const subjectKeyRef = useRef(subjectKey);
+  const bodyKeyRef = useRef(bodyKey);
+  const onDraftUpdatedRef = useRef(onDraftUpdated);
+  const lockedRef = useRef(false);
+
+  const sentEmailKeys = (() => {
+    const keys = new Set<string>();
+    for (const ev of emailThread?.events ?? []) {
+      if (ev.recipientEmail && (ev.status === "sent" || ev.status === "opened" || ev.status === "bounced")) {
+        keys.add(ev.recipientEmail.trim().toLowerCase());
+      }
+    }
+    for (const node of emailThread?.barNodes ?? []) {
+      if (node.recipientEmail && (node.kind === "sent" || node.bouncedAt)) {
+        keys.add(node.recipientEmail.trim().toLowerCase());
+      }
+    }
+    for (const entry of contactEmails ?? []) {
+      if (entry.testStatus === "sent") keys.add(entry.email.trim().toLowerCase());
+    }
+    return keys;
+  })();
+
+  const guessLabel = (pattern?: string) =>
+    pattern === "first.last"
+      ? "first.last@company"
+      : pattern === "first"
+        ? "firstname@company"
+        : pattern === "last"
+          ? "lastname@company"
+          : pattern;
 
   const selectableEmails = (() => {
     const seen = new Set<string>();
-    const out: { email: string; label?: string; isPrimary: boolean }[] = [];
+    const out: { email: string; label?: string; isPrimary: boolean; sent: boolean }[] = [];
     const add = (email: string, label?: string, isPrimary = false) => {
       const key = email.trim().toLowerCase();
       if (!key || !key.includes("@") || key === "—" || seen.has(key)) return;
       seen.add(key);
-      out.push({ email: email.trim(), label, isPrimary });
+      out.push({ email: email.trim(), label, isPrimary, sent: sentEmailKeys.has(key) });
     };
     if (contactEmail?.trim()) add(contactEmail.trim(), "Fetched", true);
     for (const entry of contactEmails ?? []) {
@@ -145,46 +236,51 @@ export function OutreachApprovalCard({
         Boolean(contactEmail?.trim()) &&
         entry.email.trim().toLowerCase() === contactEmail!.trim().toLowerCase();
       const label =
-        entry.pattern === "first.last"
-          ? "first.last@company"
-          : entry.enrichmentProvider === "permutation"
-            ? entry.pattern ?? "Guessed"
-            : isPrimary
-              ? "Fetched"
-              : undefined;
+        guessLabel(entry.pattern) ??
+        (entry.enrichmentProvider === "permutation"
+          ? "Guessed"
+          : isPrimary
+            ? "Fetched"
+            : undefined);
       add(entry.email, label, isPrimary);
     }
     return out;
   })();
 
-  const canChooseMultiple = selectableEmails.length > 1;
-  const [selectedEmails, setSelectedEmails] = useState<string[]>(() =>
-    selectableEmails.length
-      ? selectableEmails.filter((e) => e.isPrimary).map((e) => e.email).length
-        ? selectableEmails.filter((e) => e.isPrimary).map((e) => e.email)
-        : [selectableEmails[0].email]
-      : contactEmail?.trim()
-        ? [contactEmail.trim()]
-        : [],
+  const [selectedEmailsLocal, setSelectedEmailsLocal] = useState<string[]>(() =>
+    defaultSelectedContactEmails(contactEmail, contactEmails),
   );
+  const selectedEmails = selectedEmailsProp ?? selectedEmailsLocal;
+  function setSelectedEmails(next: string[] | ((prev: string[]) => string[])) {
+    const resolved = typeof next === "function" ? next(selectedEmails) : next;
+    if (onSelectedEmailsChange) onSelectedEmailsChange(resolved);
+    else setSelectedEmailsLocal(resolved);
+  }
+
+  const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
+  const isFollowUpReview = Boolean(scheduleIdForFollowUp);
+  const isSequenceFollowUp = isSequenceFollowUpDraft(draft.sequencePosition);
+  const isDraftLocked =
+    ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus) ||
+    Boolean(isReplyDraft && draft.replySent);
+  const canSendToAdditional =
+    isDraftLocked &&
+    !isReplyDraft &&
+    !isFollowUpReview &&
+    (leadStatus === "outreached" || sentEmailKeys.size > 0);
 
   useEffect(() => {
-    const defaults = selectableEmails.length
-      ? selectableEmails.some((e) => e.isPrimary)
-        ? selectableEmails.filter((e) => e.isPrimary).map((e) => e.email)
-        : [selectableEmails[0].email]
-      : contactEmail?.trim()
-        ? [contactEmail.trim()]
-        : [];
-    setSelectedEmails((prev) => {
-      const stillValid = prev.filter((e) =>
-        selectableEmails.some((s) => s.email.toLowerCase() === e.toLowerCase()),
-      );
-      return stillValid.length ? stillValid : defaults;
-    });
-    // selectableEmails is derived from props; re-sync when contact emails change
+    const defaults = defaultSelectedContactEmails(contactEmail, contactEmails);
+    setSelectedEmails((prev) =>
+      retainSelectedRecipientEmails(
+        prev,
+        selectableEmails.map((s) => s.email),
+        sentEmailKeys,
+        defaults,
+      ),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contactEmail, contactEmails]);
+  }, [contactEmail, contactEmails, leadStatus]);
 
   const subjectOptions = draftSubjectOptions(displayDraft);
   const bodyOptions = draftBodyOptions(displayDraft);
@@ -196,19 +292,22 @@ export function OutreachApprovalCard({
     : (bodyOptions[0]?.key ?? "A");
   const bodyText = resolveDraftBody(displayDraft, safeBodyKey);
 
-  const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
-  const isFollowUpReview = Boolean(scheduleIdForFollowUp);
-
-  const isDraftLocked =
-    ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus) ||
-    (isReplyDraft && draft.replySent);
+  dirtyRef.current = dirty;
+  displayDraftRef.current = displayDraft;
+  subjectKeyRef.current = subjectKey;
+  bodyKeyRef.current = bodyKey;
+  onDraftUpdatedRef.current = onDraftUpdated;
+  lockedRef.current = isDraftLocked;
 
   useEffect(() => {
     setDisplayDraft(draft);
-    setSubjectKey(asVariantKey(draft.chosenSubjectKey));
+    if (!onChosenSubjectKeyChange) setSubjectKeyLocal(asVariantKey(draft.chosenSubjectKey));
     setBodyKey(asVariantKey(draft.chosenBodyKey));
     setDirty(false);
-  }, [draft]);
+    // Only reset the editor when switching to a different draft. Same-id parent
+    // refreshes must not wipe in-progress edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft.id]);
 
   useEffect(() => {
     onSavingChange?.(saving);
@@ -221,17 +320,6 @@ export function OutreachApprovalCard({
       .then((cfg) => {
         if (cancelled || !cfg) return;
         setOutreachPaused(Boolean(cfg.outreachPaused));
-      })
-      .catch(() => {});
-    void fetch("/api/settings/email")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        if (cancelled || !cfg) return;
-        const name = cfg.fromName?.trim();
-        const addr = cfg.fromAddress?.trim();
-        if (name && addr) setFromLabel(`${name} <${addr}>`);
-        else if (addr) setFromLabel(addr);
-        else if (name) setFromLabel(name);
       })
       .catch(() => {});
     return () => {
@@ -258,15 +346,8 @@ export function OutreachApprovalCard({
       setSaving(true);
       try {
         const updated = await updateOutreachDraft({
+          ...draftPatchPayload(displayDraft, subjectKey, bodyKey, payload),
           leadOutreachId: draft.id,
-          subjectA: payload?.subjectA ?? displayDraft.subjectA,
-          subjectB: payload?.subjectB ?? displayDraft.subjectB,
-          subjectC: payload?.subjectC ?? displayDraft.subjectC,
-          emailBody: payload?.emailBody ?? displayDraft.emailBody,
-          emailBodyB: payload?.emailBodyB ?? displayDraft.emailBodyB,
-          emailBodyC: payload?.emailBodyC ?? displayDraft.emailBodyC,
-          chosenSubjectKey: payload?.chosenSubjectKey ?? subjectKey,
-          chosenBodyKey: payload?.chosenBodyKey ?? bodyKey,
         });
         const next = {
           ...displayDraft,
@@ -293,10 +374,35 @@ export function OutreachApprovalCard({
     [draft.id, displayDraft, onDraftUpdated, subjectKey, bodyKey],
   );
 
-  async function handleSave() {
-    const ok = await persistDraft();
-    if (ok) toast.success("Draft saved");
-  }
+  useEffect(() => {
+    if (!dirty || isDraftLocked || saving) return;
+    const timer = window.setTimeout(() => {
+      void persistDraft();
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [dirty, displayDraft, persistDraft, isDraftLocked, saving]);
+
+  useEffect(() => {
+    return () => {
+      if (!dirtyRef.current || lockedRef.current) return;
+      const current = displayDraftRef.current;
+      void updateOutreachDraft(draftPatchPayload(current, subjectKeyRef.current, bodyKeyRef.current))
+        .then((updated) => {
+          onDraftUpdatedRef.current({
+            ...current,
+            subjectA: updated.subjectA ?? current.subjectA,
+            subjectB: updated.subjectB ?? current.subjectB,
+            subjectC: updated.subjectC ?? current.subjectC,
+            emailBody: updated.emailBody ?? current.emailBody,
+            emailBodyB: updated.emailBodyB ?? current.emailBodyB,
+            emailBodyC: updated.emailBodyC ?? current.emailBodyC,
+            chosenSubjectKey: updated.chosenSubjectKey ?? subjectKeyRef.current,
+            chosenBodyKey: updated.chosenBodyKey ?? bodyKeyRef.current,
+          });
+        })
+        .catch(() => {});
+    };
+  }, []);
 
   function handleDraftUpdated(updated: WriterDraft) {
     setDisplayDraft(updated);
@@ -305,26 +411,12 @@ export function OutreachApprovalCard({
   }
 
   const activeSubject = resolveDraftSubject(displayDraft, safeSubjectKey);
-  const threadSubject = emailThread?.threadRootSubject;
-  const showReRow = Boolean(isReplyDraft && threadSubject);
-  const toLine = [contactName, companyName].filter(Boolean).join(" · ");
-  const selectedSummary =
-    selectedEmails.length > 1
-      ? `${selectedEmails.length} addresses`
-      : selectedEmails[0] ?? contactEmail?.trim();
-  const toDetail = selectedSummary
-    ? `${toLine || "Contact"} · ${selectedSummary}`
-    : toLine || "Add contact email";
-
-  function toggleRecipient(email: string) {
-    setSelectedEmails((prev) => {
-      if (prev.some((e) => e.toLowerCase() === email.toLowerCase())) {
-        const next = prev.filter((e) => e.toLowerCase() !== email.toLowerCase());
-        return next.length ? next : prev;
-      }
-      return [...prev, email];
-    });
-  }
+  const threadSubject = followUpThreadSubject({
+    threadRootSubject: emailThread?.threadRootSubject,
+    email1Draft: startSequenceDraft,
+    chosenSubjectKey: chosenSubjectKeyProp ?? startSequenceDraft?.chosenSubjectKey,
+  });
+  const showReRow = Boolean((isReplyDraft || isSequenceFollowUp) && threadSubject);
 
   function handleSubjectChange(key: VariantKey, value: string) {
     const field = key === "B" ? "subjectB" : key === "C" ? "subjectC" : "subjectA";
@@ -338,24 +430,9 @@ export function OutreachApprovalCard({
     setDirty(true);
   }
 
-
-  async function handleReject() {
-    setRejecting(true);
-    try {
-      await approveOutreach({
-        leadOutreachId: displayDraft.id,
-        leadId,
-        channel: "email",
-        status: "rejected",
-        rejectReason: "not_ready",
-      });
-      toast.success("Draft rejected");
-      onSendFailed?.();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not reject draft");
-    } finally {
-      setRejecting(false);
-    }
+  async function handleSave() {
+    const ok = await persistDraft();
+    if (ok) toast.success("Draft saved");
   }
 
   async function handleSendToOutreach() {
@@ -364,7 +441,7 @@ export function OutreachApprovalCard({
       return;
     }
     if (!selectedEmails.length) {
-      toast.error("Select at least one email address before sending");
+      toast.error(EMPTY_SEND_TO_HINT);
       return;
     }
 
@@ -378,8 +455,11 @@ export function OutreachApprovalCard({
         ? startSequenceDraft
         : displayDraft;
 
-    const sendSubjectKey = asVariantKey(sendDraft.chosenSubjectKey);
-    const sendBodyKey = asVariantKey(sendDraft.chosenBodyKey);
+    const sendSubjectKey = safeSubjectKey;
+    const sendBodyKey =
+      sendDraft.id === displayDraft.id
+        ? safeBodyKey
+        : asVariantKey(sendDraft.chosenBodyKey);
     const subjectToSend =
       isReplyDraft && threadSubject
         ? threadSubject
@@ -398,11 +478,19 @@ export function OutreachApprovalCard({
 
     setSending(true);
     try {
-      const saved = await persistDraft({
-        chosenSubjectKey: safeSubjectKey,
-        chosenBodyKey: safeBodyKey,
-      });
-      if (!saved) return;
+      if (!isDraftLocked) {
+        const saved = await persistDraft({
+          chosenSubjectKey: safeSubjectKey,
+          chosenBodyKey: safeBodyKey,
+        });
+        if (!saved) return;
+        if (sendDraft.id !== displayDraft.id) {
+          await updateOutreachDraft({
+            leadOutreachId: sendDraft.id,
+            chosenSubjectKey: safeSubjectKey,
+          });
+        }
+      }
 
       if (isFollowUpReview && scheduleIdForFollowUp) {
         const result = await sendWithGateConfirm((overrides) =>
@@ -422,10 +510,18 @@ export function OutreachApprovalCard({
         bodyUsed: bodyToSend,
       });
 
+      const recipientsToSend = selectedEmails.filter(
+        (email) => !sentEmailKeys.has(email.trim().toLowerCase()),
+      );
+      if (!recipientsToSend.length) {
+        toast.error("Select a new email address to send to");
+        return;
+      }
+
       const result = await sendWithGateConfirm((overrides) =>
         sendOutreach(approvalId, {
           ...overrides,
-          toEmails: selectedEmails,
+          toEmails: recipientsToSend,
         }),
       );
       const recipient =
@@ -460,154 +556,83 @@ export function OutreachApprovalCard({
     }
   }
 
+  function handleBodyStripScroll(e: { currentTarget: HTMLDivElement }) {
+    const el = e.currentTarget;
+    const count = Math.max(1, bodyOptions.length || 1);
+    const cardWidth = el.scrollWidth / count;
+    if (cardWidth <= 0) return;
+    const page = Math.min(count, Math.max(1, Math.round(el.scrollLeft / cardWidth) + 1));
+    setBodyPage(page);
+  }
+
+  const sendLabel = isFollowUpReview
+    ? "Send follow-up"
+    : isReplyDraft
+      ? "Send Reply"
+      : canSendToAdditional
+        ? "Send to new"
+        : "Send";
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      save: () => {
+        void handleSave();
+      },
+      send: () => {
+        void handleSendToOutreach();
+      },
+    }),
+    // Handlers close over latest state each render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dirty, saving, sending, selectedEmails, displayDraft, safeSubjectKey, safeBodyKey, outreachPaused],
+  );
+
+  useEffect(() => {
+    onComposeActionsChange?.({
+      dirty,
+      saving,
+      sending,
+      canSave: dirty && !saving && !sending && !canSendToAdditional,
+      canSend: !sending && !saving && !outreachPaused && selectedEmails.length > 0,
+      showSave: !canSendToAdditional && !(isDraftLocked && !canSendToAdditional),
+      sendLabel,
+      viewInEmailOnly: isDraftLocked && !canSendToAdditional,
+    });
+    return () => onComposeActionsChange?.(null);
+  }, [
+    dirty,
+    saving,
+    sending,
+    canSendToAdditional,
+    isDraftLocked,
+    outreachPaused,
+    selectedEmails.length,
+    sendLabel,
+    onComposeActionsChange,
+  ]);
+
   return (
     <div
       id="approval-card"
       className="ish-email-compose min-w-0 bg-white lg:rounded-[22px] lg:border lg:border-brand-stratus-blue/20 lg:shadow-[var(--shadow-brand-sm)]"
     >
-      <div className="flex min-w-0 flex-col p-0 lg:p-5">
+      <div className="flex min-w-0 flex-col p-0 lg:p-4">
 
         {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet && (
-          <div className="mx-4 mb-4 mt-3 rounded-[16px] border border-brand-stratus-blue/22 bg-brand-green-soft px-4 py-3 lg:mx-0 lg:mt-0">
-            <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-brand-stratus-blue">They said</div>
-            <p className="text-[13px] leading-relaxed text-brand-ink-soft">{emailThread.inboundSnippet}</p>
+          <div className="mx-3 mb-2 mt-2 rounded-[12px] border border-brand-stratus-blue/22 bg-brand-green-soft px-3 py-2 lg:mx-0 lg:mt-0">
+            <div className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-stratus-blue">They said</div>
+            <p className="line-clamp-2 text-[12px] leading-snug text-brand-ink-soft">{emailThread.inboundSnippet}</p>
           </div>
         )}
 
-        <div className="min-w-0 border-b border-brand-stratus-blue/10 lg:rounded-[18px] lg:border lg:border-brand-stratus-blue/15 lg:bg-brand-canvas/40 lg:px-4">
-          <div className="flex min-w-0 flex-col border-b border-brand-stratus-blue/10 lg:flex-row lg:items-center">
-            <div className="flex min-w-0 items-center gap-3 px-4 py-3 lg:min-w-0 lg:flex-1 lg:px-0">
-              <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-[52px]")}>To</span>
-              <p className="min-w-0 flex-1 break-words text-[13px] font-medium leading-relaxed text-brand-ink lg:truncate">{toDetail}</p>
-            </div>
-            {fromLabel ? (
-              <div className="flex min-w-0 items-center gap-3 border-t border-brand-stratus-blue/10 px-4 py-3 lg:min-w-0 lg:flex-1 lg:border-t-0 lg:border-l lg:border-brand-stratus-blue/10 lg:px-0 lg:pl-4">
-                <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-[52px]")}>From</span>
-                <p className="min-w-0 flex-1 break-words text-[13px] leading-relaxed text-brand-ink-soft lg:truncate">{fromLabel}</p>
-              </div>
-            ) : null}
-          </div>
-          {canChooseMultiple && !isDraftLocked ? (
-            <div className="border-t border-brand-stratus-blue/10 px-4 py-3 lg:px-0">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-ink-faint">
-                Send to
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {selectableEmails.map((entry) => {
-                  const checked = selectedEmails.some(
-                    (e) => e.toLowerCase() === entry.email.toLowerCase(),
-                  );
-                  return (
-                    <label
-                      key={entry.email}
-                      className="flex cursor-pointer items-center gap-2.5 rounded-[12px] px-2 py-1.5 hover:bg-white/70"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleRecipient(entry.email)}
-                        className="size-3.5 shrink-0 rounded border-brand-border text-brand-stratus-blue focus:ring-brand-stratus-blue/30"
-                      />
-                      <span className="min-w-0 flex-1 leading-tight">
-                        <span className="block break-all text-[12px] font-medium text-brand-ink">
-                          {entry.email}
-                        </span>
-                        {entry.label ? (
-                          <span className="text-[10px] leading-none text-brand-ink-faint">{entry.label}</span>
-                        ) : null}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-          {showReRow ? (
-            <EnvelopeRow label="Re">
-              <p className="truncate text-[12px] font-semibold text-brand-stratus-blue">{threadSubject}</p>
-            </EnvelopeRow>
-          ) : (
-            <div className="border-t border-brand-stratus-blue/10 px-4 py-4 lg:px-0">
-              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-ink-faint">
-                Subject (pick 1)
-              </p>
-              <div className="flex flex-col gap-2" role="radiogroup" aria-label="Subject options">
-                {(subjectOptions.length ? subjectOptions : [{ key: "A" as const, value: activeSubject }]).map(
-                  (option) => {
-                    const checked = option.key === safeSubjectKey;
-                    return (
-                      <div
-                        key={option.key}
-                        role="radio"
-                        aria-checked={checked}
-                        tabIndex={isDraftLocked ? -1 : 0}
-                        onClick={() => {
-                          if (isDraftLocked) return;
-                          setSubjectKey(option.key);
-                          setDirty(true);
-                        }}
-                        onKeyDown={(e) => {
-                          if (isDraftLocked) return;
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            setSubjectKey(option.key);
-                            setDirty(true);
-                          }
-                        }}
-                        className={cn(
-                          "ish-email-choice flex min-w-0 cursor-pointer items-center gap-3 rounded-[14px] border px-3.5 py-2.5 transition-colors",
-                          checked
-                            ? "border-brand-stratus-blue/40 bg-white shadow-[var(--shadow-brand-sm)]"
-                            : "border-transparent bg-white/50 hover:border-brand-stratus-blue/20 hover:bg-white",
-                          isDraftLocked && "cursor-default opacity-60",
-                        )}
-                      >
-                        <span
-                          aria-hidden
-                          className={cn(
-                            "flex size-4 shrink-0 items-center justify-center rounded-full border-2",
-                            checked
-                              ? "border-brand-stratus-blue bg-brand-stratus-blue"
-                              : "border-brand-border bg-white",
-                          )}
-                        >
-                          {checked ? <span className="size-1.5 rounded-full bg-white" /> : null}
-                        </span>
-                        <input
-                          type="text"
-                          value={option.value}
-                          onChange={(e) => handleSubjectChange(option.key, e.target.value)}
-                          onFocus={() => {
-                            if (isDraftLocked) return;
-                            setSubjectKey(option.key);
-                            setDirty(true);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          placeholder={`Subject ${option.key}`}
-                          disabled={isDraftLocked}
-                          className={cn(
-                            "min-w-0 flex-1 border-0 bg-transparent px-0 py-0 leading-normal",
-                            text.body,
-                            "text-[13px] placeholder:text-brand-ink-faint",
-                            "focus:outline-none focus:ring-0 disabled:opacity-60",
-                          )}
-                        />
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-
         {isReplyDraft && !isDraftLocked && onGenerateReply ? (
-          <div className="flex justify-end px-4 py-3 lg:mt-3 lg:px-0 lg:py-0">
+          <div className="flex justify-end px-3 py-1.5 lg:px-0">
             <button
               type="button"
               disabled={generatingReply || saving || sending}
               onClick={() => onGenerateReply()}
-              className="inline-flex items-center gap-2 rounded-full border border-brand-stratus-blue/25 bg-white px-4 py-2 text-[13px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-opacity hover:bg-brand-canvas disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full border border-brand-stratus-blue/25 bg-white px-3 py-1.5 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-opacity hover:bg-brand-canvas disabled:opacity-50"
             >
               {generatingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
               {generatingReply ? "Writing smart emails…" : "Regenerate reply"}
@@ -615,17 +640,99 @@ export function OutreachApprovalCard({
           </div>
         ) : null}
 
-        <div className="ish-email-body relative mt-4 min-w-0 border-t border-brand-stratus-blue/10 pt-4 lg:rounded-[18px] lg:border lg:border-brand-stratus-blue/15 lg:bg-brand-canvas/25 lg:pt-4 lg:shadow-[var(--shadow-brand-sm)]">
-          <div className="flex items-center justify-between gap-3 px-4 lg:px-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-ink-faint">
-              Body (pick 1)
-            </p>
+        {showReRow ? (
+          <div className="px-3 pt-2 lg:px-0">
+            <EnvelopeRow label="Re">
+              <p className="truncate text-[12px] font-semibold text-brand-stratus-blue">{threadSubject}</p>
+            </EnvelopeRow>
+          </div>
+        ) : (
+          <div className="px-3 pt-2.5 lg:px-0">
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <p className="text-[11px] font-semibold text-brand-ink">Subject</p>
+              <p className="text-[10px] text-brand-ink-faint">Applies to all three sequence emails</p>
+            </div>
+            <div
+              className="grid grid-cols-1 gap-1.5 sm:grid-cols-3"
+              role="radiogroup"
+              aria-label="Subject options"
+            >
+              {(subjectOptions.length ? subjectOptions : [{ key: "A" as const, value: activeSubject }]).map(
+                (option) => {
+                  const checked = option.key === safeSubjectKey;
+                  return (
+                    <div
+                      key={option.key}
+                      role="radio"
+                      aria-checked={checked}
+                      tabIndex={isDraftLocked ? -1 : 0}
+                      onClick={() => {
+                        if (isDraftLocked) return;
+                        setSubjectKey(option.key);
+                        setDirty(true);
+                      }}
+                      onKeyDown={(e) => {
+                        if (isDraftLocked) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSubjectKey(option.key);
+                          setDirty(true);
+                        }
+                      }}
+                      className={cn(
+                        "ish-email-choice flex min-w-0 cursor-pointer flex-col gap-1 rounded-[12px] border px-2.5 py-2 transition-colors",
+                        checked
+                          ? "border-brand-stratus-blue/40 bg-white shadow-[var(--shadow-brand-sm)]"
+                          : "border-transparent bg-white/70 hover:border-brand-stratus-blue/20 hover:bg-white",
+                        isDraftLocked && "cursor-default opacity-60",
+                      )}
+                    >
+                      <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                        {option.key}
+                      </span>
+                      {checked && !isDraftLocked ? (
+                        <input
+                          type="text"
+                          value={option.value}
+                          onChange={(e) => handleSubjectChange(option.key, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder={`Subject ${option.key}`}
+                          className={cn(
+                            "w-full border-0 bg-transparent px-0 py-0 leading-snug",
+                            text.body,
+                            "text-[12px] font-medium placeholder:text-brand-ink-faint focus:outline-none focus:ring-0",
+                          )}
+                        />
+                      ) : (
+                        <p className="line-clamp-2 text-[12px] font-medium leading-snug text-brand-ink">
+                          {option.value}
+                        </p>
+                      )}
+                    </div>
+                  );
+                },
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="ish-email-body relative mt-2.5 min-w-0 px-0 pt-2 lg:rounded-[14px] lg:border lg:border-brand-stratus-blue/15 lg:bg-brand-canvas/25 lg:px-3 lg:pt-2.5 lg:shadow-[var(--shadow-brand-sm)]">
+          <div className="mb-1.5 flex items-center justify-between gap-3 px-3 lg:px-0">
+            <p className="text-[11px] font-semibold text-brand-ink">Body</p>
             <p className="text-[10px] text-brand-ink-faint">
+              {bodyOptions.length > 1 ? (
+                <span className="lg:hidden">{bodyPage} / {bodyOptions.length} · </span>
+              ) : null}
               {displayDraft.draftSource} · {displayDraft.revisionCount ?? 0} rev
               {displayDraft.rubricTotal != null ? ` · rubric ${displayDraft.rubricTotal}` : ""}
             </p>
           </div>
-          <div className="mt-3 flex flex-col gap-2.5 px-4 pb-2 lg:px-4" role="radiogroup" aria-label="Body options">
+          <div
+            className="flex gap-2 overflow-x-auto px-3 pb-2 snap-x snap-mandatory scrollbar-none lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0 lg:pb-2.5"
+            role="radiogroup"
+            aria-label="Body options"
+            onScroll={handleBodyStripScroll}
+          >
             {(bodyOptions.length ? bodyOptions : [{ key: "A" as const, value: bodyText }]).map((option) => {
               const checked = option.key === safeBodyKey;
               return (
@@ -648,26 +755,21 @@ export function OutreachApprovalCard({
                     }
                   }}
                   className={cn(
-                    "ish-email-choice flex min-w-0 items-start gap-3 rounded-[16px] border px-4 py-3.5 transition-colors",
+                    "ish-email-choice flex w-[85%] shrink-0 snap-center flex-col rounded-[12px] border p-2.5 transition-colors lg:w-auto lg:min-w-0",
+                    "min-h-[13rem] max-h-[21rem]",
                     checked
                       ? "border-brand-stratus-blue/40 bg-white shadow-[var(--shadow-brand-sm)]"
-                      : "border-transparent bg-white/60 hover:border-brand-stratus-blue/20 hover:bg-white",
+                      : "border-transparent bg-white/70 hover:border-brand-stratus-blue/20 hover:bg-white",
                     isDraftLocked ? "cursor-default opacity-60" : "cursor-pointer",
                   )}
                 >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "mt-1 flex size-[18px] shrink-0 items-center justify-center rounded-full border-2",
-                      checked
-                        ? "border-brand-stratus-blue bg-brand-stratus-blue"
-                        : "border-brand-stratus-blue/35 bg-white",
-                    )}
-                  >
-                    {checked ? <span className="size-1.5 rounded-full bg-white" /> : null}
-                  </span>
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <p className="text-[9px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                      {option.key}
+                    </p>
+                  </div>
                   <div
-                    className="min-w-0 flex-1"
+                    className="min-h-0 flex-1 overflow-y-auto"
                     onClick={(e) => {
                       if (checked) e.stopPropagation();
                     }}
@@ -675,29 +777,22 @@ export function OutreachApprovalCard({
                       if (checked) e.stopPropagation();
                     }}
                   >
-                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-brand-ink-faint">
-                      Option {option.key}
-                    </p>
-                    {checked ? (
-                      <AutoGrowBodyTextarea
-                        value={option.value}
-                        onChange={(value) => {
-                          handleBodyChange(option.key, value);
-                        }}
-                        disabled={isDraftLocked}
-                        placeholder="Write your message…"
-                      />
-                    ) : (
-                      <p className="line-clamp-2 whitespace-pre-wrap text-[13px] leading-relaxed text-brand-ink-soft">
-                        {option.value}
-                      </p>
-                    )}
+                    <CompareBodyField
+                      value={option.value}
+                      onChange={(value) => handleBodyChange(option.key, value)}
+                      disabled={isDraftLocked}
+                      editable={checked}
+                      placeholder="Write your message…"
+                    />
                   </div>
                 </div>
               );
             })}
           </div>
-          {!isDraftLocked && (
+        </div>
+
+        {!isDraftLocked && (
+          <div className="mt-2 px-0 lg:px-0">
             <EmailEditChat
               embedded
               contentScore={contentScore}
@@ -707,62 +802,9 @@ export function OutreachApprovalCard({
                 handleDraftUpdated({ ...updated, editMessages: messages })
               }
             />
-          )}
-        </div>
-
-        <div className="ish-email-actions sticky bottom-0 z-10 mt-4 flex min-w-0 flex-wrap items-center justify-end gap-3 rounded-[18px] border border-brand-stratus-blue/15 bg-brand-canvas/50 px-4 py-3.5 backdrop-blur-sm lg:static lg:shadow-none">
-          {isDraftLocked ? (
-            <Link
-              href="/email?tab=active"
-              className="inline-flex items-center gap-2 rounded-full bg-brand-stratus-blue px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90"
-            >
-              <Mail className="size-3.5" />
-              View in Email
-            </Link>
-          ) : (
-            <>
-              {dirty ? (
-                <span className="mr-auto text-[12px] font-medium text-amber-800">Unsaved changes</span>
-              ) : saving ? (
-                <span className="mr-auto text-[12px] text-brand-ink-faint">Saving…</span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void handleReject()}
-                disabled={rejecting || saving || sending}
-                className="inline-flex items-center gap-2 rounded-full border border-brand-stratus-salmon/40 bg-white px-5 py-2.5 text-[13px] font-semibold text-[#c45b59] shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-stratus-salmon/10 disabled:opacity-50"
-              >
-                {rejecting ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
-                Reject
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saving || sending || !dirty}
-                className="inline-flex items-center gap-2 rounded-full border border-brand-stratus-blue/30 bg-white px-5 py-2.5 text-[13px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:border-brand-stratus-blue/50 hover:bg-brand-canvas disabled:opacity-50"
-              >
-                {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                {saving ? "Saving…" : "Save draft"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleSendToOutreach()}
-                disabled={sending || saving || outreachPaused}
-                className="inline-flex items-center gap-2 rounded-full bg-brand-stratus-blue px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-50"
-              >
-                {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-                {sending
-                  ? "Sending…"
-                  : isFollowUpReview
-                    ? "Send follow-up"
-                    : isReplyDraft
-                      ? "Send Reply"
-                      : "Send & start sequence"}
-              </button>
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
-}
+});

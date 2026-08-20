@@ -27,7 +27,7 @@ describe("parseCompanyFilterKeepNames", () => {
 });
 
 describe("freeCompanyFilterProvider", () => {
-  it("returns openrouter, gemini, or null without using anthropic", () => {
+  it("returns gemini, openrouter, or null without using anthropic as primary", () => {
     const provider = freeCompanyFilterProvider();
     expect(provider === null || provider === "openrouter" || provider === "gemini").toBe(true);
     expect(provider).not.toBe("anthropic");

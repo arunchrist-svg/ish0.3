@@ -5,8 +5,8 @@ import { normalizeLinkedInUrl } from "@/lib/utils";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { logAudit } from "@/lib/audit";
-import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
-import { refreshPermutationEmails, toDbEmailStatus } from "@/lib/enrichment/contact-emails";
+import { isKeepableContactEmail } from "@/lib/enrichment/company-domain-quality";
+import { refreshPermutationEmails, toDbEmailStatus, isPermutationGuessEmail } from "@/lib/enrichment/contact-emails";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
 import { nameCompanyDedupeKey } from "@/lib/leads/duplicates";
 export class LeadNotFoundError extends Error {
@@ -37,6 +37,10 @@ export type CreateLeadInput = {
   dataSource?: string;
   rating?: string;
   owner?: string;
+  /** Keep the spreadsheet email even if the domain does not match the company name. */
+  trustProvidedEmail?: boolean;
+  /** Skip Hunter + MX (bulk import). Still flags missing/generic format. */
+  skipNetworkEmailVerify?: boolean;
 };
 
 export type UpdateLeadInput = {
@@ -127,6 +131,52 @@ async function findExistingLeadId(params: {
   return match?.id ?? null;
 }
 
+async function applyTrustedEmailToLead(leadId: string, input: CreateLeadInput): Promise<void> {
+  const resolvedEmail = sanitizeEmail(input.email);
+  if (!resolvedEmail) return;
+
+  const row = await db.query.leads.findFirst({
+    where: eq(leads.id, leadId),
+    with: { contact: true, account: true },
+  });
+  if (!row?.contact) return;
+  if (row.contact.email?.trim() && row.contact.email !== "—") {
+    const same = sanitizeEmail(row.contact.email) === resolvedEmail;
+    const guessed = isPermutationGuessEmail(row.contact);
+    if (same || !guessed) return;
+  }
+
+  const emailResult = await verifyEmail(resolvedEmail, {
+    network: false,
+  });
+  const refreshed = refreshPermutationEmails({
+    firstName: row.contact.firstName,
+    lastName: row.contact.lastName,
+    name: row.contact.name,
+    domain: row.account?.domain,
+    website: row.account?.website,
+    companyName: row.account?.name,
+    primaryEmail: resolvedEmail,
+    emailStatus: emailResult.status,
+    enrichmentProvider: "manual",
+    enrichmentSource: "manual",
+    alternateEmails: (row.contact.alternateEmails as import("@/lib/enrichment/contact-emails").ContactEmailEntry[] | null) ?? [],
+    preservePrimary: true,
+  });
+
+  await db
+    .update(contacts)
+    .set({
+      email: refreshed.email,
+      emailStatus: toDbEmailStatus(refreshed.emailStatus),
+      enrichmentProvider: refreshed.enrichmentProvider,
+      enrichmentSource: refreshed.enrichmentSource,
+      alternateEmails: refreshed.alternateEmails,
+      updatedAt: new Date(),
+    })
+    .where(eq(contacts.id, row.contact.id));
+}
+
 export async function createManualLead(input: CreateLeadInput): Promise<{ id: string; existing?: boolean }> {
   const name = input.name.trim();
   const company = input.company.trim();
@@ -150,16 +200,32 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     accountId,
     name,
   });
-  if (existingId) return { id: existingId, existing: true };
+  if (existingId) {
+    if (input.email?.trim()) {
+      await applyTrustedEmailToLead(existingId, input);
+    }
+    return { id: existingId, existing: true };
+  }
 
   const accountRow = await db.query.accounts.findFirst({
     where: eq(accounts.id, accountId),
   });
 
+  const trustProvidedEmail =
+    input.trustProvidedEmail ?? (leadSource === "manual" || dataSource === "manual" || leadSource === "csv_import");
   const resolvedEmailRaw = sanitizeEmail(input.email);
+  if (input.email?.trim() && !resolvedEmailRaw) {
+    throw new Error("Enter a valid email address");
+  }
   const resolvedEmail =
-    resolvedEmailRaw && emailBelongsToCompany(resolvedEmailRaw, company) ? resolvedEmailRaw : undefined;
-  const emailResult = await verifyEmail(resolvedEmail ?? "");
+    !resolvedEmailRaw
+      ? undefined
+      : trustProvidedEmail || isKeepableContactEmail(resolvedEmailRaw, company)
+        ? resolvedEmailRaw
+        : undefined;
+  const emailResult = await verifyEmail(resolvedEmail ?? "", {
+    network: false,
+  });
   const parts = name.split(/\s+/);
   const firstName = parts[0];
   const lastName = parts.slice(1).join(" ") || undefined;
@@ -179,7 +245,10 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
     companyName: company,
     primaryEmail: resolvedEmail,
     emailStatus: emailResult.status,
+    enrichmentProvider: resolvedEmail && trustProvidedEmail ? "manual" : undefined,
+    enrichmentSource: resolvedEmail && trustProvidedEmail ? "manual" : undefined,
     alternateEmails: [],
+    preservePrimary: Boolean(resolvedEmail && trustProvidedEmail),
   });
   const alternateEmails = refreshed.alternateEmails;
 
@@ -272,9 +341,14 @@ export async function updateLeadFields(input: UpdateLeadInput): Promise<void> {
   }
   if (input.email !== undefined) {
     const resolvedEmail = sanitizeEmail(input.email);
-    const emailResult = await verifyEmail(resolvedEmail ?? "");
+    if (input.email.trim() && !resolvedEmail) {
+      throw new Error("Enter a valid email address");
+    }
+    const emailResult = await verifyEmail(resolvedEmail ?? "", { network: false });
     contactUpdates.email = resolvedEmail ?? null;
     contactUpdates.emailStatus = emailResult.status;
+    contactUpdates.enrichmentProvider = resolvedEmail ? "manual" : null;
+    contactUpdates.enrichmentSource = resolvedEmail ? "manual" : null;
   }
 
   await db.update(contacts).set(contactUpdates).where(eq(contacts.id, contact.id));

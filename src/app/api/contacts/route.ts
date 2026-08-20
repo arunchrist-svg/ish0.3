@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { db } from "@/db";
 import { contacts, accounts, leads } from "@/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
+
+const CONTACTS_PAGE_LIMIT = 500;
 
 export async function GET() {
   try {
@@ -27,9 +29,13 @@ export async function GET() {
       })
       .from(contacts)
       .innerJoin(accounts, eq(contacts.accountId, accounts.id))
-      .leftJoin(leads, eq(leads.contactId, contacts.id))
+      .leftJoin(
+        leads,
+        and(eq(leads.contactId, contacts.id), eq(leads.workspaceId, ctx.workspaceId)),
+      )
       .where(eq(contacts.tenantId, ctx.tenantId))
-      .orderBy(desc(contacts.createdAt), desc(leads.createdAt));
+      .orderBy(desc(contacts.createdAt), desc(leads.createdAt))
+      .limit(CONTACTS_PAGE_LIMIT);
 
     const seen = new Set<string>();
     const result = [];
@@ -45,7 +51,9 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, {
+      headers: { "Cache-Control": "private, max-age=30" },
+    });
   } catch (err) {
     console.error("GET /api/contacts error:", err);
     return NextResponse.json({ error: "Failed to fetch contacts" }, { status: 500 });

@@ -26,6 +26,9 @@ export async function sendWithGateConfirm<T>(
   try {
     return await send({});
   } catch (error) {
+    if (error instanceof QualityGateApiError && error.canOverride) {
+      return await send({ overrideQualityGate: true });
+    }
     const overrides = sendGateOverridesFromError(error);
     if (!overrides) throw error;
     if (!confirmCriticalSendOverride(error)) throw error;

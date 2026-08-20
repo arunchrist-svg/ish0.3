@@ -1,6 +1,6 @@
 import { db, outreachSchedule, leads } from "@/db";
 import { and, eq, gte, sql } from "drizzle-orm";
-import { extractDomain } from "@/lib/email/sender-dns";
+import { extractDomain } from "@/lib/email/sender-domain";
 
 /**
  * Count live workspace sends in the last 24h.

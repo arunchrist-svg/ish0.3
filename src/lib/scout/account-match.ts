@@ -33,6 +33,22 @@ export function uniqueScoutCompanies<T extends AccountMatchShape>(companies: T[]
   return out;
 }
 
+export function scoutCompanyMatchesSaved(
+  company: AccountMatchShape,
+  saved: AccountMatchShape[],
+): boolean {
+  if (!saved.length || !company.name?.trim()) return false;
+  return pickMatchingAccount(saved, company) != null;
+}
+
+export function filterNewScoutCompanies<T extends AccountMatchShape>(
+  companies: T[],
+  saved: AccountMatchShape[],
+): T[] {
+  if (!saved.length) return companies;
+  return companies.filter((company) => !scoutCompanyMatchesSaved(company, saved));
+}
+
 export function pickMatchingAccount<T extends AccountMatchShape>(
   candidates: T[],
   incoming: AccountMatchShape,

@@ -5,9 +5,8 @@ import Link from "next/link";
 import {
   Building2, Copy, ExternalLink, Loader2, Plus, RefreshCw, Shield, Users,
 } from "lucide-react";
-import { Button } from "@/design-system";
+import { AppPageHeader, Button } from "@/design-system";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
-import { SettingsHero } from "@/components/settings/settings-hero";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -113,24 +112,23 @@ export function PlatformAdminApp() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-brand-canvas">
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-8 md:px-10">
+      <AppPageHeader
+        icon={Shield}
+        title="Platform Admin"
+        subtitle="Provision customer organizations and send owner invite links"
+        actions={
+          <Button
+            type="button"
+            onClick={() => setShowCreate((v) => !v)}
+            className="rounded-full bg-brand-black px-4 py-2 text-[13px] font-semibold text-white"
+          >
+            <Plus className="mr-1.5 inline size-4" />
+            New company
+          </Button>
+        }
+      />
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6 md:px-10">
         <div className="mx-auto max-w-3xl">
-          <SettingsHero
-            icon={Shield}
-            title="Platform Admin"
-            subtitle="Provision customer organizations and send owner invite links"
-            action={
-              <Button
-                type="button"
-                onClick={() => setShowCreate((v) => !v)}
-                className="rounded-full bg-brand-black px-4 py-2 text-[13px] font-semibold text-white"
-              >
-                <Plus className="mr-1.5 inline size-4" />
-                New company
-              </Button>
-            }
-          />
-
           {lastInviteUrl ? (
             <SettingsGroup title="Owner invite link" footer="Copy and send this link to the account holder. They will set their password and complete onboarding.">
               <div className="flex items-center gap-2 px-4 py-3.5">

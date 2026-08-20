@@ -15,31 +15,32 @@ describe("ISH baseline theses", () => {
 
   it("gives E1 Sequence 1 from the ISH file", () => {
     expect(e1).toMatch(/Most corporate festival gifts are forgotten by the next day/i);
-    expect(e1).toMatch(/handcraft traditional sweets straight from our own farm to the box/i);
-    expect(e1).toMatch(/sample box to your office as our treat/i);
+    expect(e1).toMatch(/crafted fresh every morning with organic milk, ghee, and khova from our own farm/i);
+    expect(e1).toMatch(/sample box to Acme Auto as our treat/i);
     expect(e1).toMatch(/What is the best delivery address to ship it to\?/i);
-    expect(e1).toMatch(/100% pure ghee/i);
+    expect(e1).toMatch(/never add preservatives or chemicals/i);
     expect(e1).toMatch(/Best,/);
     expect(e1).not.toMatch(/No worries/i);
     expect(e1).not.toMatch(/India Sweet House offers/i);
   });
 
   it("gives E2 Sequence 1 follow-up wording", () => {
-    expect(e2).toMatch(/farm-to-counter pipeline/i);
+    expect(e2).toMatch(/for Diwali at Acme Auto/i);
     expect(e2).toMatch(/India Sweet House/);
-    expect(e2).toMatch(/organic milk from our own dairy/i);
-    expect(e2).toMatch(/zero preservatives/i);
-    expect(e2).toMatch(/USA and Australia/i);
+    expect(e2).toMatch(/organic milk/i);
+    expect(e2).toMatch(/never add preservatives or chemicals/i);
+    expect(e2).not.toMatch(/USA|Australia/i);
     expect(e2).toMatch(/tasting box/i);
     expect(e2).not.toMatch(/\bfree sampler\b/i);
     expect(e2).not.toMatch(/opened and forgotten/i);
   });
 
-  it("gives E3 last note with ISH authenticity, won't email further, and Diwali close", () => {
+  it("gives E3 last note with ISH authenticity, won't email further, and festival-season close", () => {
     expect(e3).toMatch(/leave it here|filling your inbox/i);
     expect(e3).toMatch(/won't email further/i);
-    expect(e3).toMatch(/own organic dairy|farm-to-counter/i);
-    expect(e3).toMatch(/Diwali/i);
+    expect(e3).toMatch(/organic milk from our own farm|own farm/i);
+    expect(e3).toMatch(/Wishing you a happy festival season/);
+    expect(e3).not.toMatch(/Diwali/i);
     expect(e3).not.toMatch(/custom lids/i);
   });
 

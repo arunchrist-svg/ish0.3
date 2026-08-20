@@ -3,6 +3,8 @@ import {
   asVariantKey,
   draftBodyOptions,
   draftSubjectOptions,
+  followUpThreadSubject,
+  isSequenceFollowUpDraft,
   resolveDraftBody,
   resolveDraftSubject,
 } from "@/lib/email/draft-variants";
@@ -38,5 +40,27 @@ describe("draft copy variants", () => {
     expect(draftSubjectOptions({ subjectA: "One" })).toHaveLength(1);
     expect(asVariantKey("C")).toBe("C");
     expect(asVariantKey("Z")).toBe("A");
+  });
+
+  it("treats sequence positions after 1 as follow-up drafts", () => {
+    expect(isSequenceFollowUpDraft(1)).toBe(false);
+    expect(isSequenceFollowUpDraft(2)).toBe(true);
+    expect(isSequenceFollowUpDraft(3)).toBe(true);
+    expect(isSequenceFollowUpDraft(null)).toBe(false);
+  });
+
+  it("locks follow-up subject to Email 1 / thread root", () => {
+    expect(
+      followUpThreadSubject({
+        threadRootSubject: "Diwali gifting for Acme",
+        email1Draft: draft,
+      }),
+    ).toBe("Re: Diwali gifting for Acme");
+    expect(
+      followUpThreadSubject({
+        email1Draft: draft,
+        chosenSubjectKey: "C",
+      }),
+    ).toBe("Re: A taste of Diwali, before you decide");
   });
 });

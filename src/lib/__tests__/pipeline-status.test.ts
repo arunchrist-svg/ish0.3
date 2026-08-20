@@ -89,7 +89,8 @@ describe("FUNNEL-UNIT-003 stage helpers", () => {
   it("derives queue actions by status", () => {
     expect(deriveQueueAction("scouted")).toBe("Awaiting research");
     expect(deriveQueueAction("draft_ready")).toBe("Approve email");
-    expect(deriveQueueAction("replied")).toBe("Mark tasting sent");
+    expect(deriveQueueAction("replied")).toBe("Mark meeting");
+    expect(deriveQueueAction("replied", "gifting-sweets")).toBe("Mark tasting sent");
     expect(deriveQueueAction("closed")).toBe("Deal closed");
   });
 
@@ -105,7 +106,7 @@ describe("FUNNEL-UNIT-003 stage helpers", () => {
       "Email",
       "Email Sent",
       "Replied",
-      "Tasting Sent",
+      "Meeting",
       "Negotiate",
       "Closed",
     ]);

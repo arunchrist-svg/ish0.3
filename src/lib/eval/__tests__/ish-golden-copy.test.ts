@@ -25,10 +25,10 @@ describe("ISH golden copy shape", () => {
     expect(looksLikeLlmJsonDump(seq1.emailBody)).toBe(false);
     expect(seq1.emailBody).toContain("\n\n");
     expect(seq1.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
-    expect(seq1.emailBody).toMatch(/handcraft traditional sweets straight from our own farm to the box/);
-    expect(seq1.emailBody).toMatch(/sample box to your office as our treat/i);
+    expect(seq1.emailBody).toMatch(/crafted fresh every morning with organic milk, ghee, and khova from our own farm/);
+    expect(seq1.emailBody).toMatch(/sample box to Nebula Tech as our treat/i);
     expect(seq1.emailBody).toMatch(/What is the best delivery address to ship it to\?/);
-    expect(seq1.emailBody).toMatch(/100% pure ghee/);
+    expect(seq1.emailBody).toMatch(/never add preservatives or chemicals/);
     expect(seq1.emailBody).not.toMatch(/No worries/i);
     expect(seq1.emailBody).not.toMatch(/\boffers\b|\bspecializes in\b/i);
     expect(seq1.emailBody).not.toMatch(/\b\d{2,}\s*(employees|staff|headcount)\b/i);
@@ -44,9 +44,8 @@ describe("ISH golden copy shape", () => {
   });
 
   it("Sequence 3 is a different thesis from Sequence 1", () => {
-    expect(seq3Mfg.emailBodyC).toMatch(/No fillers\. No mass production/);
-    expect(seq3Mfg.emailBodyC).toMatch(/Diwali gifting to employees and clients/);
-    expect(seq3Mfg.emailBodyC).toMatch(/can bring farm-to-counter mithai/);
+    expect(seq3Mfg.emailBodyC).toMatch(/Diwali gifting to employees and clients at SEG Automotive/);
+    expect(seq3Mfg.emailBodyC).toMatch(/farm-fresh mithai/);
     expect(seq3Mfg.emailBodyC).toContain("SEG Automotive");
     const baseline = getBaselineEmail({
       sequencePosition: 1,

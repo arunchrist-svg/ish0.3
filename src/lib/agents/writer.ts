@@ -25,8 +25,6 @@ import { getWriterTonePersona, getWriterFewShotExample } from "@/lib/agents/writ
 import { parseWriterOutput } from "@/lib/agents/schemas/writer-output";
 import {
   ensureResearchBriefForWriter,
-  ensureWriterPlan,
-  formatWriterPlanForPrompt,
   getResearchQualityGaps,
 } from "@/lib/agents/writer-plan";
 import {
@@ -39,6 +37,7 @@ import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { latestDetectedOccasion, resolveWriteOccasion } from "@/lib/occasions/resolve";
 import { FESTIVE_OCCASION_SENTINEL } from "@/lib/occasions/catalog";
 import type { CompanyOverview } from "@/lib/company-overview";
+import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
 import {
   isNearParaphrase,
   BASELINE_PARAPHRASE_THRESHOLD,
@@ -97,7 +96,8 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);
 
   const writerMode = resolveWriterMode(options?.writerMode);
-  const llmProvider: LLMProvider | undefined = writerMode === "ai" ? "openrouter" : undefined;
+  const llmProvider: LLMProvider | undefined = writerMode === "ai" ? "gemini" : undefined;
+  const defaultOutreachTemplate = resolveDefaultOutreachCta(brandConfig) as OutreachTemplateId;
   const overview = (account.companyOverview as CompanyOverview | null) ?? null;
   const occasionId =
     resolveWriteOccasion({
@@ -117,7 +117,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
       contactFirstName,
       companyDisplayName,
       sequencePosition,
-      templateId: options?.followUpMode ?? options?.outreachTemplate ?? "gift_sampling",
+      templateId: options?.followUpMode ?? options?.outreachTemplate ?? defaultOutreachTemplate,
       isFollowUp,
       skipStatusUpdate: options?.skipStatusUpdate,
       occasionId,
@@ -169,11 +169,8 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const confidenceTier = research?.confidenceTier ?? "low";
   const outreachHook = research?.outreachHook ?? "";
 
-  const writerPlan = !isFollowUp
-    ? await ensureWriterPlan(leadId, llmProvider ? { llmProvider } : undefined)
-    : null;
   const template = getOutreachTemplate(
-    options?.followUpMode ?? options?.outreachTemplate,
+    options?.followUpMode ?? options?.outreachTemplate ?? defaultOutreachTemplate,
     packIdFromBrand(brandConfig),
   );
   const persona = buildPersonalizationContext({
@@ -189,6 +186,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
     decisionChain: research?.decisionChain,
     occasionTheme: options?.occasionTheme ?? occasionId,
     icpSummary: brandConfig.websiteInsights?.icpSummary,
+    companyWebsite: account.website ?? account.domain ?? null,
   });
   const baseline = getBaselineEmail({
     sequencePosition,
@@ -264,7 +262,7 @@ ${antiSpamRules}
 }`;
 
   const systemPrompt = `You are ${brandConfig.brandName}'s outreach writer and personalization engine. Transform BASE_TEXT into a targeted email for this buyer.
-${isFollowUp ? (options?.followUpMode === "follow_up" ? "Email 2: Re: Email 1 subject. Seasonal urgency plus sampler CTA. Never just following up or circling back. Return 3 distinct subjects and 3 distinct bodies." : "Email 3 (breakup): Re: Email 1 subject. Last note, I won't email further, Diwali close. Return 3 distinct subjects and 3 distinct bodies.") : "Email 1: three beats after greeting: persona hook, taste-first, one CTA. Rewrite the hook only. No No worries line. Return 3 distinct subject lines and 3 distinct body options. The user will pick one subject and one body."}
+${isFollowUp ? (options?.followUpMode === "follow_up" ? "Email 2: Re: Email 1 subject. Seasonal urgency plus sampler CTA. Never just following up or circling back. Return 3 distinct subjects and 3 distinct bodies." : "Email 3 (breakup): Re: Email 1 subject. Last note, I won't email further, wish a happy festival season. Do not close with Diwali. Return 3 distinct subjects and 3 distinct bodies.") : "Email 1: three beats after greeting: persona hook, taste-first, one CTA. Rewrite the hook only. No No worries line. Return 3 distinct subject lines and 3 distinct body options. The user will pick one subject and one body."}
 Rules:
 ${rules}
 ${toneRules}
@@ -289,7 +287,6 @@ Campaign: ${campaignMode}
 Confidence tier: ${confidenceTier}
 Hook (translate, do not paste): ${outreachHook || "none"}
 Intel (translate, do not paste): ${account.intelNotes ?? "none"}
-${writerPlan && !isFollowUp ? `\n${formatWriterPlanForPrompt(writerPlan)}\n(Plan is guidance only. BASE_TEXT is the thesis to preserve.)\n` : ""}
 Template: ${template.label}
 ${template.ctaInstruction}
 ${isFollowUp ? `\nEmail #${options?.followUpMode === "follow_up" ? "2" : "3"} of 3.\nEmail 1 subject: ${options?.originalEmailSubject ?? "unknown"}\nOriginal email (do not repeat hook wording):\n"""\n${options?.originalEmailBody ?? ""}\n"""\n` : ""}

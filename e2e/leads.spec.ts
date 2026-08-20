@@ -3,8 +3,9 @@ import { test, expect } from "./fixtures/auth";
 test.describe("LEADS-E2E-001 lead accelerator", () => {
   test("loads leads queue with seeded test contact", async ({ authenticatedPage: page }) => {
     await page.goto("/leads");
-    await expect(page.getByRole("button", { name: /Priya Sharma/i }).first()).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("Test Corp India").first()).toBeVisible();
+    const priya = page.getByRole("button", { name: /Priya Sharma/i }).first();
+    await expect(priya).toBeVisible({ timeout: 15_000 });
+    await expect(priya).toContainText("Test Corp India");
   });
 
   test("fetches leads from API", async ({ authenticatedPage: page }) => {

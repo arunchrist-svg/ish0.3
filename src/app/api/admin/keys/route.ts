@@ -18,7 +18,14 @@ export async function GET() {
         keys: [maskKey("ANTHROPIC_API_KEY"), maskKey("OPENROUTER_API_KEY")],
       },
       enrichment: {
-        keys: [maskKey("APOLLO_API_KEY"), maskKey("HUNTER_API_KEY"), maskKey("GOOGLE_PLACES_API_KEY")],
+        keys: [
+          maskKey("APOLLO_API_KEY"),
+          maskKey("PROSPEO_API_KEY"),
+          maskKey("HUNTER_API_KEY"),
+          maskKey("GOOGLE_PLACES_API_KEY"),
+          maskKey("ZINTLR_ACCESS_TOKEN"),
+          maskKey("ZINTLR_SECRET_KEY"),
+        ],
         tavily: { configured: hasTavilyKeys() },
         ocr: maskKey("GEMINI_API_KEY"),
       },

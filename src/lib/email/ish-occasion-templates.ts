@@ -6,7 +6,7 @@ type IshEmail = { subject: string; body: string };
 
 const PRODUCT =
   (brand: string) =>
-    `At ${brand}, we handcraft traditional sweets straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite.`;
+    `At ${brand}, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.`;
 
 const TASTING_CTA =
   "Since tasting is believing, I would love to send a sample box to your office as our treat. Open to receiving one?";
@@ -83,17 +83,17 @@ function sequencesFor(
           },
           {
             subject: `Re: Sample box for your store coming up, ${first}`,
-            paragraphs: `Retail and HQ teams often plan tasting before shopfit finishes. ${brand} prepares mithai fresh daily with organic milk from our own dairy, zero preservatives, and hygiene strong enough for export.\n\nA tasting box is the fastest way to judge that for ${company}.\n\nShall I ship one this week?`,
+            paragraphs: `Retail and HQ teams often plan tasting before shopfit finishes. ${brand} prepares mithai fresh daily with organic milk from our own dairy, no added preservatives or chemicals, and highly hygienic production.\n\nA tasting box is the fastest way to judge that for ${company}.\n\nShall I ship one this week?`,
           },
           {
             subject: `Re: Sample box for your store coming up, ${first}`,
-            paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company} wants inauguration mithai for this opening or a standing vendor for the next stores, ${brand} can help with farm-to-counter mithai.\n\nI won't email further, but a tasting box stays open if you want one.`,
+            paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company} wants inauguration mithai for this opening or a standing vendor for the next stores, ${brand} can help with mithai from our own farm.\n\nI won't email further, but a tasting box stays open if you want one.`,
           },
         ],
         [
           {
             subject: `Inauguration mithai sample for ${company}`,
-            paragraphs: `Inauguration mithai for a ${occasionLabel.toLowerCase()} should be planned with HQ before opening week, not as a last-minute lobby box. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
+            paragraphs: `Inauguration mithai for a ${occasionLabel.toLowerCase()} should be planned with HQ before opening week, not as a last-minute lobby box. ${brand} can bring that to ${company}: sweets made fresh each day with no added preservatives or chemicals, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
           },
           {
             subject: `Re: Inauguration mithai sample for ${company}`,
@@ -101,21 +101,21 @@ function sequencesFor(
           },
           {
             subject: `Re: Inauguration mithai sample for ${company}`,
-            paragraphs: `I'll stop following up after this one. If a tasting box or quote for upcoming openings is useful later, ${brand} is here with fresh daily mithai and zero preservatives.\n\nI won't email further, but the door stays open.`,
+            paragraphs: `I'll stop following up after this one. If a tasting box or quote for upcoming openings is useful later, ${brand} is here with fresh daily mithai and no added preservatives or chemicals.\n\nI won't email further, but the door stays open.`,
           },
         ],
         [
           {
             subject: "A tasting box for your next opening",
-            paragraphs: `No fillers. No mass production. For a store coming up, ${brand} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
+            paragraphs: `For a store coming up, ${brand} can bring mithai from our own farm: organic milk from our dairy, no added preservatives or chemicals, and highly hygienic production.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
           },
           {
             subject: "Re: A tasting box for your next opening",
-            paragraphs: `For openings, authenticity holds up in a crowded lobby. ${brand} sources organic milk from its own dairy, prepares mithai fresh daily, and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+            paragraphs: `For openings, authenticity holds up in a crowded lobby. ${brand} sources organic milk from its own dairy, prepares mithai fresh daily, and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
           },
           {
             subject: "Re: A tasting box for your next opening",
-            paragraphs: `I'll leave it here so I'm not cluttering your inbox. If ${company} has more launches this quarter, ${brand} can help with export-grade hygiene and organic milk from our own dairy.\n\nI won't email further. Feel free to reach out anytime.`,
+            paragraphs: `I'll leave it here so I'm not cluttering your inbox. If ${company} has more launches this quarter, ${brand} can help with hygienic production and organic milk from our own dairy.\n\nI won't email further. Feel free to reach out anytime.`,
           },
         ],
       ];
@@ -128,17 +128,17 @@ function sequencesFor(
         },
         {
           subject: `Re: Sample box for your store launch, ${first}`,
-          paragraphs: `Retail and HQ teams often need one vendor for this launch and the next few openings. ${brand} prepares mithai fresh daily with organic milk from our own dairy, zero preservatives, and hygiene strong enough for export.\n\nA tasting box is the fastest way to judge that for ${company}.\n\nShall I ship one this week?`,
+          paragraphs: `Retail and HQ teams often need one vendor for this launch and the next few openings. ${brand} prepares mithai fresh daily with organic milk from our own dairy, no added preservatives or chemicals, and highly hygienic production.\n\nA tasting box is the fastest way to judge that for ${company}.\n\nShall I ship one this week?`,
         },
         {
           subject: `Re: Sample box for your store launch, ${first}`,
-          paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company} has another opening or wants a standing vendor for launches, ${brand} can help with farm-to-counter mithai.\n\nI won't email further, but a tasting box stays open if you want one.`,
+          paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company} has another opening or wants a standing vendor for launches, ${brand} can help with mithai from our own farm.\n\nI won't email further, but a tasting box stays open if you want one.`,
         },
       ],
       [
         {
           subject: `Inauguration sweets sample for ${company}`,
-          paragraphs: `A ${occasionLabel.toLowerCase()} gift for staff and guests should taste authentic, not like a rushed local box. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
+          paragraphs: `A ${occasionLabel.toLowerCase()} gift for staff and guests should taste authentic, not like a rushed local box. ${brand} can bring that to ${company}: sweets made fresh each day with no added preservatives or chemicals, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
         },
         {
           subject: `Re: Inauguration sweets sample for ${company}`,
@@ -146,21 +146,21 @@ function sequencesFor(
         },
         {
           subject: `Re: Inauguration sweets sample for ${company}`,
-          paragraphs: `I'll stop following up after this one. If a tasting box or quote for upcoming openings is useful later, ${brand} is here with fresh daily mithai and zero preservatives.\n\nI won't email further, but the door stays open.`,
+          paragraphs: `I'll stop following up after this one. If a tasting box or quote for upcoming openings is useful later, ${brand} is here with fresh daily mithai and no added preservatives or chemicals.\n\nI won't email further, but the door stays open.`,
         },
       ],
       [
         {
           subject: "A tasting box for your next opening",
-          paragraphs: `No fillers. No mass production. For store and office launches, ${brand} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
+          paragraphs: `For store and office launches, ${brand} can bring mithai from our own farm: organic milk from our dairy, no added preservatives or chemicals, and highly hygienic production.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
         },
         {
           subject: "Re: A tasting box for your next opening",
-          paragraphs: `For openings, authenticity holds up in a crowded lobby. ${brand} sources organic milk from its own dairy, prepares mithai fresh daily, and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+          paragraphs: `For openings, authenticity holds up in a crowded lobby. ${brand} sources organic milk from its own dairy, prepares mithai fresh daily, and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
         },
         {
           subject: "Re: A tasting box for your next opening",
-          paragraphs: `I'll leave it here so I'm not cluttering your inbox. If ${company} has more launches this quarter, ${brand} can help with export-grade hygiene and organic milk from our own dairy.\n\nI won't email further. Feel free to reach out anytime.`,
+            paragraphs: `I'll leave it here so I'm not cluttering your inbox. If ${company} has more launches this quarter, ${brand} can help with hygienic production and organic milk from our own dairy.\n\nI won't email further. Feel free to reach out anytime.`,
         },
       ],
     ];
@@ -175,17 +175,17 @@ function sequencesFor(
         },
         {
           subject: `Re: Sample box for monthly birthdays, ${first}`,
-          paragraphs: `A birthday program works when the box is the same quality every month. ${brand} prepares mithai fresh daily with organic milk from our own dairy and zero preservatives.\n\nHappy to send ${company} a tasting box for the next birthday batch.\n\nShall I ship one this week?`,
+          paragraphs: `A birthday program works when the box is the same quality every month. ${brand} prepares mithai fresh daily with organic milk from our own dairy and no added preservatives or chemicals.\n\nHappy to send ${company} a tasting box for the next birthday batch.\n\nShall I ship one this week?`,
         },
         {
           subject: `Re: Sample box for monthly birthdays, ${first}`,
-          paragraphs: `I'll leave it here. If a monthly birthday box comes up for ${company}, ${brand} can help with farm-to-counter mithai.\n\nI won't email further, but a tasting box stays open.`,
+          paragraphs: `I'll leave it here. If a monthly birthday box comes up for ${company}, ${brand} can help with mithai from our own farm.\n\nI won't email further, but a tasting box stays open.`,
         },
       ],
       [
         {
           subject: `Birthday mithai sample for ${company}`,
-          paragraphs: `A monthly birthday gift should taste authentic. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
+          paragraphs: `A monthly birthday gift should taste authentic. ${brand} can bring that to ${company}: sweets made fresh each day with no added preservatives or chemicals, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
         },
         {
           subject: `Re: Birthday mithai sample for ${company}`,
@@ -199,11 +199,11 @@ function sequencesFor(
       [
         {
           subject: "A tasting box for your birthday calendar",
-          paragraphs: `No fillers. No mass production. For monthly birthdays, ${brand} can bring farm-to-counter mithai with organic milk and zero preservatives.\n\nHappy to send a small sampler to ${company}, no obligation.\n\nWant it sent this week?`,
+          paragraphs: `For monthly birthdays, ${brand} can bring mithai from our own farm with organic milk and no added preservatives or chemicals.\n\nHappy to send a small sampler to ${company}, no obligation.\n\nWant it sent this week?`,
         },
         {
           subject: "Re: A tasting box for your birthday calendar",
-          paragraphs: `${brand} prepares mithai fresh daily without chemical preservatives and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+          paragraphs: `${brand} prepares mithai fresh daily without added preservatives or chemicals and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
         },
         {
           subject: "Re: A tasting box for your birthday calendar",
@@ -222,7 +222,7 @@ function sequencesFor(
         },
         {
           subject: `Re: Sample box for new joiners, ${first}`,
-          paragraphs: `${brand} prepares mithai fresh daily with organic milk from our own dairy and zero preservatives, which holds up in a joining kit.\n\nHappy to send ${company} a tasting box.\n\nShall I ship one this week?`,
+          paragraphs: `${brand} prepares mithai fresh daily with organic milk from our own dairy and no added preservatives or chemicals, which holds up in a joining kit.\n\nHappy to send ${company} a tasting box.\n\nShall I ship one this week?`,
         },
         {
           subject: `Re: Sample box for new joiners, ${first}`,
@@ -232,7 +232,7 @@ function sequencesFor(
       [
         {
           subject: `New-joiner sweets sample for ${company}`,
-          paragraphs: `A joining kit should taste authentic, not like a leftover festival box. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives.\n\nTaste it before you trust it. Open to a sampler this week?`,
+          paragraphs: `A joining kit should taste authentic, not like a leftover festival box. ${brand} can bring that to ${company}: sweets made fresh each day with no added preservatives or chemicals.\n\nTaste it before you trust it. Open to a sampler this week?`,
         },
         {
           subject: `Re: New-joiner sweets sample for ${company}`,
@@ -246,11 +246,11 @@ function sequencesFor(
       [
         {
           subject: "A tasting box for your joining kits",
-          paragraphs: `No fillers. No mass production. For new joiners, ${brand} can bring farm-to-counter mithai with organic milk and zero preservatives.\n\nWant a sampler sent to ${company} this week?`,
+          paragraphs: `For new joiners, ${brand} can bring mithai from our own farm with organic milk and no added preservatives or chemicals.\n\nWant a sampler sent to ${company} this week?`,
         },
         {
           subject: "Re: A tasting box for your joining kits",
-          paragraphs: `${brand} sources organic milk from its own dairy and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+          paragraphs: `${brand} sources organic milk from its own dairy and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
         },
         {
           subject: "Re: A tasting box for your joining kits",
@@ -269,11 +269,11 @@ function sequencesFor(
         },
         {
           subject: `Re: Sample box for the office pantry, ${first}`,
-          paragraphs: `${brand} prepares mithai and namkeens fresh, with organic milk from our own dairy and zero preservatives. Dry-fruit combos last longer for meeting rooms.\n\nHappy to send ${company} a tasting box.\n\nShall I ship one this week?`,
+          paragraphs: `${brand} prepares mithai and namkeens fresh, with organic milk from our own dairy and no added preservatives or chemicals. Dry-fruit combos last longer for meeting rooms.\n\nHappy to send ${company} a tasting box.\n\nShall I ship one this week?`,
         },
         {
           subject: `Re: Sample box for the office pantry, ${first}`,
-          paragraphs: `I'll leave it here. If pantry restock for ${company} comes up, ${brand} can help with farm-to-counter mithai and namkeen.\n\nI won't email further, but a tasting box stays open.`,
+          paragraphs: `I'll leave it here. If pantry restock for ${company} comes up, ${brand} can help with mithai from our own farm and namkeen.\n\nI won't email further, but a tasting box stays open.`,
         },
       ],
       [
@@ -293,11 +293,11 @@ function sequencesFor(
       [
         {
           subject: "A tasting box for pantry restock",
-          paragraphs: `No fillers. No mass production. For pantry and meetings, ${brand} can bring farm-to-counter mithai and namkeen with organic milk and zero preservatives.\n\nWant a sampler sent to ${company} this week?`,
+          paragraphs: `For pantry and meetings, ${brand} can bring mithai from our own farm and namkeen with organic milk and no added preservatives or chemicals.\n\nWant a sampler sent to ${company} this week?`,
         },
         {
           subject: "Re: A tasting box for pantry restock",
-          paragraphs: `${brand} prepares mithai fresh daily without chemical preservatives and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+          paragraphs: `${brand} prepares mithai fresh daily without added preservatives or chemicals and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
         },
         {
           subject: "Re: A tasting box for pantry restock",
@@ -316,7 +316,7 @@ function sequencesFor(
         },
         {
           subject: `Re: Sample box for team appreciation, ${first}`,
-          paragraphs: `${brand} prepares mithai fresh daily with organic milk from our own dairy and zero preservatives.\n\nHappy to send ${company} a tasting box.\n\nShall I ship one this week?`,
+          paragraphs: `${brand} prepares mithai fresh daily with organic milk from our own dairy and no added preservatives or chemicals.\n\nHappy to send ${company} a tasting box.\n\nShall I ship one this week?`,
         },
         {
           subject: `Re: Sample box for team appreciation, ${first}`,
@@ -326,7 +326,7 @@ function sequencesFor(
       [
         {
           subject: `Appreciation sweets sample for ${company}`,
-          paragraphs: `A thank-you box should taste authentic. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives.\n\nTaste it before you trust it. Open to a sampler this week?`,
+          paragraphs: `A thank-you box should taste authentic. ${brand} can bring that to ${company}: sweets made fresh each day with no added preservatives or chemicals.\n\nTaste it before you trust it. Open to a sampler this week?`,
         },
         {
           subject: `Re: Appreciation sweets sample for ${company}`,
@@ -340,11 +340,11 @@ function sequencesFor(
       [
         {
           subject: "A tasting box for your next thank-you",
-          paragraphs: `No fillers. No mass production. For recognition and town halls, ${brand} can bring farm-to-counter mithai with organic milk and zero preservatives.\n\nWant it sent to ${company} this week?`,
+          paragraphs: `For recognition and town halls, ${brand} can bring mithai from our own farm with organic milk and no added preservatives or chemicals.\n\nWant it sent to ${company} this week?`,
         },
         {
           subject: "Re: A tasting box for your next thank-you",
-          paragraphs: `${brand} sources organic milk from its own dairy and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+          paragraphs: `${brand} sources organic milk from its own dairy and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
         },
         {
           subject: "Re: A tasting box for your next thank-you",
@@ -362,7 +362,7 @@ function sequencesFor(
       },
       {
         subject: `Re: Sample box for vendor tasting, ${first}`,
-        paragraphs: `${brand} prepares mithai fresh daily with organic milk from our own dairy, zero preservatives, and export-grade hygiene. Rate cards and GST invoicing are available for bulk orders.\n\nHappy to send ${company} a tasting box for evaluation.\n\nShall I ship one this week?`,
+        paragraphs: `${brand} prepares mithai fresh daily with organic milk from our own dairy, no added preservatives or chemicals, and hygienic production. Rate cards and GST invoicing are available for bulk orders.\n\nHappy to send ${company} a tasting box for evaluation.\n\nShall I ship one this week?`,
       },
       {
         subject: `Re: Sample box for vendor tasting, ${first}`,
@@ -372,7 +372,7 @@ function sequencesFor(
     [
       {
         subject: `Empanelment sweets sample for ${company}`,
-        paragraphs: `A vendor sample should taste like the box you would send to employees and clients. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
+        paragraphs: `A vendor sample should taste like the box you would send to employees and clients. ${brand} can bring that to ${company}: sweets made fresh each day with no added preservatives or chemicals, using organic milk from our own dairy.\n\nTaste it before you trust it. Open to a sampler this week?`,
       },
       {
         subject: `Re: Empanelment sweets sample for ${company}`,
@@ -386,11 +386,11 @@ function sequencesFor(
     [
       {
         subject: "A tasting box for vendor evaluation",
-        paragraphs: `No fillers. No mass production. For empanelment, ${brand} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.\n\nWant a sampler sent to ${company} this week?`,
+        paragraphs: `For empanelment, ${brand} can bring mithai from our own farm: organic milk from our dairy, no added preservatives or chemicals, and highly hygienic production.\n\nWant a sampler sent to ${company} this week?`,
       },
       {
         subject: "Re: A tasting box for vendor evaluation",
-        paragraphs: `${brand} sources organic milk from its own dairy farm and holds export-grade hygiene.\n\nShould I send ${company} a tasting box?`,
+        paragraphs: `${brand} sources organic milk from its own dairy farm and runs highly hygienic kitchens.\n\nShould I send ${company} a tasting box?`,
       },
       {
         subject: "Re: A tasting box for vendor evaluation",

@@ -25,6 +25,11 @@ export function CompanyDetailPanel({
       city={company.city}
       fitScore={company.fitScore}
       industry={company.industry || company.type}
+      leadabilityScore={company.leadabilityScore}
+      leadabilityBand={company.leadabilityBand}
+      leadabilityMatchedPeople={company.leadabilityMatchedPeople}
+      leadabilityMatchedInCity={company.leadabilityMatchedInCity}
+      leadabilityProbeSource={company.leadabilityProbeSource}
       initialOverview={company.overview}
       decisionMakerLeadId={decisionMakerLeadId}
       onWebsiteResolved={onWebsiteResolved}

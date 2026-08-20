@@ -5,8 +5,58 @@ import {
   nameMatchesQuery,
   normalizeCompanyName,
 } from "@/lib/enrichment/company-name-match";
+import { linkedInSlug } from "@/lib/utils";
 
 const FORMER_RE = /\b(ex|former|formerly|previously|past|alumni|alumnus|alumna)\b/i;
+/** LinkedIn SERP, hashtags, photo-frame OCR (#OPENTOWORK), and job-seeker headlines. */
+const OPEN_TO_WORK_RE =
+  /#?\s*open[\s\u2010-\u2015_\-]*to[\s\u2010-\u2015_\-]*work|\bopentowork\b|\bopen_to_work\b|#opentowork|\blooking for (a )?new opportunit(?:y|ies)\b|\bseeking (new )?opportunit(?:y|ies)\b|\bopen to (new )?opportunit(?:y|ies)\b|\bactively looking for (new )?opportunit(?:y|ies)\b|\bavailable for (new )?opportunit(?:y|ies)\b|\bjob[\s-]?seeker\b/i;
+
+export function isOpenToWorkProfile(text: string): boolean {
+  return OPEN_TO_WORK_RE.test(text);
+}
+
+/** Title, bio, name, and LinkedIn URL — photo-frame hashtags sometimes land in any of these. */
+export function personLooksOpenToWork(person: {
+  name?: string | null;
+  title?: string | null;
+  bio?: string | null;
+  linkedIn?: string | null;
+}): boolean {
+  return isOpenToWorkProfile(
+    `${person.name ?? ""}\n${person.title ?? ""}\n${person.bio ?? ""}\n${person.linkedIn ?? ""}`,
+  );
+}
+
+function hitBlob(hit: { title: string; url?: string; content: string }): string {
+  return `${hit.title}\n${hit.url ?? ""}\n${hit.content}`;
+}
+
+/**
+ * True when this person shows up on any Open to Work snippet.
+ * A clean company-page hit must not override a LinkedIn headline that says Open to Work.
+ */
+export function personAppearsOnOpenToWorkHit(
+  person: { name?: string | null; linkedIn?: string | null },
+  hits: { title: string; url: string; content: string }[],
+): boolean {
+  const slug = linkedInSlug(person.linkedIn);
+  const name = person.name?.trim().toLowerCase();
+  const nameTokens = (name ?? "").split(/\s+/).filter(Boolean);
+  const firstLast =
+    nameTokens.length >= 2 ? `${nameTokens[0]} ${nameTokens[nameTokens.length - 1]}` : name;
+
+  return hits.some((hit) => {
+    const blob = hitBlob(hit);
+    if (!isOpenToWorkProfile(blob)) return false;
+    const hay = blob.toLowerCase();
+    const url = (hit.url ?? "").toLowerCase();
+    if (slug && (hay.includes(slug) || url.includes(slug))) return true;
+    if (name && name.length >= 5 && hay.includes(name)) return true;
+    if (firstLast && firstLast.length >= 5 && hay.includes(firstLast)) return true;
+    return false;
+  });
+}
 
 const TITLE_ROLE_TOKENS = new Set([
   "plant",
@@ -90,9 +140,112 @@ const TITLE_ROLE_TOKENS = new Set([
 const DEPARTMENT_PHRASE_RE =
   /^(?:of|for|and|&)\b|^(?:human\s+resources|people(?:\s*&\s*|\s+and\s+)?culture|talent(?:\s+management)?|procurement|purchase|sourcing|facilities|operations|marketing|finance|admin(?:istration)?|sales|corporate\s+relations)\b/i;
 
+/** Legal suffixes stripped before comparing operating entities (subsidiary vs parent). */
+const ENTITY_SUFFIX_TOKENS = new Set([
+  "private",
+  "limited",
+  "pvt",
+  "ltd",
+  "llp",
+  "inc",
+  "incorporated",
+  "corp",
+  "corporation",
+  "plc",
+  "gmbh",
+  "llc",
+  "co",
+  "company",
+  "group",
+  "holdings",
+  "international",
+  "global",
+  "the",
+  "and",
+  "of",
+  "enterprises",
+  "enterprise",
+  "ventures",
+  "full",
+  "time",
+  "part",
+]);
+
+/** Tokens that identify the operating entity, keeping subsidiary markers like trading/motor/india. */
+export function entityTokens(name: string): string[] {
+  return normalizeCompanyName(name)
+    .split(" ")
+    .filter((token) => token.length > 1 && !ENTITY_SUFFIX_TOKENS.has(token));
+}
+
+/** "Tata Steel(Hosur)" → "Tata Steel" when the parenthetical is a plant city, not a company name. */
+function normalizeOperatingEntityForMatch(entity: string): string {
+  const parenMatch = entity.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (!parenMatch) return entity;
+  const base = parenMatch[1]?.trim() ?? "";
+  const inner = parenMatch[2]?.trim() ?? "";
+  if (base && inner && isGeographicEntity(inner)) return base;
+  return entity;
+}
+
+/**
+ * True when the person's operating entity and the scouted company refer to the same legal unit.
+ * Rejects parent-brand matches when the profile names a more specific subsidiary
+ * (e.g. "Nissan Trading India" on a "Nissan" or "Nissan Motor Corporation" scout).
+ * Allows short headline brands when the person is less specific than the scout (TVS vs TVS Motor).
+ */
+export function entitiesReferToSameCompany(personEntity: string, scoutCompany: string): boolean {
+  const normalizedPerson = normalizeOperatingEntityForMatch(personEntity);
+  const pTokens = entityTokens(normalizedPerson);
+  const sTokens = entityTokens(scoutCompany);
+  if (!pTokens.length || !sTokens.length) return nameMatchesQuery(normalizedPerson, scoutCompany);
+
+  const pExtra = pTokens.filter((token) => !sTokens.includes(token));
+  const sExtra = sTokens.filter((token) => !pTokens.includes(token));
+
+  // Profile names a more specific unit (Nissan Trading India vs Nissan).
+  if (pExtra.length > 0) return false;
+
+  // Person is the same or less specific than the scout (TVS headline, TVS Motor scout).
+  return true;
+}
+
+/** Operating unit in LinkedIn titles like "Head - HR ( Nissan Trading India )". */
+export function operatingEntityFromParentheses(text: string): string | null {
+  for (const match of text.matchAll(/\(([^()]{3,80})\)/g)) {
+    const candidate = (match[1] ?? "").trim();
+    if (!candidate || looksLikeRoleOrDepartment(candidate)) continue;
+
+    const tokens = normalizeCompanyName(candidate).split(" ").filter(Boolean);
+    if (tokens.length === 1) {
+      if (isGeographicEntity(candidate)) continue;
+      // Skip role acronyms: (CHRO), (VP), (HRBP)
+      if (candidate.length <= 5 && /^[A-Z]{2,5}$/.test(candidate.replace(/\s+/g, ""))) continue;
+    }
+
+    if (tokens.length >= 2 || tokens.some((token) => !TITLE_ROLE_TOKENS.has(token) && token.length >= 4)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/** Most specific employer named in a LinkedIn title or experience snippet. */
+export function specificOperatingEntityFromProfile(title: string, content?: string): string | null {
+  const fromTitle = operatingEntityFromParentheses(title);
+  if (fromTitle) return fromTitle;
+  if (content) {
+    const fromContent = operatingEntityFromParentheses(content);
+    if (fromContent) return fromContent;
+  }
+  return embeddedEmployerFromTitle(title) ?? currentEmployerFromHeadline(title);
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+const WEAK_SHORT_BRAND_TOKENS = new Set(["sri", "shri", "the", "and", "new", "old", "for"]);
 
 function companyNeedles(companyName: string): string[] {
   const needles = new Set<string>();
@@ -102,6 +255,15 @@ function companyNeedles(companyName: string): string[] {
   if (normalized) needles.add(normalized);
   const first = normalized.split(" ")[0];
   if (first && first.length >= 5) needles.add(first);
+  // Short brands (TVS, HCL, IBM) otherwise fail "HR at TVS" vs "TVS Motor Company".
+  for (const token of distinctiveBrandTokens(companyName)) {
+    if (token.length >= 5) needles.add(token);
+    if (token.length >= 3 && token.length < 5 && !WEAK_SHORT_BRAND_TOKENS.has(token)) {
+      needles.add(token);
+    }
+  }
+  const compact = compactCompanyName(companyName);
+  if (compact.length >= 4) needles.add(compact);
   return [...needles];
 }
 
@@ -111,6 +273,94 @@ export function textMentionsCompany(text: string, companyName: string): boolean 
   return companyNeedles(companyName).some((needle) =>
     new RegExp(`\\b${escapeRegExp(needle)}\\b`, "i").test(hay),
   );
+}
+
+/**
+ * Returns true when the company name appears near a closed date range
+ * (e.g. "Jun 2014 - Jan 2016") but NOT near an open range ("- Present").
+ * LinkedIn experience snippets use this format to show past roles.
+ */
+function hasPastDateRangeNearCompany(text: string, companyName: string): boolean {
+  const currentYear = new Date().getFullYear();
+  const lower = text.toLowerCase();
+  // Quick bail: if there is NO year in the text, skip.
+  if (!/\b(19|20)\d{2}\b/.test(lower)) return false;
+
+  let foundPast = false;
+  for (const needle of companyNeedles(companyName)) {
+    let from = 0;
+    while (from < lower.length) {
+      const idx = lower.indexOf(needle, from);
+      if (idx < 0) break;
+      // Tight window: date range appears on the same line or very shortly after company in LinkedIn snippets.
+      // Deliberately narrow before the match to avoid bleeding into a previous job's "Present" range.
+      const window = lower.slice(Math.max(0, idx - 40), Math.min(lower.length, idx + needle.length + 120));
+      // Capture full end date: "Jun 2014 - Jan 2016" or "May 2024 - Present"
+      const DATE_RANGE_RE =
+        /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec\s+)?\d{4}\s*[-–]\s*(present|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}|\d{4})/gi;
+      let m: RegExpExecArray | null;
+      while ((m = DATE_RANGE_RE.exec(window)) !== null) {
+        const endStr = m[1] ?? "";
+        // If any occurrence shows "Present", the role is current -- not past.
+        if (/^present$/i.test(endStr.trim())) return false;
+        // If end contains a year clearly in the past, mark as past.
+        // Use currentYear - 1 buffer: LinkedIn snippet data can be up to a year stale,
+        // so "2025" on a profile indexed in late 2025 may still be a current role in 2026.
+        const endYearStr = endStr.match(/\d{4}/)?.[0];
+        const endYear = endYearStr ? parseInt(endYearStr) : 0;
+        if (endYear > 0 && endYear < currentYear - 1) foundPast = true;
+      }
+      from = idx + needle.length;
+    }
+  }
+  return foundPast;
+}
+
+/**
+ * Scans the full content blob for a "Company · Date - Present" pattern and returns
+ * the company name associated with the CURRENT role (the one with "- Present").
+ *
+ * LinkedIn snippets from Tavily often include the full experience section:
+ *   "Human Resources Manager\n3M · May 2024 - Present · 2 yrs\nBengaluru\n\nHR Executive\nAron Universal · Jun 2014 - Jan 2016"
+ *
+ * This lets us detect when someone's CURRENT employer is different from the company
+ * we are scouting, even if the snippet mentions the scouted company in a past role.
+ */
+/** Short alphanumeric brand codes like "3M", "HP", "GE" that looksLikeRoleOrDepartment rejects. */
+function looksLikeBrandCode(candidate: string): boolean {
+  return /^[a-z0-9]{1,5}$/i.test(candidate.trim());
+}
+
+function isLikelyCompanyCandidate(candidate: string): boolean {
+  if (!candidate.trim()) return false;
+  // Short brand codes (3M, HP, GE) are valid company names even if looksLikeRoleOrDepartment rejects them.
+  if (looksLikeBrandCode(candidate)) return true;
+  return !looksLikeRoleOrDepartment(candidate);
+}
+
+function currentEmployerFromContent(content: string): string | null {
+  const lower = content.toLowerCase();
+  if (!lower.includes("present")) return null;
+
+  // Pattern 1: "CompanyName · StartDate - Present" (same-line bullet format)
+  // Captures the token immediately before "· date - present"
+  const BULLET_PRESENT_RE =
+    /([^·\n]{1,60})\s*·\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+)?\d{4}\s*[-–]\s*present/gi;
+  let m: RegExpExecArray | null;
+  while ((m = BULLET_PRESENT_RE.exec(lower)) !== null) {
+    const candidate = (m[1] ?? "").trim();
+    if (isLikelyCompanyCandidate(candidate)) return candidate;
+  }
+
+  // Pattern 2: "CompanyName\nStartDate - Present" (newline-separated format)
+  const NL_PRESENT_RE =
+    /^([^\n]{1,60})\n(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+)?\d{4}\s*[-–]\s*present/gim;
+  while ((m = NL_PRESENT_RE.exec(lower)) !== null) {
+    const candidate = (m[1] ?? "").trim();
+    if (isLikelyCompanyCandidate(candidate)) return candidate;
+  }
+
+  return null;
 }
 
 export function hasFormerCompanyAffiliation(text: string, companyName: string): boolean {
@@ -125,7 +375,8 @@ export function hasFormerCompanyAffiliation(text: string, companyName: string): 
       from = idx + needle.length;
     }
   }
-  return false;
+  // Also treat a company that only appears with a closed date range as a past employer.
+  return hasPastDateRangeNearCompany(text, companyName);
 }
 
 function looksLikeRoleOrDepartment(value: string): boolean {
@@ -173,10 +424,24 @@ export function hitShowsCurrentEmployment(
   companyName: string,
 ): boolean {
   const blob = `${hit.title}\n${hit.content}`;
+  if (isOpenToWorkProfile(blob)) return false;
   if (hasFormerCompanyAffiliation(blob, companyName)) return false;
 
+  const operatingEntity = specificOperatingEntityFromProfile(hit.title, hit.content);
+  if (operatingEntity) {
+    if (!entitiesReferToSameCompany(operatingEntity, companyName)) return false;
+    // Parenthetical operating unit matched (e.g. Nissan Trading India). LinkedIn may still
+    // show the group legal name on the Present line (Nissan Motor Corporation).
+    return textMentionsCompany(blob, companyName);
+  }
+
   const headlineEmployer = currentEmployerFromHeadline(hit.title);
-  if (headlineEmployer && !nameMatchesQuery(headlineEmployer, companyName)) return false;
+  if (headlineEmployer && !entitiesReferToSameCompany(headlineEmployer, companyName)) return false;
+
+  // If the content explicitly shows "- Present" for a DIFFERENT company, this person
+  // has moved on from the scouted company. Catch stale Tavily snapshots like Anusha at Aron Universal.
+  const contentEmployer = currentEmployerFromContent(hit.content);
+  if (contentEmployer && !entitiesReferToSameCompany(contentEmployer, companyName)) return false;
 
   return textMentionsCompany(blob, companyName);
 }
@@ -203,6 +468,9 @@ export function embeddedEmployerFromTitle(title: string): string | null {
     .trim();
   if (!cleaned) return null;
 
+  const fromParens = operatingEntityFromParentheses(title);
+  if (fromParens) return fromParens;
+
   const fromAt = currentEmployerFromHeadline(cleaned);
   if (fromAt) return fromAt;
 
@@ -227,9 +495,12 @@ export function personTitleConflictsWithCompany(
 ): boolean {
   if (!title?.trim() || !companyName.trim()) return false;
 
+  const operatingEntity = specificOperatingEntityFromProfile(title);
+  if (operatingEntity && !entitiesReferToSameCompany(operatingEntity, companyName)) return true;
+
   const employer = embeddedEmployerFromTitle(title);
   if (!employer) return false;
-  if (nameMatchesQuery(employer, companyName)) return false;
+  if (entitiesReferToSameCompany(employer, companyName)) return false;
 
   const employerBrands = distinctiveBrandTokens(employer).filter(
     (token) => !TITLE_ROLE_TOKENS.has(token) && !isGeographicEntity(token),

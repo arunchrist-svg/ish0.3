@@ -45,3 +45,35 @@ export function normalizeEmail(raw?: string | null): string | undefined {
   const trimmed = raw.trim().toLowerCase();
   return trimmed.includes("@") ? trimmed : undefined;
 }
+
+const BLANK_PERSON_FIELD = /^(?:[-–—]|n\/?a|unknown|null|undefined)$/i;
+
+/** True when a person field is empty or a dash placeholder. */
+export function isBlankPersonField(value?: string | null): boolean {
+  if (value == null) return true;
+  const trimmed = value.trim();
+  return !trimmed || BLANK_PERSON_FIELD.test(trimmed);
+}
+
+export function personFieldOrEmpty(value?: string | null): string {
+  return isBlankPersonField(value) ? "" : value!.trim();
+}
+
+export function displayPersonTitle(title?: string | null): string {
+  return isBlankPersonField(title) ? "Title not listed" : title!.trim();
+}
+
+/** Profile URL when we have one, otherwise LinkedIn people search for this name and company. */
+export function personLinkedInHref(input: {
+  linkedIn?: string | null;
+  name: string;
+  companyName?: string;
+}): { href: string; hasProfile: boolean } {
+  const profile = normalizeLinkedInUrl(input.linkedIn);
+  if (profile) return { href: profile, hasProfile: true };
+  const keywords = [input.name, input.companyName].filter((part) => part?.trim()).join(" ");
+  return {
+    href: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(keywords)}`,
+    hasProfile: false,
+  };
+}

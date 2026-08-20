@@ -56,6 +56,19 @@ describe("Titan logo domain", () => {
     );
   });
 
+  it("maps Automotive Axles to autoaxle.com and drops the slug guess", () => {
+    expect(extractCompanyDomain({ name: "Automotive Axles Limited" })).toBe("autoaxle.com");
+    const aliases = companyDomainAliases({
+      companyName: "Automotive Axles Limited",
+      domain: "automotiveaxles.com",
+    });
+    expect(aliases[0]).toBe("autoaxle.com");
+    expect(aliases).not.toContain("automotiveaxles.com");
+    expect(getCompanyLogoSources({ name: "Automotive Axles Limited" })[0]).toBe(
+      "https://www.google.com/s2/favicons?domain=autoaxle.com&sz=128",
+    );
+  });
+
   it("maps SCHUNK Intec India to schunk.com", () => {
     expect(extractCompanyDomain({ name: "SCHUNK Intec India Pvt Ltd" })).toBe("schunk.com");
     expect(getCompanyLogoSources({ name: "SCHUNK Intec India Pvt Ltd" })[0]).toBe(

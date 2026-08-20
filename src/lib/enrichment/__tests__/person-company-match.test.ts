@@ -2,8 +2,14 @@ import { describe, expect, it } from "vitest";
 import { parsePeopleFromSearchResults } from "@/lib/enrichment/people-parser";
 import {
   currentEmployerFromHeadline,
+  entitiesReferToSameCompany,
   hitShowsCurrentEmployment,
+  isOpenToWorkProfile,
+  operatingEntityFromParentheses,
+  personAppearsOnOpenToWorkHit,
+  personLooksOpenToWork,
   personTitleConflictsWithCompany,
+  specificOperatingEntityFromProfile,
 } from "@/lib/enrichment/person-company-match";
 import {
   isForeignPersonLocation,
@@ -38,6 +44,30 @@ describe("current employer matching", () => {
         "Titan Company Ltd",
       ),
     ).toBe(false);
+  });
+
+  it("rejects a Jindal hospital HR when scouting Trilife Hospital", () => {
+    // Regression: "hospital" used to be a brand needle, so any …Hospital profile
+    // matched Trilife even when the person works at Manav Charitable / Jindal.
+    const title = "Manjunath K | Deputy Manager - Human Resources | LinkedIn";
+    const content =
+      "Unit HR - Human Resources - Jindal Healthcare - Manav Charitable Hospital. Sep 2025 - Present · Bangalore Urban";
+    expect(hitShowsCurrentEmployment({ title, content }, "Trilife Hospital")).toBe(false);
+    expect(hitShowsCurrentEmployment({ title, content }, "Jindal Healthcare")).toBe(true);
+
+    const results = parsePeopleFromSearchResults(
+      [
+        {
+          title,
+          url: "https://www.linkedin.com/in/manjunath-k-195b7a111",
+          content,
+        },
+      ],
+      5,
+      "web_heuristic",
+      "Trilife Hospital",
+    );
+    expect(results).toHaveLength(0);
   });
 
   it("rejects Finocontrol CHRO when scouting Harita Fehrer", () => {
@@ -75,10 +105,179 @@ describe("current employer matching", () => {
     ).toBe(false);
   });
 
+  it("rejects a person whose LinkedIn snippet shows the company only in a past date range", () => {
+    // Anusha Ramachandra is currently at 3M but her snippet shows Aron Universal with a 2014-2016 range.
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Anusha Ramachandra | Manager Human Resources | LinkedIn",
+          content:
+            "Experience\nHuman Resources Manager\n3M · May 2024 - Present · 2 yrs 4 mos\nBengaluru, Karnataka\n\n" +
+            "HR Executive\nAron Universal Ltd · Jun 2014 - Jan 2016 · 1 yr 8 mos\nJigani, Bangalore",
+        },
+        "Aron Universal",
+      ),
+    ).toBe(false);
+
+    // Sanity: currently-at-3M should still pass when scouting 3M
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Anusha Ramachandra | Manager Human Resources | LinkedIn",
+          content:
+            "Human Resources Manager\n3M · May 2024 - Present · 2 yrs 4 mos\nBengaluru, Karnataka",
+        },
+        "3M",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects via content current-employer detection when snippet has no date range for past company", () => {
+    // Stale Tavily snapshot: title and content show Aron Universal but content also shows 3M as current.
+    // The date range for Aron Universal may be absent (truncated snippet) but "3M · Present" is present.
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Anusha Ramachandra | Manager Human Resources | LinkedIn",
+          content: "Human Resources Manager\n3M · May 2024 - Present · 2 yrs 4 mos\nBengaluru\n\nHR Executive\nAron Universal Ltd\nJigani",
+        },
+        "Aron Universal",
+      ),
+    ).toBe(false);
+
+    // Content with newline-separated format: "CompanyName\nYear - Present"
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Anusha Ramachandra | Manager Human Resources | LinkedIn",
+          content: "Human Resources Manager\n3M\n2019 - Present\nBengaluru\n\nHR Executive\nAron Universal Ltd\nJigani",
+        },
+        "Aron Universal",
+      ),
+    ).toBe(false);
+
+    // Current employee at Aron Universal should still pass
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Ravi Kumar | HR Manager | LinkedIn",
+          content: "HR Manager\nAron Universal · 2021 - Present · 4 yrs\nHosur",
+        },
+        "Aron Universal",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects Open to Work profiles even when the company is named", () => {
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Kiran | HR Team Lead at Titan Company | Open to Work | LinkedIn",
+          content: "#OpenToWork  Looking for new opportunities. Previously Titan Company, Hosur.",
+        },
+        "Titan Company",
+      ),
+    ).toBe(false);
+    expect(isOpenToWorkProfile("Human Resources Manager | OPEN_TO_WORK")).toBe(true);
+    expect(isOpenToWorkProfile("HR Manager – Open to work")).toBe(true);
+    expect(isOpenToWorkProfile("Human Resources Manager at Autosense")).toBe(false);
+    expect(isOpenToWorkProfile("#OPENTOWORK")).toBe(true);
+    expect(isOpenToWorkProfile("Purchase Manager #OPENTOWORK Madurai")).toBe(true);
+  });
+
+  it("rejects Open to Work even after the title is stripped to Purchase Manager", () => {
+    expect(
+      personLooksOpenToWork({
+        name: "Pandiyarajan S",
+        title: "Purchase Manager",
+        bio: "#OPENTOWORK",
+      }),
+    ).toBe(true);
+    expect(
+      personLooksOpenToWork({
+        name: "Pandiyarajan S",
+        title: "Purchase Manager",
+        bio: "Purchase Manager at a plant in Madurai",
+      }),
+    ).toBe(false);
+  });
+
+  it("drops a clean company-page hit when another snippet marks the same LinkedIn as Open to Work", () => {
+    expect(
+      personAppearsOnOpenToWorkHit(
+        {
+          name: "Karthi P",
+          linkedIn: "https://www.linkedin.com/in/karthi-p-hr",
+        },
+        [
+          {
+            title: "Karthi P | Human Resources Manager at Autosense | LinkedIn",
+            url: "https://www.linkedin.com/in/karthi-p-hr",
+            content: "Human Resources Manager at Autosense Private Limited",
+          },
+          {
+            title: "Karthi P | Open to Work | LinkedIn",
+            url: "https://www.linkedin.com/in/karthi-p-hr",
+            content: "#OpenToWork  Human Resources Manager at Autosense",
+          },
+        ],
+      ),
+    ).toBe(true);
+  });
+
+  it("matches short brands like TVS in LinkedIn headlines", () => {
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Priya N | HR at TVS | LinkedIn",
+          content: "HR at TVS Motor Company · Hosur, Tamil Nadu, India",
+        },
+        "TVS Motor Company",
+      ),
+    ).toBe(true);
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Ravi | HR Manager at HCL | LinkedIn",
+          content: "HR Manager at HCLTech, Noida",
+        },
+        "HCL Technologies",
+      ),
+    ).toBe(true);
+  });
+
   it("flags a Tata Steel title on a Hosur Steel / Jindal account", () => {
     expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Hosur Steel Industries")).toBe(true);
     expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Tata Steel")).toBe(false);
     expect(personTitleConflictsWithCompany("Chief Human Resources Officer", "Pavna Industries")).toBe(false);
+  });
+
+  it("rejects Nissan Trading India HR on a generic Nissan or Nissan Motor scout", () => {
+    const title = "Amit Kumar Patnaik | Head - Human Resources ( Nissan Trading India ) | LinkedIn";
+    const content =
+      "Head - Human Resources ,General Admin ,IT ( Nissan Trading India)\n" +
+      "Nissan Motor Corporation · Full-time\nDec 2008 - Present · 17 yrs 9 mos\nGreater Chennai Area";
+
+    expect(operatingEntityFromParentheses("Head - Human Resources ( Nissan Trading India )")).toBe(
+      "Nissan Trading India",
+    );
+    expect(specificOperatingEntityFromProfile(title, content)).toBe("Nissan Trading India");
+    expect(entitiesReferToSameCompany("Nissan Trading India", "Nissan")).toBe(false);
+    expect(entitiesReferToSameCompany("Nissan Trading India", "Nissan Motor Corporation")).toBe(false);
+    expect(entitiesReferToSameCompany("Nissan Trading India", "Nissan Trading India Pvt Ltd")).toBe(true);
+    expect(personTitleConflictsWithCompany(title, "Nissan")).toBe(true);
+    expect(personTitleConflictsWithCompany(title, "Nissan Motor Corporation")).toBe(true);
+    expect(hitShowsCurrentEmployment({ title, content }, "Nissan")).toBe(false);
+    expect(hitShowsCurrentEmployment({ title, content }, "Nissan Motor Corporation")).toBe(false);
+    expect(hitShowsCurrentEmployment({ title, content }, "Nissan Trading India")).toBe(true);
+
+    const results = parsePeopleFromSearchResults(
+      [{ title, url: "https://www.linkedin.com/in/amit-kumar-patnaik", content }],
+      5,
+      "web_heuristic",
+      "Nissan",
+    );
+    expect(results).toHaveLength(0);
   });
 
   it("does not treat department words as rival employers", () => {

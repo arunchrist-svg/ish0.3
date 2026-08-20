@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { GitFork } from "lucide-react";
+import { AppPageHeader } from "@/design-system";
 import { cn } from "@/lib/utils";
 
 const STAGE_ORDER = [
@@ -47,12 +49,13 @@ export default function FunnelPage() {
   const maxCount = Math.max(...Array.from(stageMap.values()), 1);
 
   return (
-        <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-brand-ink">Yield Funnel</h1>
-            <p className="mt-1 text-[13px] text-brand-ink-soft">Lead progression across all stages</p>
-          </div>
-
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <AppPageHeader
+        icon={GitFork}
+        title="Yield Funnel"
+        subtitle="Lead progression across all stages"
+      />
+      <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
           {loading ? (
             <div className="text-[13px] text-brand-ink-faint">Loading…</div>
           ) : (
@@ -126,6 +129,7 @@ export default function FunnelPage() {
               </div>
             </>
           )}
-        </div>
+      </div>
+    </div>
   );
 }

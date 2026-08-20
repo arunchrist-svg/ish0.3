@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ArrowDownWideNarrow, Check, ChevronDown, Clock3, Loader2, Mail, Plus, RefreshCw, Search, Upload, X } from "lucide-react";
+import { LinkedInGlyph } from "@/components/icons/linkedin-glyph";
 import { CircleButton, IshAvatar, ScoreBadge, SearchBar, Separator } from "@/design-system";
 import {
   DropdownMenu,
@@ -28,6 +29,7 @@ type Props = {
   onSelect: (id: string) => void;
   onRefresh?: () => void;
   onAddLead?: () => void;
+  onAddFromLinkedIn?: () => void;
   onImportLeads?: () => void;
   canWrite?: boolean;
   searchQuery?: string;
@@ -305,7 +307,7 @@ function QueueCard({
   );
 }
 
-export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, onImportLeads, canWrite, searchQuery: controlledSearch, onSearchQueryChange, listScrollRef, sort: controlledSort, onSortChange, onMergeDuplicates, mergingDuplicates }: Props) {
+export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, onAddFromLinkedIn, onImportLeads, canWrite, searchQuery: controlledSearch, onSearchQueryChange, listScrollRef, sort: controlledSort, onSortChange, onMergeDuplicates, mergingDuplicates }: Props) {
   const isMobile = useIsMobileLayout();
   const [searchOpen, setSearchOpen] = useState(false);
   const [internalSearch, setInternalSearch] = useState("");
@@ -366,13 +368,26 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, on
               </button>
             </div>
           </div>
-          <div className="mt-3">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              placeholder="Search leads"
-              className="!px-0 !py-0"
-            />
+          <div className="mt-3 flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search leads"
+                className="!px-0 !py-0"
+              />
+            </div>
+            {canWrite && onImportLeads ? (
+              <button
+                type="button"
+                onClick={onImportLeads}
+                disabled={mergingDuplicates}
+                className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                aria-label="Import leads from spreadsheet"
+              >
+                <Upload className="size-4 text-brand-stratus-blue" />
+              </button>
+            ) : null}
           </div>
           <div className="mt-2.5">
             <SortByDropdown sort={sort} onChange={setSort} />
@@ -419,14 +434,14 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, on
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="min-w-0 truncate text-[15px] font-bold leading-none text-brand-ink">Leads</span>
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            {canWrite && onImportLeads ? (
+            {canWrite && onAddFromLinkedIn ? (
               <CircleButton
                 size={26}
-                onClick={mergingDuplicates ? undefined : onImportLeads}
+                onClick={mergingDuplicates ? undefined : onAddFromLinkedIn}
                 className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
-                aria-label="Import leads from spreadsheet"
+                aria-label="Add from LinkedIn"
               >
-                <Upload className="size-3.5" />
+                <LinkedInGlyph className="size-3.5" />
               </CircleButton>
             ) : null}
             {canWrite && onAddLead ? (
@@ -460,6 +475,16 @@ export function QueuePanel({ leads, activeId, onSelect, onRefresh, onAddLead, on
             >
               <Search className="size-3.5" />
             </CircleButton>
+            {canWrite && onImportLeads ? (
+              <CircleButton
+                size={26}
+                onClick={mergingDuplicates ? undefined : onImportLeads}
+                className={cn(mergingDuplicates && "pointer-events-none opacity-50")}
+                aria-label="Import leads from spreadsheet"
+              >
+                <Upload className="size-3.5" />
+              </CircleButton>
+            ) : null}
           </div>
         </div>
         <div className="mt-2 flex min-w-0 items-center gap-1.5">

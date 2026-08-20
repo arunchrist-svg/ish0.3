@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button, text } from "@/design-system";
 import { AuthField } from "@/components/auth/auth-field";
 import { AuthShell } from "@/components/auth/auth-shell";
-import { completeLoginRedirect } from "@/lib/auth/complete-login";
+import { completeLoginRedirect, safeInternalNextPath } from "@/lib/auth/complete-login";
 import { cn } from "@/lib/utils";
 
 type OrgOption = { slug: string; name: string };
@@ -23,16 +23,17 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
   const inviteRequired = errorCode === "invite_required";
+  const nextPath = safeInternalNextPath(searchParams.get("next"));
 
   useEffect(() => {
     fetch("/api/auth/session", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data: { authenticated?: boolean; redirect?: string } | null) => {
         if (!data?.authenticated) return;
-        completeLoginRedirect(data.redirect ?? "/");
+        completeLoginRedirect(nextPath ?? data.redirect ?? "/");
       })
       .catch(() => undefined);
-  }, []);
+  }, [nextPath]);
 
 
   useEffect(() => {
@@ -90,7 +91,7 @@ function LoginForm() {
             ? redirect
             : redirect === "/admin"
               ? redirect
-              : "/";
+              : nextPath ?? "/";
         completeLoginRedirect(destination);
         return;
       } else if (data?.code === "WORKSPACE_AMBIGUOUS" && data.slugs) {

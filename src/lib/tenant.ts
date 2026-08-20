@@ -1,4 +1,5 @@
-import { db, orgMembers, tenants, users, workspaces, sessions } from "@/db";
+import { cache } from "react";
+import { db, orgMembers, tenants, workspaces, sessions } from "@/db";
 import { and, eq } from "drizzle-orm";
 import { getSessionTokenFromCookies, getSessionRecord } from "@/lib/auth/session";
 import { isSuperadmin } from "@/lib/auth/platform";
@@ -79,14 +80,14 @@ export async function listActiveMemberships(userId: string) {
     .where(and(eq(orgMembers.userId, userId), eq(orgMembers.status, "active")));
 }
 
-const TENANT_CTX_TTL_MS = 8_000;
+const TENANT_CTX_TTL_MS = 60_000;
 const tenantCtxCache = new Map<string, { ctx: TenantContext; expiresAt: number }>();
 
 export function clearTenantContextCache() {
   tenantCtxCache.clear();
 }
 
-export async function requireTenantContext(): Promise<TenantContext> {
+async function loadTenantContext(): Promise<TenantContext> {
   const token = await getSessionTokenFromCookies();
   if (token) {
     const cached = tenantCtxCache.get(token);
@@ -145,18 +146,18 @@ export async function requireTenantContext(): Promise<TenantContext> {
   return ctx;
 }
 
+const requireTenantContextImpl = cache(loadTenantContext);
+
+export async function requireTenantContext(): Promise<TenantContext> {
+  return requireTenantContextImpl();
+}
+
 export async function requireSuperadmin(): Promise<{ userId: string; email: string }> {
   const token = await getSessionTokenFromCookies();
   const session = await getSessionRecord(token);
   if (!session) throw new UnauthorizedError();
 
-  const [row] = await db
-    .select({ platformRole: users.platformRole })
-    .from(users)
-    .where(eq(users.id, session.id))
-    .limit(1);
-
-  if (!isSuperadmin(row?.platformRole)) throw new ForbiddenError("Superadmin required");
+  if (!isSuperadmin(session.platformRole)) throw new ForbiddenError("Superadmin required");
   return { userId: session.id, email: session.email };
 }
 

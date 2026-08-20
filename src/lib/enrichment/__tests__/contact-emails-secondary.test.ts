@@ -134,6 +134,37 @@ describe("refreshPermutationEmails", () => {
     expect(next.alternateEmails.some((entry) => entry.email.includes("manufacturingtodayindia"))).toBe(false);
   });
 
+  it("rewrites Automotive Axles slug guesses to autoaxle.com", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Emmanuel",
+      lastName: "Suresh Kumar",
+      companyName: "AUTOMOTIVE AXLES LIMITED",
+      primaryEmail: "emmanuel.sureshkumar@automotiveaxles.com",
+      emailStatus: "unverified",
+      enrichmentProvider: "permutation",
+      enrichmentSource: "name_domain_guess:first.last",
+      alternateEmails: [],
+    });
+
+    expect(next.email).toBe("emmanuel.sureshkumar@autoaxle.com");
+    expect(next.emailStatus).toBe("unverified");
+  });
+
+  it("keeps a user-typed email that does not match the company domain", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Prasanth",
+      companyName: "ish",
+      primaryEmail: "prasanth@example-corp.com",
+      emailStatus: "unverified",
+      enrichmentProvider: "manual",
+      enrichmentSource: "manual",
+      preservePrimary: true,
+      alternateEmails: [],
+    });
+    expect(next.email).toBe("prasanth@example-corp.com");
+    expect(next.enrichmentProvider).toBe("manual");
+  });
+
   it("does not revive a bounced first.last address", () => {
     const next = refreshPermutationEmails({
       firstName: "Priya",
@@ -154,6 +185,20 @@ describe("refreshPermutationEmails", () => {
 
     expect(next.email).toBeNull();
     expect(next.alternateEmails.some((entry) => entry.email === "priya.sharma@acme.com" && entry.testStatus === "rejected")).toBe(true);
+  });
+
+  it("keeps a mapped Gmail address that does not match the company domain", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Abgupta",
+      name: "Abgupta",
+      companyName: "ABHIJIT GUPTA",
+      primaryEmail: "abgupta89@gmail.com",
+      emailStatus: "unverified",
+      alternateEmails: [],
+    });
+
+    expect(next.email).toBe("abgupta89@gmail.com");
+    expect(next.emailStatus).toBe("unverified");
   });
 });
 

@@ -4,9 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, User, Shield, Loader2, Coins } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
-import { SettingsHero } from "@/components/settings/settings-hero";
 import { cn } from "@/lib/utils";
-import { ListGroup, ListRow, MobilePageLayout } from "@/design-system";
+import { AppPageHeader, ListGroup, ListRow, MobilePageLayout } from "@/design-system";
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -47,16 +46,14 @@ export default function ProfilePage() {
       subtitle={orgName || "Your account"}
       largeTitle
       className="lg:bg-transparent"
+      contentClassName="flex flex-col !overflow-hidden"
     >
-      <div className="settings-ambient mx-auto w-full max-w-2xl ish-page-padding py-6 lg:px-6 lg:py-8 animate-brand-page-in">
-        <div className="hidden lg:block">
-          <SettingsHero
-            icon={User}
-            title="Profile"
-            subtitle="Account, session, and access information"
-          />
-        </div>
-
+      <AppPageHeader
+        icon={User}
+        title="Profile"
+        subtitle="Account, session, and access information"
+      />
+      <div className="settings-ambient mx-auto w-full max-w-2xl flex-1 overflow-y-auto ish-page-padding py-6 lg:px-6 lg:py-6 animate-brand-page-in">
         <SettingsGroup title="Identity">
           <SettingsRow className="gap-4 !py-5">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow-soft shadow-[var(--shadow-brand-sm)]">

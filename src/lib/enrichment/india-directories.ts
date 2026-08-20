@@ -40,31 +40,83 @@ function aiConfidenceThreshold(): number {
   return Number.isFinite(parsed) ? parsed : 40;
 }
 
+function rotatedQueryTerms<T>(items: T[], count: number, offset: number): T[] {
+  if (!items.length || count <= 0) return [];
+  const slots: T[] = [];
+  for (let i = 0; i < Math.min(count, items.length); i++) {
+    slots.push(items[(offset + i) % items.length]!);
+  }
+  return slots;
+}
+
 export function buildDirectoryQueries(
   cities: string[],
   industries: string[],
   fetchSeed = 0,
   employeeBands: string[] = [],
+  searchKind: "industry" | "business" = "industry",
+  /** Parent district cities for ZaubaCorp/registry queries (e.g. "Hosur" when chips are "SIPCOT Hosur").
+   *  ZaubaCorp indexes by district city, not industrial area name. Provided by the caller from
+   *  scoutAreasOfFocus.cityLabel so that neighborhood chips still yield registered company hits. */
+  registryCities?: string[],
 ): string[] {
   const cityStr = citySearchClause(cities);
+  const seed = Math.abs(fetchSeed);
   const indStr =
-    industries.length > 0 ? industries.slice(0, 3).join(" OR ") : "corporate";
+    industries.length > 0
+      ? rotatedQueryTerms(industries, 3, seed).join(" OR ")
+      : searchKind === "business"
+        ? "establishments"
+        : "corporate";
   const sizeStr = employeeSizeSearchClause(employeeBands);
   const sizeBit = sizeStr ? ` ${sizeStr}` : "";
 
+  // Registry sites (ZaubaCorp, Zauba, Tofler) index by district city. When registryCities are
+  // provided, combine with the neighborhood chips so both granularities are searched.
+  const registryCityStr =
+    registryCities?.length
+      ? [...cities.map((c) => c.trim()).filter(Boolean), ...registryCities].join(" OR ")
+      : cityStr;
+
+  if (searchKind === "business") {
+    const queries = [
+      `(${LISTING_SITES.join(" OR ")}) ${indStr} ${cityStr} India`,
+      `site:justdial.com ${indStr} ${cityStr} India`,
+      `site:sulekha.com ${indStr} ${cityStr}`,
+    ];
+    for (const city of rotatedQueryTerms(expandCitySearchTerms(cities), 3, seed + 1)) {
+      queries.push(`${indStr} ${city} India address phone`);
+    }
+    if (registryCities?.length) {
+      for (const city of registryCities) {
+        queries.push(`site:justdial.com ${indStr} ${city} India SIPCOT industrial`);
+      }
+    }
+    const extras = [
+      `site:justdial.com ${indStr} ${cityStr}${sizeBit}`,
+      `${indStr} near ${cityStr} India`,
+    ];
+    const offset = Math.abs(fetchSeed) % extras.length;
+    const rotatedExtras = [...extras.slice(offset), ...extras.slice(0, offset)];
+    return [...queries, ...rotatedExtras];
+  }
+
   const queries = [
-    `(${REGISTRY_SITES.join(" OR ")}) ${indStr} private limited companies ${cityStr} India`,
-    `site:zaubacorp.com ${indStr} ${cityStr} company CIN registered`,
+    // Registry sites: use registryCityStr (includes parent city) so ZaubaCorp returns hits
+    `(${REGISTRY_SITES.join(" OR ")}) ${indStr} private limited companies ${registryCityStr} India`,
+    `site:zaubacorp.com ${indStr} ${registryCityStr} company CIN registered`,
+    // Listing sites: use neighborhood chip names since JustDial/IndiaMART have locality data
     `(${LISTING_SITES.slice(0, 2).join(" OR ")}) ${indStr} Pvt Ltd manufacturers ${cityStr}${sizeBit}`,
     `(${LISTING_SITES.slice(2).join(" OR ")}) ${indStr} companies ${cityStr}${sizeBit} India`,
   ];
 
-  for (const city of expandCitySearchTerms(cities).slice(0, 2)) {
+  const zasubaCities = registryCities?.length ? registryCities : expandCitySearchTerms(cities);
+  for (const city of zasubaCities.slice(0, 2)) {
     queries.push(`site:zaubacorp.com ${indStr} companies ${city} India`);
   }
 
   const extras = [
-    `site:thecompanycheck.com ${indStr} ${cityStr} private limited`,
+    `site:thecompanycheck.com ${indStr} ${registryCityStr} private limited`,
     `site:indiamart.com ${indStr} ${cityStr}${sizeBit} company directory`,
     `site:tradeindia.com ${indStr} manufacturers ${cityStr}${sizeBit}`,
   ];
@@ -150,14 +202,21 @@ export async function indiaDirectoriesSearchCompanies(params: {
   meta?: DirectorySearchMeta;
   fetchSeed?: number;
   employeeBands?: string[];
+  searchKind?: "industry" | "business";
+  /** Parent district cities for ZaubaCorp registry queries when searching Focus Area neighborhoods.
+   *  e.g. ["Hosur"] when chips are ["SIPCOT Hosur", "Bagalur Hosur"]. */
+  focusCityLabels?: string[];
 }): Promise<ScoutCompanyResult[]> {
   const limit = params.limit ?? 20;
   const meta = params.meta;
   const cityStr = citySearchClause(params.cities);
+  const searchKind = params.searchKind ?? "industry";
   const indStr =
     params.industries.length > 0
       ? params.industries.slice(0, 3).join(" OR ")
-      : "corporate";
+      : searchKind === "business"
+        ? "establishments"
+        : "corporate";
   const sizeStr = employeeSizeSearchClause(params.employeeBands);
 
   if (!hasTavilyKey()) {
@@ -165,7 +224,14 @@ export async function indiaDirectoriesSearchCompanies(params: {
   }
 
   const fetchSeed = params.fetchSeed ?? 0;
-  const queries = buildDirectoryQueries(params.cities, params.industries, fetchSeed, params.employeeBands);
+  const queries = buildDirectoryQueries(
+    params.cities,
+    params.industries,
+    fetchSeed,
+    params.employeeBands,
+    searchKind,
+    params.focusCityLabels,
+  );
   const queryBatch = queries.slice(0, directorySearchQueryCap(limit, queries.length));
   const perQueryLimit = optimizedMaxResults(Math.ceil(limit / Math.max(queryBatch.length, 1)));
 
@@ -207,9 +273,8 @@ export async function indiaDirectoriesSearchCompanies(params: {
   }
 
   const threshold = aiConfidenceThreshold();
-  const freeProvider = freeCompanyFilterProvider();
 
-  if (hasLLMKey() || freeProvider) {
+  if (hasLLMKey()) {
     const context = allResults
       .slice(0, Math.min(allResults.length, Math.max(12, Math.ceil(limit / 4))))
       .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 600)}`)
@@ -218,7 +283,7 @@ export async function indiaDirectoriesSearchCompanies(params: {
     try {
       const raw = await callLLM({
         tier: "fast",
-        ...(freeProvider ? { provider: freeProvider } : {}),
+        provider: freeCompanyFilterProvider() ?? undefined,
         system: `You extract structured B2B company data for SaaS sales prospecting from Indian MCA / Zauba / directory listings.
 Output ONLY a valid JSON array. No markdown fences. No explanation.
 Each item MUST have: { "name": string, "city": string, "industry": string, "employees": string | null, "website": string | null, "phone": string | null, "intelNotes": string | null }
@@ -264,12 +329,20 @@ Return up to ${limit} companies.`,
     meta?.warnings.push("LLM API key not set — using Zauba / directory parsing fallback.");
   }
 
-  if (!strictHeuristic.length) {
+  // In neighborhood/Focus Area mode, JustDial results often have names without "Pvt Ltd",
+  // so strictHeuristic may be empty even when heuristicReady has valid companies.
+  // Return heuristicReady as the fallback rather than silently returning [].
+  const finalFallback =
+    params.focusCityLabels?.length && !strictHeuristic.length && heuristicReady.length
+      ? heuristicReady
+      : strictHeuristic;
+
+  if (!finalFallback.length) {
     meta?.warnings.push(
       "Directory pages were found but no registered company names could be parsed. Try Zauba-friendly industries or another city.",
     );
   }
-  return fillEmployeesFromHits(strictHeuristic, allResults);
+  return fillEmployeesFromHits(finalFallback, allResults);
 }
 
 export async function indiaDirectoriesSearchPeople(params: {
@@ -278,6 +351,9 @@ export async function indiaDirectoriesSearchPeople(params: {
   limit?: number;
   roleHints?: string[];
   cities?: string[];
+  indiaOnly?: boolean;
+  localOperators?: boolean;
+  locationScope?: "focus" | "interest";
 }): Promise<ScoutPersonResult[]> {
   return searchPeopleViaTavily({
     companyName: params.companyName,
@@ -286,6 +362,9 @@ export async function indiaDirectoriesSearchPeople(params: {
     dataSource: "india_directories",
     roleHints: params.roleHints,
     cities: params.cities,
+    indiaOnly: params.indiaOnly,
+    localOperators: params.localOperators,
+    locationScope: params.locationScope,
   });
 }
 

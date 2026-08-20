@@ -4,6 +4,7 @@ import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import {
   IMPORT_TARGET_FIELDS,
+  MULTI_MAP_FIELDS,
   importMappedLeads,
   mappingHasRequiredFields,
   parseLeadImportFile,
@@ -11,8 +12,14 @@ import {
   type ImportTargetField,
 } from "@/lib/leads/import";
 
+export const maxDuration = 300;
+
 function isTargetField(value: unknown): value is ImportTargetField {
   return typeof value === "string" && (IMPORT_TARGET_FIELDS as readonly string[]).includes(value);
+}
+
+function allowsMultiple(field: ImportTargetField): boolean {
+  return (MULTI_MAP_FIELDS as readonly string[]).includes(field);
 }
 
 function sanitizeMapping(raw: unknown, headers: string[]): ColumnMapping {
@@ -22,7 +29,7 @@ function sanitizeMapping(raw: unknown, headers: string[]): ColumnMapping {
 
   for (const header of headers) {
     const candidate = source[header];
-    if (isTargetField(candidate) && !used.has(candidate)) {
+    if (isTargetField(candidate) && (!used.has(candidate) || allowsMultiple(candidate))) {
       mapping[header] = candidate;
       used.add(candidate);
     } else {

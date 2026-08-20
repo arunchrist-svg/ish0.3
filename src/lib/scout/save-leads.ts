@@ -15,7 +15,7 @@ import {
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
-import { isGenericCompanyEmail, sanitizeEmail } from "@/lib/enrichment/validate-contact";
+import { isGenericCompanyEmail, sanitizeEmail, sanitizePhone, resolveSavedWhatsAppPhone } from "@/lib/enrichment/validate-contact";
 import {
   emailBelongsToCompany,
   isAcceptableCompanyDomain,
@@ -25,7 +25,13 @@ import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-
 import { resolveContactName } from "@/lib/enrichment/email-permutations";
 import { refreshPermutationEmails, toDbEmailStatus } from "@/lib/enrichment/contact-emails";
 import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
-import { personTitleConflictsWithCompany } from "@/lib/enrichment/person-company-match";
+import {
+  hasFormerCompanyAffiliation,
+  isOpenToWorkProfile,
+  personLooksOpenToWork,
+  personTitleConflictsWithCompany,
+} from "@/lib/enrichment/person-company-match";
+import { isFestivalBuyerRole } from "@/lib/enrichment/people-role-filter";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { mapWithConcurrency } from "@/lib/async";
 
@@ -63,13 +69,37 @@ function looksLikeDecisionMaker(person: ScoutPersonResult): boolean {
   return BUYING_TITLE_KEYWORDS.some((keyword) => title.includes(keyword));
 }
 
-async function preFilterCheck(
+export function scoutPersonSaveGate(
   person: ScoutPersonResult,
-  _company: ScoutCompanyResult,
-  leadSource?: string,
-): Promise<{ pass: boolean; reason: string }> {
-  if (leadSource === "scout_wizard") {
+  company: ScoutCompanyResult,
+  opts?: { leadSource?: string; sweetsGifting?: boolean },
+): { pass: boolean; reason: string } {
+  // Open to Work and former-employee checks run for every source, including the wizard:
+  // a job seeker must never become a lead just because the user ticked the box.
+  const blob = `${person.name ?? ""}\n${person.title ?? ""}\n${person.bio ?? ""}`;
+  if (personLooksOpenToWork(person) || isOpenToWorkProfile(blob)) {
+    return { pass: false, reason: "open to work profile" };
+  }
+  if (hasFormerCompanyAffiliation(blob, company.name)) {
+    return { pass: false, reason: "does not work at this company" };
+  }
+
+  if (opts?.leadSource === "scout_wizard") {
     return { pass: true, reason: "user-selected from scout wizard" };
+  }
+
+  if (personTitleConflictsWithCompany(person.title, company.name)) {
+    return { pass: false, reason: "does not work at this company" };
+  }
+
+  if (opts?.sweetsGifting) {
+    if (!person.name?.trim()) {
+      return { pass: false, reason: "missing contact name" };
+    }
+    if (!person.title?.trim() || !isFestivalBuyerRole(person.title)) {
+      return { pass: false, reason: "not a festival sweets buyer" };
+    }
+    return { pass: true, reason: "festival sweets buyer role" };
   }
 
   if (looksLikeDecisionMaker(person)) {
@@ -82,6 +112,15 @@ async function preFilterCheck(
   }
 
   return { pass: false, reason: "missing contact name" };
+}
+
+async function preFilterCheck(
+  person: ScoutPersonResult,
+  company: ScoutCompanyResult,
+  leadSource?: string,
+  sweetsGifting?: boolean,
+): Promise<{ pass: boolean; reason: string }> {
+  return scoutPersonSaveGate(person, company, { leadSource, sweetsGifting });
 }
 
 export type SaveLeadsResult = {
@@ -160,19 +199,43 @@ async function upsertScoutAccount(params: {
     domain: usableDomain ?? undefined,
   };
 
-  if (!skipExternalDomain) {
+  // Fast path: keep a known-good domain without Apollo/Tavily.
+  if (usableDomain) {
+    resolvedCompany = {
+      ...company,
+      domain: usableDomain,
+      website: company.website ?? `https://www.${usableDomain}`,
+    };
+  } else if (!skipExternalDomain) {
     const domainResolution = await resolveCompanyDomain({
       companyName: company.name,
       domain: company.domain,
       website: company.website,
       city: company.city,
-      allowExternal: !usableDomain,
+      allowExternal: true,
     });
     resolvedCompany = {
       ...company,
       domain: usableStoredDomain(domainResolution.domain, company.name) ?? undefined,
       website: domainResolution.website ?? company.website,
     };
+  } else {
+    // Company-only save still applies curated name→domain overrides (no Apollo/Tavily).
+    const knownResolution = await resolveCompanyDomain({
+      companyName: company.name,
+      domain: company.domain,
+      website: company.website,
+      city: company.city,
+      allowExternal: false,
+    });
+    const knownDomain = usableStoredDomain(knownResolution.domain, company.name);
+    if (knownDomain) {
+      resolvedCompany = {
+        ...company,
+        domain: knownDomain,
+        website: knownResolution.website ?? company.website,
+      };
+    }
   }
 
   const existing = await findExistingAccount(tenantId, workspaceId, resolvedCompany, candidates);
@@ -281,6 +344,33 @@ export function accountToScoutCompany(row: AccountRow): ScoutCompanyResult {
   };
 }
 
+export async function listTenantAccountShapes(params: {
+  tenantId: string;
+  workspaceId: string;
+  limit?: number;
+}): Promise<{ name: string; city?: string | null; domain?: string | null }[]> {
+  const limit = Math.min(Math.max(params.limit ?? 500, 1), 500);
+  const rows = await db
+    .select({
+      name: accounts.name,
+      city: accounts.city,
+      domain: accounts.domain,
+      dataSource: accounts.dataSource,
+    })
+    .from(accounts)
+    .where(and(eq(accounts.tenantId, params.tenantId), eq(accounts.workspaceId, params.workspaceId)))
+    .orderBy(desc(accounts.updatedAt))
+    .limit(limit);
+
+  return rows
+    .filter((row) => (row.dataSource ?? "").toLowerCase() !== "sample")
+    .map((row) => ({
+      name: row.name,
+      city: row.city,
+      domain: row.domain,
+    }));
+}
+
 export async function listSavedScoutCompanies(params: {
   tenantId: string;
   workspaceId: string;
@@ -320,7 +410,7 @@ async function resolveEmailStatus(params: {
       provider: "enrich-reuse",
     };
   }
-  return verifyEmail(email);
+  return verifyEmail(email, { network: false });
 }
 
 type EnrichContactResultStatus = "verified" | "unverified" | "generic" | "missing";
@@ -333,6 +423,7 @@ export async function saveScoutLeads(params: {
   tenantId: string;
   workspaceId: string;
   enrichmentConfig?: EnrichmentConfig;
+  sweetsGifting?: boolean;
 }): Promise<SaveLeadsResult> {
   const { people, company, tenantId, workspaceId } = params;
 
@@ -354,6 +445,7 @@ export async function saveScoutLeads(params: {
   const shouldEnrich = cfg.enrichOnImport && cfg.enrichProvider !== "none";
   const enrichMode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
   const skipGooglePlaces = leadSource === "scout_wizard";
+  const sweetsGifting = params.sweetsGifting ?? false;
 
   const { account, resolvedCompany } = await upsertScoutAccount({
     company,
@@ -376,6 +468,7 @@ export async function saveScoutLeads(params: {
       enrichMode,
       cfg,
       skipGooglePlaces,
+      sweetsGifting,
     });
   });
 
@@ -405,6 +498,7 @@ async function saveOnePerson(params: {
   enrichMode: "free" | "paid";
   cfg: EnrichmentConfig;
   skipGooglePlaces: boolean;
+  sweetsGifting?: boolean;
 }): Promise<PersonSaveOutcome> {
   const {
     person,
@@ -418,17 +512,24 @@ async function saveOnePerson(params: {
     enrichMode,
     cfg,
     skipGooglePlaces,
+    sweetsGifting,
   } = params;
 
   if (personTitleConflictsWithCompany(person.title, resolvedCompany.name)) {
-    return { kind: "skipped", item: { name: person.name, reason: "title names a different employer" } };
+    return {
+      kind: "skipped",
+      item: {
+        name: person.name,
+        reason: sweetsGifting ? "does not work at this company" : "title names a different employer",
+      },
+    };
   }
 
   let resolvedEmail = sanitizeEmail(person.email);
   if (resolvedEmail && !emailBelongsToCompany(resolvedEmail, resolvedCompany.name)) {
     resolvedEmail = undefined;
   }
-  let resolvedPhone = person.phone;
+  let resolvedPhone = sanitizePhone(person.phone);
   let emailConfidence = 0;
   let enrichmentSource: string | undefined;
   let enrichmentProvider: string | undefined;
@@ -438,7 +539,16 @@ async function saveOnePerson(params: {
   let enrichedAcceptedEmail: string | undefined;
   let didEnrich = false;
 
-  if (shouldEnrich) {
+  const emailAlreadyReady =
+    Boolean(resolvedEmail) &&
+    !isGenericCompanyEmail(resolvedEmail!) &&
+    emailBelongsToCompany(resolvedEmail!, resolvedCompany.name);
+
+  // Fast CRM add:
+  // - keepable email already present → skip providers
+  // - free mode → skip Apollo/Hunter/website waterfall (permutation fill is enough)
+  // Paid enrich still runs when Settings use a paid provider and email is missing.
+  if (shouldEnrich && enrichMode === "paid" && !emailAlreadyReady) {
     const enriched = await enrichPersonContact({
       person: {
         ...person,
@@ -460,7 +570,6 @@ async function saveOnePerson(params: {
       shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
     ) {
       resolvedEmail = enriched.email;
-      resolvedPhone = enriched.phone ?? resolvedPhone;
       emailConfidence = enriched.emailConfidence;
       enrichmentSource = enriched.enrichmentSource;
       enrichmentProvider = enriched.enrichmentProvider;
@@ -478,6 +587,8 @@ async function saveOnePerson(params: {
       enrichedEmailStatus = enriched.emailStatus;
       enrichedAcceptedEmail = enriched.email;
     }
+    const mobile = resolveSavedWhatsAppPhone(resolvedPhone, enriched.phone);
+    if (mobile) resolvedPhone = mobile;
   } else if (resolvedEmail && isGenericCompanyEmail(resolvedEmail) && isNamedPerson(person.name)) {
     resolvedEmail = undefined;
   }
@@ -527,7 +638,7 @@ async function saveOnePerson(params: {
 
   const existingContact = existingByEmail ?? existingByName;
 
-  const filter = await preFilterCheck(person, resolvedCompany, leadSource);
+  const filter = await preFilterCheck(person, resolvedCompany, leadSource, sweetsGifting);
   if (!filter.pass) {
     return {
       kind: "skipped",

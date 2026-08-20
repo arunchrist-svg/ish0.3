@@ -19,26 +19,34 @@ describe("ISH cold email templates", () => {
     expect(e1.subjectB).toBe("Festive sweets sample for Acme Auto");
     expect(e1.subjectC).toBe("A tasting box for your team");
     expect(e1.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
-    expect(e1.emailBody).toMatch(/something memorable and distinctive for your team this year/);
-    expect(e1.emailBody).toMatch(/handcraft traditional sweets straight from our own farm to the box/);
-    expect(e1.emailBody).toMatch(/no artificial flavors/);
-    expect(e1.emailBody).toMatch(/Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite/);
+    expect(e1.emailBody).toMatch(/for the team at Acme Auto this year/);
+    expect(e1.emailBody).toMatch(/crafted fresh every morning with organic milk, ghee, and khova from our own farm/);
+    expect(e1.emailBody).toMatch(/We never add preservatives or chemicals/);
+    expect(e1.emailBody).not.toMatch(/no artificial flavors/);
+    expect(e1.emailBody).not.toMatch(/100% pure ghee/);
     expect(e1.emailBody).toMatch(/tasting is believing/);
-    expect(e1.emailBody).toMatch(/sample box to your office as our treat/);
+    expect(e1.emailBody).toMatch(/sample box to Acme Auto as our treat/);
     expect(e1.emailBody).toMatch(/What is the best delivery address to ship it to\?/);
     expect(e1.emailBodyB).toMatch(/employees and clients/);
     expect(e1.emailBodyB).toMatch(/can bring that to Acme Auto/);
-    expect(e1.emailBodyB).toMatch(/zero preservatives/);
-    expect(e1.emailBodyB).toMatch(/organic milk from our own dairy/);
-    expect(e1.emailBodyB).toMatch(/Send me an address and I'll ship a sampler this week/);
-    expect(e1.emailBodyC).toMatch(/Diwali gifting to employees and clients/);
-    expect(e1.emailBodyC).toMatch(/can bring farm-to-counter mithai/);
-    expect(e1.emailBodyC).toMatch(/global export/);
+    expect(e1.emailBodyB).toMatch(/We never add preservatives or chemicals/);
+    expect(e1.emailBodyB).toMatch(/organic milk from our own farm/);
+    expect(e1.emailBodyB).toMatch(/ship a sampler to Acme Auto this week/);
+    expect(e1.emailBodyC).toMatch(/Diwali gifting to employees and clients at Acme Auto/);
+    expect(e1.emailBodyC).toMatch(/farm-fresh mithai/);
+    expect(e1.emailBodyC).toMatch(/Production is highly hygienic/);
+    expect(e1.emailBodyC).not.toMatch(/USA|Australia/);
     expect(e1.emailBodyC).toMatch(/Want it sent to Acme Auto this week\?/);
     expect(e1.emailBody).toMatch(/Best,\nSrilaksha\nIndia Sweet House/);
     expect(e1.emailBody).not.toMatch(/Thanks & Regards/);
     expect(e1.emailBody).not.toMatch(/Franchise Owner/);
     expect(e1.emailBody).not.toMatch(/Partnerships/);
+  });
+
+  it("names the company in every Email 1, 2, and 3 option", () => {
+    for (const body of [e1.emailBody, e1.emailBodyB, e1.emailBodyC, e2.emailBody, e2.emailBodyB, e2.emailBodyC, e3.emailBody, e3.emailBodyB, e3.emailBodyC]) {
+      expect(body).toContain("Acme Auto");
+    }
   });
 
   it("keeps the three Email 1 options as different sequences, not paraphrases", () => {
@@ -49,30 +57,39 @@ describe("ISH cold email templates", () => {
 
   it("fills E2 with dairy, variety, and hygiene selling points", () => {
     expect(e2.subjectA).toBe("Re: Sample box for festive tasting, Vijetha");
-    expect(e2.emailBody).toMatch(/farm-to-counter pipeline/);
-    expect(e2.emailBody).toMatch(/organic milk from our own dairy/);
-    expect(e2.emailBody).toMatch(/zero preservatives/);
-    expect(e2.emailBody).toMatch(/USA and Australia/);
+    expect(e2.emailBody).toMatch(/for Diwali at Acme Auto/);
+    expect(e2.emailBody).toMatch(/organic milk/);
+    expect(e2.emailBody).toMatch(/never add preservatives or chemicals/);
+    expect(e2.emailBody).not.toMatch(/USA|Australia/);
+    expect(e2.emailBody).not.toMatch(/export-grade|farm-to-counter|zero preservatives/);
+    expect(e2.emailBody).toMatch(/That is how the team at Acme Auto can relish authentic traditional sweets this season/);
     expect(e2.emailBody).toMatch(/tasting box/);
     expect(e2.emailBody).not.toMatch(/\bfree sampler\b/i);
     expect(e2.emailBodyB).toMatch(/more than 200 traditional/);
     expect(e2.emailBodyB).toMatch(/Jaggery Kaju Katli/);
     expect(e2.emailBodyB).toMatch(/Sugarfree Honey Laddu/);
     expect(e2.emailBodyC).toMatch(/own dairy farm/);
-    expect(e2.emailBodyC).toMatch(/chemical preservatives/);
-    expect(e2.emailBodyC).toMatch(/USA and Australia/);
+    expect(e2.emailBodyC).toMatch(/never adds preservatives or chemicals/);
+    expect(e2.emailBodyC).not.toMatch(/USA|Australia/);
   });
 
   it("fills E3 breakup with a short ISH authenticity line", () => {
     expect(e3.emailBody).toMatch(/I won't email further/);
-    expect(e3.emailBody).toMatch(/own organic dairy/);
-    expect(e3.emailBody).toMatch(/Wishing you a great Diwali either way/);
-    expect(e3.emailBodyB).toMatch(/zero preservatives/);
+    expect(e3.emailBody).toMatch(/organic milk from our own farm/);
+    expect(e3.emailBody).toMatch(/tasting box for Acme Auto/);
+    expect(e3.emailBody).toMatch(/Wishing you a happy festival season/);
+    expect(e3.emailBody).not.toMatch(/Diwali/);
+    expect(e3.emailBodyB).toMatch(/here for Acme Auto/);
+    expect(e3.emailBodyB).toMatch(/never add preservatives or chemicals/);
     expect(e3.emailBodyB).toMatch(/door stays open/);
-    expect(e3.emailBodyB).toMatch(/happy Diwali/i);
-    expect(e3.emailBodyC).toMatch(/export-grade hygiene/);
-    expect(e3.emailBodyC).toMatch(/own dairy/);
-    expect(e3.emailBodyC).toMatch(/Happy Diwali in advance/);
+    expect(e3.emailBodyB).toMatch(/Wishing Acme Auto a happy festival season/);
+    expect(e3.emailBodyB).not.toMatch(/Diwali/);
+    expect(e3.emailBodyC).toMatch(/hygienic production/);
+    expect(e3.emailBodyC).not.toMatch(/USA|Australia/);
+    expect(e3.emailBodyC).not.toMatch(/export-grade/);
+    expect(e3.emailBodyC).toMatch(/own farm/);
+    expect(e3.emailBodyC).toMatch(/Wishing the team at Acme Auto a happy festival season/);
+    expect(e3.emailBodyC).not.toMatch(/Diwali/);
   });
 
   it("strips legal suffixes from company mentions in copy", () => {
@@ -82,6 +99,8 @@ describe("ISH cold email templates", () => {
       sequencePosition: 1,
     });
     expect(legal.subjectB).toBe("Festive sweets sample for Kems");
+    expect(legal.emailBody).toMatch(/team at Kems this year/);
+    expect(legal.emailBody).toMatch(/sample box to Kems as our treat/);
     expect(legal.emailBodyC).toMatch(/Want it sent to Kems this week\?/);
     expect(legal.emailBodyC).not.toMatch(/Pvt\.?\s*Ltd/i);
     expect(legal.emailBodyC).not.toMatch(/India Pvt/i);
@@ -99,7 +118,7 @@ describe("ISH cold email templates", () => {
     const online = fillIshDraftVariants({ ...names, sequencePosition: 1, templateId: "meet_online" });
     expect(online.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
     expect(online.emailBody).toMatch(/online walkthrough/);
-    expect(online.emailBody).not.toMatch(/sample box to your office as our treat/);
+    expect(online.emailBody).not.toMatch(/sample box to Acme Auto as our treat/);
     const inPerson = fillIshDraftVariants({ ...names, sequencePosition: 1, templateId: "meet_in_person" });
     expect(inPerson.emailBody).toMatch(/in-person tasting/);
   });

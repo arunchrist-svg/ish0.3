@@ -26,6 +26,11 @@ describe("ENRICH-UNIT-001 email validation", () => {
     expect(sanitizeEmail("test@test.com")).toBe("test@test.com");
   });
 
+  it("keeps personal inboxes such as Gmail", () => {
+    expect(sanitizeEmail("abgupta89@gmail.com")).toBe("abgupta89@gmail.com");
+    expect(isValidEmail("abgupta89@gmail.com")).toBe(true);
+  });
+
   it("rejects malformed emails", () => {
     expect(isValidEmail("not-an-email")).toBe(false);
     expect(sanitizeEmail("garbage")).toBeUndefined();

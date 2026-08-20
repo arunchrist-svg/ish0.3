@@ -35,7 +35,7 @@ export async function notifyLeadEvent(
     const messages: Record<typeof kind, { title: string; body: string }> = {
       "research.complete": {
         title: "Research ready",
-        body: `Smart email plan is ready for ${name}`,
+        body: `Research brief is ready for ${name}`,
       },
       "draft.ready": {
         title: "Draft needs review",

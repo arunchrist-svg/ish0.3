@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 import { db, sessions, users } from "@/db";
@@ -43,7 +44,7 @@ export type SessionRecord = SessionUser & {
   platformRole: string;
 };
 
-export async function getSessionRecord(token: string | undefined): Promise<SessionRecord | null> {
+export const getSessionRecord = cache(async (token: string | undefined): Promise<SessionRecord | null> => {
   if (!token) return null;
 
   const [row] = await db
@@ -70,7 +71,7 @@ export async function getSessionRecord(token: string | undefined): Promise<Sessi
     platformRole: row.platformRole ?? "user",
     tenantId: row.tenantId,
   };
-}
+});
 
 export async function getSessionUser(token: string | undefined): Promise<SessionUser | null> {
   const record = await getSessionRecord(token);

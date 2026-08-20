@@ -2,10 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   assertResearchReadyForWriter,
   fallbackResearchBrief,
-  formatWriterPlanForPrompt,
   getResearchQualityGaps,
   ResearchNotReadyError,
-  writerPlanSchema,
 } from "@/lib/agents/writer-plan";
 
 describe("writer-plan", () => {
@@ -41,24 +39,5 @@ describe("writer-plan", () => {
     expect(() => assertResearchReadyForWriter({ outreachHook: "", decisionChain: ["x"] })).toThrow(
       ResearchNotReadyError,
     );
-  });
-
-  it("formats plan for writer prompt", () => {
-    const text = formatWriterPlanForPrompt({
-      hook: "Campus expansion",
-      valueProp: "Premium hampers",
-      cta: "Open to options?",
-    });
-    expect(text).toContain("Hook:");
-    expect(text).toContain("Campus expansion");
-  });
-
-  it("validates writer plan schema", () => {
-    const parsed = writerPlanSchema.safeParse({
-      hook: "Specific hook line here",
-      valueProp: "Clear value for HR teams",
-      cta: "Soft CTA question here?",
-    });
-    expect(parsed.success).toBe(true);
   });
 });

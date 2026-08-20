@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   insertValues: vi.fn(),
   insertReturning: vi.fn(),
   update: vi.fn(),
-  ensureWriterPlan: vi.fn(),
   fillIshDraftVariants: vi.fn(),
   callLLM: vi.fn(),
 }));
@@ -57,8 +56,6 @@ vi.mock("@/lib/email/ish-cold-templates", async (importOriginal) => {
 
 vi.mock("@/lib/agents/writer-plan", () => ({
   ensureResearchBriefForWriter: vi.fn(),
-  ensureWriterPlan: (...args: unknown[]) => mocks.ensureWriterPlan(...args),
-  formatWriterPlanForPrompt: () => "plan",
   getResearchQualityGaps: () => [],
 }));
 
@@ -135,7 +132,7 @@ describe("writerMode", () => {
     const id = await runWriter("lead-1");
     expect(id).toBe("outreach-1");
     expect(mocks.fillIshDraftVariants).toHaveBeenCalled();
-    expect(mocks.ensureWriterPlan).not.toHaveBeenCalled();
+    expect(mocks.callLLM).not.toHaveBeenCalled();
     expect(mocks.insertValues).toHaveBeenCalledWith(
       expect.objectContaining({
         draftSource: "template",
@@ -147,27 +144,22 @@ describe("writerMode", () => {
   it("uses ISH templates when writerMode is standard", async () => {
     await runWriter("lead-1", { writerMode: "standard" });
     expect(mocks.fillIshDraftVariants).toHaveBeenCalled();
-    expect(mocks.ensureWriterPlan).not.toHaveBeenCalled();
+    expect(mocks.callLLM).not.toHaveBeenCalled();
   });
 
   it("skips persistIshTemplateDraft when writerMode is ai", async () => {
-    mocks.ensureWriterPlan.mockRejectedValue(new Error("AI_PATH_HIT"));
+    mocks.callLLM.mockRejectedValue(new Error("AI_PATH_HIT"));
     await expect(runWriter("lead-1", { writerMode: "ai" })).rejects.toThrow("AI_PATH_HIT");
-    expect(mocks.fillIshDraftVariants).not.toHaveBeenCalled();
-    expect(mocks.ensureWriterPlan).toHaveBeenCalledWith("lead-1", { llmProvider: "openrouter" });
+    expect(mocks.insertValues).not.toHaveBeenCalled();
+    expect(mocks.callLLM).toHaveBeenCalled();
   });
 
-  it("calls OpenRouter for AI Writer emails", async () => {
-    mocks.ensureWriterPlan.mockResolvedValue({
-      hook: "Diwali gifting for the plant",
-      valueProp: "Organic mithai from our dairy",
-      cta: "Shall I send a tasting box?",
-    });
-    mocks.callLLM.mockRejectedValue(new Error("OPENROUTER_HIT"));
-    await expect(runWriter("lead-1", { writerMode: "ai" })).rejects.toThrow("OPENROUTER_HIT");
+  it("calls Gemini for AI Writer emails", async () => {
+    mocks.callLLM.mockRejectedValue(new Error("GEMINI_HIT"));
+    await expect(runWriter("lead-1", { writerMode: "ai" })).rejects.toThrow("GEMINI_HIT");
     expect(mocks.insertValues).not.toHaveBeenCalled();
     expect(mocks.callLLM).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "openrouter" }),
+      expect.objectContaining({ provider: "gemini" }),
     );
   });
 });

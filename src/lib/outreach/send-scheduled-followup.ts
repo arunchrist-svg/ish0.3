@@ -12,7 +12,7 @@ import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
 import { isOutreachSendingPaused, resolveOutreachEmailStyle } from "@/lib/email/config";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
-import { resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
+import { followUpThreadSubject, resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
 import { cleanEmailAddress } from "@/lib/email/list-cleaner";
 
 export class FollowUpQualityError extends Error {
@@ -78,11 +78,18 @@ export async function sendScheduledFollowUp(params: {
     : null;
   if (!generatedOutreach) throw new Error("No outreach draft linked to schedule");
 
-  const subject = resolveDraftSubject(generatedOutreach) || `Re: Outreach for ${account.name}`;
+  const email1Outreach =
+    generatedOutreach.sequencePosition === 1
+      ? generatedOutreach
+      : await db.query.leadOutreach.findFirst({
+          where: and(eq(leadOutreach.leadId, sched.leadId), eq(leadOutreach.sequencePosition, 1)),
+        });
+  const followUpDraftSubject = resolveDraftSubject(generatedOutreach);
+  const email1Subject = email1Outreach ? resolveDraftSubject(email1Outreach) : "";
   const body = resolveDraftBody(generatedOutreach);
 
   const quality = await evaluateOutreachDraft({
-    subject,
+    subject: followUpDraftSubject || email1Subject || `Re: Outreach for ${account.name}`,
     emailBody: body,
     contact: { name: contact.name, firstName: contact.firstName, title: contact.title },
     account,
@@ -105,9 +112,19 @@ export async function sendScheduledFollowUp(params: {
   }
 
   const thread = await loadThreadContext(sched.leadId, lead);
-  const threadedSubject = thread.rootSubject
-    ? resolveOutboundSubject({ isReplySend: true, rootSubject: thread.rootSubject, fallbackSubject: thread.rootSubject })
-    : subject;
+  const threadedSubject = resolveOutboundSubject({
+    isReplySend: false,
+    isFollowUp: true,
+    rootSubject: thread.rootSubject,
+    fallbackSubject:
+      followUpThreadSubject({
+        threadRootSubject: thread.rootSubject,
+        email1Draft: email1Outreach,
+      }) ||
+      email1Subject ||
+      followUpDraftSubject ||
+      `Re: Outreach for ${account.name}`,
+  });
 
   const threadHeaders = resolveThreadHeaders({
     isReplySend: false,

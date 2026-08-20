@@ -31,10 +31,14 @@ export function scoreContactCandidate(
   if (contact.linkedinUrl || input.linkedinUrl) score += 5;
 
   switch (providerId) {
+    case "prospeo":
+      score += 25;
+      break;
     case "hunter":
       score += 20;
       break;
     case "apollo":
+    case "zintlr":
       score += 15;
       break;
     case "website_email":

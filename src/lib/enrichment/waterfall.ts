@@ -3,34 +3,53 @@ import type { EnrichmentConfig } from "./config";
 import { hasApolloKey, resolveEnrichmentConfig, MAX_SCOUT_LEADS_LIMIT } from "./config";
 import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
-import { googlePlacesSearchCompanies } from "./google-places";
+import { googlePlacesSearchCompanies, type PlacesLocationBias } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
 import {
-  companyCityMatchesSelection,
+  companyMatchesScoutSelection,
   expandCityMatchTerms,
   expandCitySearchTerms,
   isNationwideSelection,
-  selectPeopleForScoutCities,
+  includeHqCorridorForScoutPeople,
+  nearbyLabelsForScoutCities,
+  parentCitiesForNeighborhoods,
+  rankCompaniesByLocalityMention,
+  selectPeopleForLeadLocation,
+  selectionLooksLikeNeighborhoods,
 } from "./city-search";
+import { placesLocationBiasFromFocuses } from "@/lib/geo/area-of-focus";
 import { companyDomainAliases } from "./company-domain-aliases";
 import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
 import { rankPeopleForScout } from "./people-diversity";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
-import { allTavilyKeysExhausted, takeTavilyKeySwitchMessage } from "./tavily-usage";
+import { allTavilyKeysExhausted, syncSessionKeysFromAccount, takeTavilyKeySwitchMessage } from "./tavily-usage";
 import { mapWithConcurrency } from "@/lib/async";
 import { db } from "@/db";
 import { eq, and, inArray, ilike, or } from "drizzle-orm";
-import { accounts, contacts } from "@/db/schema";
+import { accounts, contacts, tenants, workspaces } from "@/db/schema";
 import { resolveCompanyDomain } from "./resolve-company-domain";
 import { filterCompaniesMatchingQuery, isGeographicEntity } from "./company-name-match";
+import { personLooksOpenToWork } from "./person-company-match";
 import { withCleanedCompanyName } from "./directory-parser";
 import { filterCompaniesWithLlm, shouldSkipCompaniesLlmFilter } from "./filter-companies-llm";
+import { filterBySelectedBusinesses } from "./business-match";
+import {
+  type AccountMatchShape,
+  filterNewScoutCompanies,
+  scoutCompanyMatchesSaved,
+} from "@/lib/scout/account-match";
+import { listTenantAccountShapes } from "@/lib/scout/save-leads";
 import {
   officialWebsiteForScoutCompany,
   rankCompaniesWithOfficialSitesFirst,
 } from "./company-domain-quality";
+import {
+  applyLeadability,
+  probeCompanyLeadability,
+  sortCompaniesByLeadability,
+} from "./company-leadability";
 import {
   extractEmployeesFromText,
   normalizeEmployeeBandIds,
@@ -38,10 +57,13 @@ import {
   rankAndFilterByEmployeeBands,
 } from "./employee-size";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { isSweetsGiftingSlug } from "@/lib/brand/vertical-catalog";
 import {
   defaultIcpSummary,
+  expandPeopleFiltersForOffer,
   icpCompanyFilterInstructions,
   resolvePlatformIntent,
+  scoutDefaultsForIntent,
 } from "@/lib/brand/platform-intent";
 
 const BUYING_TITLES = [
@@ -61,19 +83,38 @@ async function loadScoutBrandIcp(workspaceId: string): Promise<{
   platformIntent?: ReturnType<typeof resolvePlatformIntent>;
   productSummary?: string;
   buyerPersonas: string[];
+  sweetsGifting: boolean;
 } | null> {
   try {
-    const email = await getResolvedEmailConfig(workspaceId);
-    const platformIntent = resolvePlatformIntent(
+    const [email, tenantRow] = await Promise.all([
+      getResolvedEmailConfig(workspaceId),
+      db
+        .select({ slug: tenants.slug })
+        .from(workspaces)
+        .innerJoin(tenants, eq(tenants.id, workspaces.tenantId))
+        .where(eq(workspaces.id, workspaceId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+    ]);
+    const sweetsGifting =
+      isSweetsGiftingSlug(email.brandConfig.brandSlug) ||
+      isSweetsGiftingSlug(email.brandConfig.verticalPackId) ||
+      isSweetsGiftingSlug(tenantRow?.slug);
+    let platformIntent = resolvePlatformIntent(
       email.brandConfig.platformIntent,
       email.brandConfig.verticalPackId ?? email.brandConfig.brandSlug,
     );
+    if (sweetsGifting) platformIntent = "corporate_gifting";
+    const personas = email.brandConfig.buyerPersonas?.length
+      ? email.brandConfig.buyerPersonas
+      : scoutDefaultsForIntent(platformIntent).buyerPersonas;
     return {
       platformIntent,
       icpSummary:
         email.brandConfig.websiteInsights?.icpSummary?.trim() || defaultIcpSummary(platformIntent),
       productSummary: email.brandConfig.productSummary,
-      buyerPersonas: email.brandConfig.buyerPersonas ?? [],
+      buyerPersonas: personas,
+      sweetsGifting,
     };
   } catch {
     return null;
@@ -86,6 +127,29 @@ function finalizeScoutCompanies(companies: ScoutCompanyResult[]): ScoutCompanyRe
 
 function tavilyQuotaHit(messages: string[]): boolean {
   return messages.some(isTavilyQuotaError);
+}
+
+/** Only stop the batch when Tavily reports every configured key is out of credits. */
+let tavilyExhaustionCache: { at: number; exhausted: boolean } | null = null;
+const TAVILY_EXHAUSTION_CACHE_MS = 30_000;
+
+/** Below this many primary-provider hits, backfill from India registry directories. */
+const DIRECTORY_FALLBACK_FLOOR = 5;
+
+async function shouldStopBatchForTavilyQuota(messages: string[]): Promise<boolean> {
+  if (!tavilyQuotaHit(messages)) return false;
+  if (!hasTavilyKeys()) return true;
+
+  const now = Date.now();
+  if (tavilyExhaustionCache && now - tavilyExhaustionCache.at < TAVILY_EXHAUSTION_CACHE_MS) {
+    return tavilyExhaustionCache.exhausted;
+  }
+
+  const account = await fetchTavilyAccountUsage();
+  syncSessionKeysFromAccount(account);
+  const exhausted = allTavilyKeysExhausted(account);
+  tavilyExhaustionCache = { at: now, exhausted };
+  return exhausted;
 }
 
 function appendTavilyKeySwitchWarning(warnings: string[]): void {
@@ -108,18 +172,81 @@ function normalizeName(name: string): string {
 function filterBySelectedCities(
   results: ScoutCompanyResult[],
   cities: string[],
+  searchKind?: "industry" | "business",
 ): ScoutCompanyResult[] {
   if (cities.length === 0) return results;
-  return results.filter((c) => companyCityMatchesSelection(c.city, cities));
+  // For neighborhood/Focus Area searches, the Tavily/directory query already included the
+  // neighborhood name as a search term — strict post-filter city matching would drop every
+  // company whose stored city is "Bengaluru" rather than "Kasturi Nagar". Just rank instead.
+  if (selectionLooksLikeNeighborhoods(cities)) {
+    return rankCompaniesByLocalityMention(results, cities);
+  }
+  return rankCompaniesByLocalityMention(
+    results.filter((c) =>
+      companyMatchesScoutSelection(c, cities, {
+        searchKind,
+        geoVerified: c.scoutGeoVerified,
+      }),
+    ),
+    cities,
+  );
 }
 
-function filterExcluded<T extends { name: string }>(results: T[], excludeNames: string[]): T[] {
+function filterBySelectedIndustries(
+  results: ScoutCompanyResult[],
+  selectedIndustries: string[],
+): ScoutCompanyResult[] {
+  if (!selectedIndustries.length) return results;
+
+  const selectedSet = new Set(selectedIndustries.map((s) => s.trim()).filter(Boolean));
+
+  // Only do strict filtering when we can classify an inferred industry into
+  // one of the known buckets. Otherwise keep results to avoid accidental empties.
+  const bucketMap: Record<string, string[]> = {
+    BFSI: ["Financial Services"],
+    Finance: ["Financial Services"],
+    Pharma: ["Pharmaceuticals"],
+    Healthcare: ["Healthcare"],
+    Retail: ["Retail"],
+    Education: ["Education"],
+    "Real Estate": ["Real Estate"],
+    Construction: ["Construction"],
+    Automotive: ["Automotive"],
+    Hospitality: ["Hospitality"],
+    Technology: ["Technology", "Electronics"],
+  };
+
+  return results.filter((c) => {
+    const inferred = c.industry?.trim();
+    if (!inferred) return true;
+
+    // Corporate is usually an "establishment" catch-all from Places. If the
+    // user picked explicit industries, we should not show these generic hits.
+    if (inferred === "Corporate") return false;
+
+    // Exact match first (handles directory provider values that already use
+    // the same labels as the UI).
+    if (selectedSet.has(inferred)) return true;
+
+    const normalized = inferred;
+    const mapped = bucketMap[normalized];
+    if (!mapped) return true; // Unknown inferred industry: don't over-filter.
+    return mapped.some((m) => selectedSet.has(m));
+  });
+}
+
+function filterExcluded<T extends ScoutCompanyResult>(
+  results: T[],
+  excludeNames: string[],
+  savedAccounts: AccountMatchShape[] = [],
+): T[] {
   const excluded = new Set(excludeNames.map(normalizeName));
   const out: T[] = [];
   for (const r of results) {
     const cleaned = withCleanedCompanyName(r);
     if (!cleaned || isGeographicEntity(cleaned.name)) continue;
     if (excluded.size && excluded.has(normalizeName(cleaned.name))) continue;
+    if (scoutCompanyMatchesSaved(cleaned, savedAccounts)) continue;
     out.push(cleaned);
   }
   return out;
@@ -142,10 +269,15 @@ export async function discoverCompanies(params: {
   config?: Partial<EnrichmentConfig>;
   limit?: number;
   excludeNames?: string[];
+  excludeSavedAccounts?: boolean;
   skipInternal?: boolean;
   fetchSeed?: number;
   companyName?: string;
   employeeBands?: string[];
+  seniority?: string[];
+  departments?: string[];
+  locationScope?: "focus" | "interest";
+  searchKind?: "industry" | "business";
   /** Emit usable companies as soon as a provider step yields them (streaming Scout). */
   onPartial?: (companies: ScoutCompanyResult[]) => void | Promise<void>;
 }): Promise<DiscoveryResult> {
@@ -156,13 +288,42 @@ export async function discoverCompanies(params: {
   const excludeNames = params.excludeNames ?? [];
   const warnings: string[] = [];
   const errors: string[] = [];
+  const isNameSearch = !!params.companyName?.trim();
+  const excludeSavedAccounts = params.excludeSavedAccounts ?? !isNameSearch;
+  const skipInternal = excludeSavedAccounts ? true : params.skipInternal ?? false;
+  let savedAccounts: AccountMatchShape[] = [];
+  if (excludeSavedAccounts) {
+    try {
+      savedAccounts = await listTenantAccountShapes({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+      });
+    } catch (e) {
+      console.error("[waterfall:saved_accounts] failed:", e);
+      warnings.push("Could not load saved companies to skip duplicates.");
+    }
+  }
   const searchMeta = { warnings };
   const brandIcp = await loadScoutBrandIcp(params.workspaceId);
-  const isNameSearch = !!params.companyName?.trim();
   const selectionLabels = params.cities;
   const nationwide = isNationwideSelection(selectionLabels);
-  const queryCities = expandCitySearchTerms(selectionLabels);
   const matchCities = expandCityMatchTerms(selectionLabels);
+  // For Focus Area (neighborhood chips), ZaubaCorp needs the parent district city ("Hosur",
+  // "Bengaluru") to find registered companies — it does not index by industrial area name.
+  // Prefer the user's explicitly configured scoutAreasOfFocus.cityLabel; fall back to
+  // LOCALITY_CATALOG lookup for unconfigured edge cases.
+  const isNeighborhoodSearch = selectionLooksLikeNeighborhoods(selectionLabels);
+  const focusCityLabels: string[] | undefined = isNeighborhoodSearch
+    ? (cfg.scoutAreasOfFocus?.length
+        ? [...new Set(cfg.scoutAreasOfFocus.map((f) => f.cityLabel).filter(Boolean))]
+        : parentCitiesForNeighborhoods(selectionLabels))
+    : undefined;
+  // Providers that filter by city string (Apollo, Places text search) return nothing for a
+  // bare locality, so carry the parent metro alongside the chips. Post-filters still use
+  // selectionLabels, so this widens the search without widening what we keep.
+  const queryCities = [
+    ...new Set([...expandCitySearchTerms(selectionLabels), ...(focusCityLabels ?? [])]),
+  ];
 
   // ── SEARCH MODE: targeted lookup by company name ──────────────────────────
   if (isNameSearch) {
@@ -190,6 +351,7 @@ export async function discoverCompanies(params: {
     const dbMapped = filterExcluded(
       filterCompaniesMatchingQuery(dbResults.map(dbToResult), nameQuery),
       excludeNames,
+      savedAccounts,
     );
     const external: ScoutCompanyResult[] = [];
 
@@ -225,13 +387,13 @@ export async function discoverCompanies(params: {
           meta: searchMeta,
           nameQuery,
         }),
-        external, remaining, excludeNames, warnings, errors,
+        external, remaining, excludeNames, savedAccounts, warnings, errors,
       );
       appendTavilyKeySwitchWarning(warnings);
     }
 
     const matched = filterCompaniesMatchingQuery(
-      [...dbMapped, ...filterExcluded(external, dbMapped.map((r) => r.name))],
+      [...dbMapped, ...filterExcluded(external, dbMapped.map((r) => r.name), savedAccounts)],
       nameQuery,
     );
     const lowerQuery = nameQuery.toLowerCase();
@@ -258,7 +420,7 @@ export async function discoverCompanies(params: {
   let dbResults: (typeof accounts.$inferSelect)[] = [];
 
   // ── Step 1: Internal DB (skip when loading more external results) ─────────
-  if (!params.skipInternal) {
+  if (!skipInternal) {
     try {
       dbResults = await db
         .select()
@@ -278,7 +440,7 @@ export async function discoverCompanies(params: {
     }
   }
 
-  const dbMapped = filterExcluded(dbResults.map(dbToResult), excludeNames);
+  const dbMapped = filterExcluded(dbResults.map(dbToResult), excludeNames, savedAccounts);
   const rankedDb = rankAndFilterByEmployeeBands(dbMapped, employeeBands);
   const knownDbMatches = rankedDb.companies.length - rankedDb.unknownCount;
 
@@ -291,12 +453,24 @@ export async function discoverCompanies(params: {
 
   const remaining = Math.max(limit - (employeeBands.length ? knownDbMatches : dbMapped.length), 0) || limit;
   const stepLimit = Math.min(Math.max(remaining * 2, remaining + 8), 120);
+  const useFocusBias = params.locationScope !== "interest";
+  const focusesForBias = cfg.scoutAreasOfFocus?.length
+    ? cfg.scoutAreasOfFocus
+    : cfg.scoutAreaOfFocus
+      ? [cfg.scoutAreaOfFocus]
+      : [];
+  const locationBias: PlacesLocationBias | undefined = useFocusBias
+    ? placesLocationBiasFromFocuses(focusesForBias, selectionLabels)
+    : undefined;
   const external: ScoutCompanyResult[] = [];
   const providerParams = {
     cities: queryCities,
     industries: params.industries,
     limit: stepLimit,
     employeeBands,
+    searchKind: params.searchKind ?? "industry",
+    fetchSeed: params.fetchSeed ?? 0,
+    ...(locationBias ? { locationBias } : {}),
   };
 
   // ── Step 2: Primary search provider (resolved from dataMode) ─────────────
@@ -307,22 +481,23 @@ export async function discoverCompanies(params: {
           ...providerParams,
           meta: searchMeta,
           fetchSeed: params.fetchSeed,
+          ...(focusCityLabels ? { focusCityLabels } : {}),
         }),
-        external, stepLimit, excludeNames, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
       );
       break;
 
     case "google_places":
       await runStep("google_places", () =>
         googlePlacesSearchCompanies(providerParams),
-        external, stepLimit, excludeNames, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
       );
       break;
 
     case "apollo":
       await runStep("apollo", () =>
         apolloSearchCompanies(providerParams),
-        external, stepLimit, excludeNames, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
       );
       break;
 
@@ -332,9 +507,64 @@ export async function discoverCompanies(params: {
           ...providerParams,
           meta: searchMeta,
         }),
-        external, stepLimit, excludeNames, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
       );
       break;
+  }
+
+  // Scout under Focus Area: supplement directory/Tavily hits with geo-biased Places.
+  // Industry mode needs this as much as business mode — a pin radius is the only
+  // signal that reliably surfaces companies near a specific locality.
+  if (
+    locationBias &&
+    cfg.searchProvider !== "google_places" &&
+    hasGooglePlacesKey() &&
+    !tavilyQuotaHit([...warnings, ...errors])
+  ) {
+    const placesLimit = Math.max(stepLimit - external.length, Math.min(limit, 20));
+    if (placesLimit > 0) {
+      await runStep(
+        "google_places_focus",
+        () =>
+          googlePlacesSearchCompanies({
+            ...providerParams,
+            limit: placesLimit,
+          }),
+        external,
+        stepLimit,
+        excludeNames,
+        savedAccounts,
+        warnings,
+        errors,
+      );
+    }
+  }
+
+  // Tier-2/3 cities return thin results from Apollo/Tavily/Places. Registry directories
+  // (Zauba, Tofler) index them far better, so backfill whenever the primary came up short.
+  if (
+    external.length < DIRECTORY_FALLBACK_FLOOR &&
+    cfg.searchProvider !== "india_directories" &&
+    !tavilyQuotaHit([...warnings, ...errors])
+  ) {
+    const fallbackLimit = Math.max(stepLimit - external.length, limit);
+    await runStep(
+      "india_directories_fallback",
+      () =>
+        indiaDirectoriesSearchCompanies({
+          ...providerParams,
+          limit: fallbackLimit,
+          meta: searchMeta,
+          fetchSeed: params.fetchSeed,
+          ...(focusCityLabels ? { focusCityLabels } : {}),
+        }),
+      external,
+      stepLimit,
+      excludeNames,
+      savedAccounts,
+      warnings,
+      errors,
+    );
   }
 
   appendTavilyKeySwitchWarning(warnings);
@@ -353,6 +583,7 @@ export async function discoverCompanies(params: {
         external,
         stepLimit,
         excludeNames,
+        savedAccounts,
         warnings,
         errors,
       );
@@ -366,7 +597,7 @@ export async function discoverCompanies(params: {
       }
     } else if (!errors.some((e) => isTavilyQuotaError(e))) {
       errors.push(
-        "All Tavily keys exhausted. Add TAVILY_API_KEY_2 in .env.local, GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
+        "All Tavily keys exhausted. Add TAVILY_API_KEY_2, TAVILY_API_KEY_3, or TAVILY_API_KEY_4 in .env.local, GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
       );
     }
   }
@@ -386,8 +617,9 @@ export async function discoverCompanies(params: {
         limit: Math.max(stepLimit - external.length, 1),
         meta: searchMeta,
         employeeBands,
+        searchKind: params.searchKind ?? "industry",
       }),
-      external, stepLimit, excludeNames, warnings, errors,
+      external, stepLimit, excludeNames, savedAccounts, warnings, errors,
     );
     appendTavilyKeySwitchWarning(warnings);
   }
@@ -396,8 +628,12 @@ export async function discoverCompanies(params: {
     .map(withCleanedCompanyName)
     .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
     .map(hydrateEmployees);
-  const cityFiltered = filterBySelectedCities(merged, selectionLabels);
-  const ranked = rankAndFilterByEmployeeBands(cityFiltered, employeeBands);
+  const cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry");
+  const verticalFiltered =
+    params.searchKind === "business"
+      ? filterBySelectedBusinesses(cityFiltered, params.industries)
+      : filterBySelectedIndustries(cityFiltered, params.industries);
+  const ranked = rankAndFilterByEmployeeBands(verticalFiltered, employeeBands);
   // Restrictive scale filters: smaller overfetch so less work feeds the LLM gate.
   const overfetchTarget = employeeBands.length
     ? limit + 8
@@ -406,7 +642,8 @@ export async function discoverCompanies(params: {
   let companies = ranked.companies.slice(0, overfetch);
 
   if (params.onPartial && companies.length) {
-    await params.onPartial(companies.slice(0, limit));
+    const partial = filterNewScoutCompanies(companies.slice(0, limit), savedAccounts);
+    if (partial.length) await params.onPartial(partial);
   }
 
   // Second directory pass only when nearly empty — Large scale soft-filter used to
@@ -428,10 +665,13 @@ export async function discoverCompanies(params: {
           meta: searchMeta,
           fetchSeed: (params.fetchSeed ?? 0) + 1,
           employeeBands,
+          searchKind: params.searchKind ?? "industry",
+          ...(focusCityLabels ? { focusCityLabels } : {}),
         }),
       extra,
       extraLimit,
       [...excludeNames, ...companies.map((c) => c.name)],
+      savedAccounts,
       warnings,
       errors,
     );
@@ -442,26 +682,89 @@ export async function discoverCompanies(params: {
           .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
           .map(hydrateEmployees),
         selectionLabels,
+        params.searchKind ?? "industry",
       ),
       employeeBands,
     );
     companies = extraRanked.companies.slice(0, overfetchTarget);
     appendTavilyKeySwitchWarning(warnings);
     if (params.onPartial && companies.length) {
-      await params.onPartial(companies.slice(0, limit));
+      const partial = filterNewScoutCompanies(companies.slice(0, limit), savedAccounts);
+      if (partial.length) await params.onPartial(partial);
     }
   }
 
+  const businessLabels =
+    params.searchKind === "business"
+      ? params.industries.map((s) => s.trim()).filter(Boolean)
+      : [];
+  const businessIcp =
+    businessLabels.length > 0
+      ? `Selected establishment types only: ${businessLabels.join(", ")}. Drop restaurants, cafes, food shops, retail stores, and anything that is not one of those types.`
+      : null;
   const icpMeta = {
     warnings,
-    icpSummary: brandIcp?.icpSummary,
+    icpSummary: [brandIcp?.icpSummary, businessIcp].filter(Boolean).join("\n") || brandIcp?.icpSummary,
     platformIntent: brandIcp?.platformIntent,
     productSummary: brandIcp?.productSummary,
   };
   companies = finalizeScoutCompanies(companies);
   const runIcpGate = Boolean(icpCompanyFilterInstructions(icpMeta));
   if (runIcpGate || !shouldSkipCompaniesLlmFilter(companies, limit)) {
-    companies = finalizeScoutCompanies(await filterCompaniesWithLlm(companies, icpMeta)).slice(0, limit);
+    const beforeLlmFilter = companies;
+    companies = finalizeScoutCompanies(await filterCompaniesWithLlm(companies, icpMeta));
+    // Backstop: never surface zero when the pipeline had candidates going in.
+    if (companies.length === 0 && beforeLlmFilter.length > 0) {
+      warnings.push("AI company filter returned no results — showing unfiltered candidates.");
+      companies = beforeLlmFilter.slice(0, overfetchTarget);
+    }
+  } else {
+    companies = companies.slice(0, overfetchTarget);
+  }
+
+  const selectedSeniority = params.seniority ?? [];
+  const selectedDepartments = params.departments ?? [];
+  if ((selectedSeniority.length > 0 || selectedDepartments.length > 0) && companies.length > 0) {
+    const probeCount = Math.min(companies.length, Math.max(limit, Math.min(limit + 6, 16)));
+    let quotaStop = false;
+    const unknownLeadability = {
+      leadabilityScore: 0,
+      leadabilityBand: "unknown" as const,
+      leadabilityMatchedPeople: 0,
+      leadabilityMatchedInCity: 0,
+    };
+    const probed = await mapWithConcurrency(companies.slice(0, probeCount), 4, async (company) => {
+      if (quotaStop) return applyLeadability(company, unknownLeadability);
+      try {
+        const leadability = await probeCompanyLeadability({
+          company,
+          seniority: selectedSeniority,
+          departments: selectedDepartments,
+          cities: selectionLabels,
+          platformIntent: brandIcp?.platformIntent,
+          treatAsGifting: brandIcp?.sweetsGifting,
+          searchKind: params.searchKind,
+          businesses: params.searchKind === "business" ? params.industries : undefined,
+          locationScope: params.locationScope,
+        });
+        return applyLeadability(company, leadability);
+      } catch (e) {
+        const msg = stepFailureMessage("leadability_probe", e);
+        if (isTavilyQuotaError(msg)) quotaStop = true;
+        return applyLeadability(company, unknownLeadability);
+      }
+    });
+    companies = sortCompaniesByLeadability([
+      ...probed,
+      ...companies.slice(probeCount).map((company) =>
+        applyLeadability(company, {
+          leadabilityScore: 0,
+          leadabilityBand: "unknown",
+          leadabilityMatchedPeople: 0,
+          leadabilityMatchedInCity: 0,
+        }),
+      ),
+    ]).slice(0, limit);
   } else {
     companies = companies.slice(0, limit);
   }
@@ -479,6 +782,20 @@ export async function discoverCompanies(params: {
       `Found ${companies.length} of ${limit} companies for these filters. Load more or widen city or scale.`,
     );
   }
+
+  companies = filterNewScoutCompanies(companies, savedAccounts);
+  if (
+    excludeSavedAccounts &&
+    savedAccounts.length &&
+    merged.length > 0 &&
+    companies.length === 0 &&
+    !warnings.some((w) => /already saved/i.test(w))
+  ) {
+    warnings.push(
+      "All matches were companies you already saved. Load more or try different cities or industries.",
+    );
+  }
+
   return {
     companies,
     warnings: [...new Set(warnings)],
@@ -520,20 +837,29 @@ export async function discoverPeople(params: {
   departments?: string[];
   cities?: string[];
   tenantAccounts?: (typeof accounts.$inferSelect)[];
+  searchKind?: "industry" | "business";
+  businesses?: string[];
+  locationScope?: "focus" | "interest";
+  /** Optional explicit people-area filter (e.g. ["South India"]). When set, people must be
+   *  located in this area regardless of company city. Defaults to the company scout cities. */
+  peopleCities?: string[];
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
-  // Small headroom for role filters — avoid 3x over-fetch (each hit costs Tavily/LLM time).
-  const fetchLimit = Math.min(10, Math.max(limit + 2, limit));
+  // Headroom for role + city filters. Plant-city scouts with buyer-dept filters often
+  // discard most raw Tavily hits, so we fetch more candidates up front.
+  const fetchLimit = Math.min(18, Math.max(limit + 5, limit));
   const warnings: string[] = [];
   const errors: string[] = [];
+  const scoutCities = params.cities ?? [];
   const hasDomainHint = Boolean(params.companyDomain || params.companyWebsite);
   const [domainResolution, brandIcp] = await Promise.all([
     resolveCompanyDomain({
       companyName: params.companyName,
       domain: params.companyDomain,
       website: params.companyWebsite,
-      allowExternal: cfg.searchProvider === "apollo" && !hasDomainHint,
+      city: scoutCities[0],
+      allowExternal: !hasDomainHint,
     }),
     loadScoutBrandIcp(params.workspaceId),
   ]);
@@ -544,10 +870,41 @@ export async function discoverPeople(params: {
   } else if (!resolvedDomain) {
     warnings.push(`No website domain for ${params.companyName}. People search may be less accurate.`);
   }
-  const activeSeniority = params.seniority ?? [];
-  const activeDepartments = params.departments ?? [];
-  const scoutCities = params.cities ?? [];
-  const roleHints = buildRoleTitleHints(activeSeniority, activeDepartments);
+  const localOperators = params.searchKind === "business";
+  const includeHqCorridor = includeHqCorridorForScoutPeople({
+    cities: scoutCities,
+    locationScope: params.locationScope,
+    localOperators,
+  });
+  const focusArea =
+    params.locationScope === "focus" || selectionLooksLikeNeighborhoods(scoutCities);
+  // In Focus Area mode, people must be physically in the focus area.
+  // Build a city list that includes the neighborhood chips AND their parent district city
+  // (e.g. "Hosur" when chips are "SIPCOT Hosur") so LinkedIn profiles that say just
+  // "Hosur" still match the filter. This overrides the global peopleCities setting
+  // which would otherwise return people from anywhere in "South India".
+  const focusAreaIsNeighborhood = selectionLooksLikeNeighborhoods(scoutCities);
+  const focusParentCities: string[] =
+    params.locationScope === "focus" && focusAreaIsNeighborhood && cfg.scoutAreasOfFocus?.length
+      ? [...new Set(cfg.scoutAreasOfFocus.map((f) => f.cityLabel).filter(Boolean))]
+      : [];
+  const roleOpts = { searchKind: params.searchKind, businesses: params.businesses };
+  const expandedRoles = expandPeopleFiltersForOffer(
+    brandIcp?.platformIntent,
+    params.seniority ?? [],
+    params.departments ?? [],
+    { treatAsGifting: brandIcp?.sweetsGifting, searchKind: params.searchKind, businesses: params.businesses },
+  );
+  const activeSeniority = expandedRoles.seniority;
+  const activeDepartments = expandedRoles.departments;
+  const sweetsGiftingPeople = Boolean(brandIcp?.sweetsGifting) && !localOperators;
+  // For Focus Area neighborhood scouts, also include the parent city in the Tavily query
+  // so "Hosur"-location profiles are found when the chip is "SIPCOT Hosur".
+  const peopleSearchCities = includeHqCorridor
+    ? nearbyLabelsForScoutCities(scoutCities)
+    : [...new Set([...scoutCities.map((c) => c.trim()).filter(Boolean), ...focusParentCities])];
+  const roleHints = buildRoleTitleHints(activeSeniority, activeDepartments, roleOpts);
+  if (expandedRoles.note) warnings.push(expandedRoles.note);
 
   // ── Step 1: Internal DB contacts for this company ───────────────────────
   let companyContacts: (typeof contacts.$inferSelect)[] = [];
@@ -574,15 +931,20 @@ export async function discoverPeople(params: {
       companyContacts.map(contactToResult),
       activeSeniority,
       activeDepartments,
+      roleOpts,
     );
     const localized = scoutCities.length
-      ? selectPeopleForScoutCities(filtered.people, scoutCities).people
+      ? selectPeopleForLeadLocation(filtered.people, scoutCities, { includeHqCorridor }).people
       : filtered.people;
     // Saved HQ contacts in Delhi/Mumbai must not short-circuit a plant-city scout.
     if (localized.length > 0 || !scoutCities.length) {
       if (filtered.people.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
-        warnings.push("No contacts match the selected seniority and department filters for this company.");
-      } else if (filtered.relaxed) {
+        warnings.push(
+          sweetsGiftingPeople
+            ? `No HR or Procurement people found at ${params.companyName}${scoutCities.length ? ` in ${scoutCities.join(", ")}` : ""}.`
+            : "No contacts match the selected seniority and department filters for this company.",
+        );
+      } else if (filtered.relaxed && !sweetsGiftingPeople) {
         warnings.push(
           "Few exact seniority + department matches. Showing closest decision-makers for this company.",
         );
@@ -655,10 +1017,13 @@ export async function discoverPeople(params: {
           companyDomain: resolvedDomain,
           limit: remaining,
           roleHints: roleHints.length > 0 ? roleHints : undefined,
-          cities: params.cities,
+          cities: peopleSearchCities.length ? peopleSearchCities : params.cities,
+          localOperators,
+          locationScope: params.locationScope,
         }),
       external,
       remaining,
+      [],
       [],
       warnings,
       errors,
@@ -682,7 +1047,7 @@ export async function discoverPeople(params: {
     const combined = [...warnings, ...errors];
     const quotaHit = tavilyQuotaHit(combined);
     const hasActionable = combined.some((m) =>
-      /missing|failed|quota|usage limit|exhausted|rejected|people search needs tavily|switched to backup key/i.test(m),
+      /missing|failed|quota|usage limit|exhausted|rejected|people search needs tavily|switched to (?:backup|next) key/i.test(m),
     );
 
     // Only hit Tavily usage API when we actually saw a quota error — otherwise this
@@ -692,7 +1057,7 @@ export async function discoverPeople(params: {
 
     if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
       const allExhaustedMsg =
-        "All Tavily keys exhausted for people search. Add TAVILY_API_KEY_2 in .env.local, switch to Apollo mode, or wait for monthly reset.";
+        "All Tavily keys exhausted for people search. Add TAVILY_API_KEY_2, TAVILY_API_KEY_3, or TAVILY_API_KEY_4 in .env.local, switch to Apollo mode, or wait for monthly reset.";
       if (!combined.some((m) => /all tavily keys exhausted/i.test(m))) {
         errors.push(allExhaustedMsg);
       }
@@ -718,15 +1083,27 @@ export async function discoverPeople(params: {
 
   // Email/phone enrichment runs on save (save-leads.ts) — skip here for faster scout preview.
 
-  // ── Step 3: Filter + rank by selected roles / city ──────────────────────
+  // ── Step 3: Filter by buyer roles, then by city ──────────────────────────
+  // For sweets gifting: role filter must come FIRST so city relaxation only sees buyer-dept people.
+  // A Finance Director in Bangalore is NOT a valid relaxation for a Hosur plant scout.
   const allPeople = [...companyContacts.map(contactToResult), ...external];
   let finalPeople: ScoutPersonResult[];
-  if (activeSeniority.length > 0 || activeDepartments.length > 0) {
-    const filtered = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments);
+  if (localOperators || activeSeniority.length > 0 || activeDepartments.length > 0) {
+    const filtered = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments, roleOpts);
     finalPeople = filtered.people;
     if (finalPeople.length === 0 && allPeople.length > 0) {
-      warnings.push("No contacts match the selected seniority and department filters for this company.");
-    } else if (filtered.relaxed) {
+      if (localOperators) {
+        warnings.push(
+          `No branch or local senior people found at ${params.companyName}${scoutCities.length ? ` in ${scoutCities.join(", ")}` : ""}.`,
+        );
+      } else if (sweetsGiftingPeople) {
+        warnings.push(
+          `No HR, Procurement, Admin, or Facilities people found at ${params.companyName}. LinkedIn may not list plant-level HR publicly — try a larger brand in this city.`,
+        );
+      } else {
+        warnings.push("No contacts match the selected seniority and department filters for this company.");
+      }
+    } else if (filtered.relaxed && !sweetsGiftingPeople && !localOperators) {
       warnings.push(
         "Few exact seniority + department matches. Showing closest decision-makers for this company.",
       );
@@ -735,19 +1112,43 @@ export async function discoverPeople(params: {
     finalPeople = allPeople;
   }
 
-  if (scoutCities.length) {
-    const selected = selectPeopleForScoutCities(finalPeople, scoutCities);
-    if (selected.relaxedToIndia && selected.people.length > 0) {
+  // In Focus Area mode, people must be in the focus area itself — ignore the global peopleCities
+  // setting (which might be "South India") and filter strictly to the neighborhood chips + parent
+  // district city. This ensures you get the plant HR, not the corporate HQ.
+  // Outside Focus Area mode, use the explicit people-area filter if set, else company scout cities.
+  const peopleCityFilter =
+    params.locationScope === "focus"
+      ? [...new Set([...scoutCities, ...focusParentCities])]
+      : (params.peopleCities?.length ? params.peopleCities : scoutCities);
+  const peopleIncludeHqCorridor =
+    params.locationScope === "focus"
+      ? false
+      : (params.peopleCities?.length
+          ? !isNationwideSelection(params.peopleCities) && !selectionLooksLikeNeighborhoods(params.peopleCities)
+          : includeHqCorridor);
+
+  if (peopleCityFilter.length) {
+    const selected = selectPeopleForLeadLocation(finalPeople, peopleCityFilter, {
+      includeHqCorridor: peopleIncludeHqCorridor,
+    });
+    const filterLabel = peopleCityFilter.join(", ");
+    if (selected.relaxedToIndia && selected.people.length > 0 && peopleIncludeHqCorridor) {
       warnings.push(
-        `No decision-makers found in ${scoutCities.join(", ")} for ${params.companyName}. Showing people at this company in other Indian cities.`,
+        `Including ${params.companyName} people at nearby HQ (not Delhi or NYC). HR and Procurement often sit in the regional HQ, not at the plant.`,
       );
     } else if (selected.people.length === 0 && finalPeople.length > 0) {
       warnings.push(
-        `No decision-makers found in ${scoutCities.join(", ")} for ${params.companyName}. Try another company or nearby city.`,
+        localOperators || focusArea
+          ? `No people found in ${filterLabel} for ${params.companyName}. Leads stay inside ${focusArea ? "this Focus Area" : "this area"}.${focusArea ? " Switch to Area of Interest to include nearby HQ." : ""}`
+          : sweetsGiftingPeople
+            ? `HR/Procurement people found at ${params.companyName} but all had cities outside ${filterLabel} or could not be verified. LinkedIn often omits plant location — if this keeps happening, try Area of Interest instead of Focus Area.`
+            : `No decision-makers found in ${filterLabel} for ${params.companyName}. Try another company or nearby city.`,
       );
     }
     finalPeople = selected.people;
   }
+
+  finalPeople = finalPeople.filter((person) => !personLooksOpenToWork(person));
 
   return {
     people: rankPeopleForScout(finalPeople, {
@@ -780,7 +1181,11 @@ export async function discoverPeopleBatch(params: {
   seniority?: string[];
   departments?: string[];
   cities?: string[];
+  peopleCities?: string[];
   concurrency?: number;
+  searchKind?: "industry" | "business";
+  businesses?: string[];
+  locationScope?: "focus" | "interest";
 }): Promise<Record<string, PeopleDiscoveryResult>> {
   let tenantAccounts: (typeof accounts.$inferSelect)[] = [];
   try {
@@ -793,7 +1198,7 @@ export async function discoverPeopleBatch(params: {
   }
 
   const results: Record<string, PeopleDiscoveryResult> = {};
-  const { companies, concurrency = 8, ...discoverParams } = params;
+  const { companies, concurrency = 3, ...discoverParams } = params;
   let quotaStop = false;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
@@ -813,11 +1218,11 @@ export async function discoverPeopleBatch(params: {
         companyWebsite: company.companyWebsite,
         tenantAccounts,
       });
-      if (tavilyQuotaHit([...result.warnings, ...result.errors])) quotaStop = true;
+      if (await shouldStopBatchForTavilyQuota([...result.warnings, ...result.errors])) quotaStop = true;
       results[company.id] = result;
     } catch (e) {
       const msg = stepFailureMessage("people_search", e);
-      if (isTavilyQuotaError(msg)) quotaStop = true;
+      if (await shouldStopBatchForTavilyQuota([msg])) quotaStop = true;
       results[company.id] = { people: [], warnings: [], errors: [msg] };
     }
   });
@@ -836,7 +1241,11 @@ export async function discoverPeopleBatchStream(
     seniority?: string[];
     departments?: string[];
     cities?: string[];
+    peopleCities?: string[];
     concurrency?: number;
+    searchKind?: "industry" | "business";
+    businesses?: string[];
+    locationScope?: "focus" | "interest";
   },
   onResult: (companyId: string, result: PeopleDiscoveryResult) => void | Promise<void>,
 ): Promise<void> {
@@ -850,7 +1259,7 @@ export async function discoverPeopleBatchStream(
     console.error("[waterfall:batch_accounts] failed:", e);
   }
 
-  const { companies, concurrency = 8, ...discoverParams } = params;
+  const { companies, concurrency = 3, ...discoverParams } = params;
   let quotaStop = false;
 
   await mapWithConcurrency(companies, concurrency, async (company) => {
@@ -870,11 +1279,11 @@ export async function discoverPeopleBatchStream(
         companyWebsite: company.companyWebsite,
         tenantAccounts,
       });
-      if (tavilyQuotaHit([...result.warnings, ...result.errors])) quotaStop = true;
+      if (await shouldStopBatchForTavilyQuota([...result.warnings, ...result.errors])) quotaStop = true;
       await onResult(company.id, result);
     } catch (e) {
       const msg = stepFailureMessage("people_search", e);
-      if (isTavilyQuotaError(msg)) quotaStop = true;
+      if (await shouldStopBatchForTavilyQuota([msg])) quotaStop = true;
       await onResult(company.id, { people: [], warnings: [], errors: [msg] });
     }
   });
@@ -908,6 +1317,7 @@ async function runStep(
   acc: (ScoutCompanyResult | ScoutPersonResult)[],
   limit: number,
   excludeNames: string[] = [],
+  savedAccounts: AccountMatchShape[] = [],
   warnings: string[] = [],
   errors: string[] = [],
 ): Promise<void> {
@@ -919,11 +1329,21 @@ async function runStep(
     ]);
     for (const r of results) {
       if (acc.length >= limit) break;
-      const key = normalizeName(r.name);
-      if (!seen.has(key)) {
-        acc.push(r as ScoutCompanyResult & ScoutPersonResult);
-        seen.add(key);
+      if (label.includes("people")) {
+        const key = normalizeName(r.name);
+        if (!seen.has(key)) {
+          acc.push(r as ScoutCompanyResult & ScoutPersonResult);
+          seen.add(key);
+        }
+        continue;
       }
+      const cleaned = withCleanedCompanyName(r as ScoutCompanyResult);
+      if (!cleaned || isGeographicEntity(cleaned.name)) continue;
+      const key = normalizeName(cleaned.name);
+      if (seen.has(key)) continue;
+      if (scoutCompanyMatchesSaved(cleaned, savedAccounts)) continue;
+      acc.push(cleaned as ScoutCompanyResult & ScoutPersonResult);
+      seen.add(key);
     }
   } catch (e) {
     console.error(`[waterfall:${label}] failed:`, e);

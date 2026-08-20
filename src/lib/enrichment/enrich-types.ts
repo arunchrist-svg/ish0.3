@@ -3,16 +3,20 @@ export type EnrichmentProviderId =
   | "web_snippets"
   | "ai_research"
   | "google_places"
+  | "prospeo"
   | "hunter"
-  | "apollo";
+  | "apollo"
+  | "zintlr";
 
 export type EnrichmentSource =
   | "website"
   | "web_snippets"
   | "ai_research"
   | "google_places"
+  | "prospeo"
   | "hunter"
-  | "apollo";
+  | "apollo"
+  | "zintlr";
 
 export interface EnrichedContact {
   name?: string;
@@ -55,8 +59,10 @@ export function providerToSource(id: EnrichmentProviderId): EnrichmentSource {
     web_snippets: "web_snippets",
     ai_research: "ai_research",
     google_places: "google_places",
+    prospeo: "prospeo",
     hunter: "hunter",
     apollo: "apollo",
+    zintlr: "zintlr",
   };
   return map[id];
 }

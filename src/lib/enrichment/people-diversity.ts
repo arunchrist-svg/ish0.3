@@ -90,6 +90,13 @@ export function rankPeopleForScout(
       if (departments.length && personMatchesRoles(person, [], departments)) bonus += 18;
       if (seniority.length && personMatchesRoles(person, seniority, [])) bonus += 8;
       if (
+        departments.some((d) => GIFTING_DEPTS.has(d)) &&
+        /\b(hr|people|chro|procurement|purchase|sourcing)\b/i.test(title) &&
+        /\b(director|head|vp|chro|chief)\b/i.test(title)
+      ) {
+        bonus += 14;
+      }
+      if (
         personas.some((persona) => {
           const token = persona.toLowerCase().replace(/\b(director|manager|head|lead|vp|chief)\b/g, "").trim();
           return token.length >= 2 && title.includes(token);

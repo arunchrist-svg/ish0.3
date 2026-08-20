@@ -67,6 +67,10 @@ export type ImportLeadsSummary = {
   enriched: number;
   results: ImportRowResult[];
   errors: string[];
+  warnings: string[];
 };
 
-export const MAX_IMPORT_ROWS = 500;
+export const MAX_IMPORT_ROWS = 5000;
+export const INLINE_ENRICH_MAX = 25;
+export const RESEARCH_ENQUEUE_MAX = 50;
+export const MULTI_MAP_FIELDS = ["tags"] as const;

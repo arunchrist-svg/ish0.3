@@ -1,5 +1,7 @@
 import type { EnrichmentConfig } from "./config";
 import { friendlyLLMError } from "@/lib/llm";
+import { hasGeminiKeys } from "@/lib/llm/gemini-keys";
+import { hasAnthropicKey } from "@/lib/llm/provider-chain";
 import { hasOpenRouterKey } from "@/lib/llm/openrouter";
 import { hasTavilyKeys } from "./tavily-keys";
 
@@ -8,11 +10,11 @@ export function hasTavilyKey(): boolean {
 }
 
 export function hasGeminiKey(): boolean {
-  return !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+  return hasGeminiKeys();
 }
 
 export function hasLLMKey(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY || hasGeminiKey() || hasOpenRouterKey();
+  return hasAnthropicKey() || hasGeminiKey() || hasOpenRouterKey();
 }
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
@@ -31,7 +33,7 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
     !hasLLMKey()
   ) {
     errors.push(
-      "ANTHROPIC_API_KEY is missing. Directory search will use basic parsing only until Claude is configured.",
+      "GEMINI_API_KEY is missing. Directory search will use basic parsing only until Gemini is configured.",
     );
   }
 

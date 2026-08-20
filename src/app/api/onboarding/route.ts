@@ -28,6 +28,11 @@ import {
   patchWorkspaceBrandConfig,
 } from "@/lib/settings/email-settings";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import {
+  isPreferenceReady,
+  loadUserPreferenceProfile,
+} from "@/lib/settings/preference-profile";
+import { sanitizeScoutGeo, scoutGeoHasSelection } from "@/lib/geo/india";
 import type { BrandConfig, CampaignMode, WebsiteBrandInsights } from "@/lib/email/config";
 
 /** Map legacy 6-step onboarding (with email at step 3) to 5-step flow. */
@@ -43,10 +48,13 @@ export async function GET() {
   try {
     const ctx = await requireTenantContext();
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1);
-    const [emailConfig, enrichment] = await Promise.all([
+    const [emailConfig, enrichment, preferenceProfile] = await Promise.all([
       getResolvedEmailConfig(ctx.workspaceId),
       getResolvedWorkspaceEnrichmentConfig(),
+      loadUserPreferenceProfile(ctx.workspaceId),
     ]);
+    const scoutGeo = sanitizeScoutGeo(enrichment.scoutGeo);
+    const preferenceReady = isPreferenceReady(preferenceProfile.topicsCovered);
     const rawStep = tenant?.onboardingStep ?? 1;
     return NextResponse.json({
       step: tenant?.onboardingStatus === "complete" ? 5 : normalizeOnboardingStep(rawStep),
@@ -54,6 +62,10 @@ export async function GET() {
       orgName: tenant?.name,
       websiteUrl: emailConfig.brandConfig?.websiteUrl ?? "",
       brandReady: Boolean(emailConfig.brandConfig?.productSummary?.trim()),
+      preferenceReady,
+      preferenceSummary: preferenceProfile.summary || null,
+      needsLocation: preferenceReady && !scoutGeoHasSelection(scoutGeo),
+      scoutGeo: scoutGeoHasSelection(scoutGeo) ? scoutGeo : null,
       platformIntent:
         emailConfig.brandConfig?.platformIntent ??
         emailConfig.brandConfig?.websiteInsights?.platformIntent ??
@@ -308,7 +320,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         nextStep: 3,
-        needsLocation: true,
+        needsPreferenceCoach: true,
         brandAnalyzed,
         websiteWarning,
         platformIntent,

@@ -1,5 +1,5 @@
 import {
-  pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum, uniqueIndex,
+  pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum, uniqueIndex, index,
 } from "drizzle-orm/pg-core";
 import type { CompanyOverview } from "@/lib/company-overview";
 
@@ -31,7 +31,9 @@ export const workspaces = pgTable("workspaces", {
   tenantId:  uuid("tenant_id").notNull().references(() => tenants.id),
   name:      text("name").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  tenantIdx: index("workspaces_tenant_idx").on(table.tenantId),
+}));
 
 export const workspaceSettings = pgTable("workspace_settings", {
   workspaceId:           uuid("workspace_id").primaryKey().references(() => workspaces.id),
@@ -204,7 +206,9 @@ export const accounts = pgTable("accounts", {
   createdAt:    timestamp("created_at").defaultNow().notNull(),
   updatedAt:    timestamp("updated_at").defaultNow().notNull(),
   isPinned:     boolean("is_pinned").default(false),
-});
+}, (table) => ({
+  tenantWorkspaceIdx: index("accounts_tenant_workspace_idx").on(table.tenantId, table.workspaceId),
+}));
 
 // ─── Contacts (People) ────────────────────────────────────────────────────────
 export const contacts = pgTable("contacts", {
@@ -235,7 +239,10 @@ export const contacts = pgTable("contacts", {
   externalId:      text("external_id"),
   createdAt:       timestamp("created_at").defaultNow().notNull(),
   updatedAt:       timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  tenantIdx: index("contacts_tenant_idx").on(table.tenantId),
+  accountIdx: index("contacts_account_idx").on(table.accountId),
+}));
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
 export const leads = pgTable("leads", {
@@ -263,7 +270,11 @@ export const leads = pgTable("leads", {
   threadRootSubject: text("thread_root_subject"),
   updatedAt:    timestamp("updated_at").defaultNow().notNull(),
   isPinned:     boolean("is_pinned").default(false),
-});
+}, (table) => ({
+  tenantCreatedIdx: index("leads_tenant_created_idx").on(table.tenantId, table.createdAt),
+  workspaceStatusIdx: index("leads_workspace_status_idx").on(table.workspaceId, table.status),
+  contactIdx: index("leads_contact_idx").on(table.contactId),
+}));
 
 export type WriterPlan = {
   hook: string;
@@ -319,7 +330,10 @@ export const leadOutreach = pgTable("lead_outreach", {
   sequencePosition:  integer("sequence_position"),
   draftFeedback:     jsonb("draft_feedback").$type<{ rating?: "up" | "down"; comment?: string; at?: string }>(),
   createdAt:         timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  leadIdx: index("lead_outreach_lead_idx").on(table.leadId),
+  templateVariantIdx: index("lead_outreach_template_variant_idx").on(table.templateVariant),
+}));
 
 // ─── Outreach Edit Messages (chat history) ───────────────────────────────────
 export const outreachEditMessages = pgTable("outreach_edit_messages", {
@@ -361,6 +375,7 @@ export const outreachSchedule = pgTable("outreach_schedule", {
   bounceType:    text("bounce_type"),
   bounceReason:  text("bounce_reason"),
   recipientEmail: text("recipient_email"),
+  recipientPhone: text("recipient_phone"),
   status:        text("status").notNull().default("scheduled"),
   sendMode:      sendMode("send_mode").default("dry_run"),
   resendId:      text("resend_id"),
@@ -373,7 +388,11 @@ export const outreachSchedule = pgTable("outreach_schedule", {
   draftLeadOutreachId: uuid("draft_lead_outreach_id").references(() => leadOutreach.id, { onDelete: "set null" }),
   trackingToken: text("tracking_token"),
   createdAt:     timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  leadIdx: index("outreach_schedule_lead_idx").on(table.leadId),
+  channelStatusIdx: index("outreach_schedule_channel_status_idx").on(table.channel, table.status),
+  emailKindStatusIdx: index("outreach_schedule_email_kind_status_idx").on(table.emailKind, table.status),
+}));
 
 // ─── Yield Funnel ─────────────────────────────────────────────────────────────
 export const yieldFunnel = pgTable("yield_funnel", {
@@ -382,7 +401,9 @@ export const yieldFunnel = pgTable("yield_funnel", {
   stage:     funnelStage("stage").notNull(),
   enteredAt: timestamp("entered_at").defaultNow().notNull(),
   metadata:  jsonb("metadata").$type<Record<string, unknown>>(),
-});
+}, (table) => ({
+  leadStageIdx: index("yield_funnel_lead_stage_idx").on(table.leadId, table.stage),
+}));
 
 // ─── Enrichment Runs ─────────────────────────────────────────────────────────
 export const enrichmentRuns = pgTable("enrichment_runs", {
@@ -488,7 +509,9 @@ export const notifications = pgTable("notifications", {
   metadata:    jsonb("metadata").$type<Record<string, unknown>>().default({}),
   readAt:      timestamp("read_at"),
   createdAt:   timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userUnreadIdx: index("notifications_user_unread_idx").on(table.tenantId, table.userId, table.readAt),
+}));
 
 // ─── Agent Runs (LLM observability) ───────────────────────────────────────────
 export const agentRuns = pgTable("agent_runs", {
@@ -507,9 +530,10 @@ export const agentRuns = pgTable("agent_runs", {
   error:         text("error"),
   startedAt:     timestamp("started_at").defaultNow().notNull(),
   completedAt:   timestamp("completed_at"),
-});
-
-
+}, (table) => ({
+  tenantStartedIdx: index("agent_runs_tenant_started_idx").on(table.tenantId, table.startedAt),
+  workspaceIdx: index("agent_runs_workspace_idx").on(table.workspaceId),
+}));
 
 export const pushSubscriptions = pgTable("push_subscriptions", {
   id:        uuid("id").defaultRandom().primaryKey(),

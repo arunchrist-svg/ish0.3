@@ -1,12 +1,14 @@
 /**
  * LLM gate: drop area names, buildings, floors, and other non-companies
  * that slipped past heuristic cleanCompanyName.
- * Uses free models only (OpenRouter :free, then Gemini free tier).
+ * Uses Gemini first (with provider rotation on quota).
  */
 import { callLLM, type LLMProvider } from "@/lib/llm";
+import { hasGeminiKeys } from "@/lib/llm/gemini-keys";
+import { hasAnthropicKey, isProviderConfigured } from "@/lib/llm/provider-chain";
 import { hasOpenRouterKey } from "@/lib/llm/openrouter";
-import { hasGeminiKey, llmErrorMessage } from "./discovery-prerequisites";
-import { cleanCompanyName, keepStrictCompaniesOnly } from "./directory-parser";
+import { llmErrorMessage } from "./discovery-prerequisites";
+import { cleanCompanyName } from "./directory-parser";
 import { isGeographicEntity } from "./company-name-match";
 import { isAcceptableCompanyDomain } from "./company-domain-quality";
 import { icpCompanyFilterInstructions } from "@/lib/brand/platform-intent";
@@ -21,11 +23,15 @@ export type CompanyNameFilterMeta = {
   productSummary?: string | null;
 };
 
-/** Prefer OpenRouter free models, then Gemini. Never Anthropic for this filter. */
+/** Prefer Gemini for scout cleanup. Never returns anthropic as the explicit first hop. */
 export function freeCompanyFilterProvider(): LLMProvider | null {
+  if (hasGeminiKeys()) return "gemini";
   if (hasOpenRouterKey()) return "openrouter";
-  if (hasGeminiKey()) return "gemini";
   return null;
+}
+
+export function hasScoutLlmProvider(): boolean {
+  return isProviderConfigured("gemini") || isProviderConfigured("openrouter") || hasAnthropicKey();
 }
 
 function stripCodeFences(raw: string): string {
@@ -96,7 +102,6 @@ export function parseCompanyFilterKeepNames(raw: string): string[] {
 
 async function filterBatch(
   names: string[],
-  provider: LLMProvider,
   icpBlock?: string | null,
 ): Promise<string[]> {
   if (!names.length) return [];
@@ -106,7 +111,7 @@ async function filterBatch(
     : "";
   const raw = await callLLM({
     tier: "fast",
-    provider,
+    provider: freeCompanyFilterProvider() ?? undefined,
     system: `You filter B2B scout candidate names for India.
 Return ONLY a JSON array of strings: the real company / brand names to KEEP.
 Drop anything that is not a company: neighborhoods, cities, states, hobli, industrial areas, buildings, towers, floors, levels, tech parks, UI labels, job categories, NIC activity lines, or address fragments.
@@ -120,10 +125,6 @@ ${numbered}`,
   });
   return parseCompanyFilterKeepNames(raw);
 }
-
-/**
- * LLM-filter companies via free models. On failure or missing key, returns input unchanged.
- */
 
 /**
  * Skip the free-model name gate when candidates already look like real companies
@@ -150,17 +151,18 @@ export function shouldSkipCompaniesLlmFilter(
   return clean >= Math.ceil(sample.length * 0.7);
 }
 
+/**
+ * LLM-filter companies via free models. On failure, missing key, or a 100% wipe,
+ * returns the input unchanged so the pipeline never silently empties.
+ */
 export async function filterCompaniesWithLlm<T extends { name: string }>(
   companies: T[],
   meta?: CompanyNameFilterMeta,
 ): Promise<T[]> {
   if (!companies.length) return companies;
-  const provider = freeCompanyFilterProvider();
-  if (!provider) {
-    meta?.warnings?.push(
-      "No free LLM configured (OPENROUTER_API_KEY or GEMINI_API_KEY) — keeping only registered company names.",
-    );
-    return keepStrictCompaniesOnly(companies);
+  if (!hasScoutLlmProvider()) {
+    meta?.warnings?.push("No LLM configured (GEMINI_API_KEY) — showing unfiltered candidates.");
+    return companies;
   }
 
   const byLower = new Map<string, T>();
@@ -182,17 +184,7 @@ export async function filterCompaniesWithLlm<T extends { name: string }>(
   try {
     for (let i = 0; i < uniqueNames.length; i += BATCH_SIZE) {
       const batch = uniqueNames.slice(i, i + BATCH_SIZE);
-      let keepNames: string[];
-      try {
-        keepNames = await filterBatch(batch, provider, icpBlock);
-      } catch (e) {
-        if (provider === "openrouter" && hasGeminiKey()) {
-          console.warn("[filter-companies-llm] OpenRouter failed, falling back to Gemini:", e);
-          keepNames = await filterBatch(batch, "gemini", icpBlock);
-        } else {
-          throw e;
-        }
-      }
+      const keepNames = await filterBatch(batch, icpBlock);
       for (const keepName of keepNames) {
         const key = keepName.toLowerCase();
         if (keptKeys.has(key)) continue;
@@ -214,12 +206,19 @@ export async function filterCompaniesWithLlm<T extends { name: string }>(
         kept.push({ ...base, name: keepName });
       }
     }
+    // A 100% wipe is almost always the model being over-strict, not a real signal.
+    if (!kept.length) {
+      meta?.warnings?.push(
+        `AI company filter kept 0 of ${companies.length} candidates — showing unfiltered results.`,
+      );
+      return companies;
+    }
     return kept;
   } catch (e) {
     console.error("[filter-companies-llm] failed:", e);
     meta?.warnings?.push(
-      llmErrorMessage(e) || "AI company-name filter failed — keeping only registered company names.",
+      llmErrorMessage(e) || "AI company-name filter failed — showing unfiltered candidates.",
     );
-    return keepStrictCompaniesOnly(companies);
+    return companies;
   }
 }

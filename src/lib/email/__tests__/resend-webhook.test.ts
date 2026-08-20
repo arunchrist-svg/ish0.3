@@ -2,6 +2,7 @@ import { createHmac } from "crypto";
 import { describe, expect, it } from "vitest";
 import {
   bounceMetaFromEvent,
+  isBounceLikeLastEvent,
   shouldPauseSequenceForBounce,
   verifyResendWebhook,
 } from "@/lib/email/resend-webhook";
@@ -58,5 +59,10 @@ describe("bounce metadata", () => {
         data: { bounce: { type: "Permanent", message: "Mailbox does not exist" } },
       }),
     ).toEqual({ bounceType: "Permanent", bounceReason: "Mailbox does not exist" });
+  });
+
+  it("treats Resend last_event bounce states as bounced", () => {
+    expect(isBounceLikeLastEvent("bounced")).toBe(true);
+    expect(isBounceLikeLastEvent("delivered")).toBe(false);
   });
 });

@@ -46,6 +46,7 @@ export function toWriterDraft(
     approvalStatus: opts?.approvalStatus ?? "pending",
     replySent: opts?.replySent ?? false,
     sequencePosition: opts?.sequencePosition ?? outreach.sequencePosition ?? undefined,
+    whatsapp: outreach.whatsapp ?? undefined,
     editMessages: opts?.editMessages?.map(toEditMessage),
   };
 }

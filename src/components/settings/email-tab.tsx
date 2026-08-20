@@ -1,5 +1,6 @@
 "use client";
 
+import { InboxSetupSteps } from "@/components/settings/inbox-setup-steps";
 import { SenderHealthSettings } from "@/components/settings/sender-health-settings";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import {
@@ -30,12 +31,13 @@ import {
 } from "@/lib/brand/vertical-catalog";
 import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { useSession } from "@/components/providers/session-provider";
+import { isSmtpServerId } from "@/lib/email/inbox-setup-guide";
 import { emailKeywordsToInput, normalizeEmailKeywords } from "@/lib/brand/email-keywords";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleHelp, Loader2, XCircle } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 type Props = {
   config: EmailConfigResponse | null;
@@ -193,6 +195,25 @@ export function EmailTab({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const { session } = useSession();
   const operatorEmail = session?.user.email;
+
+  useEffect(() => {
+    if (!config) return;
+    const mail = new URLSearchParams(window.location.search).get("mail");
+    if (!isSmtpServerId(mail)) return;
+    const patch = applySmtpServer(mail);
+    if (
+      config.provider === "smtp" &&
+      config.smtpHost === patch.smtpHost &&
+      config.smtpPort === patch.smtpPort &&
+      config.smtpSecure === patch.smtpSecure
+    ) {
+      return;
+    }
+    onUpdate("provider", "smtp");
+    onUpdate("smtpHost", patch.smtpHost);
+    onUpdate("smtpPort", patch.smtpPort);
+    onUpdate("smtpSecure", patch.smtpSecure);
+  }, [config, onUpdate]);
 
   const intentOptions = useMemo(
     () => platformIntentOptionsForUser(operatorEmail),
@@ -431,6 +452,11 @@ export function EmailTab({
               >
                 {verifying ? "Verifying…" : "Verify"}
               </button>
+            </div>
+            <div className="px-4 pb-4">
+              <div className="rounded-xl border border-brand-border bg-brand-app/60 px-4 py-3">
+                <InboxSetupSteps mailHost={smtpServer} />
+              </div>
             </div>
           </>
         ) : null}

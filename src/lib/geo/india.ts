@@ -1,4 +1,12 @@
 import { INDIA_REGION_ROWS, INDIA_STATE_ROWS, type IndiaRegionId } from "./india-data";
+import {
+  isAnyScoutAreaOfFocusSet,
+  isNearbyAreaSelected,
+  nearbyAreaChipLabels,
+  normalizeLocalityKey,
+  normalizeScoutAreasOfFocus,
+  type ScoutAreaOfFocus,
+} from "./area-of-focus";
 
 export type { IndiaRegionId };
 
@@ -35,9 +43,23 @@ export type ScoutLocationOption = {
   id: string;
   label: string;
   group: string;
-  kind: "india" | "region" | "state" | "district";
+  kind: "india" | "region" | "state" | "district" | "area";
   searchTerms: string[];
+  selected?: boolean;
 };
+
+/** Scout location picker: neighborhood cluster vs Settings Area of Interest districts. */
+export type ScoutLocationScope = "focus" | "interest";
+
+export function parseScoutLocationScope(raw: unknown): ScoutLocationScope | null {
+  return raw === "focus" || raw === "interest" ? raw : null;
+}
+
+export function defaultScoutLocationScope(
+  focus?: ScoutAreaOfFocus | ScoutAreaOfFocus[] | null,
+): ScoutLocationScope {
+  return isAnyScoutAreaOfFocusSet(focus) ? "focus" : "interest";
+}
 
 function slugify(value: string): string {
   return value
@@ -367,8 +389,44 @@ export function locationOptionsFromSelection(raw?: Partial<ScoutGeoSelection> | 
   return options;
 }
 
+export function locationOptionsFromAreaOfFocus(
+  focus: ScoutAreaOfFocus | ScoutAreaOfFocus[] | null | undefined,
+): ScoutLocationOption[] {
+  const focuses = normalizeScoutAreasOfFocus(focus);
+  return focuses.flatMap((row) => {
+    const group = `${row.areaName} + ${row.radiusKm} km`;
+    const selectedKeys = new Set(
+      row.nearbyAreas.filter(isNearbyAreaSelected).map((area) => normalizeLocalityKey(area.name)),
+    );
+    const pinKey = `${slugify(row.cityLabel)}-${slugify(row.areaName)}`;
+    return nearbyAreaChipLabels(row).map((name) => ({
+      id: `area:${pinKey}:${slugify(name)}`,
+      label: name,
+      group,
+      kind: "area" as const,
+      searchTerms: [name],
+      selected: selectedKeys.has(normalizeLocalityKey(name)),
+    }));
+  });
+}
+
+export function scoutLocationOptions(
+  raw?: Partial<ScoutGeoSelection> | null,
+  focus?: ScoutAreaOfFocus | ScoutAreaOfFocus[] | null,
+  scope?: ScoutLocationScope,
+): ScoutLocationOption[] {
+  const resolved = scope ?? defaultScoutLocationScope(focus);
+  if (resolved === "focus") {
+    return locationOptionsFromAreaOfFocus(focus);
+  }
+  return locationOptionsFromSelection(raw);
+}
+
 export function defaultLabelsFromLocationOptions(options: ScoutLocationOption[]): string[] {
   if (!options.length) return [];
+  if (options.every((o) => o.kind === "area")) {
+    return options.filter((o) => o.selected !== false).map((o) => o.label);
+  }
   if (options.length <= 12) return options.map((o) => o.label);
   return options.slice(0, 8).map((o) => o.label);
 }
@@ -614,6 +672,7 @@ export function scoutPickerAllowedLabels(
 ): Set<string> {
   const allowed = new Set<string>();
   for (const option of options) allowed.add(option.label);
+  if (options.some((option) => option.kind === "area")) return allowed;
   for (const group of districtGroupsForScoutOptions(options)) {
     if (group.districts.length === group.state.districts.length) {
       allowed.add(group.state.name);

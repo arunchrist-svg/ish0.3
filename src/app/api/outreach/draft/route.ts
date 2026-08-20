@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { normalizeEmailBody } from "@/lib/email/email-body-format";
 
 export async function PATCH(req: Request) {
   try {
@@ -20,6 +21,7 @@ export async function PATCH(req: Request) {
       subjectC,
       chosenSubjectKey,
       chosenBodyKey,
+      whatsapp,
     } = body as {
       leadOutreachId: string;
       emailBody?: string;
@@ -30,6 +32,7 @@ export async function PATCH(req: Request) {
       subjectC?: string;
       chosenSubjectKey?: string;
       chosenBodyKey?: string;
+      whatsapp?: string;
     };
 
     if (!leadOutreachId) {
@@ -37,14 +40,15 @@ export async function PATCH(req: Request) {
     }
 
     const updates: Partial<typeof leadOutreach.$inferInsert> = {};
-    if (emailBody !== undefined) updates.emailBody = emailBody;
-    if (emailBodyB !== undefined) updates.emailBodyB = emailBodyB;
-    if (emailBodyC !== undefined) updates.emailBodyC = emailBodyC;
+    if (emailBody !== undefined) updates.emailBody = normalizeEmailBody(emailBody);
+    if (emailBodyB !== undefined) updates.emailBodyB = emailBodyB ? normalizeEmailBody(emailBodyB) : emailBodyB;
+    if (emailBodyC !== undefined) updates.emailBodyC = emailBodyC ? normalizeEmailBody(emailBodyC) : emailBodyC;
     if (subjectA !== undefined) updates.subjectA = subjectA;
     if (subjectB !== undefined) updates.subjectB = subjectB;
     if (subjectC !== undefined) updates.subjectC = subjectC;
     if (chosenSubjectKey !== undefined) updates.chosenSubjectKey = chosenSubjectKey;
     if (chosenBodyKey !== undefined) updates.chosenBodyKey = chosenBodyKey;
+    if (whatsapp !== undefined) updates.whatsapp = whatsapp;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
@@ -79,6 +83,7 @@ export async function PATCH(req: Request) {
       emailBodyC: row.emailBodyC,
       chosenSubjectKey: row.chosenSubjectKey,
       chosenBodyKey: row.chosenBodyKey,
+      whatsapp: row.whatsapp,
     });
   } catch (e) {
     return handleApiError(e, "[api/outreach/draft]");

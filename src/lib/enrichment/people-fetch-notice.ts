@@ -6,21 +6,39 @@ export function summarizeEmptyPeopleFetch(params: {
   cities?: string[];
   seniority?: string[];
   departments?: string[];
+  indiaOnly?: boolean;
+  searchKind?: "industry" | "business";
 }): { headline: string; detail: string } {
   const n = Math.max(0, params.companyCount);
   const unique = [...new Set(params.warnings.filter(Boolean))];
   const joined = unique.join(" ");
+  const localOperators = params.searchKind === "business";
 
   const noDomain = unique.filter((m) => /no website domain/i.test(m)).length;
-  const cityMiss = unique.filter((m) => /no decision-makers found in /i.test(m)).length;
-  const roleMiss = unique.filter((m) => /no contacts match the selected seniority/i.test(m)).length;
+  const cityMiss = unique.filter((m) =>
+    /no decision-makers found in |hr\/procurement people found at .* but all had cities outside|no people found in /i.test(m),
+  ).length;
+  const focusAreaBlock = unique.some((m) => /switch to area of interest/i.test(m));
+  const roleMiss = unique.filter((m) =>
+    /no contacts match the selected seniority|no hr, procurement, admin, or facilities people found/i.test(m),
+  ).length;
+  const rateLimited = unique.some((m) => /rate-limiting|credits are still available/i.test(m));
   const quota = unique.some((m) => /quota|usage limit|exhausted|people search needs tavily/i.test(m));
   const skippedQuota = unique.filter((m) => /skipped .*: tavily quota/i.test(m)).length;
   const searched = Math.max(0, n - skippedQuota);
 
-  const cityBit = (params.cities ?? []).length
-    ? ` City filter was ${params.cities!.join(", ")} (people outside those cities are dropped).`
-    : "";
+  const cityBit =
+    params.indiaOnly
+      ? " Decision-makers can be anywhere in India."
+      : (params.cities ?? []).length === 0
+        ? ""
+        : localOperators
+          ? ` Searched ${params.cities!.join(", ")} for local seniors at that branch, not distant HQ.`
+          : focusAreaBlock
+            ? ` Focus Area is on: only people in ${params.cities!.join(", ")} are shown. Switch to Area of Interest to also include nearby HQ (e.g. Bengaluru for Hosur).`
+            : cityMiss
+              ? ` City filter was ${params.cities!.join(", ")} plus nearby HQ (not Delhi or NYC). LinkedIn often omits plant location.`
+              : ` Searched ${params.cities!.join(", ")} and nearby HQ for Head of HR.`;
   const roleBits = [...(params.departments ?? []), ...(params.seniority ?? [])];
   const roleBit = roleBits.length ? ` People filters: ${roleBits.join(", ")}.` : "";
 
@@ -28,6 +46,13 @@ export function summarizeEmptyPeopleFetch(params: {
     return {
       headline: "People search is temporarily unavailable.",
       detail: n > 1 ? `Tried ${n} companies. Add a Tavily key, then fetch again.` : "Try again later or contact support if this persists.",
+    };
+  }
+
+  if (rateLimited && !quota) {
+    return {
+      headline: n > 1 ? `Searched ${n} companies. Tavily asked us to slow down.` : "Tavily asked us to slow down.",
+      detail: "This key still has credits. Wait a few seconds and fetch again.",
     };
   }
 
@@ -49,22 +74,24 @@ export function summarizeEmptyPeopleFetch(params: {
   if (n > 1) {
     parts.push(`Each of the ${n} selected companies was searched.`);
   }
-  if (cityMiss) {
+  if (cityMiss && !params.indiaOnly) {
     parts.push(
       `${cityMiss} had no people in the selected cit${cityMiss === 1 ? "y" : "ies"}. Empty is OK. We do not fill with Delhi or NYC.`,
     );
   }
   if (roleMiss) {
-    parts.push(`${roleMiss} had people who did not match the People filters.`);
+    parts.push(
+      `${roleMiss} had no HR, Procurement, Admin, or Facilities contacts. LinkedIn may not list plant buyers publicly. Try a larger or better-known brand in this city.`,
+    );
   }
   if (noDomain) {
     parts.push(
-      `${noDomain} had no official website, so LinkedIn matching is weaker (not a skip of the rest).`,
+      `${noDomain} had no official website. Paste the company site below. Zauba and IndiaMART listings are not the company website.`,
     );
   }
   parts.push(cityBit.trim(), roleBit.trim());
   const extra = unique
-    .filter((m) => !/no website domain|no decision-makers found in |no contacts match the selected seniority|switched to backup/i.test(m))
+    .filter((m) => !/no website domain|no decision-makers found in |no contacts match the selected seniority|no hr or procurement people found|switched to backup/i.test(m))
     .slice(0, 2);
   if (!parts.filter(Boolean).length && extra[0]) parts.push(extra[0]);
 

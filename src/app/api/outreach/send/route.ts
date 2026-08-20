@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, outreachApprovals, leadOutreach, leads, contacts, outreachSchedule, yieldFunnel } from "@/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
 import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE, resolveOutreachEmailStyle } from "@/lib/email/config";
@@ -26,7 +26,7 @@ import {
   shouldHandleSendFailure,
 } from "@/lib/enrichment/email-candidate-queue";
 import { cleanEmailBatch } from "@/lib/email/list-cleaner";
-import { resolveSendRecipients } from "@/lib/outreach/send-recipients";
+import { mergePersistedSendEmails, resolveSendRecipients, alreadySentRecipientKeys } from "@/lib/outreach/send-recipients";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 
 export async function POST(req: Request) {
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
     const approval = await db.query.outreachApprovals.findFirst({
       where: eq(outreachApprovals.id, approvalId),
-      with: { lead: { with: { contact: true } }, outreach: true },
+      with: { lead: { with: { contact: true, account: true } }, outreach: true },
     });
     if (!approval?.lead || approval.lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Approval not found" }, { status: 404 });
@@ -62,7 +62,8 @@ export async function POST(req: Request) {
     }
 
     const contact = leadRow.contact as typeof contacts.$inferSelect;
-    const { recipients: rawRecipients, error: recipientError } = resolveSendRecipients(
+    const account = leadRow.account;
+    const { recipients: rawRecipients, persistEmails, error: recipientError } = resolveSendRecipients(
       {
         email: contact.email,
         emailStatus: contact.emailStatus,
@@ -70,11 +71,69 @@ export async function POST(req: Request) {
         enrichmentSource: contact.enrichmentSource,
         enrichmentProvider: contact.enrichmentProvider,
         alternateEmails: (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        name: contact.name,
       },
       toEmails,
+      {
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        name: contact.name,
+        domain: account?.domain,
+        website: account?.website,
+        companyName: account?.name,
+      },
     );
     if (recipientError || rawRecipients.length === 0) {
       return NextResponse.json({ error: recipientError ?? "No recipients selected" }, { status: 400 });
+    }
+
+    const priorSchedule = await db
+      .select({
+        recipientEmail: outreachSchedule.recipientEmail,
+        status: outreachSchedule.status,
+      })
+      .from(outreachSchedule)
+      .where(and(eq(outreachSchedule.leadId, approval.leadId), eq(outreachSchedule.channel, "email")));
+    const sentKeys = alreadySentRecipientKeys(priorSchedule);
+    const isAdditionalSend = !isReplySend && (leadRow.status === "outreached" || sentKeys.size > 0);
+    const unsentRecipients = rawRecipients.filter((email) => !sentKeys.has(email.trim().toLowerCase()));
+    if (isAdditionalSend && unsentRecipients.length === 0) {
+      return NextResponse.json(
+        { error: "Already sent to all selected addresses. Add a new email to send again." },
+        { status: 400 },
+      );
+    }
+    if (isAdditionalSend) {
+      rawRecipients.length = 0;
+      rawRecipients.push(...unsentRecipients);
+    }
+    if (persistEmails?.length) {
+      const merged = mergePersistedSendEmails(
+        {
+          email: contact.email,
+          alternateEmails: (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+        },
+        persistEmails,
+      );
+      await db
+        .update(contacts)
+        .set({
+          email: merged.email,
+          alternateEmails: merged.alternateEmails,
+          ...(!contact.email?.trim() && merged.email
+            ? {
+                emailStatus: "unverified" as const,
+                enrichmentProvider: "manual",
+                enrichmentSource: "manual",
+              }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(contacts.id, contact.id));
+      contact.email = merged.email;
+      contact.alternateEmails = merged.alternateEmails;
     }
 
     const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
@@ -111,10 +170,20 @@ export async function POST(req: Request) {
       recipients = rawRecipients.filter((_, i) => cleaned[i]?.ok);
       const skippedRecipients = cleaned.filter((c) => !c.ok);
       if (recipients.length === 0) {
+        const skipped = skippedRecipients.map((c) => ({
+          email: c.email,
+          reason: c.reason,
+          detail: c.detail,
+        }));
+        const summary = skipped
+          .map((c) => `${c.email} (${c.reason}${c.detail ? `: ${c.detail}` : ""})`)
+          .join("; ");
         return NextResponse.json(
           {
-            error: "All recipients failed list cleaning",
-            skipped: skippedRecipients.map((c) => ({ email: c.email, reason: c.reason, detail: c.detail })),
+            error: summary
+              ? `All recipients failed list cleaning: ${summary}`
+              : "All recipients failed list cleaning",
+            skipped,
           },
           { status: 400 },
         );
@@ -294,6 +363,26 @@ export async function POST(req: Request) {
         stage: "replied",
         metadata: { sendMode: result.mode, messageId: rfcMessageId, kind: "reply_sent", recipients },
       });
+    } else if (isAdditionalSend) {
+      for (const extra of sentResults) {
+        await db.insert(outreachSchedule).values({
+          leadId: approval.leadId,
+          approvalId,
+          channel: "email",
+          sequenceDay: 0,
+          scheduledFor: new Date(),
+          sentAt: new Date(),
+          status: "sent",
+          sendMode,
+          resendId: extra.providerMessageId ?? extra.messageId ?? null,
+          rfcMessageId: extra.messageId ?? null,
+          recipientEmail: extra.to,
+          subjectSent: subject,
+          bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
+          trackingToken: extra.trackingToken,
+          emailKind: "initial",
+        });
+      }
     } else {
       await db.update(leads).set({
         status: "outreached",

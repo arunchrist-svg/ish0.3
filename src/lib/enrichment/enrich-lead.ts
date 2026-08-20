@@ -2,7 +2,7 @@ import { db, contacts, accounts, leads, enrichmentRuns } from "@/db";
 import { eq } from "drizzle-orm";
 import { enrichContactAccurate, applyVerificationGate } from "./enrich-accurate";
 import { verifyEmail } from "./verify";
-import { emailBelongsToCompany } from "@/lib/enrichment/company-domain-quality";
+import { isKeepableContactEmail } from "@/lib/enrichment/company-domain-quality";
 import { isGenericCompanyEmail, sanitizeEmail, sanitizePhone } from "./validate-contact";
 import {
   shouldAutoAcceptEmail,
@@ -75,9 +75,12 @@ function toEnrichmentInput(
   };
 }
 
-async function emailStatusFromVerify(email?: string): Promise<EnrichContactResult["emailStatus"]> {
+async function emailStatusFromVerify(
+  email?: string,
+  options?: { network?: boolean },
+): Promise<EnrichContactResult["emailStatus"]> {
   if (!email) return "missing";
-  const result = await verifyEmail(email);
+  const result = await verifyEmail(email, options);
   return result.status;
 }
 
@@ -135,6 +138,23 @@ function acceptOptions(person: { name: string }): { namedPerson: boolean } {
   return { namedPerson: isNamedPerson(person.name) };
 }
 
+export function shouldSkipProviderEnrichment(params: {
+  existingEmail?: string;
+  existingPhone?: string;
+  companyName: string;
+  mode: EnrichMode;
+  refetch?: boolean;
+}): boolean {
+  if (params.refetch) return false;
+  if (params.mode !== "free") return false;
+  if (!params.existingEmail) return false;
+  if (!isKeepableContactEmail(params.existingEmail, params.companyName)) return false;
+  if (isGenericCompanyEmail(params.existingEmail)) return false;
+  // Keepable person email is enough to skip paid/slow providers on free CRM save.
+  // Phone can still be filled later via Manage / paid enrich.
+  return true;
+}
+
 export async function enrichPersonContact(params: {
   person: ScoutPersonResult;
   company: ScoutCompanyResult;
@@ -157,11 +177,13 @@ export async function enrichPersonContact(params: {
   const existingPhone = sanitizePhone(params.person.phone);
 
   if (
-    existingEmail &&
-    emailBelongsToCompany(existingEmail, params.company.name) &&
-    params.mode === "free" &&
-    !isGenericCompanyEmail(existingEmail) &&
-    !params.refetch
+    shouldSkipProviderEnrichment({
+      existingEmail,
+      existingPhone,
+      companyName: params.company.name,
+      mode: params.mode,
+      refetch: params.refetch,
+    })
   ) {
     const confidence = 60;
     return {
@@ -169,7 +191,7 @@ export async function enrichPersonContact(params: {
       phone: existingPhone,
       linkedIn: normalizeLinkedInUrl(params.person.linkedIn),
       title: resolvedTitle,
-      emailStatus: await emailStatusFromVerify(existingEmail),
+      emailStatus: await emailStatusFromVerify(existingEmail, { network: false }),
       emailConfidence: confidence,
       confidenceTier: confidenceTier(confidence, existingEmail),
       enrichmentSource: params.person.dataSource as EnrichmentSource | undefined,
@@ -194,7 +216,7 @@ export async function enrichPersonContact(params: {
     const email =
       existingEmail &&
       !isGenericCompanyEmail(existingEmail) &&
-      emailBelongsToCompany(existingEmail, params.company.name)
+      isKeepableContactEmail(existingEmail, params.company.name)
         ? existingEmail
         : undefined;
     return {
@@ -218,26 +240,32 @@ export async function enrichPersonContact(params: {
   const title = gated.title?.trim() || resolvedTitle || result.contact.title?.trim();
   const score = result.confidence ?? 0;
 
-  if (email && !emailBelongsToCompany(email, params.company.name)) {
+  if (email && !isKeepableContactEmail(email, params.company.name)) {
     email = undefined;
   }
   if (email && isGenericCompanyEmail(email) && named.namedPerson && params.mode === "free") {
     email =
       existingEmail &&
       !isGenericCompanyEmail(existingEmail) &&
-      emailBelongsToCompany(existingEmail, params.company.name)
+      isKeepableContactEmail(existingEmail, params.company.name)
         ? existingEmail
         : undefined;
   }
 
   const tier = email ? confidenceTier(score, email) : "missing";
+  const emailStatus =
+    email && result.providerId === "prospeo"
+      ? "verified"
+      : email
+        ? await emailStatusFromVerify(email)
+        : "missing";
 
   return {
     email,
     phone,
     linkedIn,
     title,
-    emailStatus: email ? await emailStatusFromVerify(email) : "missing",
+    emailStatus,
     emailConfidence: email ? score : 0,
     confidenceTier: tier,
     enrichmentSource: result.providerId ? providerToSource(result.providerId) : undefined,
@@ -305,13 +333,13 @@ export async function enrichLeadById(params: {
   );
 
   let nextEmail = shouldWriteEmail ? enriched.email : contact.email ?? undefined;
-  if (nextEmail && !emailBelongsToCompany(nextEmail, account.name)) {
+  if (nextEmail && !isKeepableContactEmail(nextEmail, account.name)) {
     nextEmail = undefined;
   }
   if (nextEmail && isGenericCompanyEmail(nextEmail) && named.namedPerson && params.mode === "free") {
     nextEmail = currentIsGeneric ? undefined : currentEmail;
   }
-  if (nextEmail && !emailBelongsToCompany(nextEmail, account.name)) {
+  if (nextEmail && !isKeepableContactEmail(nextEmail, account.name)) {
     nextEmail = undefined;
   }
 
@@ -328,7 +356,7 @@ export async function enrichLeadById(params: {
   const discovered = mergeAlternateEmails(
     nextEmail,
     (contact.alternateEmails as ContactEmailEntry[] | null) ?? [],
-    (enriched.discoveredEmails ?? []).filter((entry) => emailBelongsToCompany(entry.email, account.name)),
+    (enriched.discoveredEmails ?? []).filter((entry) => isKeepableContactEmail(entry.email, account.name)),
   );
   const refreshed = refreshPermutationEmails({
     firstName: contact.firstName,

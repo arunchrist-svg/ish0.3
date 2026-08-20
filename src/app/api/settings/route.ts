@@ -3,6 +3,7 @@ import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { canManageSettings } from "@/lib/auth/permissions";
 import { handleApiError } from "@/lib/api-errors";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
+import { hasProspeoKey, hasZintlrKeys } from "@/lib/enrichment/config";
 import {
   getResolvedWorkspaceEnrichmentConfig,
   saveWorkspaceEnrichmentOverrides,
@@ -13,7 +14,11 @@ export async function GET() {
     const ctx = await requireTenantContext();
     if (!canManageSettings(ctx.role, ctx.platformRole)) throw new ForbiddenError('Admin access required');
     const config = await getResolvedWorkspaceEnrichmentConfig();
-    return NextResponse.json(config);
+    return NextResponse.json({
+      ...config,
+      prospeoConfigured: hasProspeoKey(),
+      zintlrConfigured: hasZintlrKeys(),
+    });
   } catch (e) {
     const err = handleApiError(e, '[settings]');
     if (err.status !== 500) return err;

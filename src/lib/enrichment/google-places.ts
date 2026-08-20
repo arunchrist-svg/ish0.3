@@ -2,9 +2,28 @@ import type { ScoutCompanyResult } from "./types";
 import { employeeSizeSearchClause } from "./employee-size";
 import { isPlausibleCompanyName } from "./directory-parser";
 import { isGeographicEntity } from "./company-name-match";
+import { placesTypeForScoutBusiness } from "@/lib/scouting-data";
+import { placeTypesMatchScoutBusiness } from "./business-match";
 
 const NEW_API = "https://places.googleapis.com/v1/places:searchText";
+const NEW_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete";
 const LEGACY_BASE = "https://maps.googleapis.com/maps/api/place";
+
+export type PlacesLocationBias = {
+  lat: number;
+  lng: number;
+  radiusMeters: number;
+};
+
+function locationBiasBody(bias?: PlacesLocationBias) {
+  if (!bias) return undefined;
+  return {
+    circle: {
+      center: { latitude: bias.lat, longitude: bias.lng },
+      radius: Math.max(100, bias.radiusMeters),
+    },
+  };
+}
 
 const NON_BUSINESS_PLACE_TYPES = new Set([
   "route",
@@ -67,6 +86,7 @@ type NewPlace = {
   userRatingCount?: number;
   types?: string[];
   businessStatus?: string;
+  location?: { latitude?: number; longitude?: number };
 };
 
 function apiKey(): string {
@@ -89,19 +109,25 @@ function mapNewPlace(place: NewPlace): PlacesResult {
   };
 }
 
-async function placesTextSearchNew(query: string): Promise<PlacesResult[]> {
+async function placesTextSearchNew(
+  query: string,
+  bias?: PlacesLocationBias,
+  includedType?: string,
+): Promise<PlacesResult[]> {
   const res = await fetch(NEW_API, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": apiKey(),
       "X-Goog-FieldMask":
-        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.businessStatus",
+        "places.id,places.displayName,places.formattedAddress,places.websiteUri,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.types,places.businessStatus,places.location",
     },
     body: JSON.stringify({
       textQuery: query,
       regionCode: "IN",
       languageCode: "en",
+      ...(includedType ? { includedType } : {}),
+      ...(locationBiasBody(bias) ? { locationBias: locationBiasBody(bias) } : {}),
     }),
   });
 
@@ -114,8 +140,11 @@ async function placesTextSearchNew(query: string): Promise<PlacesResult[]> {
   return ((data.places as NewPlace[] | undefined) ?? []).map(mapNewPlace);
 }
 
-async function placesTextSearchLegacy(query: string): Promise<PlacesResult[]> {
-  const url = `${LEGACY_BASE}/textsearch/json?query=${encodeURIComponent(query)}&region=in&language=en&key=${apiKey()}`;
+async function placesTextSearchLegacy(query: string, bias?: PlacesLocationBias): Promise<PlacesResult[]> {
+  const biasQs = bias
+    ? `&location=${encodeURIComponent(`${bias.lat},${bias.lng}`)}&radius=${Math.round(bias.radiusMeters)}`
+    : "";
+  const url = `${LEGACY_BASE}/textsearch/json?query=${encodeURIComponent(query)}&region=in&language=en${biasQs}&key=${apiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Google Places text search failed: ${res.status}`);
   const data = await res.json();
@@ -134,16 +163,107 @@ async function placeDetailsLegacy(placeId: string): Promise<PlacesResult> {
   return data.result ?? {};
 }
 
-async function placesTextSearch(query: string): Promise<PlacesResult[]> {
+async function placesTextSearch(
+  query: string,
+  bias?: PlacesLocationBias,
+  includedType?: string,
+): Promise<PlacesResult[]> {
   try {
-    return await placesTextSearchNew(query);
+    return await placesTextSearchNew(query, bias, includedType);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (/legacy|not enabled|REQUEST_DENIED/i.test(msg)) {
-      return placesTextSearchLegacy(query);
+      return placesTextSearchLegacy(query, bias);
     }
     throw e;
   }
+}
+
+export type PlacesAreaSuggestion = {
+  placeId: string;
+  text: string;
+};
+
+export async function googlePlacesAutocompleteAreas(params: {
+  query: string;
+  city?: string;
+  locationBias?: PlacesLocationBias;
+}): Promise<PlacesAreaSuggestion[]> {
+  if (!process.env.GOOGLE_PLACES_API_KEY || !params.query.trim()) return [];
+  const input = params.city ? `${params.query.trim()}, ${params.city}, India` : `${params.query.trim()}, India`;
+  try {
+    const res = await fetch(NEW_AUTOCOMPLETE, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey(),
+      },
+      body: JSON.stringify({
+        input,
+        includedRegionCodes: ["IN"],
+        languageCode: "en",
+        includedPrimaryTypes: ["neighborhood", "sublocality", "sublocality_level_1", "locality"],
+        ...(locationBiasBody(params.locationBias) ? { locationBias: locationBiasBody(params.locationBias) } : {}),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const predictions = (data.suggestions as Array<{ placePrediction?: { placeId?: string; text?: { text?: string } } }> | undefined) ?? [];
+      return predictions
+        .map((row) => ({
+          placeId: row.placePrediction?.placeId ?? "",
+          text: row.placePrediction?.text?.text ?? "",
+        }))
+        .filter((row) => row.placeId && row.text);
+    }
+  } catch {
+    /* fall through to legacy */
+  }
+
+  const biasQs = params.locationBias
+    ? `&location=${encodeURIComponent(`${params.locationBias.lat},${params.locationBias.lng}`)}&radius=${Math.round(params.locationBias.radiusMeters)}`
+    : "";
+  const url = `${LEGACY_BASE}/autocomplete/json?input=${encodeURIComponent(input)}&components=country:in&language=en${biasQs}&key=${apiKey()}`;
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") return [];
+  return ((data.predictions as Array<{ place_id?: string; description?: string }> | undefined) ?? [])
+    .map((row) => ({ placeId: row.place_id ?? "", text: row.description ?? "" }))
+    .filter((row) => row.placeId && row.text);
+}
+
+export async function googlePlacesGeocodePlace(placeId: string): Promise<{ lat: number; lng: number; name: string } | null> {
+  if (!process.env.GOOGLE_PLACES_API_KEY || !placeId.trim()) return null;
+  try {
+    const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+      headers: {
+        "X-Goog-Api-Key": apiKey(),
+        "X-Goog-FieldMask": "id,displayName,location",
+      },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const lat = data.location?.latitude;
+      const lng = data.location?.longitude;
+      const name = data.displayName?.text;
+      if (typeof lat === "number" && typeof lng === "number") {
+        return { lat, lng, name: typeof name === "string" && name.trim() ? name.trim() : placeId };
+      }
+    }
+  } catch {
+    /* fall through to legacy */
+  }
+
+  const url = `${LEGACY_BASE}/details/json?place_id=${encodeURIComponent(placeId)}&fields=name,geometry&key=${apiKey()}`;
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  const lat = data.result?.geometry?.location?.lat;
+  const lng = data.result?.geometry?.location?.lng;
+  const name = data.result?.name;
+  if (typeof lat === "number" && typeof lng === "number") {
+    return { lat, lng, name: typeof name === "string" && name.trim() ? name.trim() : placeId };
+  }
+  return null;
 }
 
 function extractCityFromAddress(address?: string): string | undefined {
@@ -207,7 +327,7 @@ function extractDomain(url: string): string | undefined {
   }
 }
 
-function toScoutResult(place: PlacesResult): ScoutCompanyResult {
+function toScoutResult(place: PlacesResult, geoVerified = false): ScoutCompanyResult {
   const cityExtracted = extractCityFromAddress(place.formatted_address);
   const domain = place.website ? extractDomain(place.website) : undefined;
 
@@ -228,7 +348,17 @@ function toScoutResult(place: PlacesResult): ScoutCompanyResult {
       .join(" · ") || undefined,
     dataSource: "google_places",
     externalId: place.place_id,
+    ...(geoVerified ? { scoutGeoVerified: true } : {}),
   };
+}
+
+function rotatedSlots<T>(items: T[], count: number, offset: number): T[] {
+  if (!items.length || count <= 0) return [];
+  const slots: T[] = [];
+  for (let i = 0; i < Math.min(count, items.length); i++) {
+    slots.push(items[(offset + i) % items.length]!);
+  }
+  return slots;
 }
 
 export async function googlePlacesSearchCompanies(params: {
@@ -236,43 +366,72 @@ export async function googlePlacesSearchCompanies(params: {
   industries: string[];
   limit?: number;
   employeeBands?: string[];
+  locationBias?: PlacesLocationBias;
+  searchKind?: "industry" | "business";
+  fetchSeed?: number;
 }): Promise<ScoutCompanyResult[]> {
   if (!process.env.GOOGLE_PLACES_API_KEY) return [];
 
   const results: ScoutCompanyResult[] = [];
   const limit = params.limit ?? 20;
   let lastError: Error | null = null;
+  const seed = Math.abs(params.fetchSeed ?? 0);
+  const allCities = params.cities.filter(Boolean);
+  const citySlots = params.locationBias
+    ? rotatedSlots(allCities, Math.min(4, allCities.length || 1), seed % Math.max(allCities.length, 1))
+    : allCities.slice(0, 3);
+  const allTerms =
+    params.searchKind === "business"
+      ? params.industries.length
+        ? params.industries
+        : ["establishment"]
+      : [params.industries.slice(0, 2).join(" ") || "corporate"];
+  const termSlots =
+    params.searchKind === "business"
+      ? rotatedSlots(allTerms, Math.min(5, allTerms.length), seed % Math.max(allTerms.length, 1))
+      : allTerms;
+  const geoVerified = Boolean(params.locationBias);
+  const sizeStr = employeeSizeSearchClause(params.employeeBands);
 
-  for (const city of params.cities.slice(0, 3)) {
+  for (const city of citySlots) {
     if (results.length >= limit) break;
+    for (const term of termSlots) {
+      if (results.length >= limit) break;
+      const includedType = params.searchKind === "business" ? placesTypeForScoutBusiness(term) : undefined;
+      const query =
+        params.searchKind === "business"
+          ? `${term} ${city} India${sizeStr ? ` ${sizeStr}` : ""}`
+          : `${term} companies ${city}${sizeStr ? ` ${sizeStr}` : ""} India`;
 
-    const industryStr =
-      params.industries.length > 0 ? params.industries.slice(0, 2).join(" ") : "corporate";
-    const sizeStr = employeeSizeSearchClause(params.employeeBands);
-    const query = `${industryStr} companies ${city}${sizeStr ? ` ${sizeStr}` : ""} India`;
+      try {
+        const places = await placesTextSearch(query, params.locationBias, includedType);
 
-    try {
-      const places = await placesTextSearch(query);
-
-      for (const place of places.slice(0, Math.ceil(limit / params.cities.length))) {
-        if (results.length >= limit) break;
-        if (place.business_status === "CLOSED_PERMANENTLY") continue;
-        if (!isBusinessPlace(place)) continue;
-
-        let merged = place;
-        if (!place.website && place.place_id && !place.place_id.startsWith("Ch")) {
-          try {
-            merged = { ...place, ...(await placeDetailsLegacy(place.place_id)) };
-          } catch {
-            // New API usually includes websiteUri — legacy details optional
+        for (const place of places.slice(0, Math.ceil(limit / Math.max(citySlots.length * termSlots.length, 1)))) {
+          if (results.length >= limit) break;
+          if (place.business_status === "CLOSED_PERMANENTLY") continue;
+          if (!isBusinessPlace(place)) continue;
+          if (
+            params.searchKind === "business" &&
+            !placeTypesMatchScoutBusiness(place.types, term)
+          ) {
+            continue;
           }
-        }
 
-        results.push(toScoutResult(merged));
+          let merged = place;
+          if (!place.website && place.place_id && !place.place_id.startsWith("Ch")) {
+            try {
+              merged = { ...place, ...(await placeDetailsLegacy(place.place_id)) };
+            } catch {
+              // New API usually includes websiteUri — legacy details optional
+            }
+          }
+
+          results.push(toScoutResult(merged, geoVerified));
+        }
+      } catch (e) {
+        lastError = e instanceof Error ? e : new Error(String(e));
+        console.error(`[google-places] search failed for ${city}:`, lastError.message);
       }
-    } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
-      console.error(`[google-places] search failed for ${city}:`, lastError.message);
     }
   }
 

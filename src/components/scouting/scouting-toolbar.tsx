@@ -21,10 +21,14 @@ import {
   Cpu,
   Crown,
   Factory,
+  FlaskConical,
   GraduationCap,
   Hammer,
   HeartPulse,
+  Hotel,
   Landmark,
+  Monitor,
+  Mountain,
   MapPin,
   Megaphone,
   Package,
@@ -32,18 +36,20 @@ import {
   RefreshCw,
   Rocket,
   Search,
+  Shirt,
   Square,
   Settings,
   ShoppingBag,
   ShoppingCart,
   Truck,
-  TriangleAlert,
   UserCog,
   Users,
   UtensilsCrossed,
   X,
+  Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/design-system";
 import { peopleAndFilterWarning } from "@/lib/enrichment/people-role-filter";
@@ -53,13 +59,16 @@ import {
   setScoutStateDistricts,
   toggleScoutDistrictPick,
   type ScoutLocationOption,
+  type ScoutLocationScope,
 } from "@/lib/geo/india";
 import {
+  SCOUT_BUSINESSES,
   SCOUT_CITY_GROUPS,
   SCOUT_DEPARTMENTS,
   SCOUT_EMPLOYEE_BANDS,
   SCOUT_INDUSTRIES,
   SCOUT_SENIORITY,
+  type ScoutVerticalScope,
 } from "@/lib/scouting-data";
 
 /* ─────────────────────────────────────────────
@@ -112,13 +121,29 @@ type Props = {
   hideActions?: boolean;
   onFilterPanelChange?: (open: boolean) => void;
   locationOptions?: ScoutLocationOption[] | { label: string; group: string }[];
+  locationScope?: ScoutLocationScope;
+  onLocationScopeChange?: (scope: ScoutLocationScope) => void;
+  verticalScope?: ScoutVerticalScope;
+  onVerticalScopeChange?: (scope: ScoutVerticalScope) => void;
+  businesses?: string[];
+  onBusinessToggle?: (business: string) => void;
+  peopleCities?: string[];
+  onPeopleCitiesChange?: (cities: string[]) => void;
 };
 
 /* ─────────────────────────────────────────────
    Label helpers
 ───────────────────────────────────────────── */
 
-function cityLabel(cities: string[]): string {
+function cityLabel(cities: string[], locationOptions?: Array<{ kind?: ScoutLocationOption["kind"]; group?: string }>): string {
+  const areaOptions = locationOptions?.filter((o) => o.kind === "area") ?? [];
+  const groups = [...new Set(areaOptions.map((o) => o.group).filter(Boolean))] as string[];
+  if (areaOptions.length && cities.length) {
+    if (groups.length > 1) {
+      return cities.length === 1 ? cities[0] : `${cities[0]} +${cities.length - 1}`;
+    }
+    return groups[0] ?? cities[0];
+  }
   if (cities.length === 0) return "Add location";
   if (cities.length === 1) return cities[0];
   return `${cities[0]} +${cities.length - 1}`;
@@ -156,8 +181,30 @@ function industryScaleLabel(industries: string[], employeeBands: string[]): stri
   return `${industryLabel(industries)} · ${sizeLabel(employeeBands)}`;
 }
 
-function peopleLabel(seniority: string[], departments: string[]): string {
+function businessLabel(businesses: string[]): string {
+  if (businesses.length === 0) return "Any business";
+  if (businesses.length === 1) return businesses[0];
+  return `${businesses.length} businesses`;
+}
+
+function verticalScaleLabel(
+  verticalScope: ScoutVerticalScope,
+  industries: string[],
+  businesses: string[],
+  employeeBands: string[],
+): string {
+  if (verticalScope === "businesses") {
+    if (businesses.length === 0 && employeeBands.length === 0) return "Any business";
+    if (employeeBands.length === 0) return businessLabel(businesses);
+    if (businesses.length === 0) return sizeLabel(employeeBands);
+    return `${businessLabel(businesses)} · ${sizeLabel(employeeBands)}`;
+  }
+  return industryScaleLabel(industries, employeeBands);
+}
+
+function peopleLabel(seniority: string[], departments: string[], verticalScope?: ScoutVerticalScope): string {
   const total = seniority.length + departments.length;
+  if (verticalScope === "businesses" && total === 0) return "Local seniors";
   if (total === 0) return "Any people";
   return `${total} filter${total > 1 ? "s" : ""}`;
 }
@@ -165,18 +212,68 @@ function peopleLabel(seniority: string[], departments: string[]): string {
 function PeopleAndFilterNotice({
   seniority,
   departments,
+  verticalScope,
   className,
 }: {
   seniority: string[];
   departments: string[];
+  verticalScope?: ScoutVerticalScope;
   className?: string;
 }) {
+  if (verticalScope === "businesses") {
+    return (
+      <p className={cn("rounded-xl bg-brand-stratus-yellow/20 px-3 py-2 text-[11.5px] font-medium leading-snug text-brand-ink", className)}>
+        Fetch Leads looks for branch managers, principals, and unit heads in this area. Leave People empty unless you want a tighter seniority chip. Skip Head of HR and CHRO at corporate HQ.
+      </p>
+    );
+  }
   const warning = peopleAndFilterWarning(seniority, departments);
   if (!warning) return null;
   return (
-    <p className={cn("rounded-xl bg-amber-50 px-3 py-2 text-[11.5px] font-medium leading-snug text-amber-950", className)}>
+    <p className={cn("rounded-xl bg-brand-stratus-yellow/20 px-3 py-2 text-[11.5px] font-medium leading-snug text-brand-ink", className)}>
       {warning}
     </p>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Scout filter chip grid (Stratus tiles)
+───────────────────────────────────────────── */
+
+function ScoutChipGrid({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={cn("ish-scout-chip-grid", className)}>{children}</div>;
+}
+
+function ScoutFilterChip({
+  label,
+  icon,
+  selected,
+  onClick,
+}: {
+  label: string;
+  icon?: ReactNode;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "ish-scout-filter-chip",
+        selected ? "ish-scout-chip-on" : "ish-scout-chip-off",
+      )}
+    >
+      {icon ? <span className="ish-scout-filter-chip-icon">{icon}</span> : null}
+      <span className="ish-scout-filter-chip-label">{label}</span>
+    </button>
   );
 }
 
@@ -196,19 +293,7 @@ function FilterChip({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150 active:scale-[0.97]",
-        active
-          ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
-          : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
-      )}
-    >
-      {icon ? <span className="shrink-0 leading-none">{icon}</span> : null}
-      {label}
-    </button>
+    <ScoutFilterChip label={label} icon={icon} selected={active} onClick={onClick} />
   );
 }
 
@@ -236,10 +321,8 @@ function PillSegment({
       type="button"
       onClick={onClick}
       className={cn(
-        "group flex items-center gap-2 rounded-full px-4 py-2 text-left transition-all duration-150",
-        active
-          ? "bg-white shadow-[0_2px_12px_rgba(20,20,30,0.10)] ring-1 ring-brand-border"
-          : "hover:bg-brand-app",
+        "group flex h-8 items-center gap-2 rounded-full px-3.5 text-left transition-all duration-150",
+        active ? "ish-scout-pill-active" : "hover:bg-white/70",
       )}
     >
       <span className={cn("transition-colors", active || hasSelection ? "text-brand-ink" : "text-brand-ink-faint")}>
@@ -288,7 +371,7 @@ function Popover({
   return (
     <div
       className={cn(
-        "absolute top-full left-0 z-50 mt-2 overflow-hidden rounded-2xl border border-brand-border bg-white shadow-[var(--shadow-brand-float)] transition-all duration-200 origin-top",
+        "ish-scout-popover absolute top-full left-0 z-50 mt-2 transition-all duration-200 origin-top",
         open
           ? "pointer-events-auto scale-100 opacity-100 translate-y-0"
           : "pointer-events-none scale-95 opacity-0 -translate-y-1",
@@ -296,7 +379,7 @@ function Popover({
         className,
       )}
     >
-      <div className="relative z-10 bg-white">{children}</div>
+      <div className="relative z-10 bg-transparent">{children}</div>
     </div>
   );
 }
@@ -312,16 +395,34 @@ const SCALE_ICONS: Record<string, LucideIcon> = {
   large: Landmark,
 };
 
+const BUSINESS_ICONS: Record<string, LucideIcon> = {
+  Banks: Landmark,
+  Schools: GraduationCap,
+  Colleges: GraduationCap,
+  Universities: GraduationCap,
+  Hospitals: HeartPulse,
+  Hotels: Hotel,
+  "Government offices": Landmark,
+  Clubs: Users,
+  "Housing societies": Building,
+  Hostels: Building2,
+};
+
 const INDUSTRY_ICONS: Record<string, LucideIcon> = {
   Manufacturing: Factory,
-  "Real Estate": Building,
+  Automotive: Car,
+  Textiles: Shirt,
+  Electronics: Monitor,
+  "Steel & Metals": Mountain,
+  Chemicals: FlaskConical,
+  "Energy & Power": Zap,
+  "Real Estate": Building2,
   Technology: Cpu,
   "Financial Services": Landmark,
   Healthcare: HeartPulse,
   Retail: ShoppingBag,
   FMCG: Package,
   Construction: Hammer,
-  Automotive: Car,
   Pharmaceuticals: Pill,
   Education: GraduationCap,
   Hospitality: UtensilsCrossed,
@@ -468,7 +569,7 @@ function MobileSheetPrimaryButton({
         "flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-bold transition-all active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50",
         disabled
           ? "bg-brand-canvas text-brand-ink-faint"
-          : "bg-brand-yellow-gradient text-brand-black shadow-brand-yellow-sm",
+          : "ish-scout-cta-yellow",
       )}
     >
       {label}
@@ -481,7 +582,7 @@ function districtHaystack(district: { displayName: string; name: string; aliases
   return [district.displayName, district.name, ...district.aliases].join(" ").toLowerCase();
 }
 
-function LocationDistrictPicker({
+function LocationAreaPicker({
   cities,
   onCitiesChange,
   locationOptions,
@@ -492,11 +593,123 @@ function LocationDistrictPicker({
   locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
   compact?: boolean;
 }) {
+  const groups: { name: string; options: typeof locationOptions }[] = [];
+  for (const option of locationOptions) {
+    const name = option.group ?? "Area of focus";
+    const last = groups[groups.length - 1];
+    if (last && last.name === name) last.options.push(option);
+    else groups.push({ name, options: [option] });
+  }
+  const labels = [...new Set(locationOptions.map((option) => option.label))];
+  const selectedCount = labels.filter((label) => cities.includes(label)).length;
+  const allSelected = labels.length > 0 && selectedCount === labels.length;
+  const noneSelected = selectedCount === 0;
+  return (
+    <div className="flex flex-col">
+      <div className="ish-scout-filter-section-head px-4 pt-4">
+        <p className="text-[12px] font-semibold text-brand-ink">
+          {groups.length > 1 ? `${groups.length} focus areas` : (groups[0]?.name ?? "Area of focus")}
+        </p>
+        <div className="ish-scout-filter-actions">
+          <button
+            type="button"
+            onClick={() => onCitiesChange(labels)}
+            disabled={allSelected}
+            className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+          >
+            Select all
+          </button>
+          <button
+            type="button"
+            onClick={() => onCitiesChange([])}
+            className="text-[11px] font-semibold text-brand-stratus-blue"
+          >
+            Clear all
+          </button>
+        </div>
+      </div>
+      <p className="px-4 pb-3 text-[11px] leading-relaxed text-brand-ink-faint">
+        Scout only the selected nearby areas. Clear all unselects chips and keeps these clusters.
+      </p>
+      {groups.map((group) => (
+        <div key={group.name} className="pb-1">
+          {groups.length > 1 ? (
+            <p className="px-4 pb-2 text-[11px] font-semibold text-brand-ink-soft">{group.name}</p>
+          ) : null}
+          <ScoutChipGrid className="px-4 pb-4">
+            {group.options.map((option) => {
+              const selected = cities.includes(option.label);
+              return (
+                <ScoutFilterChip
+                  key={`${group.name}:${option.label}`}
+                  label={option.label}
+                  selected={selected}
+                  onClick={() =>
+                    onCitiesChange(
+                      selected ? cities.filter((c) => c !== option.label) : [...cities, option.label],
+                    )
+                  }
+                />
+              );
+            })}
+          </ScoutChipGrid>
+        </div>
+      ))}
+      {noneSelected ? (
+        <p className="px-4 pb-4 text-[11px] text-brand-ink-soft">Pick at least one nearby area to scout.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function LocationDistrictPicker({
+  cities,
+  onCitiesChange,
+  locationOptions,
+  compact,
+  locationScope = "interest",
+}: {
+  cities: string[];
+  onCitiesChange: (c: string[]) => void;
+  locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
+  compact?: boolean;
+  locationScope?: ScoutLocationScope;
+}) {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
   const groups = districtGroupsForScoutOptions(locationOptions);
+
+  if (locationScope === "focus" && !locationOptions.some((option) => option.kind === "area")) {
+    return (
+      <div className="flex flex-col">
+        <div className={cn("px-4 text-center", compact ? "py-8" : "py-6")}>
+          <p className="text-[12.5px] font-semibold text-brand-ink">No Focus Area yet</p>
+          <p className="mt-1 text-[12px] leading-relaxed text-brand-ink-soft">
+            Set Areas of focus in Settings to scout neighborhood clusters.
+          </p>
+          <Link
+            href="/settings?tab=enrichment"
+            className="mt-3 inline-flex text-[12px] font-semibold text-brand-stratus-blue hover:underline"
+          >
+            Open Settings
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (locationOptions.some((option) => option.kind === "area")) {
+    return (
+      <LocationAreaPicker
+        cities={cities}
+        onCitiesChange={onCitiesChange}
+        locationOptions={locationOptions}
+        compact={compact}
+      />
+    );
+  }
 
   const filtered = groups
     .map((group) => ({
@@ -519,7 +732,7 @@ function LocationDistrictPicker({
   if (!groups.length) {
     return (
       <p className={cn("text-center text-[12px] text-brand-ink-faint", compact ? "px-4 py-8" : "py-6")}>
-        Set locations in Settings → Enrichment (India, region, state, or district).
+        Set locations in Settings, Enrichment (India, region, state, or district).
       </p>
     );
   }
@@ -527,7 +740,7 @@ function LocationDistrictPicker({
   return (
     <div className="flex flex-col">
       <div className={cn("border-b border-brand-border", compact ? "px-3 py-2" : "p-3")}>
-        <div className="flex items-center gap-2 rounded-full border border-brand-border bg-white px-3 py-2 shadow-[var(--shadow-brand-sm)]">
+        <div className="ish-scout-search flex items-center gap-2 rounded-full px-3 py-2">
           <Search className="size-3.5 shrink-0 text-brand-stratus-blue" />
           <input
             ref={inputRef}
@@ -552,7 +765,7 @@ function LocationDistrictPicker({
         </div>
       </div>
 
-      <div className={cn("overflow-y-auto", compact ? "max-h-[min(52vh,360px)] px-3 py-2" : "max-h-[min(42vh,320px)] p-3")}>
+      <div className={cn(compact ? "px-3 py-2" : "p-3")}>
         {filtered.length === 0 ? (
           <p className="py-6 text-center text-[12px] text-brand-ink-faint">No districts match.</p>
         ) : (
@@ -605,57 +818,27 @@ function LocationDistrictPicker({
                         : "None selected"}
                   </p>
                 ) : (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5 px-1 pb-1">
+                  <ScoutChipGrid className="mt-1.5 px-1 pb-2">
                     {group.districts.map((district) => {
                       const selected = isScoutDistrictPicked(cities, district);
                       return (
-                        <button
+                        <ScoutFilterChip
                           key={district.id}
-                          type="button"
-                          onClick={() => onCitiesChange(toggleScoutDistrictPick(cities, district.id, allowedIds))}
-                          aria-pressed={selected}
-                          title={
-                            district.name.toLowerCase() !== district.displayName.toLowerCase()
-                              ? district.name
-                              : undefined
+                          label={district.displayName}
+                          selected={selected}
+                          onClick={() =>
+                            onCitiesChange(toggleScoutDistrictPick(cities, district.id, allowedIds))
                           }
-                          className={cn(
-                            "rounded-full px-2.5 py-1 text-[11.5px] font-semibold transition-all duration-150",
-                            selected
-                              ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
-                              : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
-                          )}
-                        >
-                          {district.displayName}
-                        </button>
+                        />
                       );
                     })}
-                  </div>
+                  </ScoutChipGrid>
                 )}
               </div>
             );
           })
         )}
       </div>
-
-      {cities.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2">
-          {cities.map((c) => (
-            <span
-              key={c}
-              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
-            >
-              {c}
-              <button
-                type="button"
-                onClick={() => onCitiesChange(cities.filter((x) => x !== c))}
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -664,10 +847,12 @@ function MobileCitySheetContent({
   cities,
   onCitiesChange,
   locationOptions,
+  locationScope,
 }: {
   cities: string[];
   onCitiesChange: (c: string[]) => void;
   locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
+  locationScope?: ScoutLocationScope;
 }) {
   return (
     <LocationDistrictPicker
@@ -675,6 +860,7 @@ function MobileCitySheetContent({
       onCitiesChange={onCitiesChange}
       locationOptions={locationOptions}
       compact
+      locationScope={locationScope}
     />
   );
 }
@@ -684,38 +870,86 @@ function MobileIndustrySheetContent({
   onIndustryToggle,
   employeeBands,
   onScaleToggle,
+  verticalScope = "industries",
+  onVerticalScopeChange,
+  businesses = [],
+  onBusinessToggle,
 }: {
   industries: string[];
   onIndustryToggle: (i: string) => void;
   employeeBands: string[];
   onScaleToggle: (bandId: string) => void;
+  verticalScope?: ScoutVerticalScope;
+  onVerticalScopeChange?: (scope: ScoutVerticalScope) => void;
+  businesses?: string[];
+  onBusinessToggle?: (business: string) => void;
 }) {
+  const catalog = verticalScope === "businesses" ? [...SCOUT_BUSINESSES] : [...SCOUT_INDUSTRIES];
+  const selected = verticalScope === "businesses" ? businesses : industries;
+  const onToggle = verticalScope === "businesses" ? onBusinessToggle : onIndustryToggle;
+  const icons = verticalScope === "businesses" ? BUSINESS_ICONS : INDUSTRY_ICONS;
+  const allSelected = catalog.length > 0 && catalog.every((item) => selected.includes(item));
+  const noneSelected = selected.length === 0;
+
+  function selectAllVertical() {
+    catalog
+      .filter((item) => !selected.includes(item))
+      .forEach((item) => onToggle?.(item));
+  }
+
+  function clearAllVertical() {
+    [...selected].forEach((item) => onToggle?.(item));
+  }
+
   return (
     <div className="flex flex-col px-1 py-2">
+      {onVerticalScopeChange ? (
+        <div className="mb-2 flex items-center px-3">
+          <VerticalScopeKnob compact value={verticalScope} onChange={onVerticalScopeChange} />
+        </div>
+      ) : null}
       <div className="mb-3">
-        <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
-          Industries
-        </p>
-        <div className="grid grid-cols-2 gap-2 px-3">
-          {SCOUT_INDUSTRIES.map((ind) => {
-            const Icon = INDUSTRY_ICONS[ind] ?? Building2;
+        <div className="ish-scout-filter-section-head px-3">
+          <p className="ish-scout-filter-section-label">
+            {verticalScope === "businesses" ? "Businesses" : "Industries"}
+          </p>
+          <div className="ish-scout-filter-actions">
+            <button
+              type="button"
+              onClick={selectAllVertical}
+              disabled={allSelected}
+              className="text-[12px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={clearAllVertical}
+              disabled={noneSelected}
+              className="text-[12px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+            >
+              Clear all
+            </button>
+          </div>
+        </div>
+        <ScoutChipGrid className="px-3">
+          {catalog.map((ind) => {
+            const Icon = icons[ind] ?? Building2;
             return (
-              <MobileFilterGridChip
+              <ScoutFilterChip
                 key={ind}
-                icon={<Icon className="size-4" />}
                 label={ind}
-                selected={industries.includes(ind)}
-                onClick={() => onIndustryToggle(ind)}
+                icon={<Icon className="size-3.5" />}
+                selected={selected.includes(ind)}
+                onClick={() => onToggle?.(ind)}
               />
             );
           })}
-        </div>
+        </ScoutChipGrid>
       </div>
       <div className="mb-2">
-        <div className="mb-1.5 flex items-center justify-between px-3">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
-            Scale
-          </p>
+        <div className="ish-scout-filter-section-head px-3">
+          <p className="ish-scout-filter-section-label">Scale</p>
           {employeeBands.length > 0 ? (
             <button
               type="button"
@@ -726,7 +960,7 @@ function MobileIndustrySheetContent({
             </button>
           ) : null}
         </div>
-        <div className="grid grid-cols-1 gap-1.5 px-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-2 px-3 sm:grid-cols-2">
           {SCOUT_EMPLOYEE_BANDS.map((band) => (
             <ScaleDsCard
               key={band.id}
@@ -744,11 +978,13 @@ function MobileIndustrySheetContent({
 function MobilePeopleSheetContent({
   seniority,
   departments,
+  verticalScope,
   onSeniorityToggle,
   onDepartmentToggle,
 }: {
   seniority: string[];
   departments: string[];
+  verticalScope?: ScoutVerticalScope;
   onSeniorityToggle: (s: string) => void;
   onDepartmentToggle: (d: string) => void;
 }) {
@@ -756,10 +992,8 @@ function MobilePeopleSheetContent({
 
   return (
     <div className="flex flex-col px-1 py-2">
-      <div className="mb-2 flex items-center justify-between px-3">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
-          People filters
-        </p>
+      <div className="ish-scout-filter-section-head px-3">
+        <p className="ish-scout-filter-section-label">People filters</p>
         {hasAny ? (
           <button
             type="button"
@@ -774,47 +1008,42 @@ function MobilePeopleSheetContent({
         ) : null}
       </div>
 
-      <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
-        Seniority
-      </p>
-      <div className="mb-4 grid grid-cols-2 gap-2.5 px-3">
+      <p className="ish-scout-filter-section-label mb-2.5 px-3 pt-1">Seniority</p>
+      <ScoutChipGrid className="mb-4 px-3">
         {SCOUT_SENIORITY.map((s) => {
           const Icon = SENIORITY_ICONS[s] ?? Users;
           return (
-            <MobileFilterGridChip
+            <FilterChip
               key={s}
-              size="lg"
-              icon={<Icon className="size-5" />}
               label={s}
-              selected={seniority.includes(s)}
+              icon={<Icon className="size-3.5" />}
+              active={seniority.includes(s)}
               onClick={() => onSeniorityToggle(s)}
             />
           );
         })}
-      </div>
+      </ScoutChipGrid>
 
-      <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">
-        Department
-      </p>
-      <div className="grid grid-cols-2 gap-2.5 px-3">
+      <p className="ish-scout-filter-section-label mb-2.5 px-3">Department</p>
+      <ScoutChipGrid className="px-3">
         {SCOUT_DEPARTMENTS.map((d) => {
           const Icon = DEPARTMENT_ICONS[d] ?? Users;
           return (
-            <MobileFilterGridChip
+            <FilterChip
               key={d}
-              size="lg"
-              icon={<Icon className="size-5" />}
               label={d}
-              selected={departments.includes(d)}
+              icon={<Icon className="size-3.5" />}
+              active={departments.includes(d)}
               onClick={() => onDepartmentToggle(d)}
             />
           );
         })}
-      </div>
+      </ScoutChipGrid>
 
       <PeopleAndFilterNotice
         seniority={seniority}
         departments={departments}
+        verticalScope={verticalScope}
         className="mx-3 mt-4"
       />
     </div>
@@ -829,16 +1058,19 @@ function CityPopoverContent({
   cities,
   onCitiesChange,
   locationOptions,
+  locationScope,
 }: {
   cities: string[];
   onCitiesChange: (c: string[]) => void;
   locationOptions: Array<{ label: string; group?: string; kind?: ScoutLocationOption["kind"] }>;
+  locationScope?: ScoutLocationScope;
 }) {
   return (
     <LocationDistrictPicker
       cities={cities}
       onCitiesChange={onCitiesChange}
       locationOptions={locationOptions}
+      locationScope={locationScope}
     />
   );
 }
@@ -852,33 +1084,57 @@ function IndustryPopoverContent({
   onIndustryToggle,
   employeeBands,
   onScaleToggle,
+  verticalScope = "industries",
+  onVerticalScopeChange,
+  businesses = [],
+  onBusinessToggle,
 }: {
   industries: string[];
   onIndustryToggle: (i: string) => void;
   employeeBands: string[];
   onScaleToggle: (bandId: string) => void;
+  verticalScope?: ScoutVerticalScope;
+  onVerticalScopeChange?: (scope: ScoutVerticalScope) => void;
+  businesses?: string[];
+  onBusinessToggle?: (business: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
+  const isBusiness = verticalScope === "businesses";
+  const catalog = isBusiness ? [...SCOUT_BUSINESSES] : [...SCOUT_INDUSTRIES];
+  const selectedItems = isBusiness ? businesses : industries;
+  const icons = isBusiness ? BUSINESS_ICONS : INDUSTRY_ICONS;
+  const filtered = catalog.filter((ind) => !q || ind.toLowerCase().includes(q));
+  const allSelected = catalog.length > 0 && catalog.every((item) => selectedItems.includes(item));
+  const noneSelected = selectedItems.length === 0;
 
-  const filtered = SCOUT_INDUSTRIES.filter(
-    (ind) => !q || ind.toLowerCase().includes(q),
-  );
-  const selectedScales = SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id));
-  const hasFooter = industries.length > 0 || selectedScales.length > 0;
+  function selectAllVertical() {
+    catalog
+      .filter((item) => !selectedItems.includes(item))
+      .forEach((item) => (isBusiness ? onBusinessToggle?.(item) : onIndustryToggle(item)));
+  }
+
+  function clearAllVertical() {
+    [...selectedItems].forEach((item) =>
+      isBusiness ? onBusinessToggle?.(item) : onIndustryToggle(item),
+    );
+  }
 
   return (
     <div className="flex flex-col">
-      <div className="border-b border-brand-border p-3">
-        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-app px-3 py-2">
-          <Search className="size-3.5 shrink-0 text-brand-ink-faint" />
+      <div className="flex items-center gap-2 border-b border-brand-border/60 p-3">
+        {onVerticalScopeChange ? (
+          <VerticalScopeKnob compact value={verticalScope} onChange={onVerticalScopeChange} />
+        ) : null}
+        <div className="ish-scout-search flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2">
+          <Search className="size-3.5 shrink-0 text-brand-stratus-blue" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search industry…"
+            placeholder={isBusiness ? "Search business…" : "Search industry…"}
             className="min-w-0 flex-1 bg-transparent text-[12.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
           />
           {query && (
@@ -896,53 +1152,66 @@ function IndustryPopoverContent({
         </div>
       </div>
 
-      <div className="max-h-[min(70vh,440px)] overflow-y-auto p-3">
-        <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-          Industry
-        </p>
+      <div className="p-4">
+        <div className="ish-scout-filter-section-head">
+          <p className="ish-scout-filter-section-label">
+            {isBusiness ? "Business" : "Industry"}
+          </p>
+          <div className="ish-scout-filter-actions">
+            <button
+              type="button"
+              onClick={selectAllVertical}
+              disabled={allSelected}
+              className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={clearAllVertical}
+              disabled={noneSelected}
+              className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+            >
+              Clear all
+            </button>
+          </div>
+        </div>
         {filtered.length === 0 ? (
-          <p className="py-4 text-center text-[12px] text-brand-ink-faint">No industries match.</p>
+          <p className="py-4 text-center text-[12px] text-brand-ink-faint">
+            {isBusiness ? "No businesses match." : "No industries match."}
+          </p>
         ) : (
-          <div className="flex flex-wrap gap-1.5">
+          <ScoutChipGrid>
             {filtered.map((ind) => {
-              const Icon = INDUSTRY_ICONS[ind] ?? Building2;
-              const selected = industries.includes(ind);
+              const Icon = icons[ind] ?? Building2;
+              const selected = selectedItems.includes(ind);
               return (
-                <button
+                <ScoutFilterChip
                   key={ind}
-                  type="button"
-                  onClick={() => onIndustryToggle(ind)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition-all duration-150",
-                    selected
-                      ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
-                      : "bg-brand-app text-brand-ink-soft hover:bg-brand-border hover:text-brand-ink",
-                  )}
-                >
-                  <Icon className="size-3.5 shrink-0" />
-                  {ind}
-                </button>
+                  label={ind}
+                  icon={<Icon className="size-3.5" />}
+                  selected={selected}
+                  onClick={() => (isBusiness ? onBusinessToggle?.(ind) : onIndustryToggle(ind))}
+                />
               );
             })}
-          </div>
+          </ScoutChipGrid>
         )}
 
-        <div className="mt-4">
-          <div className="mb-1.5 flex items-center justify-between">
-            <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-              Scale
-            </p>
+        <div className="mt-5">
+          <div className="ish-scout-filter-section-head">
+            <p className="ish-scout-filter-section-label">Scale</p>
             {employeeBands.length > 0 ? (
               <button
                 type="button"
                 onClick={() => employeeBands.forEach(onScaleToggle)}
-                className="text-[11px] font-semibold text-brand-ink-faint hover:text-brand-ink"
+                className="text-[11px] font-semibold text-brand-stratus-blue"
               >
                 Any scale
               </button>
             ) : null}
           </div>
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-2">
             {SCOUT_EMPLOYEE_BANDS.map((band) => (
               <ScaleDsCard
                 key={band.id}
@@ -954,42 +1223,6 @@ function IndustryPopoverContent({
           </div>
         </div>
       </div>
-
-      {hasFooter && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
-          {industries.map((ind) => (
-            <span
-              key={ind}
-              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
-            >
-              {ind}
-              <button
-                type="button"
-                onClick={() => onIndustryToggle(ind)}
-                className="disabled:opacity-40"
-                aria-label={`Remove ${ind}`}
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-          {selectedScales.map((band) => (
-            <span
-              key={band.id}
-              className="flex items-center gap-1 rounded-full border border-brand-stratus-blue/30 bg-brand-stratus-blue/10 px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
-            >
-              {band.label}
-              <button
-                type="button"
-                onClick={() => onScaleToggle(band.id)}
-                aria-label={`Remove ${band.label}`}
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1001,11 +1234,13 @@ function IndustryPopoverContent({
 function PeoplePopoverContent({
   seniority,
   departments,
+  verticalScope,
   onSeniorityToggle,
   onDepartmentToggle,
 }: {
   seniority: string[];
   departments: string[];
+  verticalScope?: ScoutVerticalScope;
   onSeniorityToggle: (s: string) => void;
   onDepartmentToggle: (d: string) => void;
 }) {
@@ -1013,30 +1248,26 @@ function PeoplePopoverContent({
 
   return (
     <div className="flex flex-col">
-      <div className="p-3">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-            People Filters
-          </p>
-          {hasAny && (
+      <div className="p-4">
+        <div className="ish-scout-filter-section-head">
+          <p className="ish-scout-filter-section-label">People Filters</p>
+          {hasAny ? (
             <button
               type="button"
               onClick={() => {
                 [...seniority].forEach((s) => onSeniorityToggle(s));
                 [...departments].forEach((d) => onDepartmentToggle(d));
               }}
-              className="text-[11px] font-semibold text-brand-ink-faint hover:text-brand-ink"
+              className="text-[11px] font-semibold text-brand-stratus-blue"
             >
-              Clear
+              Clear all
             </button>
-          )}
+          ) : null}
         </div>
 
-        <div className="mb-3">
-          <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-            Seniority
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+        <div className="mb-4">
+          <p className="ish-scout-filter-section-label mb-2.5">Seniority</p>
+          <ScoutChipGrid>
             {SCOUT_SENIORITY.map((s) => {
               const Icon = SENIORITY_ICONS[s] ?? Users;
               return (
@@ -1049,14 +1280,12 @@ function PeoplePopoverContent({
                 />
               );
             })}
-          </div>
+          </ScoutChipGrid>
         </div>
 
         <div>
-          <p className="mb-1.5 text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-            Department
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+          <p className="ish-scout-filter-section-label mb-2.5">Department</p>
+          <ScoutChipGrid>
             {SCOUT_DEPARTMENTS.map((d) => {
               const Icon = DEPARTMENT_ICONS[d] ?? Users;
               return (
@@ -1069,52 +1298,16 @@ function PeoplePopoverContent({
                 />
               );
             })}
-          </div>
+          </ScoutChipGrid>
         </div>
 
         <PeopleAndFilterNotice
           seniority={seniority}
           departments={departments}
+          verticalScope={verticalScope}
           className="mt-3"
         />
       </div>
-
-      {hasAny && (
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-brand-border bg-brand-app/60 px-3 py-2.5">
-          {seniority.map((s) => (
-            <span
-              key={`seniority-${s}`}
-              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
-            >
-              {s}
-              <button
-                type="button"
-                onClick={() => onSeniorityToggle(s)}
-                className="text-brand-ink/70 hover:text-brand-ink"
-                aria-label={`Remove ${s}`}
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-          {departments.map((d) => (
-            <span
-              key={`department-${d}`}
-              className="flex items-center gap-1 rounded-full bg-brand-yellow px-2.5 py-0.5 text-[11px] font-bold text-brand-ink"
-            >
-              {d}
-              <button
-                type="button"
-                onClick={() => onDepartmentToggle(d)}
-                className="text-brand-ink/70 hover:text-brand-ink"
-                aria-label={`Remove ${d}`}
-              >
-                <X className="size-2.5" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1123,41 +1316,184 @@ function PeoplePopoverContent({
    Mode toggle (Autopilot / Search)
 ───────────────────────────────────────────── */
 
-function ModeToggle({
-  mode,
+function ScopeKnob<T extends string>({
+  value,
   onChange,
+  options,
+  ariaLabel,
+  embedded = false,
 }: {
-  mode: ScoutMode;
-  onChange: (m: ScoutMode) => void;
+  value: T;
+  onChange: (value: T) => void;
+  options: { value: T; label: string; name?: string }[];
+  ariaLabel: string;
+  embedded?: boolean;
 }) {
   return (
-    <div className="flex items-center rounded-full border border-brand-border bg-brand-app/60 p-1 shadow-[var(--shadow-brand-sm)]">
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className={cn(
+        "flex items-center",
+        !embedded && "ish-scout-cluster p-0.5",
+      )}
+    >
+      {options.map((option) => {
+        const active = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-label={option.name ?? option.label}
+            aria-checked={active}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all duration-150",
+              active ? "ish-scout-mode-yellow" : "text-brand-ink-soft hover:text-brand-ink",
+            )}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function VerticalScopeKnob({
+  value,
+  onChange,
+  embedded = false,
+  compact = false,
+}: {
+  value: ScoutVerticalScope;
+  onChange: (scope: ScoutVerticalScope) => void;
+  embedded?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <ScopeKnob
+      ariaLabel="Industry or business"
+      embedded={embedded}
+      value={value}
+      onChange={onChange}
+      options={[
+        { value: "industries", label: compact ? "Industry" : "Industries", name: "Industries" },
+        { value: "businesses", label: compact ? "Business" : "Businesses", name: "Businesses" },
+      ]}
+    />
+  );
+}
+
+function AutopilotCluster({
+  mode,
+  onModeChange,
+  locationScope,
+  onLocationScopeChange,
+}: {
+  mode: ScoutMode;
+  onModeChange?: (mode: ScoutMode) => void;
+  locationScope: ScoutLocationScope;
+  onLocationScopeChange?: (scope: ScoutLocationScope) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const autopilot = mode === "autopilot";
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  useEffect(() => {
+    if (!autopilot) setOpen(false);
+  }, [autopilot]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="ish-scout-cluster relative flex flex-wrap items-center"
+    >
       <button
         type="button"
-        onClick={() => onChange("autopilot")}
+        aria-haspopup={onLocationScopeChange ? "menu" : undefined}
+        aria-expanded={onLocationScopeChange ? open : undefined}
+        aria-label={
+          autopilot
+            ? locationScope === "focus"
+              ? "Autopilot, Focus Area"
+              : "Autopilot, Area of Interest"
+            : "Autopilot"
+        }
+        onClick={() => {
+          onModeChange?.("autopilot");
+          if (onLocationScopeChange) setOpen((v) => !v);
+        }}
         className={cn(
-          "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-all duration-150",
-          mode === "autopilot"
-            ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]"
-            : "text-brand-ink-soft hover:text-brand-ink",
+          "flex h-7 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-bold transition-all duration-150",
+          autopilot ? "ish-scout-mode-yellow" : "text-brand-ink-soft hover:text-brand-ink",
         )}
       >
-        <span className="text-[10px]">⚡</span>
+        <Zap className="size-3 shrink-0" />
         Autopilot
+        {onLocationScopeChange ? (
+          <ChevronDown
+            className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-180")}
+          />
+        ) : null}
       </button>
       <button
         type="button"
-        onClick={() => onChange("search")}
+        onClick={() => {
+          setOpen(false);
+          onModeChange?.("search");
+        }}
         className={cn(
-          "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11.5px] font-bold transition-all duration-150",
-          mode === "search"
-            ? "bg-brand-ink text-white shadow-[var(--shadow-brand)]"
-            : "text-brand-ink-soft hover:text-brand-ink",
+          "flex h-7 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-bold transition-all duration-150",
+          mode === "search" ? "ish-scout-mode-blue" : "text-brand-ink-soft hover:text-brand-ink",
         )}
       >
         <Search className="size-3" />
         Search
       </button>
+      {open && onLocationScopeChange ? (
+        <div
+          role="menu"
+          className="ish-scout-popover absolute left-0 top-full z-50 mt-1.5 min-w-[200px] py-1"
+        >
+          {(
+            [
+              ["focus", "Focus Area"],
+              ["interest", "Area of Interest"],
+            ] as const
+          ).map(([scope, text]) => (
+            <button
+              key={scope}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onLocationScopeChange(scope);
+                onModeChange?.("autopilot");
+                setOpen(false);
+              }}
+              className={cn(
+                "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-[12px] font-semibold",
+                locationScope === scope
+                  ? "ish-scout-menu-on"
+                  : "text-brand-ink-soft hover:bg-brand-stratus-blue/10 hover:text-brand-ink",
+              )}
+            >
+              {text}
+              {locationScope === scope ? <Check className="size-3.5 shrink-0" /> : null}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -1178,7 +1514,7 @@ function CompanySearchInput({
   loading?: boolean;
 }) {
   return (
-    <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-full border border-brand-border bg-white px-3.5 py-2 shadow-[var(--shadow-brand-sm)]">
+    <div className="ish-scout-search flex min-w-[220px] flex-1 items-center gap-2 rounded-full px-3.5 py-2">
       <Building2 className="size-3.5 shrink-0 text-brand-ink-faint" />
       <input
         type="text"
@@ -1224,12 +1560,8 @@ function SecondaryBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-full border px-4 py-2 text-[12.5px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
-        active
-          ? "border-brand-stratus-blue/40 bg-brand-stratus-blue/10 text-brand-ink"
-          : "border-brand-border bg-white text-brand-ink hover:bg-brand-canvas",
-      )}
+      data-active={active ? "true" : undefined}
+      className="ish-scout-ghost flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
     >
       {icon}
       {label}
@@ -1259,12 +1591,10 @@ function PrimaryBtn({
       disabled={disabled}
       title={title}
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-full px-5 py-2 text-[13px] font-bold transition-all duration-150 active:scale-[0.97]",
-        !disabled && color === "yellow" &&
-          "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] hover:opacity-90",
-        !disabled && color === "green" &&
-          "bg-brand-green text-white shadow-[0_2px_8px_rgba(63,190,130,0.35)] hover:opacity-90",
-        disabled && "cursor-not-allowed bg-brand-canvas text-brand-ink-faint",
+        "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-4 text-[13px] font-bold transition-all duration-150 active:scale-[0.97]",
+        !disabled && color === "yellow" && "ish-scout-cta-yellow hover:opacity-95",
+        !disabled && color === "green" && "ish-scout-cta-blue hover:opacity-95",
+        disabled && "ish-scout-cta-muted",
       )}
     >
       {label}
@@ -1294,10 +1624,8 @@ function CompactFilterChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-[12.5px] font-semibold transition-all active:scale-[0.97]",
-        active
-          ? "border-brand-stratus-yellow/50 bg-white text-brand-ink shadow-brand-sm"
-          : "border-brand-border/60 bg-white/80 text-brand-ink-soft shadow-brand-sm",
+        "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[12.5px] font-semibold transition-all active:scale-[0.97]",
+        active ? "ish-scout-chip-on" : "ish-scout-ghost",
       )}
     >
       <span className={cn(active ? "text-brand-stratus-blue" : "text-brand-ink-faint")}>{icon}</span>
@@ -1315,8 +1643,8 @@ export function ScoutingToolbar({
   cities,
   industries,
   employeeBands,
-  seniority,
-  departments,
+  seniority: _seniority,
+  departments: _departments,
   selectedCount,
   settingsLoaded = true,
   scoutCompaniesLimit = 1,
@@ -1330,8 +1658,8 @@ export function ScoutingToolbar({
   onCitiesChange,
   onIndustryToggle,
   onEmployeeBandToggle,
-  onSeniorityToggle,
-  onDepartmentToggle,
+  onSeniorityToggle: _onSeniorityToggle,
+  onDepartmentToggle: _onDepartmentToggle,
   onFetchNewCompanies,
   onFetchLeads,
   onSaveCompanies,
@@ -1345,13 +1673,20 @@ export function ScoutingToolbar({
   onScoutModeChange,
   onCompanySearchQueryChange,
   onSearchByName,
-  onStopSearch,
   isMobileLayout = false,
   filtersCollapsed = false,
   onExpandFilters,
   hideActions = false,
   onFilterPanelChange,
   locationOptions,
+  locationScope = "interest",
+  onLocationScopeChange,
+  verticalScope = "industries",
+  onVerticalScopeChange,
+  businesses = [],
+  onBusinessToggle,
+  peopleCities,
+  onPeopleCitiesChange,
 }: Props) {
   const resolvedLocationOptions = locationOptions ?? defaultLocationOptions();
   const [active, setActive] = useState<ActivePanel>(null);
@@ -1362,6 +1697,9 @@ export function ScoutingToolbar({
   const canScout = settingsLoaded && cities.length > 0 && !searching;
   const canSearch = settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !searching;
   const volumeHint = `${scoutCompaniesLimit} cos · ${scoutLeadsLimit}/co`;
+  const verticalLabel = verticalScaleLabel(verticalScope, industries, businesses, employeeBands);
+  const verticalHasSelection =
+    employeeBands.length + (verticalScope === "businesses" ? businesses.length : industries.length) > 0;
 
   const [mobileSheet, setMobileSheet] = useState<ActivePanel>(null);
 
@@ -1396,19 +1734,16 @@ export function ScoutingToolbar({
 
     if (filtersCollapsed) {
       return (
-        <div className="border-b border-brand-border/40 bg-white/70 px-4 py-2 backdrop-blur-xl">
+        <div className="ish-scout-toolbar px-4 py-2">
           <button
             type="button"
             onClick={onExpandFilters}
-            className="flex w-full items-center justify-between gap-2 rounded-2xl border border-brand-border/50 bg-white/90 px-3.5 py-2.5 text-left shadow-brand-sm active:scale-[0.99]"
+            className="ish-scout-cluster flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left active:scale-[0.99]"
           >
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-bold uppercase tracking-widest text-brand-ink-faint">Filters</p>
               <p className="truncate text-[13px] font-semibold text-brand-ink">
-                {cityLabel(cities)} · {industryScaleLabel(industries, employeeBands)}
-                {!isSearchMode && seniority.length + departments.length > 0
-                  ? ` · ${peopleLabel(seniority, departments)}`
-                  : ""}
+                {cityLabel(cities, resolvedLocationOptions)} · {verticalLabel}
               </p>
             </div>
             <ChevronDown className="size-4 shrink-0 text-brand-ink-faint" />
@@ -1419,7 +1754,7 @@ export function ScoutingToolbar({
 
     return (
       <>
-        <div className="border-b border-brand-border/40 bg-white/70 backdrop-blur-xl">
+        <div className="ish-scout-toolbar">
           {isSearchMode ? (
             <div className="px-4 pb-3 pt-2">
               <CompanySearchInput
@@ -1430,30 +1765,27 @@ export function ScoutingToolbar({
               />
             </div>
           ) : null}
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-2">
+            <AutopilotCluster
+              mode={scoutMode}
+              onModeChange={onScoutModeChange}
+              locationScope={locationScope}
+              onLocationScopeChange={onLocationScopeChange}
+            />
+          </div>
           <div className="flex gap-2 overflow-x-auto px-4 pb-3 pt-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <CompactFilterChip
               icon={<MapPin className="size-3.5" />}
-              label={cityLabel(cities)}
+              label={cityLabel(cities, resolvedLocationOptions)}
               active={mobileSheet === "city"}
               onClick={() => setMobileSheet("city")}
             />
             <CompactFilterChip
               icon={<Building2 className="size-3.5" />}
-              label={industryScaleLabel(industries, employeeBands)}
+              label={verticalLabel}
               active={mobileSheet === "industry"}
               onClick={() => setMobileSheet(cities.length === 0 ? "city" : "industry")}
             />
-            {!isSearchMode ? (
-              <CompactFilterChip
-                icon={<Users className="size-3.5" />}
-                label={peopleLabel(seniority, departments)}
-                active={mobileSheet === "people"}
-                onClick={() => {
-                  if (cities.length === 0) setMobileSheet("city");
-                  else setMobileSheet("people");
-                }}
-              />
-            ) : null}
           </div>
         </div>
 
@@ -1471,18 +1803,22 @@ export function ScoutingToolbar({
             />
           }
         >
-          <MobileCitySheetContent cities={cities} onCitiesChange={onCitiesChange} locationOptions={resolvedLocationOptions} />
+          <MobileCitySheetContent
+            cities={cities}
+            onCitiesChange={onCitiesChange}
+            locationOptions={resolvedLocationOptions}
+            locationScope={locationScope}
+          />
         </BottomSheet>
         <BottomSheet
           open={mobileSheet === "industry"}
           onClose={() => setMobileSheet(null)}
-          title="Industry & scale"
+          title={verticalScope === "businesses" ? "Business & scale" : "Industry & scale"}
           contentClassName="px-0 py-0"
           footer={
             <MobileSheetPrimaryButton
-              label={isSearchMode ? "Apply filters" : "Continue"}
-              icon={isSearchMode ? undefined : <ArrowRight className="size-4" />}
-              onClick={() => setMobileSheet(isSearchMode ? null : "people")}
+              label="Apply filters"
+              onClick={() => setMobileSheet(null)}
             />
           }
         >
@@ -1491,29 +1827,12 @@ export function ScoutingToolbar({
             onIndustryToggle={onIndustryToggle}
             employeeBands={employeeBands}
             onScaleToggle={onEmployeeBandToggle}
+            verticalScope={verticalScope}
+            onVerticalScopeChange={onVerticalScopeChange}
+            businesses={businesses}
+            onBusinessToggle={onBusinessToggle}
           />
         </BottomSheet>
-        {!isSearchMode ? (
-          <BottomSheet
-            open={mobileSheet === "people"}
-            onClose={() => setMobileSheet(null)}
-            title="People"
-            contentClassName="px-0 py-0"
-            footer={
-              <MobileSheetPrimaryButton
-                label="Apply filters"
-                onClick={() => setMobileSheet(null)}
-              />
-            }
-          >
-            <MobilePeopleSheetContent
-              seniority={seniority}
-              departments={departments}
-              onSeniorityToggle={onSeniorityToggle}
-              onDepartmentToggle={onDepartmentToggle}
-            />
-          </BottomSheet>
-        ) : null}
       </>
     );
   }
@@ -1536,83 +1855,68 @@ export function ScoutingToolbar({
       <div
         ref={barRef}
         className={cn(
-          "relative flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-brand-border bg-white px-4 py-2.5",
+          "ish-scout-toolbar relative flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5",
           active ? "z-50" : "z-30",
         )}
       >
-        {/* Mode toggle: Autopilot / Search */}
-        <ModeToggle
+        <AutopilotCluster
           mode={scoutMode}
-          onChange={(m) => { setActive(null); onScoutModeChange?.(m); }}
+          onModeChange={(m) => { setActive(null); onScoutModeChange?.(m); }}
+          locationScope={locationScope}
+          onLocationScopeChange={onLocationScopeChange}
         />
 
         {/* Thin separator */}
-        <div className="mx-1 hidden h-6 w-px bg-brand-border sm:block" aria-hidden />
+        <div className="ish-scout-rule hidden sm:block" aria-hidden />
 
         {/* Left cluster: filter pills inside a rounded container */}
-        <div className="flex items-center rounded-full border border-brand-border bg-brand-app/60 p-1 shadow-[var(--shadow-brand-sm)]">
+        <div className="ish-scout-cluster">
           {/* City pill */}
           <div className="relative">
             <PillSegment
               icon={<MapPin className="size-3.5" />}
-              label="City"
-              value={cityLabel(cities)}
+              label={locationScope === "focus" ? "Area" : "City"}
+              value={cityLabel(cities, resolvedLocationOptions)}
               active={active === "city"}
               hasSelection={cities.length > 0}
               onClick={() => toggle("city")}
             />
             <Popover open={active === "city"} onClose={() => setActive(null)} width="w-[min(420px,calc(100vw-2rem))]">
-              <CityPopoverContent cities={cities} onCitiesChange={onCitiesChange} locationOptions={resolvedLocationOptions} />
+              <CityPopoverContent
+                cities={cities}
+                onCitiesChange={onCitiesChange}
+                locationOptions={resolvedLocationOptions}
+                locationScope={locationScope}
+              />
             </Popover>
           </div>
 
           {/* Divider */}
-          <div className="mx-0.5 h-6 w-px bg-brand-border" aria-hidden />
+          <div className="ish-scout-rule mx-0.5" aria-hidden />
 
-          {/* Industry pill */}
+          {/* Industry / business pill */}
           <div className="relative">
             <PillSegment
               icon={<Building2 className="size-3.5" />}
-              label="Industry"
-              value={industryScaleLabel(industries, employeeBands)}
+              label={verticalScope === "businesses" ? "Business" : "Industry"}
+              value={verticalLabel}
               active={active === "industry"}
-              hasSelection={industries.length + employeeBands.length > 0}
+              hasSelection={verticalHasSelection}
               onClick={() => toggle("industry")}
             />
-            <Popover open={active === "industry"} onClose={() => setActive(null)} width="w-[400px]">
+            <Popover open={active === "industry"} onClose={() => setActive(null)} width="w-[min(440px,calc(100vw-2rem))]">
               <IndustryPopoverContent
                 industries={industries}
                 onIndustryToggle={onIndustryToggle}
                 employeeBands={employeeBands}
                 onScaleToggle={onEmployeeBandToggle}
+                verticalScope={verticalScope}
+                onVerticalScopeChange={onVerticalScopeChange}
+                businesses={businesses}
+                onBusinessToggle={onBusinessToggle}
               />
             </Popover>
           </div>
-
-          {/* People pill — Autopilot only */}
-          {!isSearchMode && (
-            <>
-              <div className="mx-0.5 h-6 w-px bg-brand-border" aria-hidden />
-              <div className="relative">
-                <PillSegment
-                  icon={<Users className="size-3.5" />}
-                  label="People"
-                  value={peopleLabel(seniority, departments)}
-                  active={active === "people"}
-                  hasSelection={seniority.length + departments.length > 0}
-                  onClick={() => toggle("people")}
-                />
-                <Popover open={active === "people"} onClose={() => setActive(null)} width="w-[380px]">
-                  <PeoplePopoverContent
-                    seniority={seniority}
-                    departments={departments}
-                    onSeniorityToggle={onSeniorityToggle}
-                    onDepartmentToggle={onDepartmentToggle}
-                  />
-                </Popover>
-              </div>
-            </>
-          )}
         </div>
 
         {/* Search mode: company name input */}
@@ -1628,8 +1932,8 @@ export function ScoutingToolbar({
         {/* Autopilot: volume hint */}
         {!isSearchMode && (
           <span
-            className="hidden rounded-full bg-brand-app px-2.5 py-1 text-[10px] font-medium text-brand-ink-soft sm:inline"
-            title="Scout volume from Settings — lower saves Tavily/Gemini tokens"
+            className="ish-scout-hint hidden sm:inline"
+            title="Scout volume from Settings. Lower saves Tavily/Gemini tokens"
           >
             {volumeHint}
           </span>
@@ -1642,10 +1946,8 @@ export function ScoutingToolbar({
             onClick={() => { setActive(null); onSearchByName?.(); }}
             disabled={!canSearch}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-bold transition-all duration-150",
-              canSearch
-                ? "bg-brand-ink text-white shadow-[var(--shadow-brand)] hover:opacity-90"
-                : "cursor-not-allowed bg-brand-app text-brand-ink-faint",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-4 text-[12.5px] font-bold transition-all duration-150",
+              canSearch ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
             )}
           >
             <Search className="size-3.5" />
@@ -1657,10 +1959,8 @@ export function ScoutingToolbar({
             onClick={() => { setActive(null); onFetchNewCompanies(); }}
             disabled={!canScout}
             className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[12.5px] font-bold transition-all duration-150",
-              canScout
-                ? "bg-brand-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] hover:opacity-90"
-                : "cursor-not-allowed bg-brand-app text-brand-ink-faint",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-4 text-[12.5px] font-bold transition-all duration-150",
+              canScout ? "ish-scout-cta-yellow hover:opacity-95" : "ish-scout-cta-muted",
             )}
           >
             <Search className="size-3.5" />
@@ -1669,7 +1969,7 @@ export function ScoutingToolbar({
         )}
 
         {/* Thin separator */}
-        <div className="mx-1 hidden h-6 w-px bg-brand-border sm:block" aria-hidden />
+        <div className="ish-scout-rule hidden sm:block" aria-hidden />
 
         {/* Right cluster: context-aware action buttons */}
         {!hideActions ? (
@@ -1712,19 +2012,12 @@ export function ScoutingToolbar({
               <PrimaryBtn
                 onClick={onFetchLeads}
                 disabled={selectedCount === 0}
-                title={peopleAndFilterWarning(seniority, departments) ?? undefined}
                 label={
                   selectedCount > 0
-                    ? peopleAndFilterWarning(seniority, departments)
-                      ? `Check first · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
-                      : `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
+                    ? `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
                     : "Select companies first"
                 }
-                icon={
-                  peopleAndFilterWarning(seniority, departments) && selectedCount > 0
-                    ? <TriangleAlert className="size-3.5" />
-                    : <ArrowRight className="size-3.5" />
-                }
+                icon={<ArrowRight className="size-3.5" />}
                 color="green"
               />
             </>

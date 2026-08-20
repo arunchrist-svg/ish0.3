@@ -13,6 +13,7 @@ import {
   type LeadImportPreviewResult,
   type LeadImportTargetField,
 } from "@/lib/api-client";
+import { applyColumnMapping } from "@/lib/leads/import/apply-mapping";
 
 type Step = "upload" | "map" | "done";
 
@@ -24,12 +25,12 @@ type Props = {
 
 const TARGET_OPTIONS: { value: LeadImportTargetField | ""; label: string }[] = [
   { value: "", label: "Ignore" },
-  { value: "name", label: "Full name *" },
+  { value: "name", label: "Full name" },
   { value: "firstName", label: "First name" },
   { value: "lastName", label: "Last name" },
   { value: "company", label: "Company *" },
   { value: "title", label: "Title" },
-  { value: "email", label: "Email" },
+  { value: "email", label: "Email *" },
   { value: "phone", label: "Phone" },
   { value: "linkedIn", label: "LinkedIn" },
   { value: "city", label: "City" },
@@ -41,6 +42,8 @@ const TARGET_OPTIONS: { value: LeadImportTargetField | ""; label: string }[] = [
   { value: "owner", label: "Owner" },
 ];
 
+const SHARED_FIELDS = new Set<LeadImportTargetField>(["tags"]);
+
 const labelClass = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-brand-ink";
 const fieldClass = cn(
   "ish-modal-field w-full rounded-[14px] border border-brand-border/70 px-3 py-2 text-[13px] font-medium text-brand-ink",
@@ -48,9 +51,8 @@ const fieldClass = cn(
 );
 
 function mappingReady(mapping: LeadImportColumnMapping): boolean {
-  const values = new Set(Object.values(mapping).filter(Boolean));
-  const hasName = values.has("name") || (values.has("firstName") && values.has("lastName"));
-  return hasName && values.has("company");
+  const values = Object.values(mapping);
+  return values.includes("company") && values.includes("email");
 }
 
 export function LeadImportModal({ open, onClose, onImported }: Props) {
@@ -58,17 +60,21 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
   const [step, setStep] = useState<Step>("upload");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [preview, setPreview] = useState<LeadImportPreviewResult | null>(null);
   const [mapping, setMapping] = useState<LeadImportColumnMapping>({});
   const [summary, setSummary] = useState<LeadImportConfirmResult | null>(null);
+  const [enrich, setEnrich] = useState(true);
 
   function reset() {
     setStep("upload");
     setBusy(false);
     setError("");
+    setDragOver(false);
     setPreview(null);
     setMapping({});
     setSummary(null);
+    setEnrich(true);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -85,6 +91,7 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
       const data = await previewLeadImport(file);
       setPreview(data);
       setMapping(data.mapping);
+      setEnrich((data.loadCount ?? data.rowCount) <= 25);
       setStep("map");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Preview failed");
@@ -97,7 +104,7 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
     setMapping((prev) => {
       const next: LeadImportColumnMapping = { ...prev };
       const target = (value || null) as LeadImportTargetField | null;
-      if (target) {
+      if (target && !SHARED_FIELDS.has(target)) {
         for (const [h, t] of Object.entries(next)) {
           if (h !== header && t === target) next[h] = null;
         }
@@ -108,6 +115,11 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
   }
 
   const canImport = useMemo(() => mappingReady(mapping), [mapping]);
+  const loadCount = useMemo(() => {
+    if (!preview) return 0;
+    if (typeof preview.loadCount === "number" && mapping === preview.mapping) return preview.loadCount;
+    return applyColumnMapping(preview.rows, mapping).rows.length;
+  }, [preview, mapping]);
 
   async function handleImport() {
     if (!preview || !canImport) return;
@@ -117,7 +129,7 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
       const result = await confirmLeadImport({
         rows: preview.rows,
         mapping,
-        enrich: true,
+        enrich: loadCount <= 25 && enrich,
       });
       setSummary(result);
       setStep("done");
@@ -139,10 +151,10 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
       </h2>
       <p className="mt-1.5 text-[13px] leading-relaxed text-brand-ink-soft">
         {step === "upload"
-          ? "Upload a CSV or Excel file. AI will map columns to lead fields, then fill missing contact details."
+          ? "Upload a CSV or Excel file of companies or people. Columns are mapped automatically, then you confirm before load."
           : step === "map"
-            ? "Review AI mapping before creating leads. Missing email, phone, title, or LinkedIn will be enriched automatically."
-            : "Leads were created and enrichment ran for rows that needed it."}
+            ? "Only rows with a company and an email are loaded. Gmail and other personal inboxes are kept. Missing names use the email or the company."
+            : "Leads were created from the spreadsheet."}
       </p>
 
       {error ? (
@@ -167,8 +179,22 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             type="button"
             disabled={busy}
             onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (!busy) setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file) void handleFile(file);
+            }}
             className={cn(
-              "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-brand-border bg-brand-canvas/60 px-4 py-10 text-center transition-colors",
+              "flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-10 text-center transition-colors",
+              dragOver
+                ? "border-brand-stratus-blue bg-brand-canvas"
+                : "border-brand-border bg-brand-canvas/60",
               busy ? "opacity-70" : "hover:border-brand-stratus-blue/40 hover:bg-brand-canvas",
             )}
           >
@@ -180,7 +206,9 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             <div className="text-[14px] font-semibold text-brand-ink">
               {busy ? "Reading file and mapping columns…" : "Drop or choose CSV / Excel"}
             </div>
-            <div className="text-[12px] text-brand-ink-faint">Up to 500 rows. First sheet only for Excel.</div>
+            <div className="text-[12px] text-brand-ink-faint">
+              Up to 5,000 rows. First sheet only for Excel. Rows without an email are skipped.
+            </div>
           </button>
         </div>
       ) : null}
@@ -235,10 +263,24 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             </div>
           </div>
 
+          <label className="flex items-start gap-2 text-[13px] text-brand-ink-soft">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={enrich && loadCount <= 25}
+              disabled={loadCount > 25}
+              onChange={(e) => setEnrich(e.target.checked)}
+            />
+            <span>
+              Fill missing contact details after import.
+              {loadCount > 25
+                ? " Off for large lists so the load stays fast. Enrich individual leads afterward."
+                : " Email, phone, title, and LinkedIn are filled when missing."}
+            </span>
+          </label>
+
           {!canImport ? (
-            <p className="text-[12px] text-amber-800">
-              Map a name (or first + last) and company before importing.
-            </p>
+            <p className="text-[12px] text-amber-800">Map company and email columns before importing.</p>
           ) : null}
 
           <div className="flex flex-wrap justify-end gap-2 pt-1">
@@ -253,10 +295,10 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             >
               {busy ? (
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" /> Importing…
+                  <Loader2 className="size-4 animate-spin" /> Loading leads…
                 </span>
               ) : (
-                `Import ${preview.rowCount} leads`
+                `Load ${loadCount} with email`
               )}
             </Button>
           </div>
@@ -280,6 +322,14 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
               </div>
             ))}
           </div>
+
+          {summary.warnings?.length ? (
+            <ul className="space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+              {summary.warnings.map((w) => (
+                <li key={w}>{w}</li>
+              ))}
+            </ul>
+          ) : null}
 
           {summary.errors.length ? (
             <div className="max-h-32 overflow-y-auto rounded-xl border border-brand-border/70 px-3 py-2 text-[12px] text-brand-ink-soft">

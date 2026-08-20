@@ -17,7 +17,7 @@ type Props = {
 };
 
 const btnClass =
-  "inline-flex h-6 items-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold transition-opacity disabled:opacity-50";
+  "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold transition-all disabled:opacity-50";
 
 export function SequenceControlButtons({
   leadId,
@@ -64,13 +64,18 @@ export function SequenceControlButtons({
 
   return (
     <>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1">
         {(sequenceState === "not_started" || sequenceState === "paused") && (
           <button
             type="button"
             disabled={disabled || loading !== null}
             onClick={() => void run("start")}
-            className={cn(btnClass, "border-brand-stratus-blue/30 bg-brand-green-soft text-brand-stratus-blue hover:opacity-90")}
+            title={
+              sequenceState === "not_started"
+                ? "Send Email 1 and start the follow-up sequence"
+                : "Resume scheduled follow-ups"
+            }
+            className={cn(btnClass, "ish-scout-cta-blue hover:opacity-95")}
           >
             {loading === "start" ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
             {sequenceState === "not_started" ? "Start" : "Resume"}
@@ -81,7 +86,7 @@ export function SequenceControlButtons({
             type="button"
             disabled={disabled || loading !== null}
             onClick={() => void run("pause")}
-            className={cn(btnClass, "border-brand-border bg-white text-brand-ink hover:bg-brand-canvas")}
+            className={cn(btnClass, "ish-scout-ghost hover:opacity-95")}
           >
             {loading === "pause" ? <Loader2 className="size-3 animate-spin" /> : <Pause className="size-3" />}
             Pause
@@ -92,21 +97,24 @@ export function SequenceControlButtons({
             type="button"
             disabled={disabled || loading !== null}
             onClick={() => void run("cancel")}
-            className={cn(btnClass, "border-brand-stratus-salmon/30 bg-brand-pink-soft/40 text-brand-stratus-salmon hover:opacity-90")}
+            className={cn(
+              btnClass,
+              "bg-white/80 text-brand-stratus-salmon shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-salmon-rgb),0.35)] hover:bg-brand-pink-soft/40",
+            )}
           >
             {loading === "cancel" ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
             Cancel
           </button>
         )}
         {sequenceState === "cancelled" ? (
-          <span className="text-[10px] font-medium text-brand-ink-faint">Follow-ups cancelled</span>
+          <span className="px-1 text-[10px] font-medium text-brand-ink-faint">Follow-ups cancelled</span>
         ) : null}
         {showRestart ? (
           <button
             type="button"
             disabled={disabled || loading !== null}
             onClick={() => setResetConfirmOpen(true)}
-            className={cn(btnClass, "border-brand-border bg-white text-brand-ink hover:bg-brand-canvas")}
+            className={cn(btnClass, "ish-scout-ghost hover:opacity-95")}
             title="Clear outreach and rewrite from Email 1"
           >
             {loading === "reset" ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}

@@ -1,9 +1,10 @@
 // Enrichment configuration — loaded from env at runtime, overridable via Settings UI
 import { resolveGiftIntelConfig } from "@/lib/brand-intel/config";
 import { DEFAULT_SCOUT_GEO, normalizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
+import { normalizeScoutAreasOfFocus, type ScoutAreaOfFocus } from "@/lib/geo/area-of-focus";
 
 export type SearchProvider = "india_directories" | "google_places" | "tavily_ai" | "apollo";
-export type EnrichProvider = "website_email" | "apollo" | "hunter" | "none";
+export type EnrichProvider = "website_email" | "prospeo" | "apollo" | "hunter" | "none";
 export type DataMode = "free" | "paid" | "auto";
 
 export type EnrichmentConfig = {
@@ -16,6 +17,7 @@ export type EnrichmentConfig = {
   scoutLeadsLimit: number;
   apolloApiKey?: string;
   hunterApiKey?: string;
+  prospeoApiKey?: string;
   /** @deprecated Prefer brandIntel* */
   giftIntelProductCategory?: string;
   /** @deprecated Prefer brandIntel* */
@@ -23,6 +25,9 @@ export type EnrichmentConfig = {
   brandIntelProductCategory?: string;
   brandIntelCompetitorBrands?: string[];
   scoutGeo?: ScoutGeoSelection;
+  scoutAreaOfFocus?: ScoutAreaOfFocus | null;
+  scoutAreasOfFocus?: ScoutAreaOfFocus[];
+  scoutPeopleCities?: string[];
 };
 
 export const MAX_SCOUT_COMPANIES_LIMIT = 25;
@@ -90,8 +95,8 @@ export const DATA_MODE_OPTIONS: { value: DataMode; label: string; title: string;
   {
     value: "paid",
     label: "Paid",
-    title: "Apollo + Hunter when keys are set",
-    desc: "Apollo + Hunter (requires API keys)",
+    title: "Prospeo + Apollo when keys are set",
+    desc: "Prospeo verified email, then Apollo (requires API keys)",
   },
   {
     value: "auto",
@@ -107,14 +112,19 @@ export const ENRICH_PROVIDER_LABELS: Record<EnrichProvider, { label: string; des
     desc: "Crawl company website for contact emails — completely free",
     badge: "Free",
   },
+  prospeo: {
+    label: "Prospeo",
+    desc: "Verified B2B email finder — best accuracy for work emails",
+    badge: "Paid",
+  },
   apollo: {
     label: "Apollo Enrichment",
-    desc: "Apollo people search for named HR/Admin contacts with emails",
+    desc: "Apollo people match for named contacts with emails",
     badge: "Paid",
   },
   hunter: {
     label: "Hunter.io",
-    desc: "Email finder + deliverability verification — best accuracy",
+    desc: "Email finder + deliverability verification",
     badge: "Paid",
   },
   none: {
@@ -132,6 +142,16 @@ export function hasHunterKey(): boolean {
   return !!process.env.HUNTER_API_KEY;
 }
 
+export function hasProspeoKey(): boolean {
+  return Boolean(process.env.PROSPEO_API_KEY?.trim());
+}
+
+export function hasZintlrKeys(): boolean {
+  const token = process.env.ZINTLR_ACCESS_TOKEN?.trim();
+  const secret = process.env.ZINTLR_SECRET_KEY?.trim();
+  return Boolean(token && secret);
+}
+
 /** Resolve search provider from dataMode + configured default */
 export function resolveSearchProvider(dataMode: DataMode, configured: SearchProvider): SearchProvider {
   if (dataMode === "paid" || dataMode === "auto") {
@@ -146,6 +166,7 @@ export function resolveSearchProvider(dataMode: DataMode, configured: SearchProv
 /** Resolve enrich provider from dataMode + configured default */
 export function resolveEnrichProvider(dataMode: DataMode, configured: EnrichProvider): EnrichProvider {
   if (dataMode === "paid" || dataMode === "auto") {
+    if (hasProspeoKey()) return "prospeo";
     if (hasHunterKey()) return "hunter";
     if (hasApolloKey()) return "apollo";
   }
@@ -163,6 +184,8 @@ export function getEnrichmentConfig(): EnrichmentConfig {
     scoutCompaniesLimit: getScoutCompaniesLimit(),
     scoutLeadsLimit: getScoutLeadsLimit(),
     scoutGeo: { ...DEFAULT_SCOUT_GEO },
+    scoutAreaOfFocus: null,
+    scoutAreasOfFocus: [],
   };
 }
 
@@ -177,6 +200,7 @@ export function resolveEnrichmentConfig(
   const configuredEnrich = override?.enrichProvider ?? base.enrichProvider;
 
   const giftIntel = resolveGiftIntelConfig(override ?? base);
+  const scoutAreasOfFocus = normalizeScoutAreasOfFocus(base.scoutAreasOfFocus, base.scoutAreaOfFocus);
   return {
     ...base,
     dataMode: mode,
@@ -187,6 +211,8 @@ export function resolveEnrichmentConfig(
     brandIntelProductCategory: giftIntel.productCategory || undefined,
     brandIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
     scoutGeo: normalizeScoutGeo(base.scoutGeo),
+    scoutAreasOfFocus,
+    scoutAreaOfFocus: scoutAreasOfFocus[0] ?? null,
     scoutCompaniesLimit: clampScoutCompaniesLimit(base.scoutCompaniesLimit),
     scoutLeadsLimit: clampScoutLeadsLimit(base.scoutLeadsLimit),
   };

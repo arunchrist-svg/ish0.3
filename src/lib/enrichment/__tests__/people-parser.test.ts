@@ -99,4 +99,99 @@ describe("ENRICH-UNIT-004 people parser", () => {
     expect(results[0]?.isKeyDM).toBe(false);
     expect(results[0]?.matchScore).toBe(23);
   });
+
+  it("drops Team Lead and Open to Work LinkedIn hits", () => {
+    expect(
+      parsePeopleFromSearchResults(
+        [
+          {
+            title: "Kiran Rao | HR Team Lead at Titan Company | LinkedIn",
+            url: "https://www.linkedin.com/in/kiran-rao-hr",
+            content: "HR Team Lead at Titan Company, Hosur",
+          },
+        ],
+        5,
+        "web_heuristic",
+        "Titan Company",
+      ),
+    ).toHaveLength(0);
+    expect(
+      parsePeopleFromSearchResults(
+        [
+          {
+            title: "Meera Iyer | HR Director at Titan Company | Open to Work | LinkedIn",
+            url: "https://www.linkedin.com/in/meera-iyer-open",
+            content: "#OpenToWork  Looking for new opportunities after Titan Company.",
+          },
+        ],
+        5,
+        "web_heuristic",
+        "Titan Company",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("does not keep Karthi P from a company page when LinkedIn says Open to Work", () => {
+    const results = parsePeopleFromSearchResults(
+      [
+        {
+          title: "Karthi P | Human Resources Manager at Autosense Private Limited | LinkedIn",
+          url: "https://www.linkedin.com/in/karthi-p-autosense",
+          content: "Human Resources Manager at Autosense Private Limited Ltd",
+        },
+        {
+          title: "Karthi P - Open to Work | LinkedIn",
+          url: "https://www.linkedin.com/in/karthi-p-autosense",
+          content: "Open to work. Previously Human Resources Manager at Autosense.",
+        },
+      ],
+      5,
+      "web_heuristic",
+      "Autosense Private Limited",
+    );
+    expect(results).toHaveLength(0);
+  });
+
+  it("drops a Purchase Manager whose snippet text contains #OPENTOWORK", () => {
+    const results = parsePeopleFromSearchResults(
+      [
+        {
+          title: "Pandiyarajan S | Purchase Manager | LinkedIn",
+          url: "https://www.linkedin.com/in/pandiyarajan-s",
+          content: "Purchase Manager at Test Corp. Madurai, Tamil Nadu, India. #OPENTOWORK",
+        },
+      ],
+      5,
+      "web_heuristic",
+      "Test Corp",
+    );
+    expect(results).toHaveLength(0);
+  });
+
+  // Photo-ring profiles keep a clean headline; only the merged denylist hit exposes them.
+  it("drops a clean-headline person when a denylist hit for the same profile says #OPENTOWORK", () => {
+    const cleanHit = {
+      title: "Manikandan R | HR Executive | LinkedIn",
+      url: "https://www.linkedin.com/in/manikandan-r-123",
+      content: "HR - Executive - Talent Acquisition at Test Corp. Chennai, Tamil Nadu, India.",
+    };
+    expect(
+      parsePeopleFromSearchResults([cleanHit], 5, "web_heuristic", "Test Corp"),
+    ).toHaveLength(1);
+
+    const withDenylist = parsePeopleFromSearchResults(
+      [
+        cleanHit,
+        {
+          title: "Manikandan R - Open to Work",
+          url: "https://www.linkedin.com/in/manikandan-r-123",
+          content: "#OPENTOWORK seeking new opportunities in HR",
+        },
+      ],
+      5,
+      "web_heuristic",
+      "Test Corp",
+    );
+    expect(withDenylist).toHaveLength(0);
+  });
 });

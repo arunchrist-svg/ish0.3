@@ -25,7 +25,7 @@ function signOff(sender: string, brand: string, style: "thanks" | "best" = "than
 
 function applyCta(paragraphs: string, templateId?: string | null): string {
   const tastingCta =
-    /Since tasting is believing, I would love to send a sample box to your office as our treat\. What is the best delivery address to ship it to\?/;
+    /Since tasting is believing, I would love to send a sample box to .+ as our treat\. What is the best delivery address to ship it to\?/;
   if (templateId === "meet_online") {
     if (tastingCta.test(paragraphs)) {
       return paragraphs.replace(tastingCta, "Open to a 15-minute online walkthrough this week?");
@@ -70,43 +70,43 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
     [
       {
         subject: `Sample box for festive tasting, ${first}`,
-        paragraphs: `Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for your team this year.\n\nAt ${brand}, we handcraft traditional sweets straight from our own farm to the box with zero compromises. There are no artificial flavors and no preservatives. Just fresh milk, 100% pure ghee, and uncompromised quality you can taste in every bite.\n\nSince tasting is believing, I would love to send a sample box to your office as our treat. What is the best delivery address to ship it to?`,
+        paragraphs: `Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for the team at ${company} this year.\n\nAt ${brand}, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.\n\nSince tasting is believing, I would love to send a sample box to ${company} as our treat. What is the best delivery address to ship it to?`,
       },
       {
         subject: `Re: Sample box for festive tasting, ${first}`,
-        paragraphs: `What sets ${brand} apart for Diwali is the farm-to-counter pipeline: organic milk from our own dairy, mithai prepared fresh daily with zero preservatives, and hygiene standards strong enough for exports to the USA and Australia.\n\nThat purity is what teams and clients taste in every box.\n\nHappy to send ${company} a small tasting box so you can judge for yourself. Shall I ship one this week?`,
+        paragraphs: `What sets ${brand} apart for Diwali at ${company} is our own farm: organic milk, mithai crafted fresh every morning, and we never add preservatives or chemicals.\n\nThat is how the team at ${company} can relish authentic traditional sweets this season.\n\nHappy to send ${company} a small tasting box so you can judge for yourself. Shall I ship one this week?`,
       },
       {
         subject: `Re: Sample box for festive tasting, ${first}`,
-        paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If ${company}'s festive gifting comes up later this season, ${brand} would be glad to help with farm-to-counter mithai made from our own organic dairy.\n\nI won't email further, but a tasting box stays open if you ever want to reach out.\n\nWishing you a great Diwali either way.`,
+        paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If festive gifting at ${company} comes up later this season, ${brand} would be glad to help with mithai made from organic milk from our own farm.\n\nI won't email further, but a tasting box for ${company} stays open if you ever want to reach out.\n\nWishing you a happy festival season.`,
       },
     ],
     [
       {
         subject: `Festive sweets sample for ${company}`,
-        paragraphs: `A good Diwali gift for employees and clients should feel authentic. ${brand} can bring that to ${company}: sweets made fresh each day with zero preservatives, using organic milk from our own dairy rather than outsourced supply.\n\nTaste it before you trust it. Send me an address and I'll ship a sampler this week.`,
+        paragraphs: `A good Diwali gift for employees and clients should feel authentic. ${brand} can bring that to ${company}: sweets crafted fresh every morning, using organic milk from our own farm. We never add preservatives or chemicals.\n\nTaste it before you trust it. Send me an address and I'll ship a sampler to ${company} this week.`,
       },
       {
         subject: `Re: Festive sweets sample for ${company}`,
-        paragraphs: `${brand} is known for premium mithai with real range: more than 200 traditional sweets and namkeens, plus diet-conscious picks like Jaggery Kaju Katli and Sugarfree Honey Laddu, all rooted in our own organic dairy.\n\nIf ${company} wants Diwali gifting that feels thoughtful and premium, a tasting box shows it fastest.\n\nWhere should I send one?`,
+        paragraphs: `${brand} is known for a wide menu: more than 200 traditional sweets and namkeens, plus diet-conscious picks like Jaggery Kaju Katli and Sugarfree Honey Laddu, all made with organic milk from our own farm.\n\nIf ${company} wants Diwali gifting that feels thoughtful, a tasting box shows it fastest.\n\nWhere should I send one for ${company}?`,
       },
       {
         subject: `Re: Festive sweets sample for ${company}`,
-        paragraphs: `I'll stop following up after this one. If a tasting box or gifting quote is useful later, ${brand} is here with fresh daily mithai, zero preservatives, and authentic Diwali sweetness.\n\nI won't email further, but the door stays open. Wishing ${company} a happy Diwali.`,
+        paragraphs: `I'll stop following up after this one. If a tasting box or gifting quote is useful later, ${brand} is here for ${company} with mithai crafted fresh every morning. We never add preservatives or chemicals.\n\nI won't email further, but the door stays open. Wishing ${company} a happy festival season.`,
       },
     ],
     [
       {
         subject: "A tasting box for your team",
-        paragraphs: `No fillers. No mass production. For Diwali gifting to employees and clients, ${brand} can bring farm-to-counter mithai: organic milk from our dairy, zero preservatives, and manufacturing hygiene trusted for global export.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
+        paragraphs: `For Diwali gifting to employees and clients at ${company}, ${brand} can bring farm-fresh mithai: organic milk from our own farm, and we never add preservatives or chemicals. Production is highly hygienic.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
       },
       {
         subject: "Re: A tasting box for your team",
-        paragraphs: `For Diwali, authenticity sells. ${brand} sources organic milk from its own dairy farm, prepares mithai fresh daily without chemical preservatives, and holds export-grade hygiene for markets like the USA and Australia.\n\nThat is why the taste holds up in a corporate gift box.\n\nShould I send ${company} a tasting box?`,
+        paragraphs: `For Diwali gifting at ${company}, the ingredients matter. ${brand} sources organic milk from its own dairy farm, crafts mithai fresh every morning, and never adds preservatives or chemicals. Kitchens are highly hygienic.\n\nThat is why the taste holds up in a corporate gift box for ${company}.\n\nShould I send ${company} a tasting box?`,
       },
       {
         subject: "Re: A tasting box for your team",
-        paragraphs: `I'll leave it here so I'm not cluttering your inbox further. If festive gifting for ${company} comes up this season, ${brand} can help with export-grade hygiene and organic milk from our own dairy.\n\nI won't email further, but feel free to reach out anytime. Happy Diwali in advance.`,
+        paragraphs: `I'll leave it here so I'm not cluttering your inbox further. If festive gifting for ${company} comes up this season, ${brand} can help with organic milk from our own farm and hygienic production.\n\nI won't email further, but feel free to reach out anytime. Wishing the team at ${company} a happy festival season.`,
       },
     ],
   ];

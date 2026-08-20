@@ -53,7 +53,7 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
 
   if (ctx.sequencePosition === 3) {
     lines.push(
-      "- EMAIL #3 (breakup): Subject Re: Email 1. Last note, I won't email further, Diwali close. No pitch dump.",
+      "- EMAIL #3 (breakup): Subject Re: Email 1. Last note, I won't email further, wish a happy festival season. Do not close with Diwali. No pitch dump.",
     );
   }
 

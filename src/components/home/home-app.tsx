@@ -24,12 +24,12 @@ import { statusToDisplayLabel } from "@/lib/pipeline-status";
 import { getCreditCost } from "@/lib/billing/credit-costs";
 import { useNotifications } from "@/hooks/use-notifications";
 import Link from "next/link";
-import { MobilePageLayout, PanelCard, text } from "@/design-system";
+import { AppPageHeader, MobilePageLayout, PanelCard, text } from "@/design-system";
 import { NotificationBell } from "@/components/sales-accelerator/notification-bell";
 import { CreditBalanceChip } from "@/components/sales-accelerator/credit-balance-chip";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { PushPermissionBanner } from "@/components/mobile/push-permission-banner";
-import { Inbox } from "lucide-react";
+import { Home, Inbox } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -341,55 +341,53 @@ export function HomeApp() {
       className="lg:bg-brand-canvas"
     >
       <PushPermissionBanner />
+      <AppPageHeader
+        icon={Home}
+        title={greeting}
+        subtitle={today}
+        actions={
+          <>
+            {(() => {
+              const state = operationalSendState({
+                emailConfigured: session?.emailConfigured,
+                sendMode: session?.sendMode,
+              });
+              const live = state === "live";
+              return (
+                <span
+                  className={cn(
+                    "inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold",
+                    live
+                      ? "border-brand-green/30 bg-brand-green/10 text-brand-green"
+                      : state === "unconfigured"
+                        ? "border-sky-300 bg-sky-50 text-sky-700"
+                        : "border-amber-300 bg-amber-50 text-amber-800",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "size-1.5 rounded-full",
+                      live ? "bg-brand-green animate-pulse" : state === "unconfigured" ? "bg-sky-500" : "bg-amber-400",
+                    )}
+                  />
+                  {sendStateLabel(state)}
+                </span>
+              );
+            })()}
+            <CreditBalanceChip className="hidden lg:inline-flex" />
+            <button
+              type="button"
+              onClick={() => loadAll(true)}
+              disabled={refreshing}
+              className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95 disabled:opacity-60"
+              aria-label="Refresh"
+            >
+              <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
+            </button>
+          </>
+        }
+      />
       <div className="mx-auto w-full max-w-5xl ish-page-padding py-4 lg:px-8 lg:py-8">
-
-        {/* Header */}
-        <div className="mb-7 hidden items-end justify-between lg:flex">
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              {(() => {
-                const state = operationalSendState({
-                  emailConfigured: session?.emailConfigured,
-                  sendMode: session?.sendMode,
-                });
-                const live = state === "live";
-                return (
-                  <>
-                    <span
-                      className={cn(
-                        "size-2 rounded-full",
-                        live ? "bg-brand-green animate-pulse" : state === "unconfigured" ? "bg-sky-500" : "bg-amber-400",
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        text.caption,
-                        "font-semibold",
-                        live ? "text-brand-green" : state === "unconfigured" ? "text-sky-700" : "text-amber-800",
-                      )}
-                    >
-                      {sendStateLabel(state)}
-                    </span>
-                  </>
-                );
-              })()}
-            </div>
-            <h1 className={text.largeTitle}>{greeting}</h1>
-            <p className={cn(text.bodySoft, "mt-0.5")}>{today}</p>
-          </div>
-          <button
-            onClick={() => loadAll(true)}
-            disabled={refreshing}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full border border-brand-border bg-white px-3.5 py-2",
-              text.caption,
-              "font-semibold transition-all hover:border-brand-ink/20 hover:bg-brand-yellow-soft hover:shadow-brand-sm active:scale-95",
-            )}
-          >
-            <RefreshCw className={cn("size-3", refreshing && "animate-spin")} />
-            Refresh
-          </button>
-        </div>
 
         {(() => {
           const counts = Object.fromEntries(

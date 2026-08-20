@@ -38,6 +38,28 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes[0].state).toBe("current");
   });
 
+  it("uses Email 1 chosen subject as the thread root before send", () => {
+    const thread = buildEmailThread({
+      lead: { ...baseLead, status: "draft_ready", threadRootSubject: null } as Parameters<
+        typeof buildEmailThread
+      >[0]["lead"],
+      scheduleRows: [],
+      sequenceDrafts: [
+        {
+          id: "d1",
+          sequencePosition: 1,
+          subjectA: "Hello A",
+          subjectB: "Hello B",
+          chosenSubjectKey: "B",
+          emailBody: "Body 1",
+        },
+        { id: "d2", sequencePosition: 2, subjectA: "Ignore me", emailBody: "Body 2" },
+      ] as Parameters<typeof buildEmailThread>[0]["sequenceDrafts"],
+    });
+
+    expect(thread.threadRootSubject).toBe("Re: Hello B");
+  });
+
   it("shows sequence bar with E1 done and scheduled follow-ups", () => {
     const thread = buildEmailThread({
       lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],

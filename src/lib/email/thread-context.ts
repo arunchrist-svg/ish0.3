@@ -34,13 +34,15 @@ export async function loadThreadContext(leadId: string, lead: LeadRow) {
 
 export function resolveOutboundSubject(params: {
   isReplySend: boolean;
+  isFollowUp?: boolean;
   rootSubject: string | null;
   fallbackSubject: string;
 }): string {
-  if (params.isReplySend && params.rootSubject) {
+  const continueThread = params.isReplySend || params.isFollowUp;
+  if (continueThread && params.rootSubject) {
     return normalizeReplySubject(params.rootSubject);
   }
-  if (!params.isReplySend) return params.fallbackSubject;
+  if (!continueThread) return params.fallbackSubject;
   return normalizeReplySubject(stripReplyPrefix(params.fallbackSubject));
 }
 

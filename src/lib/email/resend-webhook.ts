@@ -5,7 +5,7 @@ export type ResendWebhookEvent = {
   created_at?: string;
   data?: {
     email_id?: string;
-    to?: string[];
+    to?: string[] | string;
     from?: string;
     subject?: string;
     text?: string;
@@ -23,6 +23,10 @@ export type ResendWebhookEvent = {
 
 export function isBounceLikeEvent(type?: string): boolean {
   return type === "email.bounced" || type === "email.failed" || type === "email.complained";
+}
+
+export function isBounceLikeLastEvent(lastEvent?: string | null): boolean {
+  return lastEvent === "bounced" || lastEvent === "failed" || lastEvent === "complained" || lastEvent === "suppressed";
 }
 
 export function isInboundLikeEvent(type?: string): boolean {

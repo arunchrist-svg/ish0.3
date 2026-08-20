@@ -7,10 +7,11 @@ import {
   UserPlus, CheckCircle, Star, Download, 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MobilePageLayout, SearchBar } from "@/design-system";
+import { AppPageHeader, MobilePageLayout, SearchBar } from "@/design-system";
 import { BusinessCardCapture } from "@/components/mobile/business-card-capture";
 import type { BusinessCardFields } from "@/lib/enrichment/business-card-ocr";
 import { fetchContacts, createLeadFromContact, type ContactListItem } from "@/lib/api-client";
+import { subscribeCrmRecordsRefresh, notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { toast } from "sonner";
 
 type SortKey = "name" | "company" | "status";
@@ -37,6 +38,9 @@ export function ContactsApp() {
 
   useEffect(() => {
     load();
+    return subscribeCrmRecordsRefresh(() => {
+      void load();
+    });
   }, []);
 
   const filtered = useMemo(() => {
@@ -82,86 +86,73 @@ export function ContactsApp() {
       className="lg:bg-brand-canvas"
     >
       <SearchBar value={search} onChange={setSearch} placeholder="Search contacts" sticky className="lg:hidden" />
-      <div className="hidden shrink-0 items-center gap-4 border-b border-brand-border bg-white px-6 py-3 lg:flex">
-        <div className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-xl bg-brand-pink shadow-[var(--shadow-brand-sm)]">
-            <Contact className="size-4 text-brand-ink" />
-          </div>
-          <div>
-            <h1 className="text-[15px] font-bold text-brand-ink">Contacts</h1>
-          </div>
-        </div>
-
-        <div className="mx-2 h-5 w-px bg-brand-border" />
-
-        <div className="relative w-[240px]">
-          <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, company, email…"
-            className="w-full rounded-full border border-brand-border bg-brand-canvas py-1.5 pl-9 pr-3 text-[12px] text-brand-ink outline-none focus:border-brand-ink-soft"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setFilterHasLead(filterHasLead === true ? null : true)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
-              filterHasLead === true
-                ? "bg-brand-green/15 text-brand-green"
-                : "bg-brand-canvas text-brand-ink-soft hover:bg-brand-border"
-            )}
-          >
-            <CheckCircle className="size-3" />
-            Has Lead
-          </button>
-          <button
-            onClick={() => setFilterHasLead(filterHasLead === false ? null : false)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
-              filterHasLead === false
-                ? "bg-brand-yellow/50 text-brand-ink"
-                : "bg-brand-canvas text-brand-ink-soft hover:bg-brand-border"
-            )}
-          >
-            <UserPlus className="size-3" />
-            No Lead
-          </button>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            const params = new URLSearchParams();
-            if (search.trim()) params.set("search", search.trim());
-            if (filterHasLead === true) params.set("hasLead", "true");
-            if (filterHasLead === false) params.set("hasLead", "false");
-            window.location.href = `/api/contacts/export?${params.toString()}`;
-          }}
-          className="flex items-center gap-1.5 rounded-full border border-brand-border bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-brand-canvas"
-        >
-          <Download className="size-3" />
-          Export CSV ({filtered.length})
-        </button>
-
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortKey)}
-          className="rounded-lg border border-brand-border bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink outline-none"
-        >
-          <option value="name">Sort by Name</option>
-          <option value="company">Sort by Company</option>
-          <option value="status">Sort by Status</option>
-        </select>
-
-        <BusinessCardCapture onExtracted={setScannedCard} />
-        <div className="text-[11px] font-semibold text-brand-ink-faint">
-          {contacts.length} contacts · {leadsCount} leads
-        </div>
-      </div>
+      <AppPageHeader
+        icon={Contact}
+        title="Contacts"
+        subtitle={`${contacts.length} contacts · ${leadsCount} with leads`}
+        actions={
+          <>
+            <div className="relative w-[240px] max-w-full">
+              <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name, company, email…"
+                className="w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
+              />
+            </div>
+            <button
+              onClick={() => setFilterHasLead(filterHasLead === true ? null : true)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
+                filterHasLead === true
+                  ? "bg-brand-green/15 text-brand-green"
+                  : "border border-brand-border/70 bg-white/70 text-brand-ink-soft hover:text-brand-ink",
+              )}
+            >
+              <CheckCircle className="size-3" />
+              Has Lead
+            </button>
+            <button
+              onClick={() => setFilterHasLead(filterHasLead === false ? null : false)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all",
+                filterHasLead === false
+                  ? "bg-brand-yellow/50 text-brand-ink"
+                  : "border border-brand-border/70 bg-white/70 text-brand-ink-soft hover:text-brand-ink",
+              )}
+            >
+              <UserPlus className="size-3" />
+              No Lead
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams();
+                if (search.trim()) params.set("search", search.trim());
+                if (filterHasLead === true) params.set("hasLead", "true");
+                if (filterHasLead === false) params.set("hasLead", "false");
+                window.location.href = `/api/contacts/export?${params.toString()}`;
+              }}
+              className="flex items-center gap-1.5 rounded-full border border-brand-border/70 bg-white/70 px-3 py-1.5 text-[11px] font-semibold text-brand-ink hover:bg-white"
+            >
+              <Download className="size-3" />
+              Export CSV ({filtered.length})
+            </button>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortKey)}
+              className="rounded-full border border-brand-border/70 bg-white/70 px-3 py-1.5 text-[11px] font-semibold text-brand-ink outline-none"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="company">Sort by Company</option>
+              <option value="status">Sort by Status</option>
+            </select>
+            <BusinessCardCapture onExtracted={setScannedCard} />
+          </>
+        }
+      />
 
       {scannedCard ? (
         <div className="mx-4 mt-3 rounded-[16px] border border-brand-stratus-blue/30 bg-white p-4 text-[13px] shadow-sm lg:mx-6">
@@ -327,6 +318,7 @@ function ContactRow({ contact }: { contact: ContactListItem }) {
                 try {
                   const { id } = await createLeadFromContact({ ...contact, phone: contact.phone ?? undefined });
                   toast.success("Lead created");
+                  notifyCrmRecordsChanged({ source: "contact_add_lead", savedLeads: 1 });
                   window.location.href = `/?lead=${id}`;
                 } catch {
                   toast.error("Could not create lead");

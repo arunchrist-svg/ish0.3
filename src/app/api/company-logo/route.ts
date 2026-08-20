@@ -6,13 +6,25 @@ export async function GET(req: Request) {
   const name = searchParams.get("name");
   const domain = searchParams.get("domain");
   const website = searchParams.get("website");
+  const json = searchParams.get("format") === "json";
 
   if (!name?.trim() && !domain?.trim() && !website?.trim()) {
-    return new NextResponse(null, { status: 404 });
+    return json
+      ? NextResponse.json({ url: null })
+      : new NextResponse(null, { status: 404 });
   }
 
   const url = await resolveCompanyLogoUrl({ name, domain, website });
-  if (!url) return new NextResponse(null, { status: 404 });
+  if (!url) {
+    return json ? NextResponse.json({ url: null }) : new NextResponse(null, { status: 404 });
+  }
+
+  if (json) {
+    return NextResponse.json(
+      { url },
+      { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800" } },
+    );
+  }
 
   return NextResponse.redirect(url, {
     status: 302,

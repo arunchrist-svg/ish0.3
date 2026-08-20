@@ -21,4 +21,11 @@ describe("buildDirectoryQueries", () => {
     expect(queries.some((q) => /zaubacorp/i.test(q))).toBe(true);
     expect(queries.some((q) => /indiamart|tradeindia/i.test(q))).toBe(true);
   });
+
+  it("puts JustDial listings ahead of Zauba for business types", () => {
+    const queries = buildDirectoryQueries(["Bengaluru"], ["Banks"], 0, [], "business");
+    expect(queries[0]).toMatch(/justdial|sulekha|indiamart/i);
+    expect(queries.some((q) => /Banks/.test(q))).toBe(true);
+    expect(queries[0]).not.toMatch(/private limited companies/i);
+  });
 });

@@ -14,10 +14,9 @@ describe("summarizeEmptyPeopleFetch", () => {
     });
     expect(notice.headline).toMatch(/Searched 10 companies/i);
     expect(notice.detail).toMatch(/Each of the 10 selected companies was searched/i);
-    expect(notice.detail).toMatch(/website/i);
-    expect(notice.detail).not.toBe(
-      "No website domain for COPRAL ENERGY PRIVATE LIMITED. People search may be less accurate.",
-    );
+    expect(notice.detail).toMatch(/Zauba|IndiaMART|Paste/i);
+    expect(notice.detail).toMatch(/nearby HQ/i);
+    expect(notice.detail).not.toMatch(/people outside those cities are dropped/i);
   });
 
   it("reports Tavily quota stop after a subset", () => {
@@ -30,5 +29,44 @@ describe("summarizeEmptyPeopleFetch", () => {
     });
     expect(notice.headline).toMatch(/Tavily credits ran out/i);
     expect(notice.headline).toMatch(/10/);
+  });
+
+  it("does not say credits ran out when Tavily only rate-limited a key with remaining credits", () => {
+    const notice = summarizeEmptyPeopleFetch({
+      companyCount: 10,
+      warnings: [
+        "Tavily is rate-limiting right now. Credits are still available. Wait a few seconds and fetch again.",
+      ],
+    });
+    expect(notice.headline).toMatch(/slow down/i);
+    expect(notice.detail).toMatch(/still has credits/i);
+    expect(notice.headline).not.toMatch(/credits ran out/i);
+  });
+
+  it("does not blame Hosur for dropping people when search found nobody", () => {
+    const notice = summarizeEmptyPeopleFetch({
+      companyCount: 4,
+      cities: ["Hosur"],
+      seniority: ["Director"],
+      departments: ["HR", "Procurement"],
+      warnings: [],
+    });
+    expect(notice.detail).toMatch(/nearby HQ/i);
+    expect(notice.detail).not.toMatch(/people outside those cities are dropped/i);
+    expect(notice.detail).toMatch(/HR, Procurement, Director/);
+  });
+
+  it("surfaces plant-city role miss with LinkedIn explanation, not India-wide copy", () => {
+    const notice = summarizeEmptyPeopleFetch({
+      companyCount: 2,
+      cities: ["Hosur"],
+      seniority: ["Director"],
+      departments: ["HR", "Procurement"],
+      warnings: [
+        "No HR, Procurement, Admin, or Facilities people found at Titan Company. LinkedIn may not list plant-level HR publicly — try a larger brand in this city.",
+      ],
+    });
+    expect(notice.detail).toMatch(/no hr|linkedin/i);
+    expect(notice.detail).not.toMatch(/anywhere in India/i);
   });
 });

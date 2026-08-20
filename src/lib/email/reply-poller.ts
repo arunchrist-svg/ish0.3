@@ -2,26 +2,29 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { db, leads, contacts, outreachSchedule, workspaceSettings } from "@/db";
 import { and, eq, inArray } from "drizzle-orm";
-import type { EmailConfig } from "@/lib/email/config";
+import type { EmailConfig, EmailProvider } from "@/lib/email/config";
 import { imapHostForSmtp, resolveSmtpCredentials } from "@/lib/email/config";
+import {
+  findWatchLeadForFrom,
+  indexWatchLeadsByEmail,
+  mergeWatchLeadRows,
+  replyContentFromBodies,
+  type ReplyWatchLead,
+} from "@/lib/email/inbound-match";
 import { processLeadReply } from "@/lib/email/process-reply";
+import { getReceivedEmail, listReceivedEmails } from "@/lib/email/resend-receiving";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
 import { REPLY_WATCH_STATUSES } from "@/lib/pipeline-status";
 import { getResolvedEmailConfig, persistEmailConfig } from "@/lib/settings/email-settings";
 
 const MAX_PROCESSED_IDS = 200;
 const LOOKBACK_DAYS = 14;
-
-type OutreachedLead = {
-  leadId: string;
-  tenantId: string;
-  workspaceId: string;
-  contactEmail: string;
-  firstSentAt: Date | null;
-};
+const RESEND_LIST_LIMIT = 100;
+const RESEND_MAX_PAGES = 5;
 
 export type ReplyPollResult = {
   workspaceId: string;
+  provider?: EmailProvider;
   checked: number;
   matched: number;
   processed: number;
@@ -29,8 +32,16 @@ export type ReplyPollResult = {
   errors: string[];
 };
 
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
+function emptyResult(workspaceId: string, provider?: EmailProvider): ReplyPollResult {
+  return {
+    workspaceId,
+    provider,
+    checked: 0,
+    matched: 0,
+    processed: 0,
+    skipped: 0,
+    errors: [],
+  };
 }
 
 function extractReplyBody(parsed: Awaited<ReturnType<typeof simpleParser>>): string {
@@ -41,13 +52,15 @@ function extractReplyBody(parsed: Awaited<ReturnType<typeof simpleParser>>): str
   return extractLatestReplyText(html);
 }
 
-async function loadReplyWatchLeads(workspaceId: string): Promise<OutreachedLead[]> {
+async function loadReplyWatchLeads(workspaceId: string): Promise<ReplyWatchLead[]> {
   const rows = await db
     .select({
       leadId: leads.id,
       tenantId: leads.tenantId,
       workspaceId: leads.workspaceId,
       contactEmail: contacts.email,
+      alternateEmails: contacts.alternateEmails,
+      recipientEmail: outreachSchedule.recipientEmail,
       firstSentAt: outreachSchedule.sentAt,
     })
     .from(leads)
@@ -58,26 +71,7 @@ async function loadReplyWatchLeads(workspaceId: string): Promise<OutreachedLead[
     )
     .where(and(eq(leads.workspaceId, workspaceId), inArray(leads.status, [...REPLY_WATCH_STATUSES])));
 
-  const byLead = new Map<string, OutreachedLead>();
-  for (const row of rows) {
-    if (!row.contactEmail) continue;
-    const existing = byLead.get(row.leadId);
-    const sentAt = row.firstSentAt ?? null;
-    if (!existing) {
-      byLead.set(row.leadId, {
-        leadId: row.leadId,
-        tenantId: row.tenantId,
-        workspaceId: row.workspaceId,
-        contactEmail: normalizeEmail(row.contactEmail),
-        firstSentAt: sentAt,
-      });
-      continue;
-    }
-    if (sentAt && (!existing.firstSentAt || sentAt < existing.firstSentAt)) {
-      existing.firstSentAt = sentAt;
-    }
-  }
-  return [...byLead.values()];
+  return mergeWatchLeadRows(rows);
 }
 
 function getPollSince(): Date {
@@ -85,7 +79,9 @@ function getPollSince(): Date {
 }
 
 async function persistPollState(workspaceId: string, config: EmailConfig, processedIds: string[]) {
-  const merged = [...new Set([...(config.processedReplyMessageIds ?? []), ...processedIds])].slice(-MAX_PROCESSED_IDS);
+  const merged = [...new Set([...(config.processedReplyMessageIds ?? []), ...processedIds])].slice(
+    -MAX_PROCESSED_IDS,
+  );
   await persistEmailConfig(
     {
       ...config,
@@ -96,21 +92,34 @@ async function persistPollState(workspaceId: string, config: EmailConfig, proces
   );
 }
 
-export async function pollRepliesForWorkspace(workspaceId: string): Promise<ReplyPollResult> {
-  const result: ReplyPollResult = {
-    workspaceId,
-    checked: 0,
-    matched: 0,
-    processed: 0,
-    skipped: 0,
-    errors: [],
-  };
-
-  const config = await getResolvedEmailConfig(workspaceId);
-  if (config.provider !== "smtp") {
-    return result;
+function forgetLead(emailToLead: Map<string, ReplyWatchLead>, lead: ReplyWatchLead) {
+  for (const email of lead.emails) {
+    if (emailToLead.get(email) === lead) emailToLead.delete(email);
   }
+}
 
+async function markProcessedReply(params: {
+  lead: ReplyWatchLead;
+  source: string;
+  replyContent?: string;
+  inboundMessageId: string;
+}): Promise<boolean> {
+  const processed = await processLeadReply({
+    leadId: params.lead.leadId,
+    source: params.source,
+    replyContent: params.replyContent || undefined,
+    inboundMessageId: params.inboundMessageId,
+    tenantId: params.lead.tenantId,
+    workspaceId: params.lead.workspaceId,
+  });
+  return processed.ok && !processed.skipped;
+}
+
+async function pollImapReplies(
+  workspaceId: string,
+  config: EmailConfig,
+  result: ReplyPollResult,
+): Promise<ReplyPollResult> {
   const creds = resolveSmtpCredentials(config);
   if (!creds.user || !creds.pass) {
     result.errors.push("SMTP credentials not configured");
@@ -120,7 +129,7 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
   const watchLeads = await loadReplyWatchLeads(workspaceId);
   if (watchLeads.length === 0) return result;
 
-  const emailToLead = new Map(watchLeads.map((l) => [l.contactEmail, l]));
+  const emailToLead = indexWatchLeadsByEmail(watchLeads);
   const processedIds = new Set(config.processedReplyMessageIds ?? []);
   const since = getPollSince();
 
@@ -148,9 +157,7 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
         const messageDate = message.envelope?.date ?? new Date();
         if (messageDate < since) continue;
         result.checked++;
-        const fromAddresses = (message.envelope?.from ?? [])
-          .map((addr) => (addr.address ? normalizeEmail(addr.address) : ""))
-          .filter(Boolean);
+        const fromAddresses = (message.envelope?.from ?? []).map((addr) => addr.address).filter(Boolean);
         if (fromAddresses.length === 0) continue;
 
         const messageId = message.envelope?.messageId ?? `uid:${message.uid}`;
@@ -159,7 +166,7 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
           continue;
         }
 
-        const lead = fromAddresses.map((addr) => emailToLead.get(addr)).find(Boolean);
+        const lead = findWatchLeadForFrom(fromAddresses, emailToLead);
         if (!lead) continue;
 
         if (lead.firstSentAt && messageDate < lead.firstSentAt) {
@@ -179,19 +186,16 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
           }
         }
 
-        const processed = await processLeadReply({
-          leadId: lead.leadId,
-          source: "imap_poll",
-          replyContent: replyContent || undefined,
-          inboundMessageId: messageId,
-          tenantId: lead.tenantId,
-          workspaceId: lead.workspaceId,
-        });
-
         newlyProcessedIds.push(messageId);
-        if (processed.ok && !processed.skipped) {
+        const applied = await markProcessedReply({
+          lead,
+          source: "imap_poll",
+          replyContent,
+          inboundMessageId: messageId,
+        });
+        if (applied) {
           result.processed++;
-          emailToLead.delete(lead.contactEmail);
+          forgetLead(emailToLead, lead);
         } else {
           result.skipped++;
         }
@@ -208,6 +212,114 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
 
   await persistPollState(workspaceId, config, newlyProcessedIds);
   return result;
+}
+
+async function pollResendReplies(
+  workspaceId: string,
+  config: EmailConfig,
+  result: ReplyPollResult,
+): Promise<ReplyPollResult> {
+  const apiKey = config.resendApiKey?.trim() || process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) {
+    result.errors.push("Resend API key not configured");
+    return result;
+  }
+
+  const watchLeads = await loadReplyWatchLeads(workspaceId);
+  if (watchLeads.length === 0) return result;
+
+  const emailToLead = indexWatchLeadsByEmail(watchLeads);
+  const processedIds = new Set(config.processedReplyMessageIds ?? []);
+  const since = getPollSince();
+  const newlyProcessedIds: string[] = [];
+
+  try {
+    let after: string | undefined;
+    for (let page = 0; page < RESEND_MAX_PAGES; page++) {
+      const { data, hasMore } = await listReceivedEmails(apiKey, { limit: RESEND_LIST_LIMIT, after });
+      if (data.length === 0) break;
+
+      let sawRecent = false;
+      for (const item of data) {
+        const messageDate = item.created_at ? new Date(item.created_at) : new Date();
+        if (Number.isFinite(messageDate.getTime()) && messageDate >= since) sawRecent = true;
+        if (Number.isFinite(messageDate.getTime()) && messageDate < since) continue;
+
+        result.checked++;
+        const inboundId = item.id?.trim();
+        if (!inboundId) continue;
+        if (processedIds.has(inboundId) || (item.message_id && processedIds.has(item.message_id))) {
+          result.skipped++;
+          continue;
+        }
+
+        const lead = findWatchLeadForFrom([item.from], emailToLead);
+        if (!lead) continue;
+
+        if (lead.firstSentAt && messageDate < lead.firstSentAt) {
+          newlyProcessedIds.push(inboundId);
+          processedIds.add(inboundId);
+          result.skipped++;
+          continue;
+        }
+
+        result.matched++;
+        let replyContent = "";
+        try {
+          const detail = await getReceivedEmail(inboundId, apiKey);
+          replyContent = replyContentFromBodies(detail?.text, detail?.html);
+        } catch (e) {
+          console.error("[reply-poller] resend receiving get failed", inboundId, e);
+        }
+
+        newlyProcessedIds.push(inboundId);
+        processedIds.add(inboundId);
+        if (item.message_id) {
+          newlyProcessedIds.push(item.message_id);
+          processedIds.add(item.message_id);
+        }
+
+        const applied = await markProcessedReply({
+          lead,
+          source: "resend_poll",
+          replyContent,
+          inboundMessageId: inboundId,
+        });
+        if (applied) {
+          result.processed++;
+          forgetLead(emailToLead, lead);
+        } else {
+          result.skipped++;
+        }
+      }
+
+      if (!hasMore || !sawRecent) break;
+      after = data[data.length - 1]?.id;
+      if (!after) break;
+    }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    result.errors.push(`Resend receiving error: ${msg}`);
+    console.error("[reply-poller] resend", workspaceId, e);
+  }
+
+  await persistPollState(workspaceId, config, newlyProcessedIds);
+  return result;
+}
+
+export async function pollRepliesForWorkspace(workspaceId: string): Promise<ReplyPollResult> {
+  const config = await getResolvedEmailConfig(workspaceId);
+  const result = emptyResult(workspaceId, config.provider);
+
+  if (config.provider === "resend") {
+    return pollResendReplies(workspaceId, config, result);
+  }
+
+  if (config.provider !== "smtp") {
+    return result;
+  }
+
+  return pollImapReplies(workspaceId, config, result);
 }
 
 export async function pollRepliesForAllWorkspaces(): Promise<ReplyPollResult[]> {

@@ -153,12 +153,17 @@ export async function scoutCompanies(params: {
   cities: string[];
   industries: string[];
   dataMode: DataMode;
+  seniority?: string[];
+  departments?: string[];
   excludeNames?: string[];
+  excludeSavedAccounts?: boolean;
   skipInternal?: boolean;
   fetchSeed?: number;
   limit?: number;
   companyName?: string;
   employeeBands?: string[];
+  locationScope?: "focus" | "interest";
+  searchKind?: "industry" | "business";
   signal?: AbortSignal;
 }): Promise<ScoutCompaniesResponse> {
   const { signal, ...body } = params;
@@ -174,12 +179,17 @@ export async function scoutCompaniesStream(
     cities: string[];
     industries: string[];
     dataMode: DataMode;
+    seniority?: string[];
+    departments?: string[];
     excludeNames?: string[];
+    excludeSavedAccounts?: boolean;
     skipInternal?: boolean;
     fetchSeed?: number;
     limit?: number;
     companyName?: string;
     employeeBands?: string[];
+    locationScope?: "focus" | "interest";
+    searchKind?: "industry" | "business";
     signal?: AbortSignal;
   },
   onEvent: (event: ScoutCompaniesStreamEvent) => void,
@@ -255,6 +265,10 @@ export async function scoutPeople(params: {
   seniority?: string[];
   departments?: string[];
   cities?: string[];
+  peopleCities?: string[];
+  searchKind?: "industry" | "business";
+  businesses?: string[];
+  locationScope?: "focus" | "interest";
   signal?: AbortSignal;
 }): Promise<ScoutPeopleResponse> {
   const { signal, ...body } = params;
@@ -278,6 +292,10 @@ export async function scoutPeopleBatch(params: {
   seniority?: string[];
   departments?: string[];
   cities?: string[];
+  peopleCities?: string[];
+  searchKind?: "industry" | "business";
+  businesses?: string[];
+  locationScope?: "focus" | "interest";
 }): Promise<ScoutPeopleBatchResponse> {
   return post<ScoutPeopleBatchResponse>("/api/scout/people/batch", params);
 }
@@ -296,6 +314,10 @@ export async function scoutPeopleBatchStream(
     seniority?: string[];
     departments?: string[];
     cities?: string[];
+    peopleCities?: string[];
+    searchKind?: "industry" | "business";
+    businesses?: string[];
+    locationScope?: "focus" | "interest";
     signal?: AbortSignal;
   },
   onResult: (companyId: string, result: ScoutPeopleResponse) => void,
@@ -364,6 +386,26 @@ export async function scoutSaveCompanies(params: {
 
 export async function scoutSavedCompanies(): Promise<{ companies: ScoutCompanyResult[] }> {
   return get("/api/scout/saved-companies");
+}
+
+export type ScoutBootstrapPayload = {
+  leads: { id: string; name: string; company: string }[];
+  companies: ScoutCompanyResult[];
+  dataMode?: DataMode;
+  scoutCompaniesLimit?: number;
+  scoutLeadsLimit?: number;
+  scoutPeopleCities?: string[];
+  scoutGeo?: import("@/lib/geo/india").ScoutGeoSelection;
+  scoutAreaOfFocus?: import("@/lib/geo/area-of-focus").ScoutAreaOfFocus | null;
+  scoutAreasOfFocus?: import("@/lib/geo/area-of-focus").ScoutAreaOfFocus[];
+  scope?: import("@/lib/geo/india").ScoutLocationScope;
+  locations?: import("@/lib/geo/india").ScoutLocationOption[];
+  focusLocations?: import("@/lib/geo/india").ScoutLocationOption[];
+  interestLocations?: import("@/lib/geo/india").ScoutLocationOption[];
+};
+
+export async function scoutBootstrap(): Promise<ScoutBootstrapPayload> {
+  return get("/api/scout/bootstrap");
 }
 
 export type ScoutSaveBatchResult = {
@@ -607,6 +649,62 @@ export async function fetchEmailOverview(tabs?: EmailOverviewTab | EmailOverview
   return res.json();
 }
 
+export type EmailLogStatus = "opened" | "delivered" | "bounced";
+
+export type EmailLogRow = {
+  id: string;
+  leadId: string;
+  to: string;
+  contactName: string;
+  companyName: string;
+  subject: string;
+  sequenceDay: number;
+  sentAt: string | null;
+  openedAt: string | null;
+  bouncedAt: string | null;
+  bounceReason: string | null;
+  status: EmailLogStatus;
+};
+
+export type EmailLogsData = {
+  items: EmailLogRow[];
+  total: number;
+  limit: number;
+  offset: number;
+  counts: {
+    all: number;
+    opened: number;
+    bounced: number;
+    delivered: number;
+  };
+};
+
+export async function fetchEmailLogs(params?: {
+  status?: "all" | EmailLogStatus;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<EmailLogsData> {
+  const search = new URLSearchParams();
+  if (params?.status && params.status !== "all") search.set("status", params.status);
+  if (params?.q?.trim()) search.set("q", params.q.trim());
+  if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.offset) search.set("offset", String(params.offset));
+  const qs = search.toString();
+  const res = await fetch(`/api/email/logs${qs ? `?${qs}` : ""}`);
+  if (!res.ok) throw new Error("Failed to load send logs");
+  return res.json();
+}
+
+export async function runWhatsAppWriter(leadId: string): Promise<WriterDraft> {
+  const data = await post<{ draft: WriterDraft }>("/api/agents/writer/whatsapp", { leadId });
+  return data.draft;
+}
+
+export async function openWhatsAppOutreach(leadOutreachId: string): Promise<{ url: string; to: string }> {
+  return post<{ url: string; to: string }>("/api/outreach/whatsapp/open", { leadOutreachId });
+}
+
 export async function runReplyWriter(leadId: string): Promise<WriterDraft> {
   const data = await post<{ draft: WriterDraft }>("/api/agents/writer/reply", { leadId });
   return data.draft;
@@ -634,6 +732,7 @@ export async function updateOutreachDraft(params: {
   subjectC?: string;
   chosenSubjectKey?: string;
   chosenBodyKey?: string;
+  whatsapp?: string;
 }): Promise<{
   id: string;
   subjectA?: string;
@@ -644,6 +743,7 @@ export async function updateOutreachDraft(params: {
   emailBodyC?: string;
   chosenSubjectKey?: string;
   chosenBodyKey?: string;
+  whatsapp?: string | null;
 }> {
   const res = await fetch("/api/outreach/draft", {
     method: "PATCH",
@@ -710,6 +810,63 @@ export async function createLead(input: LeadFormInput): Promise<{ id: string; ex
   return { id: data.id, existing: data.existing };
 }
 
+export type LinkedInLeadPartialProfile = {
+  name: string;
+  title?: string;
+  company?: string;
+  city?: string;
+  email?: string;
+  phone?: string;
+  linkedIn: string;
+  bio?: string;
+};
+
+export class LinkedInLeadIncompleteError extends Error {
+  code = "LINKEDIN_PROFILE_INCOMPLETE" as const;
+  partial: LinkedInLeadPartialProfile;
+
+  constructor(message: string, partial: LinkedInLeadPartialProfile) {
+    super(message);
+    this.name = "LinkedInLeadIncompleteError";
+    this.partial = partial;
+  }
+}
+
+export type CreateLeadFromLinkedInResult = {
+  id: string;
+  existing?: boolean;
+  enriched?: boolean;
+  profile: LinkedInLeadPartialProfile & { company: string };
+};
+
+export async function createLeadFromLinkedIn(input: {
+  linkedInUrl: string;
+  enrich?: boolean;
+  score?: number;
+}): Promise<CreateLeadFromLinkedInResult> {
+  const res = await fetch("/api/leads/from-linkedin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = (await res.json().catch(() => ({ error: res.statusText }))) as Record<string, unknown>;
+  if (!res.ok) {
+    if (body.code === "LINKEDIN_PROFILE_INCOMPLETE" && body.partial) {
+      throw new LinkedInLeadIncompleteError(
+        typeof body.error === "string" ? body.error : "Profile incomplete",
+        body.partial as LinkedInLeadPartialProfile,
+      );
+    }
+    throwFromErrorBody(body, res.statusText);
+  }
+  return {
+    id: String(body.id),
+    existing: body.existing === true,
+    enriched: body.enriched === true,
+    profile: body.profile as CreateLeadFromLinkedInResult["profile"],
+  };
+}
+
 export type LeadImportTargetField =
   | "name"
   | "firstName"
@@ -743,6 +900,9 @@ export type LeadImportPreviewResult = {
   warnings: string[];
   requiredOk: boolean;
   missingRequired: string[];
+  loadCount?: number;
+  skipCount?: number;
+  failCount?: number;
 };
 
 export type LeadImportRowResult = {
@@ -763,6 +923,7 @@ export type LeadImportConfirmResult = {
   enriched: number;
   results: LeadImportRowResult[];
   errors: string[];
+  warnings?: string[];
 };
 
 export async function previewLeadImport(file: File): Promise<LeadImportPreviewResult> {
@@ -819,6 +980,7 @@ export type InboxReplySyncResult = {
   checked: number;
   skipped: number;
   errors: string[];
+  provider?: "smtp" | "resend";
 };
 
 export async function syncInboxReplies(): Promise<InboxReplySyncResult> {
@@ -829,6 +991,7 @@ export async function syncInboxReplies(): Promise<InboxReplySyncResult> {
     checked?: number;
     skipped?: number;
     errors?: string[];
+    provider?: "smtp" | "resend";
   }>("/api/replies/poll", {});
   return {
     processed: data.processed ?? 0,
@@ -836,6 +999,7 @@ export async function syncInboxReplies(): Promise<InboxReplySyncResult> {
     checked: data.checked ?? 0,
     skipped: data.skipped ?? 0,
     errors: data.errors ?? [],
+    provider: data.provider,
   };
 }
 
@@ -873,14 +1037,6 @@ export type ContactEmailEntry = {
   pattern?: string;
 };
 
-export type WriterPlan = {
-  hook: string;
-  valueProp: string;
-  cta: string;
-  source?: "llm" | "user";
-  updatedAt?: string;
-};
-
 export type LeadDetailRecord = {
   id: string;
   name: string;
@@ -915,10 +1071,11 @@ export type LeadDetailRecord = {
     outreachHook?: string;
     estimatedOrderValue?: string;
     scoreFactors: { label: string; bold: string }[];
-    writerPlan?: WriterPlan;
   };
   outreach?: WriterDraft;
   outreachSequence?: WriterDraft[];
+  whatsappDraft?: WriterDraft;
+  whatsappConnected?: boolean;
   emailThread?: EmailThread;
   upNext: UpNextItem[];
   network: {
@@ -940,6 +1097,7 @@ export type LeadDetailRecord = {
   budgetBand?: string;
   isPinned?: boolean;
   outreachTemplates?: { id: string; label: string; shortLabel: string; description: string }[];
+  defaultOutreachCta?: string;
 };
 
 export type EditMessage = {
@@ -974,8 +1132,9 @@ export type WriterDraft = {
   confidenceTier?: string;
   approvalStatus: string;
   replySent?: boolean;
-  sequencePosition?: number;
-  editMessages?: EditMessage[];
+    sequencePosition?: number;
+    editMessages?: EditMessage[];
+    whatsapp?: string;
 };
 
 
@@ -1093,7 +1252,13 @@ export async function suggestLeadEmails(leadId: string): Promise<EmailSuggestRes
 
 export async function saveLeadEmails(
   leadId: string,
-  payload: { emails: string[]; primaryEmail?: string; allowEmpty?: boolean; clear?: boolean },
+  payload: {
+    emails: string[];
+    primaryEmail?: string;
+    allowEmpty?: boolean;
+    clear?: boolean;
+    domain?: string;
+  },
 ): Promise<{
   success: boolean;
   email: string | null;
@@ -1327,7 +1492,7 @@ export type GiftIntelConfigView = {
     id: string;
     label: string;
     group: string;
-    kind: "india" | "region" | "state" | "district";
+    kind: "india" | "region" | "state" | "district" | "area";
     searchTerms: string[];
   }>;
   locationSummary?: string;
@@ -1381,13 +1546,3 @@ export async function sendFollowUp(
 }
 
 
-export async function updateLeadWriterPlan(
-  leadId: string,
-  plan: Pick<WriterPlan, "hook" | "valueProp" | "cta">,
-): Promise<{ writerPlan: WriterPlan }> {
-  return patch<{ writerPlan: WriterPlan }>(`/api/leads/${leadId}/research-plan`, plan);
-}
-
-export async function regenerateLeadWriterPlan(leadId: string): Promise<{ writerPlan: WriterPlan }> {
-  return post<{ writerPlan: WriterPlan }>(`/api/leads/${leadId}/research-plan`, {});
-}

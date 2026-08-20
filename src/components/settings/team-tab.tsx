@@ -5,6 +5,7 @@ import { Copy, ExternalLink, Loader2, UserPlus } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { cn } from "@/lib/utils";
+import { SMTP_SERVER_OPTIONS, type SmtpServerId } from "@/lib/email/config";
 import { toast } from "sonner";
 
 type Member = { id: string; name: string; email: string; role: string; status?: string; linkedIn?: string | null };
@@ -24,6 +25,7 @@ export function TeamTab() {
   const [linkedIn, setLinkedIn] = useState("");
   const [memberLinkedIn, setMemberLinkedIn] = useState<Record<string, string>>({});
   const [role, setRole] = useState<(typeof ROLES)[number]>("member");
+  const [mailHost, setMailHost] = useState<SmtpServerId>("zoho_in");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [lastInviteUrl, setLastInviteUrl] = useState("");
@@ -73,7 +75,7 @@ export function TeamTab() {
     const res = await fetch("/api/team/invite", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, role }),
+      body: JSON.stringify({ email, role, mailHost, sendEmail: true }),
     });
     const data = await res.json();
     setSubmitting(false);
@@ -83,7 +85,15 @@ export function TeamTab() {
     }
     setLastInviteUrl(data.inviteUrl);
     setEmail("");
-    toast.success("Invite created");
+    if (data.emailed && !data.emailDryRun) {
+      toast.success("Invite emailed with inbox setup steps");
+    } else if (data.emailDryRun) {
+      toast.success("Invite created. Mail was logged (no RESEND send). Copy the link below.");
+    } else if (data.emailError) {
+      toast.error(`Invite created, but email failed: ${data.emailError}. Copy the link below.`);
+    } else {
+      toast.success("Invite created");
+    }
     void load();
   }
 
@@ -157,7 +167,7 @@ export function TeamTab() {
             onChange={setMode}
             options={[
               { value: "create", label: "Create" },
-              { value: "invite", label: "Invite link" },
+              { value: "invite", label: "Email invite" },
             ]}
           />
         </SettingsRow>
@@ -182,15 +192,35 @@ export function TeamTab() {
                 </option>
               ))}
             </select>
+            {mode === "invite" ? (
+              <select
+                value={mailHost}
+                onChange={(e) => setMailHost(e.target.value as SmtpServerId)}
+                className="rounded-full border border-brand-stratus-blue/25 bg-white/80 px-3 py-1.5 text-[12px] font-semibold text-brand-ink"
+                aria-label="Inbox they will send from"
+              >
+                {SMTP_SERVER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} setup
+                  </option>
+                ))}
+              </select>
+            ) : null}
             <button
               type="submit"
               disabled={submitting}
               className="inline-flex items-center gap-1.5 rounded-full bg-brand-black px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60"
             >
               <UserPlus className="size-3.5" />
-              {submitting ? "Working…" : mode === "create" ? "Create" : "Invite"}
+              {submitting ? "Working…" : mode === "create" ? "Create" : "Invite by email"}
             </button>
           </div>
+          {mode === "invite" ? (
+            <p className="text-[11px] leading-relaxed text-brand-ink-soft sm:col-span-2">
+              We email a join link plus full {SMTP_SERVER_OPTIONS.find((o) => o.value === mailHost)?.label} setup steps
+              (App Password, host, verify, test, then live).
+            </p>
+          ) : null}
           {lastTempPassword ? (
             <div className="rounded-xl bg-brand-yellow-soft/70 px-3 py-2 text-[12px] text-brand-ink sm:col-span-2">
               Temp password: <span className="font-mono font-bold">{lastTempPassword}</span>

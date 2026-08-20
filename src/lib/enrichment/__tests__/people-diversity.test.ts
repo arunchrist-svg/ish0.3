@@ -82,4 +82,15 @@ describe("rankPeopleForScout", () => {
     );
     expect(ranked[0]?.name).toBe("Meera");
   });
+
+  it("ranks HR Director above HR Manager for festive sweets buyers", () => {
+    const ranked = rankPeopleForScout(
+      [
+        { name: "Manager", title: "HR Manager", emailStatus: "missing", dataSource: "tavily" },
+        { name: "Director", title: "HR Director", emailStatus: "missing", dataSource: "tavily" },
+      ],
+      { departments: ["HR", "Procurement"], buyerPersonas: ["HR Director"] },
+    );
+    expect(ranked[0]?.name).toBe("Director");
+  });
 });

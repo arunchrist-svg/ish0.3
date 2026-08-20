@@ -7,11 +7,14 @@ import { logAudit } from "@/lib/audit";
 import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
+import { getWhatsAppConnection } from "@/lib/settings/whatsapp-settings";
+import { isEmailOutreachRow, isWhatsAppOutreach } from "@/lib/whatsapp/outreach";
 import { buildContactEmails, hasUsableContactEmail, refreshPermutationEmails } from "@/lib/enrichment/contact-emails";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { buildEmailThread } from "@/lib/email/email-thread";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { getOutreachTemplatesForBrand } from "@/lib/email/outreach-templates";
+import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { updateLeadFields, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
 
@@ -40,6 +43,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const existingAlternates =
       (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
+    const preservePrimary =
+      contact.dataSource === "manual" ||
+      contact.dataSource === "csv_import" ||
+      lead.leadSource === "manual" ||
+      lead.leadSource === "csv_import" ||
+      contact.enrichmentProvider === "manual" ||
+      contact.enrichmentSource === "manual";
     const refreshed = refreshPermutationEmails({
       firstName: contact.firstName,
       lastName: contact.lastName,
@@ -52,6 +62,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       enrichmentProvider: contact.enrichmentProvider,
       enrichmentSource: contact.enrichmentSource,
       alternateEmails: existingAlternates,
+      preservePrimary,
     });
     contact.email = refreshed.email;
     contact.emailStatus = (
@@ -61,7 +72,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     contact.enrichmentSource = refreshed.enrichmentSource;
     contact.alternateEmails = refreshed.alternateEmails;
 
-    const [research, outreachRows, scheduleRows, emailConfig, repliedFunnel] = await Promise.all([
+    const [research, outreachRows, scheduleRows, emailConfig, repliedFunnel, whatsappConn] = await Promise.all([
       db.query.leadResearch.findFirst({ where: eq(leadResearch.leadId, id) }),
       db.query.leadOutreach.findMany({
         where: eq(leadOutreach.leadId, id),
@@ -77,10 +88,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         where: and(eq(yieldFunnel.leadId, id), eq(yieldFunnel.stage, "replied")),
         orderBy: [desc(yieldFunnel.enteredAt)],
       }),
+      getWhatsAppConnection(lead.workspaceId),
     ]);
 
-    const outreach = outreachRows[0] ?? null;
-    const sequenceDraftRows = [...outreachRows]
+    const emailOutreachRows = outreachRows.filter(isEmailOutreachRow);
+    const whatsappRow = outreachRows.find(isWhatsAppOutreach) ?? null;
+    const outreach = emailOutreachRows[0] ?? null;
+    const sequenceDraftRows = [...emailOutreachRows]
       .filter((row) => row.sequencePosition != null)
       .sort((a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0));
     const replyDraftRow = outreach?.templateVariant === "reply" ? outreach : null;
@@ -198,7 +212,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             outreachHook: research.outreachHook ?? undefined,
             estimatedOrderValue: research.estimatedOrderValue ?? undefined,
             scoreFactors: (research.scoreFactors as { label: string; bold: string }[]) ?? [],
-            writerPlan: (research.writerPlan as import("@/db/schema").WriterPlan | null) ?? undefined,
           }
         : undefined,
       outreach: activeOutreach
@@ -209,6 +222,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             sequencePosition: activeOutreach.sequencePosition ?? undefined,
           })
         : undefined,
+      whatsappDraft: whatsappRow ? toWriterDraft(whatsappRow) : undefined,
+      whatsappConnected: whatsappConn.connected,
       outreachSequence: outreachSequence.length ? outreachSequence : undefined,
       upNext,
       network: [],
@@ -226,6 +241,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         shortLabel: t.shortLabel,
         description: t.description,
       })),
+      defaultOutreachCta: resolveDefaultOutreachCta(emailConfig.brandConfig),
     };
 
     return NextResponse.json({ lead: record });

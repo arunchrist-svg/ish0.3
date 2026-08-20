@@ -1,5 +1,9 @@
 import { promises as dns } from "dns";
+import { Resolver } from "dns/promises";
 import rulesConfig from "@/lib/email/content-rules.config.json";
+import { extractDomain, isPersonalInboxDomain } from "@/lib/email/sender-domain";
+
+export { extractDomain, isPersonalInboxDomain } from "@/lib/email/sender-domain";
 
 export type SpfCheck = {
   found: boolean;
@@ -49,17 +53,6 @@ export type DnsAuthResult = DomainAuthResult & {
   dmarc: boolean;
   dkim: boolean | null;
 };
-
-export function extractDomain(emailOrDomain: string): string {
-  const trimmed = emailOrDomain.trim().toLowerCase();
-  if (trimmed.includes("@")) return trimmed.split("@").pop() ?? trimmed;
-  return trimmed;
-}
-
-export function isPersonalInboxDomain(emailOrDomain: string): boolean {
-  const domain = extractDomain(emailOrDomain);
-  return rulesConfig.personalInboxDomains.includes(domain);
-}
 
 /** Parse an SPF TXT value for validity and soft warnings (pure, testable). */
 export function parseSpfRecord(record: string): SpfCheck {
@@ -127,52 +120,110 @@ export function parseDmarcRecord(record: string): DmarcCheck {
   };
 }
 
-async function checkSPF(domain: string): Promise<SpfCheck> {
+const PUBLIC_DNS_SERVERS = ["8.8.8.8", "1.1.1.1"];
+const SYSTEM_DNS_MS = 2500;
+const PUBLIC_DNS_MS = 4000;
+
+function flattenTxt(records: string[][]): string[] {
+  return records.map((parts) => parts.join(""));
+}
+
+function dnsErrorCode(e: unknown): string | undefined {
+  return e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : undefined;
+}
+
+function shouldFallbackDns(code?: string): boolean {
+  return code === "ETIMEOUT" || code === "ESERVFAIL" || code === "ECONNREFUSED";
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(Object.assign(new Error("ETIMEOUT"), { code: "ETIMEOUT" }));
+    }, ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+async function resolveTxtRecords(host: string): Promise<{ records: string[]; error?: string }> {
   try {
-    const records = await dns.resolveTxt(domain);
-    const flat = records.map((parts) => parts.join(""));
-    const spf = flat.find((r) => r.toLowerCase().startsWith("v=spf1"));
-    if (!spf) return { found: false, valid: false };
-    return parseSpfRecord(spf);
+    return { records: flattenTxt(await withTimeout(dns.resolveTxt(host), SYSTEM_DNS_MS)) };
   } catch (e) {
-    const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : undefined;
-    return { found: false, valid: false, error: code };
+    const code = dnsErrorCode(e);
+    if (code && !shouldFallbackDns(code)) {
+      return { records: [], error: code };
+    }
+    try {
+      const resolver = new Resolver();
+      resolver.setServers(PUBLIC_DNS_SERVERS);
+      return { records: flattenTxt(await withTimeout(resolver.resolveTxt(host), PUBLIC_DNS_MS)) };
+    } catch (e2) {
+      return { records: [], error: dnsErrorCode(e2) ?? code };
+    }
   }
+}
+
+/** RFC 6376: v= is optional and defaults to DKIM1. Resend often publishes p= only. */
+export function isDkimTxt(record: string): boolean {
+  const trimmed = record.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.includes("v=dkim1")) return true;
+  return /(?:^|;)\s*p=[A-Za-z0-9+/]{20,}={0,3}/.test(trimmed);
+}
+
+async function resolveSpfAt(host: string): Promise<SpfCheck> {
+  const { records, error } = await resolveTxtRecords(host);
+  const spf = records.find((r) => r.toLowerCase().startsWith("v=spf1"));
+  if (!spf) return { found: false, valid: false, error };
+  return parseSpfRecord(spf);
+}
+
+async function checkSPF(domain: string): Promise<SpfCheck> {
+  // Apex first (Google Workspace, Zoho). Resend publishes SPF on send.{domain}.
+  const apex = await resolveSpfAt(domain);
+  if (apex.valid) return apex;
+  const send = await resolveSpfAt(`send.${domain}`);
+  if (send.valid) {
+    return {
+      ...send,
+      record: send.record ? `${send.record} (send.${domain})` : send.record,
+    };
+  }
+  return apex.found ? apex : send;
 }
 
 async function checkDMARC(domain: string): Promise<DmarcCheck> {
-  try {
-    const records = await dns.resolveTxt(`_dmarc.${domain}`);
-    const flat = records.map((parts) => parts.join(""));
-    const dmarc = flat.find((r) => r.toLowerCase().startsWith("v=dmarc1"));
-    if (!dmarc) return { found: false, valid: false };
-    return parseDmarcRecord(dmarc);
-  } catch (e) {
-    const code = e && typeof e === "object" && "code" in e ? String((e as { code: string }).code) : undefined;
-    return { found: false, valid: false, error: code };
-  }
+  const { records, error } = await resolveTxtRecords(`_dmarc.${domain}`);
+  const dmarc = records.find((r) => r.toLowerCase().startsWith("v=dmarc1"));
+  if (!dmarc) return { found: false, valid: false, error };
+  return parseDmarcRecord(dmarc);
 }
 
 async function checkDKIM(domain: string, selector?: string | null): Promise<DkimCheck> {
-  const candidates = selector
-    ? [selector]
-    : [...new Set([...rulesConfig.dkimSelectors, "mail", "default", "google", "k1"])];
+  const common = [...new Set([...rulesConfig.dkimSelectors, "resend", "mail", "default", "google", "k1"])];
+  const candidates = selector?.trim()
+    ? [...new Set([selector.trim(), ...common])]
+    : common;
 
   for (const sel of candidates) {
-    try {
-      const records = await dns.resolveTxt(`${sel}._domainkey.${domain}`);
-      const flat = records.map((parts) => parts.join(""));
-      const dkim = flat.find((r) => r.toLowerCase().includes("v=dkim1"));
-      if (dkim) {
-        return {
-          found: true,
-          valid: true,
-          selector: sel,
-          record: dkim.slice(0, 120),
-        };
-      }
-    } catch {
-      continue;
+    const { records } = await resolveTxtRecords(`${sel}._domainkey.${domain}`);
+    const dkim = records.find(isDkimTxt);
+    if (dkim) {
+      return {
+        found: true,
+        valid: true,
+        selector: sel,
+        record: dkim.slice(0, 120),
+      };
     }
   }
 

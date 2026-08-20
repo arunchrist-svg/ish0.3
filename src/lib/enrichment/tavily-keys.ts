@@ -29,19 +29,40 @@ export function getTavilyKeys(): TavilyKeyEntry[] {
   add(process.env.TAVILY_API_KEY, "key-1");
   add(process.env.TAVILY_API_KEY_2, "key-2");
   add(process.env.TAVILY_API_KEY_3, "key-3");
+  add(process.env.TAVILY_API_KEY_4, "key-4");
 
   return keys;
 }
 
+const NUMBERED_TAVILY_ENV = [
+  "TAVILY_API_KEY",
+  "TAVILY_API_KEY_2",
+  "TAVILY_API_KEY_3",
+  "TAVILY_API_KEY_4",
+] as const;
+
 export function getTavilyKeyConfigIssues(): string[] {
   const issues: string[] = [];
   const primary = process.env.TAVILY_API_KEY?.trim();
-  const backup = process.env.TAVILY_API_KEY_2?.trim();
-  const backupDefined = process.env.TAVILY_API_KEY_2 !== undefined;
+  if (!primary && !process.env.TAVILY_API_KEYS?.trim()) {
+    issues.push("TAVILY_API_KEY is missing in .env.local");
+  }
 
-  if (!primary) issues.push("TAVILY_API_KEY is missing in .env.local");
-  if (backupDefined && !backup) issues.push("TAVILY_API_KEY_2 is blank. Paste your backup key after the = sign");
-  if (primary && backup && primary === backup) issues.push("TAVILY_API_KEY_2 is the same as TAVILY_API_KEY. Add a different backup key");
+  const seen = new Map<string, string>();
+  for (const name of NUMBERED_TAVILY_ENV) {
+    const raw = process.env[name];
+    const value = raw?.trim();
+    if (name !== "TAVILY_API_KEY" && raw !== undefined && !value) {
+      issues.push(`${name} is blank. Paste a Tavily key after the = sign`);
+    }
+    if (!value) continue;
+    const previous = seen.get(value);
+    if (previous) {
+      issues.push(`${name} is the same as ${previous}. Use a different key`);
+    } else {
+      seen.set(value, name);
+    }
+  }
 
   return issues;
 }

@@ -36,6 +36,10 @@ function initialTone(name: string): string {
   return INITIAL_TONES[hash] ?? INITIAL_TONES[0];
 }
 
+function isLogoLookupApi(src: string): boolean {
+  return src.startsWith("/api/company-logo");
+}
+
 export function CompanyLogo({
   name,
   domain,
@@ -52,13 +56,39 @@ export function CompanyLogo({
   );
   const [sourceIndex, setSourceIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
+  const [resolvedSources, setResolvedSources] = useState<string[]>(sources);
 
   useEffect(() => {
     setSourceIndex(0);
     setExhausted(false);
+    setResolvedSources(sources);
+
+    const lookupSources = sources.filter(isLogoLookupApi);
+    if (!lookupSources.length) return;
+
+    let cancelled = false;
+    void (async () => {
+      const direct = sources.filter((src) => !isLogoLookupApi(src));
+      const resolved = [...direct];
+      for (const lookup of lookupSources) {
+        try {
+          const res = await fetch(lookup);
+          if (!res.ok) continue;
+          const data = (await res.json()) as { url?: string | null };
+          if (data.url) resolved.push(data.url);
+        } catch {
+          /* skip unresolved lookup */
+        }
+      }
+      if (!cancelled) setResolvedSources([...new Set(resolved)]);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [sources]);
 
-  const currentSrc = !exhausted ? sources[sourceIndex] : undefined;
+  const currentSrc = !exhausted ? resolvedSources[sourceIndex] : undefined;
   const dims = SIZE_MAP[size];
   const initials = getCompanyInitials(name);
 
@@ -82,7 +112,7 @@ export function CompanyLogo({
           className={cn("object-contain p-0.5", dims.img, imageClassName)}
           referrerPolicy="no-referrer"
           onError={() => {
-            if (sourceIndex < sources.length - 1) {
+            if (sourceIndex < resolvedSources.length - 1) {
               setSourceIndex((i) => i + 1);
             } else {
               setExhausted(true);

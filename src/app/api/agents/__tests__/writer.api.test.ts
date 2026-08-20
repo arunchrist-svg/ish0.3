@@ -29,17 +29,30 @@ vi.mock("@/lib/tenant", async (importOriginal) => {
   };
 });
 
-vi.mock("@/db", () => ({
-  db: {
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([
-            { id: "lead-1", tenantId: "tenant-1" },
-          ]),
-        }),
+vi.mock("@/lib/outreach/prepare-occasion-write", () => ({
+  prepareLeadForOccasionWrite: vi.fn().mockResolvedValue(undefined),
+}));
+
+const leadRow = {
+  id: "lead-1",
+  tenantId: "tenant-1",
+  workspaceId: "ws-1",
+  accountId: "acct-1",
+};
+
+function selectChain(rows: unknown[]) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue(rows),
       }),
     }),
+  };
+}
+
+vi.mock("@/db", () => ({
+  db: {
+    select: vi.fn(),
     query: {
       leadOutreach: {
         findFirst: vi.fn().mockResolvedValue({
@@ -49,11 +62,14 @@ vi.mock("@/db", () => ({
           emailBody: "Test body",
           status: "draft",
         }),
+        findMany: vi.fn().mockResolvedValue([]),
       },
     },
   },
-  leads: {},
-  leadOutreach: {},
+  leads: { id: "id", tenantId: "tenantId", workspaceId: "workspaceId", accountId: "accountId" },
+  leadOutreach: { id: "id", leadId: "leadId" },
+  accounts: { id: "id", companyOverview: "companyOverview" },
+  workspaceSettings: { workspaceId: "workspaceId", emailConfig: "emailConfig" },
 }));
 
 import { POST } from "../../agents/writer/run/route";
@@ -75,10 +91,19 @@ const tenantCtx = {
 };
 
 describe("AGENT-API-002 writer route", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.mocked(requireTenantContext).mockResolvedValue(tenantCtx);
     runWriter.mockResolvedValue("outreach-1");
+    const { db } = await import("@/db");
+    let selectCall = 0;
+    vi.mocked(db.select).mockImplementation(() => {
+      selectCall += 1;
+      if (selectCall === 1) return selectChain([leadRow]) as never;
+      if (selectCall === 2) return selectChain([]) as never;
+      if (selectCall === 3) return selectChain([{ id: "acct-1", companyOverview: null }]) as never;
+      return selectChain([leadRow]) as never;
+    });
   });
 
   it("returns 400 when leadId is missing", async () => {
@@ -125,7 +150,7 @@ describe("AGENT-API-002 writer route", () => {
       new Request("http://localhost/api/agents/writer/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: "lead-1" }),
+        body: JSON.stringify({ leadId: "lead-1", mode: "single" }),
       }),
     );
     expect(res.status).toBe(402);

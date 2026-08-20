@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchPins, togglePin, type PinnedLead, type PinnedCompany } from "@/lib/api-client";
-import { IshAvatar, MobilePageLayout, ScoreBadge, SearchBar, text } from "@/design-system";
+import { IshAvatar, MobilePageLayout, ScoreBadge, SearchBar, AppPageHeader, text } from "@/design-system";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { deriveQueueAction, statusToDisplayLabel } from "@/lib/pipeline-status";
 import { toast } from "sonner";
@@ -83,20 +83,12 @@ export function PinnedApp() {
       contentClassName="flex flex-col !overflow-hidden"
     >
       <SearchBar value={search} onChange={setSearch} placeholder="Search" sticky className="lg:hidden" />
-      <header className="ish-pinned-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 py-5 lg:block">
-        <div className="ish-pinned-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
-        <div className="relative flex flex-wrap items-center gap-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3.5">
-            <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]">
-              <Pin className="size-5 text-brand-ink" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-[20px] font-extrabold tracking-tight text-brand-ink">Pinned</h1>
-              <p className="text-[12.5px] text-brand-ink-soft">Your priority leads and companies — one tap away</p>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+      <AppPageHeader
+        icon={Pin}
+        title="Pinned"
+        subtitle="Your priority leads and companies, one tap away"
+        actions={
+          <>
             <div className="relative w-[220px] max-w-full">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
               <input
@@ -116,16 +108,16 @@ export function PinnedApp() {
             >
               <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
             </button>
-          </div>
-        </div>
-
-        {!loading && !isEmpty && (
-          <div className="relative mt-4 flex flex-wrap gap-2">
+          </>
+        }
+      >
+        {!loading && !isEmpty ? (
+          <div className="flex flex-wrap gap-2">
             <StatPill icon={User} label="Leads" value={leads.length} tone="yellow" />
             <StatPill icon={Building2} label="Companies" value={companies.length} tone="blue" />
           </div>
-        )}
-      </header>
+        ) : null}
+      </AppPageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto scrollbar-none px-6 py-6">
         {loading ? (

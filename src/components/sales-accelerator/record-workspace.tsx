@@ -12,6 +12,7 @@ import { LeadScoreCard } from "@/components/sales-accelerator/lead-score-card";
 import { BottomCards } from "@/components/sales-accelerator/bottom-cards";
 import { RelationshipAnalyticsPanel } from "@/components/network/relationship-analytics-panel";
 import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
+import { WhatsAppTabPanel } from "@/components/sales-accelerator/whatsapp-tab-panel";
 import { enrichLead, fetchLead, fetchLeadNetworkSummary } from "@/lib/api-client";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { showError } from "@/lib/toast";
@@ -20,7 +21,11 @@ import { statusToPipelineIndex } from "@/lib/pipeline-status";
 import { hasUsableContactEmail } from "@/lib/enrichment/contact-emails";
 import { ActionLoader } from "@/components/sales-accelerator/action-loader";
 import { WorkspaceLoader } from "@/components/sales-accelerator/workspace-loader";
-import { WriterPlanCard } from "@/components/sales-accelerator/writer-plan-card";
+import {
+  applyWriterDraft,
+  applyWriterSequence,
+  mergeLeadOutreachFromServer,
+} from "@/lib/email/apply-writer-draft";
 
 type Props = {
   leadId: string;
@@ -94,11 +99,12 @@ function toQueueItem(lead: LeadDetailRecord) {
   };
 }
 
-const TABS = ["Summary", "Email", "Relationship Analytics"] as const;
+const TABS = ["Summary", "Email", "WhatsApp", "Relationship Analytics"] as const;
 
 const TAB_SHORT: Record<(typeof TABS)[number], string> = {
   Summary: "Summary",
   Email: "Email",
+  WhatsApp: "WhatsApp",
   "Relationship Analytics": "Network",
 };
 
@@ -120,6 +126,8 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
     params.set("lead", leadId);
     if (tab === "Email") {
       params.set("tab", "email");
+    } else if (tab === "WhatsApp") {
+      params.set("tab", "whatsapp");
     } else {
       params.delete("tab");
     }
@@ -130,15 +138,27 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   const [loading, setLoading] = useState(!initialLead);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<string>(
-    tabFromUrl === "email" ? "Email" : "Summary",
+    tabFromUrl === "email" ? "Email" : tabFromUrl === "whatsapp" ? "WhatsApp" : "Summary",
   );
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  async function load(opts?: { silent?: boolean }) {
+  async function load(opts?: { silent?: boolean; replaceOutreach?: boolean }) {
     if (!opts?.silent) setLoading(true);
     try {
       const data = await fetchLead(leadId);
-      setLead(data);
+      setLead((prev) => {
+        if (opts?.replaceOutreach) return data;
+        const merged = mergeLeadOutreachFromServer(prev, data);
+        if (
+          prev?.id === data.id &&
+          (merged.outreachSequence?.length ?? 0) > 0 &&
+          !(data.outreachSequence?.length) &&
+          prev.emailThread
+        ) {
+          return { ...merged, emailThread: prev.emailThread };
+        }
+        return merged;
+      });
       setLoadError(null);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Failed to load lead";
@@ -157,7 +177,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   async function refreshInline(showOverlay = true) {
     if (showOverlay) setRefreshing(true);
     try {
-      await load({ silent: true });
+      await load({ silent: true, replaceOutreach: true });
     } finally {
       if (showOverlay) setRefreshing(false);
     }
@@ -184,21 +204,18 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
     }
   }
 
-  function applyDraft(draft: WriterDraft) {
-    setLead((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: "draft_ready",
-            outreach: draft,
-          }
-        : prev,
-    );
+  function applyDraft(draft: WriterDraft, sequence?: WriterDraft[]) {
+    setLead((prev) => {
+      if (!prev) return prev;
+      if (sequence?.length) return applyWriterSequence(prev, sequence);
+      return applyWriterDraft(prev, draft);
+    });
   }
 
 
   useEffect(() => {
     if (tabFromUrl === "email") setActiveTab("Email");
+    if (tabFromUrl === "whatsapp") setActiveTab("WhatsApp");
   }, [tabFromUrl, leadId]);
   useEffect(() => {
     if (initialLead?.id === leadId) {
@@ -207,6 +224,14 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
         return {
           ...initialLead,
           outreach: prev.outreach ?? initialLead.outreach,
+          outreachSequence:
+            prev.outreachSequence && prev.outreachSequence.length > 0
+              ? prev.outreachSequence
+              : initialLead.outreachSequence,
+          emailThread:
+            prev.outreachSequence && prev.outreachSequence.length > 0
+              ? prev.emailThread ?? initialLead.emailThread
+              : initialLead.emailThread,
           network: prev.network.length > initialLead.network.length ? prev.network : initialLead.network,
         };
       });
@@ -216,7 +241,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
     }
     setLead(null);
     setLoadError(null);
-    setActiveTab(tabFromUrl === "email" ? "Email" : "Summary");
+    setActiveTab(tabFromUrl === "email" ? "Email" : tabFromUrl === "whatsapp" ? "WhatsApp" : "Summary");
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, initialLead]);
@@ -290,11 +315,10 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
                 setActiveTab(tab);
                 syncTabToUrl(tab);
               }}
-              badges={
-                hasDraft && lead.outreach?.approvalStatus === "pending"
-                  ? { Email: true }
-                  : undefined
-              }
+              badges={{
+                ...(hasDraft && lead.outreach?.approvalStatus === "pending" ? { Email: true } : {}),
+                ...(lead.whatsappDraft?.whatsapp ? { WhatsApp: true } : {}),
+              }}
             />
         </div>
         <div className="ish-scroll-tabs hidden overflow-x-auto px-4 pt-4 lg:block lg:px-[22px]">
@@ -310,6 +334,9 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
                   {tab === "Email" && hasDraft && lead.outreach?.approvalStatus === "pending" && (
                     <span className="size-1.5 rounded-full bg-[#e8a000]" aria-label="Draft pending" />
                   )}
+                  {tab === "WhatsApp" && Boolean(lead.whatsappDraft?.whatsapp) && (
+                    <span className="size-1.5 rounded-full bg-[#e8a000]" aria-label="WhatsApp draft ready" />
+                  )}
                 </span>
               </TabsTrigger>
             ))}
@@ -317,9 +344,6 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
         </div>
 
         <TabsContent value="Summary" className="mt-0 animate-brand-tab-in">
-          <div className="px-[22px] pt-[18px]">
-            <WriterPlanCard lead={lead} onUpdated={() => void refreshInline(false)} />
-          </div>
           <div className="grid grid-cols-1 gap-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-3 lg:px-[22px] lg:py-[18px]">
             <ContactCard
               record={record}
@@ -377,10 +401,24 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           <EmailTabPanel
             lead={lead}
             draft={lead.outreach}
-            onDraftUpdated={(draft) => {
-              applyDraft(draft);
+            onDraftUpdated={(draft, sequence) => {
+              applyDraft(draft, sequence);
             }}
             onSilentRefresh={() => load({ silent: true })}
+            onSent={() => {
+              void load({ silent: true, replaceOutreach: true });
+              onLeadUpdated();
+            }}
+          />
+        </TabsContent>
+
+        <TabsContent value="WhatsApp" className="mt-0">
+          <WhatsAppTabPanel
+            key={lead.id}
+            lead={lead}
+            onDraftUpdated={(draft) => {
+              setLead((prev) => (prev ? { ...prev, whatsappDraft: draft } : prev));
+            }}
             onSent={() => {
               load({ silent: true });
               onLeadUpdated();

@@ -27,17 +27,17 @@ describe("getWriterFewShotExample", () => {
       "gifting-sweets",
     );
     expect(example.toLowerCase()).toContain("forgotten by the next day");
-    expect(example.toLowerCase()).toContain("handcraft traditional sweets straight from our own farm to the box");
-    expect(example.toLowerCase()).toContain("sample box to your office as our treat");
+    expect(example.toLowerCase()).toContain("crafted fresh every morning with organic milk, ghee, and khova from our own farm");
+    expect(example.toLowerCase()).toContain("sample box to techcorp as our treat");
     expect(example.toLowerCase()).toContain("tasting is believing");
-    expect(example.toLowerCase()).toContain("100% pure ghee");
+    expect(example.toLowerCase()).toContain("we never add preservatives or chemicals");
     expect(example).toMatch(/^Best,$/m);
     expect(example.toLowerCase()).toContain("employees and clients");
     expect(example.toLowerCase()).toContain("organic milk");
-    expect(example.toLowerCase()).toContain("own dairy");
+    expect(example.toLowerCase()).toContain("own farm");
     expect(example).toMatch(/Sample box for festive tasting/i);
-    expect(example).toMatch(/No fillers\. No mass production/);
-    expect(example).toMatch(/zero preservatives/);
+    expect(example).toMatch(/farm-fresh mithai/);
+    expect(example).toMatch(/never add preservatives or chemicals/);
     expect(example.toLowerCase()).not.toContain("offers traditional");
     expect(example).not.toMatch(/No worries/i);
   });
@@ -53,7 +53,7 @@ describe("getWriterFewShotExample", () => {
       "gifting-sweets",
       "store_opening",
     );
-    expect(opening).toMatch(/store launch/i);
+    expect(opening).toMatch(/store coming up|store launch/i);
     expect(opening.toLowerCase()).not.toMatch(/diwali|festive tasting/);
 
     const birthday = getWriterFewShotExample(

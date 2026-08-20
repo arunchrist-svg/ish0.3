@@ -102,3 +102,11 @@ export function pickBestEmail(candidates: string[]): string | undefined {
 export function pickBestPhone(candidates: string[]): string | undefined {
   return candidates.map(sanitizePhone).filter(Boolean)[0];
 }
+
+/** Prefer an enriched WhatsApp-able mobile, else a sanitized scout number. */
+export function resolveSavedWhatsAppPhone(
+  scoutPhone?: string | null,
+  enrichedPhone?: string | null,
+): string | undefined {
+  return sanitizePhone(enrichedPhone) ?? sanitizePhone(scoutPhone);
+}

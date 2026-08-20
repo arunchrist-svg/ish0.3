@@ -9,7 +9,7 @@ export const giftingSweetsPack: VerticalPack = {
     vertical: "sweets_gifting",
     productSummary:
       "Premium pure-ghee mithai, dry fruit hampers, and curated Diwali gift boxes. Bulk pricing from ₹500/person for 200+ employees. Custom-branded boxes and pan-India delivery.",
-    buyerPersonas: ["HR Director", "HR Manager", "Admin Head", "Procurement Manager"],
+    buyerPersonas: ["HR Director", "Head of HR", "Procurement Head", "Procurement Manager"],
     toneNotes:
       "Plain and professional. Focus on mithai, hampers, and tasting samples. Match the occasion (festival, opening, birthday, pantry). Not salesy.",
   },

@@ -11,6 +11,7 @@ type Props = {
   open: boolean;
   mode: "create" | "edit";
   initial?: LeadDetailRecord | null;
+  createDraft?: LeadFormInput | null;
   onClose: () => void;
   onSubmit: (values: LeadFormInput) => Promise<void>;
 };
@@ -21,7 +22,7 @@ const fieldClass = cn(
   "placeholder:text-brand-ink-faint outline-none shadow-[var(--shadow-brand-sm)] focus:border-brand-stratus-blue/40 focus:ring-2 focus:ring-brand-stratus-blue/12",
 );
 
-export function LeadFormModal({ open, mode, initial, onClose, onSubmit }: Props) {
+export function LeadFormModal({ open, mode, initial, createDraft, onClose, onSubmit }: Props) {
   const [name, setName] = useState("");
   const [title, setTitle] = useState("");
   const [email, setEmail] = useState("");
@@ -46,16 +47,16 @@ export function LeadFormModal({ open, mode, initial, onClose, onSubmit }: Props)
       setCity(initial.city === "—" ? "" : initial.city);
       setScore(String(initial.score ?? 60));
     } else {
-      setName("");
-      setTitle("");
-      setEmail("");
-      setPhone("");
-      setLinkedIn("");
-      setCompany("");
-      setCity("");
-      setScore("60");
+      setName(createDraft?.name ?? "");
+      setTitle(createDraft?.title ?? "");
+      setEmail(createDraft?.email ?? "");
+      setPhone(createDraft?.phone ?? "");
+      setLinkedIn(createDraft?.linkedIn ?? "");
+      setCompany(createDraft?.company ?? "");
+      setCity(createDraft?.city ?? "");
+      setScore(String(createDraft?.score ?? 60));
     }
-  }, [open, mode, initial]);
+  }, [open, mode, initial, createDraft]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
