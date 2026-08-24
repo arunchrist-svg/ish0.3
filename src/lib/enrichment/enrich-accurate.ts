@@ -3,6 +3,7 @@ import {
   FREE_ENRICH_PROVIDER_ORDER,
   PAID_ENRICH_PROVIDER_ORDER,
   PAID_PROVIDER_IDS,
+  candidatesHaveEmail,
   candidatesHaveWhatsAppMobile,
   isProviderConfigured,
   shouldStopOnPersonalEmail,
@@ -141,9 +142,10 @@ export async function enrichContactAccurate(
 
     if (
       providerId === "zintlr" &&
-      candidatesHaveWhatsAppMobile(candidates.map((c) => c.contact.phone))
+      candidatesHaveWhatsAppMobile(candidates.map((c) => c.contact.phone)) &&
+      candidatesHaveEmail(candidates.map((c) => c.contact.email))
     ) {
-      attempts.push({ providerId, status: "empty", message: "Skipped, mobile already found" });
+      attempts.push({ providerId, status: "empty", message: "Skipped, email and mobile already found" });
       continue;
     }
 

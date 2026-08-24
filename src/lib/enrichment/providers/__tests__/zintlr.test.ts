@@ -33,9 +33,32 @@ describe("zintlr enrich provider", () => {
     expect(JSON.parse(init.body)).toMatchObject({
       ln_url: "https://www.linkedin.com/in/priya-sharma",
       phone_unlock: true,
-      email_unlock: false,
+      email_unlock: true,
     });
     expect(init.headers["Access-Token"]).toBe("test-token");
+  });
+
+  it("unlocks email from LinkedIn when Prospeo-style providers miss", async () => {
+    stubKeys();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          phone: ["+91 98450 12345"],
+          email: ["priya.sharma@testcorp.in"],
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await zintlrEnrichProvider.enrich({
+      name: "Priya Sharma",
+      company: "Test Corp",
+      linkedinUrl: "https://www.linkedin.com/in/priya-sharma",
+    });
+
+    expect(result?.contact.email).toBe("priya.sharma@testcorp.in");
+    expect(result?.contact.phone).toBe("9845012345");
   });
 
   it("falls back to email-to-phone when LinkedIn is missing", async () => {

@@ -185,7 +185,7 @@ export const prospeoProvider: EnrichmentProvider = {
       const classic = matchedViaLinkedIn ? withoutLinkedIn(data) : null;
       if (!classic) return null;
 
-      const byName = await resolveProspeoEmail(apiKey, classic, { allowUnverified: false });
+      const byName = await resolveProspeoEmail(apiKey, classic, { allowUnverified: true });
       if (!byName) return null;
       return toEnrichmentResult(input, byName.body, byName.email);
     } catch (e) {

@@ -48,9 +48,17 @@ export function hasAnyEnrichmentProvider(): boolean {
   return true;
 }
 
-/** Insert Zintlr after free web sources and before Google Places. */
+/** Insert Zintlr after paid email finders (or before Places on free chains). Email first. */
 export function withZintlrPhoneProvider(chain: EnrichmentProviderId[]): EnrichmentProviderId[] {
   if (!hasZintlrKeys() || chain.includes("zintlr")) return chain;
+  const lastPaidIdx = Math.max(
+    chain.indexOf("prospeo"),
+    chain.indexOf("hunter"),
+    chain.indexOf("apollo"),
+  );
+  if (lastPaidIdx >= 0) {
+    return [...chain.slice(0, lastPaidIdx + 1), "zintlr", ...chain.slice(lastPaidIdx + 1)];
+  }
   const placesIdx = chain.indexOf("google_places");
   if (placesIdx >= 0) {
     return [...chain.slice(0, placesIdx), "zintlr", ...chain.slice(placesIdx)];
@@ -144,4 +152,8 @@ export function candidatesHaveWhatsAppMobile(
   phones: Array<string | null | undefined>,
 ): boolean {
   return phones.some((phone) => Boolean(sanitizePhone(phone)));
+}
+
+export function candidatesHaveEmail(emails: Array<string | null | undefined>): boolean {
+  return emails.some((email) => Boolean(sanitizeEmail(email)));
 }

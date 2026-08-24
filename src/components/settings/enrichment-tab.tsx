@@ -122,8 +122,8 @@ export function EnrichmentTab({
             <span className="text-[13px] font-semibold text-brand-ink">WhatsApp mobiles</span>
             <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
               {zintlrConfigured
-                ? "Optional. Zintlr unlocks an India mobile on save when free sources miss."
-                : "Optional for now. Start with emails. Add Zintlr later if you need WhatsApp mobiles."}
+                ? "Optional. Zintlr unlocks India email + mobile from LinkedIn when Prospeo/Hunter miss."
+                : "Optional. Add Zintlr keys if you want India LinkedIn email + WhatsApp mobile unlock."}
             </p>
           </div>
           <span className="shrink-0 text-[12px] font-medium text-brand-ink-soft">

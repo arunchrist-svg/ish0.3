@@ -167,6 +167,11 @@ describe("prospeo enrich provider", () => {
           ok: false,
           status: 400,
           json: async () => ({ error: true, error_code: "NO_MATCH" }),
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          json: async () => ({ error: true, error_code: "NO_MATCH" }),
         }),
     );
 

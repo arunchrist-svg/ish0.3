@@ -26,6 +26,18 @@ describe("WhatsApp mobile enrich chain", () => {
     expect(providerChainForEnrichSetting("website_email", "free")).toContain("zintlr");
   });
 
+  it("places Zintlr right after paid email finders for email-first unlock", () => {
+    vi.stubEnv("ZINTLR_ACCESS_TOKEN", "token");
+    vi.stubEnv("ZINTLR_SECRET_KEY", "secret");
+    vi.stubEnv("PROSPEO_API_KEY", "pk");
+    vi.stubEnv("APOLLO_API_KEY", "apollo");
+    const chain = providerChainForEnrichSetting("prospeo", "paid");
+    const prospeoIdx = chain.indexOf("prospeo");
+    const zintlrIdx = chain.indexOf("zintlr");
+    expect(zintlrIdx).toBeGreaterThan(prospeoIdx);
+    expect(zintlrIdx).toBeLessThan(chain.indexOf("website_email"));
+  });
+
   it("does not add Zintlr when enrich provider is none", () => {
     vi.stubEnv("ZINTLR_ACCESS_TOKEN", "token");
     vi.stubEnv("ZINTLR_SECRET_KEY", "secret");

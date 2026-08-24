@@ -1,5 +1,5 @@
 import { linkedInSlug, normalizeLinkedInUrl } from "@/lib/utils";
-import { pickBestPhone, sanitizePhone } from "../validate-contact";
+import { pickBestEmail, pickBestPhone, sanitizeEmail, sanitizePhone } from "../validate-contact";
 import { hasZintlrKeys } from "../config";
 import { getZintlrAccessToken, getZintlrSecretKey } from "../request-context";
 import type { EnrichmentInput, EnrichmentProvider, EnrichmentResult } from "../enrich-types";
@@ -39,6 +39,31 @@ function collectPhones(payload: unknown): string[] {
   return Array.from(found);
 }
 
+function collectEmails(payload: unknown): string[] {
+  const found = new Set<string>();
+
+  const visit = (value: unknown, keyHint = ""): void => {
+    if (typeof value === "string") {
+      if (keyHint && /phone|mobile|dial|tel/i.test(keyHint) && !value.includes("@")) return;
+      const email = sanitizeEmail(value);
+      if (email) found.add(email);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, keyHint);
+      return;
+    }
+    if (value && typeof value === "object") {
+      for (const [key, nested] of Object.entries(value)) {
+        visit(nested, key);
+      }
+    }
+  };
+
+  visit(payload);
+  return Array.from(found);
+}
+
 async function zintlrPost(path: string, body: object): Promise<unknown> {
   const token = getZintlrAccessToken();
   const secret = getZintlrSecretKey();
@@ -60,13 +85,19 @@ async function zintlrPost(path: string, body: object): Promise<unknown> {
   return res.json() as Promise<unknown>;
 }
 
-async function unlockFromLinkedIn(linkedinUrl: string): Promise<string | undefined> {
+async function unlockFromLinkedIn(
+  linkedinUrl: string,
+): Promise<{ phone?: string; email?: string }> {
   const data = await zintlrPost("/b2b2b/v1/ln-url-to-ph-email/", {
     ln_url: linkedinUrl,
     phone_unlock: true,
-    email_unlock: false,
+    // Email is the primary outreach channel; unlock when LinkedIn is the match key.
+    email_unlock: true,
   });
-  return pickBestPhone(collectPhones(data));
+  return {
+    phone: pickBestPhone(collectPhones(data)),
+    email: pickBestEmail(collectEmails(data)),
+  };
 }
 
 async function unlockFromEmail(email: string): Promise<string | undefined> {
@@ -78,7 +109,7 @@ async function unlockFromEmail(email: string): Promise<string | undefined> {
 
 export const zintlrEnrichProvider: EnrichmentProvider = {
   id: "zintlr",
-  name: "Zintlr India mobile",
+  name: "Zintlr India email + mobile",
   capabilities: ["enrich"],
   isConfigured: () => hasZintlrKeys(),
 
@@ -86,13 +117,31 @@ export const zintlrEnrichProvider: EnrichmentProvider = {
     if (!hasZintlrKeys()) return null;
 
     const linkedinUrl = personLinkedInUrl(input.linkedinUrl);
-    const email = input.email?.trim();
-    if (!linkedinUrl && !email) return null;
+    const existingEmail = sanitizeEmail(input.email);
+    if (!linkedinUrl && !existingEmail) return null;
 
     try {
-      const phone = linkedinUrl
-        ? await unlockFromLinkedIn(linkedinUrl)
-        : await unlockFromEmail(email!);
+      if (linkedinUrl) {
+        const unlocked = await unlockFromLinkedIn(linkedinUrl);
+        const email = unlocked.email ?? existingEmail;
+        const phone = unlocked.phone;
+        if (!email && !phone) return null;
+
+        return {
+          providerId: "zintlr",
+          contact: {
+            name: input.name,
+            title: input.title,
+            company: input.company,
+            city: input.city,
+            email,
+            phone,
+            linkedinUrl: linkedinUrl ?? input.linkedinUrl,
+          },
+        };
+      }
+
+      const phone = await unlockFromEmail(existingEmail!);
       if (!phone) return null;
 
       return {
@@ -102,9 +151,9 @@ export const zintlrEnrichProvider: EnrichmentProvider = {
           title: input.title,
           company: input.company,
           city: input.city,
-          email: input.email,
+          email: existingEmail,
           phone,
-          linkedinUrl: linkedinUrl ?? input.linkedinUrl,
+          linkedinUrl: input.linkedinUrl,
         },
       };
     } catch (e) {
