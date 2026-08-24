@@ -349,6 +349,7 @@ export function CompanyOverviewPanel({
           logo={logo}
           size="xl"
           rounded="rounded-2xl"
+          wikiLookup
         />
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="break-words text-[17px] font-bold leading-tight text-brand-ink">{name}</div>

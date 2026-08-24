@@ -293,6 +293,7 @@ export async function createManualLead(input: CreateLeadInput): Promise<{ id: st
       owner: input.owner?.trim() || null,
       researcherEligible: true,
       tags: input.tags?.length ? input.tags : defaultTags,
+      createdByUserId: input.actorId ?? null,
     })
     .returning();
 

@@ -23,6 +23,11 @@ export function inboxSetupGuide(id: SmtpServerId): {
           detail: `Open ${mailUrl} with the inbox that will send outreach (for example prasantmishra@indiasweethouse.in).`,
         },
         {
+          title: "Enable IMAP access",
+          detail:
+            "In Zoho Mail, open Settings → Mail Accounts → your address → IMAP Access → Enable. Sending can work without this, but Sync replies in Nebula needs IMAP turned on.",
+        },
+        {
           title: "Create an App Password",
           detail:
             "Go to My Account → Security → App Passwords. Generate one for Mail. Copy the 12–16 character password. Do not use your normal Zoho login password.",

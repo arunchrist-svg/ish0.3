@@ -17,6 +17,7 @@ import { eq } from "drizzle-orm";
 export type ScoutBatchParams = {
   tenantId: string;
   workspaceId: string;
+  userId?: string;
   cities?: string[];
   industries?: string[];
   dataMode?: DataMode;
@@ -144,6 +145,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
         leadSource: "scout_agent",
         tenantId: params.tenantId,
         workspaceId: params.workspaceId,
+        createdByUserId: params.userId,
         enrichmentConfig: { ...enrichmentConfig, enrichOnImport: true },
       });
 

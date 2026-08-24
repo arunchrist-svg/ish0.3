@@ -4,10 +4,19 @@ import { db } from "@/db";
 import { eq, sql } from "drizzle-orm";
 import { linkedinConnections } from "@/db/schema";
 import { isLinkedInOAuthConfigured, LINKEDIN_MEMBER_COOKIE } from "@/lib/linkedin/oauth";
+import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
+import { canManageIntegrations } from "@/lib/auth/permissions";
+import { handleApiError } from "@/lib/api-errors";
 
 const STALE_DAYS = 30;
 
 export async function GET() {
+  try {
+    const ctx = await requireTenantContext();
+    if (!canManageIntegrations(ctx.role, ctx.platformRole)) {
+      throw new ForbiddenError("Owner access required");
+    }
+
   const configured = isLinkedInOAuthConfigured();
   const cookieStore = await cookies();
   const activeMemberId = cookieStore.get(LINKEDIN_MEMBER_COOKIE)?.value;
@@ -54,4 +63,7 @@ export async function GET() {
       lastImportAt: m.lastImportAt?.toISOString() ?? null,
     })),
   });
+  } catch (e) {
+    return handleApiError(e, "[linkedin/status]");
+  }
 }

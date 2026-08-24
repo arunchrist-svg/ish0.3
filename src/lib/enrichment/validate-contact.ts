@@ -39,6 +39,27 @@ export function sanitizeEmail(email?: string | null): string | undefined {
   return isValidEmail(cleaned) ? cleaned : undefined;
 }
 
+const EMAIL_IN_TEXT =
+  /[a-z0-9._%+-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/gi;
+
+/** Pull valid addresses out of cells like `work@co.com; name@gmail.com`. */
+export function extractEmailsFromCell(raw?: string | null): string[] {
+  if (!raw?.trim()) return [];
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string | undefined) => {
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    found.push(value);
+  };
+  for (const part of raw.split(/[;,|/]+/)) {
+    add(sanitizeEmail(part));
+  }
+  const matches = raw.match(EMAIL_IN_TEXT) ?? [];
+  for (const match of matches) add(sanitizeEmail(match));
+  return found;
+}
+
 export function normalizeIndianPhoneDigits(phone: string): string | null {
   let digits = phone.replace(/\D/g, "");
   if (digits.startsWith("91") && digits.length >= 12) digits = digits.slice(2);

@@ -8,7 +8,6 @@ import { HubAlertsButton } from "@/components/sales-accelerator/hub-alerts-butto
 
 type MobileHeaderProps = {
   title: string;
-  subtitle?: string;
   showBack?: boolean;
   onBack?: () => void;
   rightSlot?: React.ReactNode;
@@ -19,7 +18,6 @@ type MobileHeaderProps = {
 
 export function MobileHeader({
   title,
-  subtitle,
   showBack = false,
   onBack,
   rightSlot,
@@ -66,7 +64,6 @@ export function MobileHeader({
         </div>
         <div className={cn("mt-2 min-w-0", scrolled ? "hidden" : "block")}>
           <h1 className={text.largeTitle}>{title}</h1>
-          {subtitle ? <p className={cn("mt-1 truncate", text.listSubtitle)}>{subtitle}</p> : null}
         </div>
         {scrolled ? (
           <h1 className={cn("mt-1 truncate text-center", text.pageTitle)}>{title}</h1>
@@ -97,7 +94,6 @@ export function MobileHeader({
       )}
       <div className="min-w-0 flex-1">
         <h1 className={cn("truncate", text.pageTitle)}>{title}</h1>
-        {subtitle ? <p className={cn("truncate", text.caption)}>{subtitle}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5"><HubAlertsButton /><>{rightSlot}</></div>
     </header>

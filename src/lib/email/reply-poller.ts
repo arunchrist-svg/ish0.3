@@ -5,6 +5,11 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { EmailConfig, EmailProvider } from "@/lib/email/config";
 import { imapHostForSmtp, resolveSmtpCredentials } from "@/lib/email/config";
 import {
+  chunkUids,
+  formatImapPollError,
+  searchRecentInboxUids,
+} from "@/lib/email/imap-inbox";
+import {
   findWatchLeadForFrom,
   indexWatchLeadsByEmail,
   mergeWatchLeadRows,
@@ -140,6 +145,7 @@ async function pollImapReplies(
     secure: true,
     auth: { user: creds.user, pass: creds.pass },
     logger: false,
+    disableAutoIdle: true,
   });
 
   const newlyProcessedIds: string[] = [];
@@ -148,56 +154,60 @@ async function pollImapReplies(
     await client.connect();
     const lock = await client.getMailboxLock("INBOX");
     try {
-      const uids = await client.search({ since }, { uid: true });
-      const uidList = Array.isArray(uids) ? uids : [];
+      const uidList = await searchRecentInboxUids(client, since);
       if (uidList.length === 0) {
+        await client.logout();
+        await persistPollState(workspaceId, config, newlyProcessedIds);
         return result;
       }
-      for await (const message of client.fetch(uidList, { uid: true, envelope: true, source: true }, { uid: true })) {
-        const messageDate = message.envelope?.date ?? new Date();
-        if (messageDate < since) continue;
-        result.checked++;
-        const fromAddresses = (message.envelope?.from ?? []).map((addr) => addr.address).filter(Boolean);
-        if (fromAddresses.length === 0) continue;
 
-        const messageId = message.envelope?.messageId ?? `uid:${message.uid}`;
-        if (processedIds.has(messageId)) {
-          result.skipped++;
-          continue;
-        }
+      for (const batch of chunkUids(uidList)) {
+        for await (const message of client.fetch(batch, { uid: true, envelope: true, source: true }, { uid: true })) {
+          const messageDate = message.envelope?.date ?? new Date();
+          if (messageDate < since) continue;
+          result.checked++;
+          const fromAddresses = (message.envelope?.from ?? []).map((addr) => addr.address).filter(Boolean);
+          if (fromAddresses.length === 0) continue;
 
-        const lead = findWatchLeadForFrom(fromAddresses, emailToLead);
-        if (!lead) continue;
-
-        if (lead.firstSentAt && messageDate < lead.firstSentAt) {
-          newlyProcessedIds.push(messageId);
-          result.skipped++;
-          continue;
-        }
-
-        result.matched++;
-        let replyContent = "";
-        if (message.source) {
-          try {
-            const parsed = await simpleParser(message.source);
-            replyContent = extractReplyBody(parsed);
-          } catch (e) {
-            console.error("[reply-poller] parse failed", e);
+          const messageId = message.envelope?.messageId ?? `uid:${message.uid}`;
+          if (processedIds.has(messageId)) {
+            result.skipped++;
+            continue;
           }
-        }
 
-        newlyProcessedIds.push(messageId);
-        const applied = await markProcessedReply({
-          lead,
-          source: "imap_poll",
-          replyContent,
-          inboundMessageId: messageId,
-        });
-        if (applied) {
-          result.processed++;
-          forgetLead(emailToLead, lead);
-        } else {
-          result.skipped++;
+          const lead = findWatchLeadForFrom(fromAddresses, emailToLead);
+          if (!lead) continue;
+
+          if (lead.firstSentAt && messageDate < lead.firstSentAt) {
+            newlyProcessedIds.push(messageId);
+            result.skipped++;
+            continue;
+          }
+
+          result.matched++;
+          let replyContent = "";
+          if (message.source) {
+            try {
+              const parsed = await simpleParser(message.source);
+              replyContent = extractReplyBody(parsed);
+            } catch (e) {
+              console.error("[reply-poller] parse failed", e);
+            }
+          }
+
+          newlyProcessedIds.push(messageId);
+          const applied = await markProcessedReply({
+            lead,
+            source: "imap_poll",
+            replyContent,
+            inboundMessageId: messageId,
+          });
+          if (applied) {
+            result.processed++;
+            forgetLead(emailToLead, lead);
+          } else {
+            result.skipped++;
+          }
         }
       }
     } finally {
@@ -205,8 +215,7 @@ async function pollImapReplies(
     }
     await client.logout();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    result.errors.push(`IMAP error: ${msg}`);
+    result.errors.push(formatImapPollError(e, imap.host));
     console.error("[reply-poller]", workspaceId, e);
   }
 

@@ -5,6 +5,66 @@ import { requireTenantContext } from "@/lib/tenant";
 
 const SCOUT_SOURCES = ["scout", "scout_wizard", "scout_agent"];
 
+type AccountRow = typeof accounts.$inferSelect;
+
+type DirectoryCompanyEntry = {
+  id: string;
+  name: string;
+  city: string;
+  industry: string;
+  employees: string;
+  fitScore: number;
+  domain?: string;
+  website?: string;
+  companyOverview?: AccountRow["companyOverview"];
+  overviewEnrichedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  contacts: {
+    leadId: string;
+    contactId: string;
+    name: string;
+    title: string;
+    email: string;
+    emailStatus: string;
+    phone?: string;
+    linkedIn?: string;
+    status: string;
+    leadSource: string;
+    score: number;
+    savedAt: string;
+    isKeyDM: boolean;
+  }[];
+};
+
+function blankLabel(value: string | null | undefined, fallback = "Unknown"): string {
+  const t = value?.trim() ?? "";
+  if (!t || t === "—" || t === "-" || /^n\/?a$/i.test(t)) return fallback;
+  return t;
+}
+
+function accountToDirectoryCompany(account: AccountRow): DirectoryCompanyEntry {
+  return {
+    id: account.id,
+    name: account.name,
+    city: blankLabel(account.city),
+    industry: blankLabel(account.industry),
+    employees: blankLabel(account.employees, "Unknown"),
+    fitScore: account.fitScore ?? 60,
+    domain: account.domain ?? undefined,
+    website: account.website ?? undefined,
+    companyOverview: account.companyOverview ?? undefined,
+    overviewEnrichedAt: account.overviewEnrichedAt?.toISOString(),
+    createdAt: account.createdAt.toISOString(),
+    updatedAt: account.updatedAt.toISOString(),
+    contacts: [],
+  };
+}
+
+function isSampleAccount(dataSource: string | null | undefined): boolean {
+  return (dataSource ?? "").toLowerCase() === "sample";
+}
+
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
@@ -20,6 +80,7 @@ export async function GET() {
       .where(
         and(
           eq(leads.tenantId, ctx.tenantId),
+          eq(leads.workspaceId, ctx.workspaceId),
           or(
             ...SCOUT_SOURCES.map((s) => eq(leads.leadSource, s)),
             like(leads.leadSource, "scout%"),
@@ -28,35 +89,7 @@ export async function GET() {
       )
       .orderBy(desc(leads.createdAt));
 
-    const companyMap = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        city: string;
-        industry: string;
-        employees: string;
-        fitScore: number;
-        domain?: string;
-        website?: string;
-        overviewEnrichedAt?: string;
-        contacts: {
-          leadId: string;
-          contactId: string;
-          name: string;
-          title: string;
-          email: string;
-          emailStatus: string;
-          phone?: string;
-          linkedIn?: string;
-          status: string;
-          leadSource: string;
-          score: number;
-          savedAt: string;
-          isKeyDM: boolean;
-        }[];
-      }
-    >();
+    const companyMap = new Map<string, DirectoryCompanyEntry>();
 
     const allContacts: {
       leadId: string;
@@ -80,26 +113,15 @@ export async function GET() {
     for (const row of rows) {
       const accountId = row.account.id;
       if (!companyMap.has(accountId)) {
-        companyMap.set(accountId, {
-          id: accountId,
-          name: row.account.name,
-          city: row.account.city ?? "—",
-          industry: row.account.industry ?? "—",
-          employees: row.account.employees ?? "—",
-          fitScore: row.account.fitScore ?? 60,
-          domain: row.account.domain ?? undefined,
-          website: row.account.website ?? undefined,
-          overviewEnrichedAt: row.account.overviewEnrichedAt?.toISOString(),
-          contacts: [],
-        });
+        companyMap.set(accountId, accountToDirectoryCompany(row.account));
       }
 
       const contactEntry = {
         leadId: row.lead.id,
         contactId: row.contact.id,
         name: row.contact.name,
-        title: row.contact.title ?? "—",
-        email: row.contact.email ?? "—",
+        title: blankLabel(row.contact.title, "Unknown"),
+        email: blankLabel(row.contact.email, "Unknown"),
         emailStatus: row.contact.emailStatus ?? "missing",
         phone: row.contact.phone ?? undefined,
         linkedIn: row.contact.linkedIn ?? undefined,
@@ -115,9 +137,23 @@ export async function GET() {
         ...contactEntry,
         companyId: accountId,
         companyName: row.account.name,
-        companyCity: row.account.city ?? "—",
-        companyIndustry: row.account.industry ?? "—",
+        companyCity: blankLabel(row.account.city),
+        companyIndustry: blankLabel(row.account.industry),
       });
+    }
+
+    const savedAccounts = await db
+      .select()
+      .from(accounts)
+      .where(
+        and(eq(accounts.tenantId, ctx.tenantId), eq(accounts.workspaceId, ctx.workspaceId)),
+      )
+      .orderBy(desc(accounts.updatedAt));
+
+    for (const account of savedAccounts) {
+      if (isSampleAccount(account.dataSource)) continue;
+      if (companyMap.has(account.id)) continue;
+      companyMap.set(account.id, accountToDirectoryCompany(account));
     }
 
     const companies = Array.from(companyMap.values()).sort((a, b) =>

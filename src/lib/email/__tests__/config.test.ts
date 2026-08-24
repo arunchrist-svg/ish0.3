@@ -38,6 +38,12 @@ describe("resolveEmailConfig", () => {
     expect(resolved.fromName).toBe("Custom Team");
   });
 
+  it("defaults new workspaces to a new-inbox daily cap of 30", () => {
+    const resolved = resolveEmailConfig({});
+    expect(resolved.inboxWarmupStage).toBe("new");
+    expect(resolved.dailySendCapPerDomain).toBe(30);
+  });
+
   it("defaults provider to smtp with empty credentials", () => {
     process.env.SMTP_USER = "env@gmail.com";
     process.env.SMTP_PASS = "env-pass";

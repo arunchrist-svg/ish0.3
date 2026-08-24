@@ -24,11 +24,10 @@ describe("ISH golden copy shape", () => {
   it("Sequence 1 stays on the ISH file wording", () => {
     expect(looksLikeLlmJsonDump(seq1.emailBody)).toBe(false);
     expect(seq1.emailBody).toContain("\n\n");
-    expect(seq1.emailBody).toMatch(/Most corporate festival gifts are forgotten by the next day/);
-    expect(seq1.emailBody).toMatch(/crafted fresh every morning with organic milk, ghee, and khova from our own farm/);
-    expect(seq1.emailBody).toMatch(/sample box to Nebula Tech as our treat/i);
-    expect(seq1.emailBody).toMatch(/What is the best delivery address to ship it to\?/);
-    expect(seq1.emailBody).toMatch(/never add preservatives or chemicals/);
+    expect(seq1.emailBody).toMatch(/shouldn't just be another line item/);
+    expect(seq1.emailBody).toMatch(/value your team at Nebula Tech/);
+    expect(seq1.emailBody).toMatch(/Karma Farm/);
+    expect(seq1.emailBody).toMatch(/best delivery address to ship it to/);
     expect(seq1.emailBody).not.toMatch(/No worries/i);
     expect(seq1.emailBody).not.toMatch(/\boffers\b|\bspecializes in\b/i);
     expect(seq1.emailBody).not.toMatch(/\b\d{2,}\s*(employees|staff|headcount)\b/i);
@@ -43,19 +42,11 @@ describe("ISH golden copy shape", () => {
     expect(isNearParaphrase(seq1.emailBody, baseline, BASELINE_PARAPHRASE_THRESHOLD, "hook")).toBe(true);
   });
 
-  it("Sequence 3 is a different thesis from Sequence 1", () => {
-    expect(seq3Mfg.emailBodyC).toMatch(/Diwali gifting to employees and clients at SEG Automotive/);
-    expect(seq3Mfg.emailBodyC).toMatch(/farm-fresh mithai/);
-    expect(seq3Mfg.emailBodyC).toContain("SEG Automotive");
-    const baseline = getBaselineEmail({
-      sequencePosition: 1,
-      contactFirstName: "Kavitha",
-      senderFirstName: "Srilaksha",
-      brandName: "India Sweet House",
-      companyName: "SEG Automotive",
-    });
-    expect(isNearParaphrase(seq3Mfg.emailBodyC, baseline, BASELINE_PARAPHRASE_THRESHOLD, "hook")).toBe(
-      false,
-    );
+  it("Option B is a different ISH story from Option A", () => {
+    expect(seq3Mfg.emailBodyB).toMatch(/same care we use at home|evaluate the quality yourself/);
+    expect(seq3Mfg.emailBodyB).toContain("SEG Automotive");
+    expect(seq3Mfg.emailBodyB).not.toMatch(/Manikya/);
+    expect(seq3Mfg.emailBody).toMatch(/home-style warmth/);
+    expect(seq3Mfg.emailBodyB).not.toMatch(/home-style warmth/);
   });
 });

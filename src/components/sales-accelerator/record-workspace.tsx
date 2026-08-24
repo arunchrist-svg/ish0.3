@@ -148,16 +148,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
       const data = await fetchLead(leadId);
       setLead((prev) => {
         if (opts?.replaceOutreach) return data;
-        const merged = mergeLeadOutreachFromServer(prev, data);
-        if (
-          prev?.id === data.id &&
-          (merged.outreachSequence?.length ?? 0) > 0 &&
-          !(data.outreachSequence?.length) &&
-          prev.emailThread
-        ) {
-          return { ...merged, emailThread: prev.emailThread };
-        }
-        return merged;
+        return mergeLeadOutreachFromServer(prev, data);
       });
       setLoadError(null);
     } catch (e) {
@@ -367,7 +358,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
               onLeadUpdated={onLeadUpdated}
               onRefresh={refreshInline}
             />
-            <LeadScoreCard record={record} current={current} />
+            <LeadScoreCard record={record} current={current} createdByName={lead.createdByName} />
           </div>
 
 
@@ -404,7 +395,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
             onDraftUpdated={(draft, sequence) => {
               applyDraft(draft, sequence);
             }}
-            onSilentRefresh={() => load({ silent: true })}
+            onSilentRefresh={(opts) => load({ silent: true, ...opts })}
             onSent={() => {
               void load({ silent: true, replaceOutreach: true });
               onLeadUpdated();

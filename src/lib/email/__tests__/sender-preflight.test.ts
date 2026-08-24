@@ -11,15 +11,7 @@ vi.mock("@/lib/email/sender-dns", async () => {
 
 vi.mock("@/lib/email/sender-volume", () => ({
   countSendsLast24h: vi.fn(),
-  assertVolumeWithinCap: vi.fn((p: { sendsLast24h: number; dailyCap: number; projectedAdditional?: number }) => {
-    const projected = Math.max(0, p.projectedAdditional ?? 0);
-    const projectedTotal = p.sendsLast24h + projected;
-    return {
-      ok: projectedTotal <= p.dailyCap,
-      projectedTotal,
-      overBy: Math.max(0, projectedTotal - p.dailyCap),
-    };
-  }),
+  countSendsInRange: vi.fn(),
 }));
 
 vi.mock("@/lib/email/sender-bounce-rate", () => ({
@@ -31,7 +23,7 @@ vi.mock("@/lib/settings/email-settings", () => ({
 }));
 
 import { checkDomainAuth } from "@/lib/email/sender-dns";
-import { countSendsLast24h } from "@/lib/email/sender-volume";
+import { countSendsInRange, countSendsLast24h } from "@/lib/email/sender-volume";
 import { getWorkspaceBounceStats } from "@/lib/email/sender-bounce-rate";
 import { setOutreachPaused } from "@/lib/settings/email-settings";
 import {
@@ -45,6 +37,7 @@ const baseConfig = {
   sendMode: "live",
   fromAddress: "hello@acme.com",
   dailySendCapPerDomain: 50,
+  inboxWarmupStage: "trusted",
   dkimSelector: "google",
   outreachPaused: false,
 } as EmailConfig;
@@ -66,6 +59,7 @@ describe("runSenderHealthCheck safety", () => {
     vi.clearAllMocks();
     vi.mocked(checkDomainAuth).mockResolvedValue(passAuth);
     vi.mocked(countSendsLast24h).mockResolvedValue(10);
+    vi.mocked(countSendsInRange).mockResolvedValue(10);
     vi.mocked(getWorkspaceBounceStats).mockResolvedValue({
       sent: 100,
       bounced: 1,
@@ -99,5 +93,32 @@ describe("runSenderHealthCheck safety", () => {
       SenderPreflightError,
     );
     expect(setOutreachPaused).toHaveBeenCalledWith(true, "ws-1");
+  });
+
+  it("hard-blocks when remaining quota is 0", async () => {
+    vi.mocked(countSendsLast24h).mockResolvedValue(50);
+    await expect(
+      assertSenderPreflight(baseConfig, "ws-1", { projectedAdditional: 1, override: true }),
+    ).rejects.toMatchObject({
+      code: "SENDER_PREFLIGHT_FAILED",
+      canOverride: false,
+    });
+  });
+
+  it("lets the user confirm a burst above the new-inbox recommendation", async () => {
+    const newInbox = {
+      ...baseConfig,
+      inboxWarmupStage: "new",
+      dailySendCapPerDomain: 150,
+    } as EmailConfig;
+    vi.mocked(countSendsLast24h).mockResolvedValue(0);
+    vi.mocked(countSendsInRange).mockResolvedValue(0);
+
+    const blocked = await runSenderHealthCheck(newInbox, "ws-1", { projectedAdditional: 80 });
+    expect(blocked.issues.some((i) => i.id === "warmup_recommend")).toBe(true);
+
+    await expect(
+      assertSenderPreflight(newInbox, "ws-1", { projectedAdditional: 80, override: true }),
+    ).resolves.toMatchObject({ hasCritical: true });
   });
 });

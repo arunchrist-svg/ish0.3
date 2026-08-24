@@ -35,7 +35,7 @@ function BarStepper({
   }
 
   return (
-    <div className="flex flex-nowrap items-center gap-1">
+    <div className="flex flex-nowrap items-center gap-1.5">
       {nodes.map((node, i) => {
         const selected = selectedNodeId === node.id;
         const isDone = node.state === "done";
@@ -48,7 +48,7 @@ function BarStepper({
             : node.label;
 
         return (
-          <div key={node.id} className="flex shrink-0 items-center gap-1">
+          <div key={node.id} className="flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => onNodeSelect?.(node.id)}
@@ -64,8 +64,8 @@ function BarStepper({
                         : displayLabel
               }
               className={cn(
-                "ish-email-tb-pill flex h-6 items-center gap-0.5 rounded-full px-2 text-[10px] font-semibold tracking-wide",
-                node.state === "upcoming" && "opacity-70",
+                "ish-email-tb-pill flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold tracking-wide",
+                node.state === "upcoming" && !selected && "opacity-70",
               )}
               data-state={node.state}
               data-selected={selected ? "true" : undefined}
@@ -94,7 +94,12 @@ function BarStepper({
                       onDraftReply?.();
                     }
                   }}
-                  className="ml-0.5 rounded-full bg-brand-stratus-blue px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)] hover:opacity-90"
+                  className={cn(
+                    "ml-0.5 rounded-full px-1.5 py-0.5 text-[8px] font-bold normal-case tracking-normal",
+                    selected
+                      ? "bg-white/25 text-white"
+                      : "bg-brand-stratus-blue text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)]",
+                  )}
                 >
                   {draftReplyLoading ? "…" : "AI reply"}
                 </span>
@@ -103,8 +108,8 @@ function BarStepper({
             {i < nodes.length - 1 && (
               <div
                 className={cn(
-                  "h-px w-2 rounded-full",
-                  isDone || opened ? "bg-brand-stratus-blue/40" : "bg-brand-stratus-blue/15",
+                  "h-px w-3 rounded-full",
+                  isDone || opened ? "bg-brand-stratus-blue/45" : "bg-brand-stratus-blue/18",
                 )}
               />
             )}

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Copy, ExternalLink, Loader2, UserPlus } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Clock, Copy, ExternalLink, Loader2, Mail, UserPlus, Users } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { cn } from "@/lib/utils";
@@ -13,8 +13,68 @@ type Invite = { id: string; email: string; role: string; expiresAt: string };
 
 const ROLES = ["admin", "member", "viewer"] as const;
 
+const ROLE_LABELS: Record<(typeof ROLES)[number], string> = {
+  admin: "Admin",
+  member: "Member",
+  viewer: "Viewer",
+};
+
 const inputClass =
-  "ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12";
+  "ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2.5 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12";
+
+const selectClass =
+  "rounded-full border border-brand-stratus-blue/25 bg-white/80 px-3 py-1.5 text-[12px] font-semibold capitalize text-brand-ink shadow-[var(--shadow-brand-sm)] outline-none focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12";
+
+const primaryBtnClass =
+  "inline-flex h-[38px] items-center justify-center gap-1.5 rounded-full bg-brand-stratus-blue px-5 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50";
+
+function memberInitials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .map((part) => part[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
+function TeamField({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-[12px] font-semibold text-brand-ink">{label}</label>
+      {children}
+      {hint ? <p className="text-[11px] leading-relaxed text-brand-ink-soft">{hint}</p> : null}
+    </div>
+  );
+}
+
+function RoleBadge({ role }: { role: string }) {
+  if (role === "owner") {
+    return (
+      <span className="rounded-full bg-brand-stratus-blue/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-stratus-blue">
+        Owner
+      </span>
+    );
+  }
+  return (
+    <span className="rounded-full border border-brand-stratus-blue/20 bg-white/80 px-2.5 py-0.5 text-[10px] font-semibold capitalize text-brand-ink-soft">
+      {ROLE_LABELS[role as (typeof ROLES)[number]] ?? role}
+    </span>
+  );
+}
+
+function MemberAvatar({ name }: { name: string }) {
+  return (
+    <div
+      className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-brand-yellow-soft text-[12px] font-bold text-brand-ink shadow-[var(--shadow-brand-sm)] ring-1 ring-brand-stratus-blue/10"
+      aria-hidden
+    >
+      {memberInitials(name)}
+    </div>
+  );
+}
 
 export function TeamTab() {
   const [mode, setMode] = useState<"create" | "invite">("create");
@@ -151,15 +211,25 @@ export function TeamTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 className="size-5 animate-spin text-brand-ink-soft" />
+      <div className="flex flex-1 items-center justify-center py-16 text-[13px] text-brand-ink-faint">
+        <Loader2 className="mr-2 size-4 animate-spin text-brand-stratus-blue" /> Loading team…
       </div>
     );
   }
 
+  const mailHostLabel = SMTP_SERVER_OPTIONS.find((o) => o.value === mailHost)?.label ?? "Zoho India";
+
   return (
     <div className="pb-6">
-      <SettingsGroup title="Add teammate" className="mb-4">
+      <SettingsGroup
+        title="Add teammate"
+        footer={
+          mode === "create"
+            ? "Creates a login immediately. Share the temp password securely."
+            : "Emails a join link plus full inbox setup steps for the mail host you pick."
+        }
+        className="mb-4"
+      >
         <SettingsRow className="justify-between py-2.5">
           <span className="text-[13px] font-semibold text-brand-ink">Method</span>
           <SettingsSegmented
@@ -172,159 +242,241 @@ export function TeamTab() {
           />
         </SettingsRow>
         <SettingsGroupDivider />
-        <form onSubmit={mode === "create" ? handleCreate : handleInvite} className="grid gap-2.5 px-4 py-3 sm:grid-cols-[1fr_auto]">
+        <form onSubmit={mode === "create" ? handleCreate : handleInvite} className="space-y-4 px-4 py-4">
           {mode === "create" ? (
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" required className={inputClass} />
+            <TeamField label="Full name">
+              <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Prashant Mishra" required className={inputClass} />
+            </TeamField>
           ) : null}
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@company.com" required className={cn(inputClass, mode === "invite" && "sm:col-span-1")} />
+
+          <TeamField label="Work email">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="colleague@company.com"
+              required
+              className={inputClass}
+            />
+          </TeamField>
+
           {mode === "create" ? (
-            <input type="url" value={linkedIn} onChange={(e) => setLinkedIn(e.target.value)} placeholder="linkedin.com/in/…" className={cn(inputClass, "sm:col-span-2")} />
+            <TeamField label="LinkedIn (optional)" hint="Used for network matching in Scout.">
+              <input
+                type="url"
+                value={linkedIn}
+                onChange={(e) => setLinkedIn(e.target.value)}
+                placeholder="linkedin.com/in/…"
+                className={inputClass}
+              />
+            </TeamField>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-            <select
+
+          <SettingsRow className="justify-between !px-0 py-0">
+            <span className="text-[13px] font-semibold text-brand-ink">Role</span>
+            <SettingsSegmented
               value={role}
-              onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}
-              className="rounded-full border border-brand-stratus-blue/25 bg-white/80 px-3 py-1.5 text-[12px] font-semibold capitalize text-brand-ink"
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            {mode === "invite" ? (
-              <select
-                value={mailHost}
-                onChange={(e) => setMailHost(e.target.value as SmtpServerId)}
-                className="rounded-full border border-brand-stratus-blue/25 bg-white/80 px-3 py-1.5 text-[12px] font-semibold text-brand-ink"
-                aria-label="Inbox they will send from"
-              >
-                {SMTP_SERVER_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label} setup
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="inline-flex items-center gap-1.5 rounded-full bg-brand-black px-4 py-1.5 text-[12px] font-semibold text-white disabled:opacity-60"
-            >
-              <UserPlus className="size-3.5" />
-              {submitting ? "Working…" : mode === "create" ? "Create" : "Invite by email"}
-            </button>
-          </div>
+              onChange={(next) => setRole(next as (typeof ROLES)[number])}
+              options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+            />
+          </SettingsRow>
+
           {mode === "invite" ? (
-            <p className="text-[11px] leading-relaxed text-brand-ink-soft sm:col-span-2">
-              We email a join link plus full {SMTP_SERVER_OPTIONS.find((o) => o.value === mailHost)?.label} setup steps
-              (App Password, host, verify, test, then live).
-            </p>
+            <>
+              <SettingsRow className="justify-between !px-0 py-0">
+                <div className="min-w-0 pr-3">
+                  <span className="text-[13px] font-semibold text-brand-ink">Inbox setup</span>
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-brand-ink-soft">
+                    Included in the invite email: App Password, host, verify, test, then live.
+                  </p>
+                </div>
+              </SettingsRow>
+              <SettingsSegmented
+                value={mailHost}
+                onChange={(next) => setMailHost(next as SmtpServerId)}
+                options={SMTP_SERVER_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label === "Zoho India" ? "Zoho IN" : option.label,
+                }))}
+                className="w-full justify-center"
+              />
+            </>
           ) : null}
+
+          <button type="submit" disabled={submitting} className={cn(primaryBtnClass, "w-full sm:w-auto")}>
+            {submitting ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" /> Working…
+              </>
+            ) : (
+              <>
+                <UserPlus className="size-3.5" />
+                {mode === "create" ? "Create user" : `Invite with ${mailHostLabel}`}
+              </>
+            )}
+          </button>
+
           {lastTempPassword ? (
-            <div className="rounded-xl bg-brand-yellow-soft/70 px-3 py-2 text-[12px] text-brand-ink sm:col-span-2">
-              Temp password: <span className="font-mono font-bold">{lastTempPassword}</span>
-              <button
-                type="button"
-                className="ml-2 font-semibold underline"
-                onClick={() => {
-                  void navigator.clipboard.writeText(lastTempPassword);
-                  toast.success("Copied");
-                }}
-              >
-                Copy
-              </button>
+            <div className="rounded-xl border border-brand-stratus-yellow/35 bg-brand-yellow-soft/70 px-4 py-3">
+              <p className="text-[12px] font-semibold text-brand-ink">Temp password</p>
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                <code className="rounded-lg bg-white/80 px-2 py-1 font-mono text-[13px] font-bold text-brand-ink">
+                  {lastTempPassword}
+                </code>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-stratus-blue hover:underline"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(lastTempPassword);
+                    toast.success("Copied");
+                  }}
+                >
+                  <Copy className="size-3.5" /> Copy
+                </button>
+              </div>
             </div>
           ) : null}
+
           {lastInviteUrl ? (
-            <div className="flex items-center gap-2 rounded-xl bg-brand-canvas/80 px-3 py-2 text-[11px] sm:col-span-2">
-              <span className="min-w-0 flex-1 truncate font-mono text-brand-ink-soft">{lastInviteUrl}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(lastInviteUrl);
-                  toast.success("Copied");
-                }}
-                className="inline-flex shrink-0 items-center gap-1 font-semibold text-brand-ink"
-              >
-                <Copy className="size-3.5" /> Copy
-              </button>
+            <div className="rounded-xl border border-brand-stratus-blue/20 bg-brand-app/60 px-4 py-3">
+              <p className="text-[12px] font-semibold text-brand-ink">Invite link</p>
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-brand-ink-soft">{lastInviteUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(lastInviteUrl);
+                    toast.success("Copied");
+                  }}
+                  className="inline-flex shrink-0 items-center gap-1 text-[12px] font-semibold text-brand-stratus-blue hover:underline"
+                >
+                  <Copy className="size-3.5" /> Copy
+                </button>
+              </div>
             </div>
           ) : null}
         </form>
       </SettingsGroup>
 
       <SettingsGroup title={`Members · ${members.length}`} className="mb-4">
-        {members.map((m, i) => (
-          <div key={m.id}>
-            {i > 0 ? <SettingsGroupDivider /> : null}
-            <SettingsRow className="justify-between gap-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold text-brand-ink">{m.name}</p>
-                <p className="truncate text-[11px] text-brand-ink-soft">{m.email}</p>
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <input
-                    type="url"
-                    value={memberLinkedIn[m.id] ?? ""}
-                    onChange={(e) => setMemberLinkedIn((prev) => ({ ...prev, [m.id]: e.target.value }))}
-                    onBlur={() => void saveMemberLinkedIn(m.id)}
-                    placeholder="LinkedIn URL"
-                    className={cn(inputClass, "py-1.5 text-[12px]")}
-                  />
-                  {m.linkedIn ? (
-                    <a href={m.linkedIn} target="_blank" rel="noreferrer" className="shrink-0 text-brand-stratus-blue" aria-label={`Open ${m.name} on LinkedIn`}>
-                      <ExternalLink className="size-3.5" />
-                    </a>
-                  ) : null}
+        {members.length === 0 ? (
+          <SettingsRow className="justify-center py-8">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Users className="size-8 text-brand-ink-faint" />
+              <p className="text-[13px] font-medium text-brand-ink-soft">No members yet</p>
+            </div>
+          </SettingsRow>
+        ) : (
+          members.map((m, i) => (
+            <div key={m.id}>
+              {i > 0 ? <SettingsGroupDivider /> : null}
+              <SettingsRow className="items-start gap-3 py-3.5">
+                <MemberAvatar name={m.name} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[14px] font-semibold text-brand-ink">{m.name}</p>
+                      <p className="truncate text-[12px] text-brand-ink-soft">{m.email}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {m.role === "owner" ? (
+                        <RoleBadge role={m.role} />
+                      ) : (
+                        <>
+                          <select
+                            value={m.role}
+                            onChange={(e) => updateMemberRole(m.id, e.target.value)}
+                            className={selectClass}
+                            aria-label={`Role for ${m.name}`}
+                          >
+                            {ROLES.map((r) => (
+                              <option key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => removeMember(m.id)}
+                            className="rounded-full px-2 py-1 text-[11px] font-semibold text-brand-stratus-salmon hover:bg-brand-pink-soft/60"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex items-center gap-1.5">
+                    <input
+                      type="url"
+                      value={memberLinkedIn[m.id] ?? ""}
+                      onChange={(e) => setMemberLinkedIn((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                      onBlur={() => void saveMemberLinkedIn(m.id)}
+                      placeholder="LinkedIn profile URL"
+                      className={cn(inputClass, "py-2 text-[12px]")}
+                    />
+                    {m.linkedIn ? (
+                      <a
+                        href={m.linkedIn}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-brand-stratus-blue/20 bg-white/80 text-brand-stratus-blue shadow-[var(--shadow-brand-sm)] hover:border-brand-stratus-blue/40"
+                        aria-label={`Open ${m.name} on LinkedIn`}
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {m.role !== "owner" ? (
-                  <>
-                    <select
-                      value={m.role}
-                      onChange={(e) => updateMemberRole(m.id, e.target.value)}
-                      className="rounded-full border border-brand-stratus-blue/20 bg-white/80 px-2 py-1 text-[11px] capitalize"
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                    <button type="button" onClick={() => removeMember(m.id)} className="text-[11px] font-semibold text-brand-stratus-salmon">
-                      Remove
-                    </button>
-                  </>
-                ) : (
-                  <span className="rounded-full bg-brand-stratus-blue/15 px-2 py-0.5 text-[10px] font-semibold capitalize text-brand-ink">
-                    owner
-                  </span>
-                )}
-              </div>
-            </SettingsRow>
-          </div>
-        ))}
+              </SettingsRow>
+            </div>
+          ))
+        )}
       </SettingsGroup>
 
-      {invites.length > 0 ? (
-        <SettingsGroup title="Pending" className="mb-4">
-          {invites.map((inv, i) => (
+      <SettingsGroup
+        title={`Pending invites · ${invites.length}`}
+        footer={invites.length > 0 ? "Invites expire after 7 days." : undefined}
+        className="mb-4"
+      >
+        {invites.length === 0 ? (
+          <SettingsRow className="justify-center py-8">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <Mail className="size-8 text-brand-ink-faint" />
+              <p className="text-[13px] font-medium text-brand-ink-soft">No pending invites</p>
+            </div>
+          </SettingsRow>
+        ) : (
+          invites.map((inv, i) => (
             <div key={inv.id}>
               {i > 0 ? <SettingsGroupDivider /> : null}
-              <SettingsRow className="justify-between py-2.5">
-                <span className="text-[13px] font-medium text-brand-ink">{inv.email}</span>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] capitalize text-brand-ink-faint">{inv.role}</span>
-                  <button type="button" onClick={() => revokeInvite(inv.id)} className="text-[11px] font-semibold text-brand-stratus-salmon">
+              <SettingsRow className="justify-between gap-3 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-canvas text-brand-stratus-blue ring-1 ring-brand-stratus-blue/15">
+                    <Clock className="size-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold text-brand-ink">{inv.email}</p>
+                    <p className="text-[11px] text-brand-ink-faint">
+                      Expires {new Date(inv.expiresAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <RoleBadge role={inv.role} />
+                  <button
+                    type="button"
+                    onClick={() => revokeInvite(inv.id)}
+                    className="rounded-full px-2 py-1 text-[11px] font-semibold text-brand-stratus-salmon hover:bg-brand-pink-soft/60"
+                  >
                     Revoke
                   </button>
                 </div>
               </SettingsRow>
             </div>
-          ))}
-        </SettingsGroup>
-      ) : null}
+          ))
+        )}
+      </SettingsGroup>
     </div>
   );
 }

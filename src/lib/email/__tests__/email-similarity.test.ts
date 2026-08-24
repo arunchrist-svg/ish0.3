@@ -18,15 +18,15 @@ const baseline = getBaselineEmail({
 
 const VIJETHA_NOUN_SWAP = `Hi Vijetha,
 
-Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for the team at Acme Auto this year.
+A festive gift shouldn't just be another line item. It's a real reflection of how much you value your team at Acme Auto.
 
-At India Sweet House, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.
+To match that standard, India Sweet House makes every sweet the exact same way we would for our own family. Because we use 100% pure ghee and fresh dairy straight from our own Karma Farm, everything is handcrafted with clean ingredients, zero varak, and no chemicals so every box carries that genuine, home-style warmth.
 
-Since tasting is believing, I would love to send a sample box to Acme Auto as our treat. What is the best delivery address to ship it to?
+I'd love to send a sample box over to your office as our treat so you can try it out firsthand. What is the best delivery address to ship it to?
 
-Best,
+Warmly,
 Srilaksha
-India Sweet House`;
+India Sweet House, Kasturinagar`;
 
 describe("email similarity", () => {
   it("flags a light BASE_TEXT noun swap as a near paraphrase", () => {
@@ -35,10 +35,11 @@ describe("email similarity", () => {
     );
   });
 
-  it("treats Sequence 2 and Sequence 3 as distinct from Sequence 1", () => {
+  it("treats Option B body as a different middle story from Option A", () => {
     const copy = fillIshDraftVariants({ ...names, sequencePosition: 1 });
-    expect(isNearParaphrase(copy.emailBodyB, baseline, BASELINE_PARAPHRASE_THRESHOLD, "hook")).toBe(false);
-    expect(isNearParaphrase(copy.emailBodyC, baseline, BASELINE_PARAPHRASE_THRESHOLD, "hook")).toBe(false);
+    expect(copy.emailBodyB).toMatch(/same care we use at home/);
+    expect(copy.emailBody).toMatch(/home-style warmth/);
+    expect(copy.emailBodyB).not.toMatch(/home-style warmth/);
   });
 
   it("treats identical E1 and E2 bodies as a sequence clone", () => {

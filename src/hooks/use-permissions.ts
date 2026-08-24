@@ -4,6 +4,8 @@ import { useSession } from "@/components/providers/session-provider";
 
 export type PermissionFlags = {
   canManageBilling: boolean;
+  canManageEmail: boolean;
+  canManageIntegrations: boolean;
   canManageTeam: boolean;
   canManageSettings: boolean;
   canWritePipeline: boolean;

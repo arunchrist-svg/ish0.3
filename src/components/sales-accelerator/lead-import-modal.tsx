@@ -143,19 +143,9 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
 
   return (
     <AppModal open={open} onClose={handleClose} panelClassName="lg:max-w-2xl">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-        Import leads
-      </div>
-      <h2 className="text-[20px] font-bold tracking-tight text-brand-ink">
-        {step === "upload" ? "Upload spreadsheet" : step === "map" ? "Confirm column mapping" : "Import complete"}
-      </h2>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-brand-ink-soft">
-        {step === "upload"
-          ? "Upload a CSV or Excel file of companies or people. Columns are mapped automatically, then you confirm before load."
-          : step === "map"
-            ? "Only rows with a company and an email are loaded. Gmail and other personal inboxes are kept. Missing names use the email or the company."
-            : "Leads were created from the spreadsheet."}
-      </p>
+      <h3 className="pr-10 text-[16px] font-bold tracking-tight text-brand-ink">
+        {step === "upload" ? "Upload spreadsheet" : step === "map" ? "Confirm columns" : "Import complete"}
+      </h3>
 
       {error ? (
         <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">
@@ -206,10 +196,20 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             <div className="text-[14px] font-semibold text-brand-ink">
               {busy ? "Reading file and mapping columns…" : "Drop or choose CSV / Excel"}
             </div>
-            <div className="text-[12px] text-brand-ink-faint">
-              Up to 5,000 rows. First sheet only for Excel. Rows without an email are skipped.
-            </div>
+            <div className="text-[12px] text-brand-ink-faint">CSV or Excel, first sheet</div>
           </button>
+          <div className="mt-5 flex justify-end gap-2 border-t border-brand-border/60 pt-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="ish-modal-cancel h-auto rounded-[14px] border border-brand-border px-4 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] hover:border-brand-stratus-blue/30 hover:bg-brand-canvas"
+              onClick={handleClose}
+              disabled={busy}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -283,15 +283,24 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             <p className="text-[12px] text-amber-800">Map company and email columns before importing.</p>
           ) : null}
 
-          <div className="flex flex-wrap justify-end gap-2 pt-1">
-            <Button variant="ghost" type="button" disabled={busy} onClick={reset}>
+          <div className="flex flex-wrap justify-end gap-2 border-t border-brand-border/60 pt-4">
+            <Button
+              variant="ghost"
+              type="button"
+              size="sm"
+              disabled={busy}
+              className="ish-modal-cancel h-auto rounded-[14px] border border-brand-border px-4 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] hover:border-brand-stratus-blue/30 hover:bg-brand-canvas"
+              onClick={reset}
+            >
               Back
             </Button>
             <Button
               type="button"
+              variant="ghost"
+              size="sm"
               disabled={busy || !canImport}
               onClick={() => void handleImport()}
-              className="rounded-2xl bg-brand-black px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-black/90 disabled:opacity-50"
+              className="ish-scout-cta-blue h-auto rounded-[14px] px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
             >
               {busy ? (
                 <span className="inline-flex items-center gap-2">
@@ -340,11 +349,13 @@ export function LeadImportModal({ open, onClose, onImported }: Props) {
             </div>
           ) : null}
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2 border-t border-brand-border/60 pt-4">
             <Button
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={handleClose}
-              className="rounded-2xl bg-brand-black px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-black/90"
+              className="ish-scout-cta-blue h-auto rounded-[14px] px-4 py-2 text-[12px] font-semibold text-white"
             >
               Done
             </Button>

@@ -2,29 +2,40 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  filterLeadsByQuery,
-  LEAD_QUEUE_SORT_STORAGE_KEY,
-  parseLeadQueueSort,
-  QueuePanel,
-  sortLeadsQueue,
-  type LeadQueueSort,
-} from "@/components/sales-accelerator/queue-panel";
+import { QueuePanel } from "@/components/sales-accelerator/queue-panel";
 import { LeadSwitcherRail } from "@/components/sales-accelerator/lead-switcher-rail";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
-import { createLead, deleteLead, fetchLeads, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
+import { createLead, deleteLead, fetchLeadAddedByUsers, fetchLeads, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
 import type { LeadDetailRecord, LeadFormInput, LeadQueueItem } from "@/lib/api-client";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { deriveQueueAction } from "@/lib/pipeline-status";
+import {
+  applyLeadListView,
+  LEAD_ADDED_BY_STORAGE_KEY,
+  LEAD_PANEL_FILTERS_STORAGE_KEY,
+  LEAD_QUEUE_SORT_STORAGE_KEY,
+  LEAD_QUICK_FILTER_STORAGE_KEY,
+  parseAddedByUserId,
+  parseLeadQueueSort,
+  parsePanelFilters,
+  parseQuickFilter,
+  type LeadAddedByUserOption,
+  type LeadPanelFilterId,
+  type LeadQueueSort,
+  type LeadQuickFilterId,
+} from "@/lib/leads/lead-filters";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
 import { LeadFormModal } from "@/components/sales-accelerator/lead-form-modal";
 import { LeadImportModal } from "@/components/sales-accelerator/lead-import-modal";
 import { LinkedInLeadModal } from "@/components/sales-accelerator/linkedin-lead-modal";
-import { AppPageHeader, Button, MobileStackLayout } from "@/design-system";
-import { LinkedInGlyph } from "@/components/icons/linkedin-glyph";
-import { Plus, Rocket, Upload } from "lucide-react";
+import { AppPageHeader, Button, CircleButton, MobileStackLayout } from "@/design-system";
+import { LeadAddMenu } from "@/components/leads/lead-add-menu";
+import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
+import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
+import { Plus, RefreshCw, Rocket, Search, Upload } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 
 function leadUrl(pathname: string, params: URLSearchParams): string {
@@ -49,6 +60,13 @@ function queueItemFromDetail(lead: LeadDetailRecord): LeadQueueItem {
     status: lead.status,
     action: deriveQueueAction(lead.status),
     emailStatus: lead.emailStatus || "missing",
+    email: lead.email || undefined,
+    phone: lead.phone,
+    linkedIn: lead.linkedIn,
+    leadSource: lead.leadSource,
+    isPinned: lead.isPinned,
+    createdByUserId: lead.createdByUserId,
+    createdByName: lead.createdByName,
   };
 }
 
@@ -77,7 +95,13 @@ export function SalesAcceleratorApp() {
   const [linkedInOpen, setLinkedInOpen] = useState(false);
   const [createDraft, setCreateDraft] = useState<LeadFormInput | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [queueSearchOpen, setQueueSearchOpen] = useState(false);
+  const [queueRefreshing, setQueueRefreshing] = useState(false);
   const [queueSort, setQueueSort] = useState<LeadQueueSort>("score");
+  const [quickFilter, setQuickFilter] = useState<LeadQuickFilterId | null>(null);
+  const [panelFilters, setPanelFilters] = useState<Set<LeadPanelFilterId>>(new Set());
+  const [addedByUserId, setAddedByUserId] = useState<string | null>(null);
+  const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTop = useRef(0);
@@ -88,11 +112,37 @@ export function SalesAcceleratorApp() {
 
   useEffect(() => {
     setQueueSort(parseLeadQueueSort(localStorage.getItem(LEAD_QUEUE_SORT_STORAGE_KEY)));
+    setQuickFilter(parseQuickFilter(localStorage.getItem(LEAD_QUICK_FILTER_STORAGE_KEY)));
+    setPanelFilters(parsePanelFilters(localStorage.getItem(LEAD_PANEL_FILTERS_STORAGE_KEY)));
+    setAddedByUserId(parseAddedByUserId(localStorage.getItem(LEAD_ADDED_BY_STORAGE_KEY)));
+  }, []);
+
+  useEffect(() => {
+    void fetchLeadAddedByUsers()
+      .then((users) => setAddedByUsers(users.map((user) => ({ id: user.id, name: user.name }))))
+      .catch(() => setAddedByUsers([]));
   }, []);
 
   function handleQueueSortChange(next: LeadQueueSort) {
     setQueueSort(next);
     localStorage.setItem(LEAD_QUEUE_SORT_STORAGE_KEY, next);
+  }
+
+  function handleQuickFilterChange(next: LeadQuickFilterId | null) {
+    setQuickFilter(next);
+    if (next) localStorage.setItem(LEAD_QUICK_FILTER_STORAGE_KEY, next);
+    else localStorage.removeItem(LEAD_QUICK_FILTER_STORAGE_KEY);
+  }
+
+  function handlePanelFiltersChange(next: Set<LeadPanelFilterId>) {
+    setPanelFilters(next);
+    localStorage.setItem(LEAD_PANEL_FILTERS_STORAGE_KEY, JSON.stringify([...next]));
+  }
+
+  function handleAddedByUserIdChange(next: string | null) {
+    setAddedByUserId(next);
+    if (next) localStorage.setItem(LEAD_ADDED_BY_STORAGE_KEY, next);
+    else localStorage.removeItem(LEAD_ADDED_BY_STORAGE_KEY);
   }
 
   const syncLeadToUrl = useCallback(
@@ -275,6 +325,16 @@ export function SalesAcceleratorApp() {
     }
   }, [syncLeadToUrl, isMobileLayout, pathname, router]);
 
+  async function handleQueueRefresh() {
+    if (queueRefreshing || mergingDuplicates) return;
+    setQueueRefreshing(true);
+    try {
+      await refreshLeadList({ silent: true });
+    } finally {
+      setQueueRefreshing(false);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -346,9 +406,22 @@ export function SalesAcceleratorApp() {
   }, [leadFromUrl]);
 
   const filteredLeads = useMemo(
-    () => sortLeadsQueue(filterLeadsByQuery(leads, searchQuery), queueSort),
-    [leads, searchQuery, queueSort],
+    () =>
+      applyLeadListView(leads, {
+        search: searchQuery,
+        filters: { quick: quickFilter, panel: panelFilters, addedByUserId },
+        sort: queueSort,
+      }),
+    [leads, searchQuery, quickFilter, panelFilters, addedByUserId, queueSort],
   );
+
+  const selectedLeadId =
+    activeLeadId && filteredLeads.some((item) => item.id === activeLeadId) ? activeLeadId : null;
+
+  useEffect(() => {
+    if (listLoading || !activeLeadId || selectedLeadId) return;
+    clearLeadFromUrl();
+  }, [listLoading, activeLeadId, selectedLeadId, clearLeadFromUrl]);
 
   const handleBackToList = useCallback(() => {
     if (listScrollRef.current) {
@@ -409,7 +482,7 @@ export function SalesAcceleratorApp() {
   }
 
   const listPane = listLoading && leads.length === 0 ? (
-    <div className="flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
+    <div className="flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[18px]">
       <div className="mb-4 h-7 w-28 animate-pulse rounded-lg bg-brand-app" />
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
@@ -420,36 +493,43 @@ export function SalesAcceleratorApp() {
   ) : (
     <QueuePanel
       leads={leads}
-      activeId={activeLeadId ?? ""}
+      activeId={selectedLeadId ?? ""}
       onSelect={selectLead}
       onRefresh={() => refreshLeadList({ silent: true })}
-      onAddLead={openCreateLead}
-      onAddFromLinkedIn={openLinkedInLead}
       onImportLeads={() => setImportOpen(true)}
+      onAddLead={openCreateLead}
+      onLinkedInLead={openLinkedInLead}
       canWrite={canWritePipeline}
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
       listScrollRef={listScrollRef}
       sort={queueSort}
       onSortChange={handleQueueSortChange}
+      quickFilter={quickFilter}
+      onQuickFilterChange={handleQuickFilterChange}
+      panelFilters={panelFilters}
+      onPanelFiltersChange={handlePanelFiltersChange}
+      addedByUserId={addedByUserId}
+      onAddedByUserIdChange={handleAddedByUserIdChange}
+      addedByUsers={addedByUsers}
       onMergeDuplicates={canWritePipeline ? handleMergeDuplicates : undefined}
       mergingDuplicates={mergingDuplicates}
     />
   );
 
-  const detailPane = activeLeadId ? (
-    <div key={activeLeadId} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-brand-page-in">
+  const detailPane = selectedLeadId ? (
+    <div key={selectedLeadId} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden animate-brand-page-in">
       <div className="shrink-0 lg:hidden">
           <LeadSwitcherRail
             leads={filteredLeads}
-            activeId={activeLeadId}
+            activeId={selectedLeadId}
             onSelect={selectLead}
             onBack={handleBackToList}
           />
         </div>
       <RecordWorkspace
-        leadId={activeLeadId}
-        initialLead={prefetchedLead?.id === activeLeadId ? prefetchedLead : null}
+        leadId={selectedLeadId}
+        initialLead={prefetchedLead?.id === selectedLeadId ? prefetchedLead : null}
         onLeadUpdated={() => refreshLeadList({ silent: true })}
         onEditLead={canWritePipeline ? openEditLead : undefined}
         onDeleteLead={canWritePipeline ? handleDeleteLead : undefined}
@@ -471,47 +551,84 @@ export function SalesAcceleratorApp() {
         <AppPageHeader
           icon={Rocket}
           title="Leads"
-          subtitle="Queue and work every opportunity"
+          titleAddon={<LeadsViewToggle className="h-8" />}
           actions={
-            canWritePipeline ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setLinkedInOpen(true)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-brand-border/70 bg-white/70 px-3.5 text-[12px] font-semibold text-brand-ink transition-all hover:bg-white"
+            <>
+              {canWritePipeline ? (
+                <LeadAddMenu
+                  disabled={mergingDuplicates}
+                  onAddLead={openCreateLead}
+                  onLinkedIn={openLinkedInLead}
+                  onUpload={() => setImportOpen(true)}
+                />
+              ) : null}
+              <CircleButton
+                size={32}
+                onClick={mergingDuplicates ? undefined : () => void handleQueueRefresh()}
+                className={cn("bg-white/80 backdrop-blur-sm", mergingDuplicates && "pointer-events-none opacity-50")}
+                aria-label="Refresh leads"
+              >
+                <RefreshCw className={cn("size-3.5", queueRefreshing && "animate-spin")} />
+              </CircleButton>
+              <div className="flex items-center gap-1.5">
+                <CircleButton
+                  size={32}
+                  active={queueSearchOpen}
+                  onClick={() => {
+                    if (queueSearchOpen) return;
+                    setQueueSearchOpen(true);
+                  }}
+                  className="bg-white/80 backdrop-blur-sm"
+                  aria-label="Search leads"
                 >
-                  <LinkedInGlyph className="size-3.5" />
-                  LinkedIn
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setImportOpen(true)}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-brand-border/70 bg-white/70 px-3.5 text-[12px] font-semibold text-brand-ink transition-all hover:bg-white"
-                >
-                  <Upload className="size-3.5" />
-                  Import
-                </button>
-                <button
-                  type="button"
-                  onClick={openCreateLead}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-brand-yellow px-3.5 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-yellow-sm)] transition-all hover:opacity-95"
-                >
-                  <Plus className="size-3.5" />
-                  Add lead
-                </button>
-              </>
-            ) : null
+                  <Search className="size-3.5" />
+                </CircleButton>
+                {queueSearchOpen ? (
+                  <>
+                    <input
+                      type="search"
+                      autoFocus
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search name, company"
+                      className="ish-modal-field h-8 w-[220px] rounded-full border border-brand-border/70 bg-white/80 px-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm placeholder:text-brand-ink-faint"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery("");
+                        setQueueSearchOpen(false);
+                      }}
+                      className="h-8 shrink-0 rounded-full px-2.5 text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              <LeadFilterBar
+                quick={quickFilter}
+                panel={panelFilters}
+                sort={queueSort}
+                addedByUserId={addedByUserId}
+                addedByUsers={addedByUsers}
+                onQuickChange={handleQuickFilterChange}
+                onPanelChange={handlePanelFiltersChange}
+                onSortChange={handleQueueSortChange}
+                onAddedByUserIdChange={handleAddedByUserIdChange}
+              />
+            </>
           }
         />
         <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden lg:hidden">
-          <MobileStackLayout showDetail={!!activeLeadId} list={listPane} detail={detailPane ?? <div />} onBack={handleBackToList} />
+          <MobileStackLayout showDetail={!!selectedLeadId} list={listPane} detail={detailPane ?? <div />} onBack={handleBackToList} />
         </div>
         <div className="hidden min-h-0 min-w-0 flex-1 overflow-hidden lg:flex">
           {listPane}
           {detailPane}
         </div>
       </div>
-      {canWritePipeline && !activeLeadId ? (
+      {canWritePipeline && !selectedLeadId ? (
         <button
           type="button"
           onClick={openCreateLead}

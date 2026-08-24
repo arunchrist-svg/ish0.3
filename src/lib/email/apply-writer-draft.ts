@@ -52,6 +52,19 @@ export function mergeLeadOutreachFromServer<T extends SequenceDraft, L extends L
   if (!prev) return incoming;
   const incomingSeq = incoming.outreachSequence ?? [];
   const prevSeq = prev.outreachSequence ?? [];
+
+  // Server cleared outreach (e.g. Restart). Keep local drafts only while status is still draft_ready.
+  if (incomingSeq.length === 0 && !incoming.outreach) {
+    if (incoming.status === "draft_ready") {
+      return {
+        ...incoming,
+        outreach: prev.outreach,
+        outreachSequence: prevSeq.length ? prevSeq : undefined,
+      };
+    }
+    return incoming;
+  }
+
   if (incomingSeq.length === 0 && prevSeq.length === 0) {
     return {
       ...incoming,

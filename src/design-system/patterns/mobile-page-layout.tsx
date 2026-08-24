@@ -6,7 +6,6 @@ import { MobileHeader } from "./mobile-header";
 
 type MobilePageLayoutProps = {
   title: string;
-  subtitle?: string;
   showBack?: boolean;
   onBack?: () => void;
   rightSlot?: React.ReactNode;
@@ -19,7 +18,6 @@ type MobilePageLayoutProps = {
 
 export function MobilePageLayout({
   title,
-  subtitle,
   showBack,
   onBack,
   rightSlot,
@@ -35,7 +33,6 @@ export function MobilePageLayout({
     <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden bg-brand-canvas", className)}>
       <MobileHeader
         title={title}
-        subtitle={subtitle}
         showBack={showBack}
         onBack={onBack}
         rightSlot={rightSlot}

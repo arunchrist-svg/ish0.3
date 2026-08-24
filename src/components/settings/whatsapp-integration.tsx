@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { SettingsGroup } from "@/components/settings/settings-group";
 import { SettingsToggleRow } from "@/components/settings/settings-toggle-row";
@@ -14,26 +14,38 @@ type WhatsAppStatus = {
 
 export function WhatsAppIntegration() {
   const { session, refresh } = useSession();
-  const canManage = session?.permissions.canManageSettings === true;
-  const [status, setStatus] = useState<WhatsAppStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const canManage = session?.permissions.canManageIntegrations === true;
+  const [status, setStatus] = useState<WhatsAppStatus | null>(() =>
+    session ? { connected: session.whatsappConnected === true } : null,
+  );
+  const [loading, setLoading] = useState(!session);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch("/api/settings/whatsapp");
-      if (!res.ok) throw new Error("Failed to load WhatsApp status");
-      setStatus(await res.json());
-    } catch {
-      toast.error("Could not load WhatsApp status");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings/whatsapp");
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(data?.error ?? "Failed to load WhatsApp status");
+        }
+        const next = (await res.json()) as WhatsAppStatus;
+        if (!cancelled) setStatus(next);
+      } catch (e) {
+        if (!cancelled) {
+          // Session already carries whatsappConnected from /api/auth/me.
+          setStatus({ connected: session?.whatsappConnected === true });
+          console.warn("[whatsapp-integration]", e);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.whatsappConnected]);
 
   async function handleToggle(connected: boolean) {
     if (!canManage || saving) return;
@@ -56,7 +68,7 @@ export function WhatsAppIntegration() {
     }
   }
 
-  if (loading) {
+  if (loading && !status) {
     return (
       <div className="flex items-center justify-center py-8 text-brand-ink-faint">
         <Loader2 className="mr-2 size-4 animate-spin" /> Loading…

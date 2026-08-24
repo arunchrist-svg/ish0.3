@@ -48,7 +48,7 @@ type Props = {
   lead: LeadDetailRecord;
   draft?: WriterDraft;
   onDraftUpdated: (draft: WriterDraft, sequence?: WriterDraft[]) => void;
-  onSilentRefresh: () => void;
+  onSilentRefresh: (opts?: { replaceOutreach?: boolean }) => void;
   onSent?: () => void;
 };
 
@@ -116,8 +116,8 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }, [isReplyLead, thread?.barMode, phase, lead.id]);
 
   useEffect(() => {
-    if (draft) setActiveDraft(draft);
-  }, [draft?.id]);
+    setActiveDraft(draft);
+  }, [draft?.id, lead.id]);
 
   useEffect(() => {
     if (draft?.templateVariant && draft.templateVariant !== "reply") {
@@ -583,7 +583,14 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         sequenceState={sequenceState}
         disabled={generating}
         sending={composeActions?.sending}
-        onUpdated={onSilentRefresh}
+        onUpdated={(meta) => {
+          if (meta?.action === "reset") {
+            setActiveDraft(undefined);
+            onSilentRefresh({ replaceOutreach: true });
+            return;
+          }
+          onSilentRefresh();
+        }}
         onStartSequence={async () => {
           composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
           if (approvalRef.current && composeActions && !composeActions.viewInEmailOnly) {

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   canViewPlatformKeys,
   canManageBilling,
+  canManageEmailSettings,
+  canManageIntegrations,
   canManageTeam,
   canManageSettings,
   canWritePipeline,
@@ -30,6 +32,29 @@ describe("AUTH-UNIT-001 permissions matrix", () => {
 
   it("superadmin can manage billing regardless of tenant role", () => {
     expect(canManageBilling("viewer", SUPER)).toBe(true);
+  });
+
+  it.each([
+    ["owner", true],
+    ["admin", true],
+    ["member", false],
+    ["viewer", false],
+  ] as const)("canManageEmailSettings for %s => %s", (role, expected) => {
+    expect(canManageEmailSettings(role, "user")).toBe(expected);
+  });
+
+  it.each([
+    ["owner", true],
+    ["admin", false],
+    ["member", false],
+    ["viewer", false],
+  ] as const)("canManageIntegrations for %s => %s", (role, expected) => {
+    expect(canManageIntegrations(role, "user")).toBe(expected);
+  });
+
+  it("superadmin can manage email and integrations regardless of tenant role", () => {
+    expect(canManageEmailSettings("viewer", SUPER)).toBe(true);
+    expect(canManageIntegrations("admin", SUPER)).toBe(true);
   });
 
   it.each([

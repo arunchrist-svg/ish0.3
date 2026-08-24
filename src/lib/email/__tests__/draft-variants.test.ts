@@ -17,18 +17,18 @@ const draft = {
   emailBodyB: "Body B text for the second option.",
   emailBodyC: "Body C text for the third option.",
   chosenSubjectKey: "B",
-  chosenBodyKey: "C",
+  chosenBodyKey: "B",
 };
 
 describe("draft copy variants", () => {
-  it("lists three subject and three body options", () => {
-    expect(draftSubjectOptions(draft).map((s) => s.key)).toEqual(["A", "B", "C"]);
-    expect(draftBodyOptions(draft).map((b) => b.key)).toEqual(["A", "B", "C"]);
+  it("lists two subject and two body options", () => {
+    expect(draftSubjectOptions(draft).map((s) => s.key)).toEqual(["A", "B"]);
+    expect(draftBodyOptions(draft).map((b) => b.key)).toEqual(["A", "B"]);
   });
 
   it("resolves the chosen subject and body", () => {
     expect(resolveDraftSubject(draft)).toBe(draft.subjectB);
-    expect(resolveDraftBody(draft)).toBe(draft.emailBodyC);
+    expect(resolveDraftBody(draft)).toBe(draft.emailBodyB);
   });
 
   it("falls back to A when a chosen variant is missing", () => {
@@ -38,8 +38,9 @@ describe("draft copy variants", () => {
 
   it("hides empty variants and normalizes keys", () => {
     expect(draftSubjectOptions({ subjectA: "One" })).toHaveLength(1);
-    expect(asVariantKey("C")).toBe("C");
+    expect(asVariantKey("C")).toBe("A");
     expect(asVariantKey("Z")).toBe("A");
+    expect(asVariantKey("B")).toBe("B");
   });
 
   it("treats sequence positions after 1 as follow-up drafts", () => {
@@ -59,8 +60,8 @@ describe("draft copy variants", () => {
     expect(
       followUpThreadSubject({
         email1Draft: draft,
-        chosenSubjectKey: "C",
+        chosenSubjectKey: "B",
       }),
-    ).toBe("Re: A taste of Diwali, before you decide");
+    ).toBe("Re: Acme Auto, make someone's Diwali better");
   });
 });

@@ -13,7 +13,7 @@ type CreditBalanceChipProps = {
 
 export function CreditBalanceChip({ compact = false, className, onNavigate }: CreditBalanceChipProps) {
   const { session, loading } = useSession();
-  if (loading || !session) return null;
+  if (loading || !session || !session.permissions.canManageBilling) return null;
 
   const credits = session.credits;
   const empty = credits <= 0;

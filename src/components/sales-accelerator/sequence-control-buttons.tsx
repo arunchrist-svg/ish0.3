@@ -13,7 +13,7 @@ type Props = {
   sequenceState: SequenceControlState;
   disabled?: boolean;
   sending?: boolean;
-  onUpdated: () => void;
+  onUpdated: (meta?: { action: "start" | "pause" | "cancel" | "reset" }) => void;
   onStartSequence?: () => void | Promise<void>;
 };
 
@@ -63,7 +63,7 @@ export function SequenceControlButtons({
               ? `${result.updated} email(s) updated`
               : undefined,
       });
-      onUpdated();
+      onUpdated({ action });
       if (action === "reset") setResetConfirmOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update sequence");

@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   citySearchClause,
   companyCityMatchesSelection,
+  companyMatchesScoutSelection,
   expandCitySearchTerms,
   includeHqCorridorForScoutPeople,
   isForeignPersonLocation,
   isNationwideSelection,
   nearbyLabelsForScoutCities,
+  peopleFilterUsesHqCorridor,
   personLocationMatchesSelection,
   selectPeopleForLeadLocation,
   selectPeopleForScoutCities,
+  shouldApplyPlacesFocusBias,
 } from "@/lib/enrichment/city-search";
 
 describe("nearbyLabelsForScoutCities", () => {
@@ -32,6 +35,24 @@ describe("nearbyLabelsForScoutCities", () => {
     expect(includeHqCorridorForScoutPeople({ cities: ["Kasturi Nagar"], locationScope: "focus" })).toBe(true);
     expect(includeHqCorridorForScoutPeople({ cities: ["Hosur"], locationScope: "focus" })).toBe(true);
     expect(includeHqCorridorForScoutPeople({ cities: ["Hosur"], locationScope: "interest" })).toBe(true);
+  });
+
+  it("keeps HQ corridor for neighborhood Focus Area, not district Area of Interest Places bias", () => {
+    expect(peopleFilterUsesHqCorridor({ locationScope: "focus", cities: ["Kasturi Nagar"] })).toBe(true);
+    expect(
+      peopleFilterUsesHqCorridor({
+        locationScope: "focus",
+        cities: ["Kasturi Nagar"],
+        localOperators: true,
+      }),
+    ).toBe(false);
+    expect(shouldApplyPlacesFocusBias("focus", ["Kasturi Nagar"])).toBe(true);
+    expect(
+      shouldApplyPlacesFocusBias("interest", ["Madras", "Dharmapuri", "Erode", "Hosur", "Salem"]),
+    ).toBe(false);
+    expect(
+      shouldApplyPlacesFocusBias("focus", ["Madras", "Dharmapuri", "Erode", "Hosur", "Salem"]),
+    ).toBe(false);
   });
 
   it("keeps the corridor closed for local-business scouts", () => {
@@ -75,6 +96,26 @@ describe("companyCityMatchesSelection", () => {
   it("still requires a city match for district picks", () => {
     expect(companyCityMatchesSelection("", ["Hyderabad"])).toBe(false);
     expect(companyCityMatchesSelection("Hyderabad", ["Hyderabad"])).toBe(true);
+  });
+
+  it("matches Madras+6 when city is Chennai or address carries the district", () => {
+    const madras6 = ["Madras", "Dharmapuri", "Erode", "Hosur", "Salem", "Krishnagiri", "Namakkal"];
+    expect(companyCityMatchesSelection("Chennai", madras6)).toBe(true);
+    expect(
+      companyMatchesScoutSelection(
+        {
+          city: "Anna Colony",
+          intelNotes: "Address: Pennagaram Main Road, Dharmapuri, Tamil Nadu",
+        },
+        madras6,
+      ),
+    ).toBe(true);
+    expect(
+      companyMatchesScoutSelection(
+        { city: "Bengaluru", intelNotes: "Address: Indiranagar, Bengaluru" },
+        madras6,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -175,6 +216,25 @@ describe("selectPeopleForScoutCities", () => {
     );
     // Profiles say "Bengaluru", never "Kasturi Nagar", so the metro must stay eligible.
     expect(result.people.map((p) => p.name)).toEqual(["Local", "HQ"]);
+  });
+
+  it("keeps Bengaluru HQ people on a Kasturi Nagar Focus Area scout", () => {
+    const includeHqCorridor = peopleFilterUsesHqCorridor({
+      locationScope: "focus",
+      cities: ["Kasturi Nagar"],
+    });
+    const result = selectPeopleForScoutCities(
+      [
+        { name: "HQ", location: "Bengaluru, Karnataka", matchScore: 90 },
+        { name: "Local", location: "Kasturi Nagar, Bengaluru", matchScore: 70 },
+        { name: "MumbaiHQ", location: "Mumbai, Maharashtra", matchScore: 85 },
+      ],
+      ["Kasturi Nagar"],
+      { includeHqCorridor },
+    );
+    expect(includeHqCorridor).toBe(true);
+    expect(result.people.map((p) => p.name)).toEqual(["Local", "HQ"]);
+    expect(result.people.map((p) => p.name)).not.toContain("MumbaiHQ");
   });
 
   it("drops Bangalore HQ when includeHqCorridor is off even for Hosur", () => {

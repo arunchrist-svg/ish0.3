@@ -1,3 +1,4 @@
+import { pickBestEmail, extractEmailsFromCell } from "@/lib/enrichment/validate-contact";
 import type { ColumnMapping, NormalizedImportRow } from "./types";
 
 const GENERIC_EMAIL_LOCALS = new Set([
@@ -93,7 +94,9 @@ export function applyColumnMapping(
     const lastName = cell(row, mapping, "lastName");
     const fullName = cell(row, mapping, "name");
     const company = cell(row, mapping, "company");
-    const email = cell(row, mapping, "email");
+    const emailRaw = cell(row, mapping, "email");
+    const extractedEmails = extractEmailsFromCell(emailRaw);
+    const email = pickBestEmail(extractedEmails) ?? extractedEmails[0] ?? "";
     const named =
       fullName ||
       [firstName, lastName].filter(Boolean).join(" ") ||
@@ -111,7 +114,7 @@ export function applyColumnMapping(
     if (!email) {
       skipped.push({
         rowIndex,
-        reason: "Missing email",
+        reason: emailRaw ? "Invalid email" : "Missing email",
       });
       return;
     }

@@ -424,7 +424,9 @@ export function placesLocationBiasFromFocuses(
   // If multiple focus clusters match (e.g. Kasturi Nagar + Whitefield selected),
   // pick the one with the most overlap instead of disabling the geo bias.
   const pickBestPin = () => {
-    if (matching.length === 0) return list[0];
+    // District/metro chips (Madras, Hosur, Salem) must not inherit a leftover
+    // Kasturi Nagar pin. Only bias when the selected labels overlap a focus cluster.
+    if (matching.length === 0) return keys.size ? undefined : list[0];
     if (matching.length === 1) return matching[0];
     if (!keys.size) return matching[0];
     const score = (focus: ScoutAreaOfFocus) =>

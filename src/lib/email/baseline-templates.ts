@@ -23,7 +23,7 @@ export function getBaselineEmail(params: {
 
 export const TRANSFORMATION_RULES = `TRANSFORMATION RULES:
 1. Keep at least 90% of the ISH template wording. Only fill first name and company. Do not rewrite the hook into industry or city copy.
-2. The three body options must stay three different sequences, not three paraphrases of one idea.
+2. The two body options must stay two different sequences, not two paraphrases of one idea.
 3. Never write "before vendors lock in", "before Hosur vendors lock in", or any "vendors lock in" urgency.
 4. Never mention employee count, headcount, or revenue.
 5. Ban brochure lines: do not write "{brand} offers..." or "{brand} specializes in...".

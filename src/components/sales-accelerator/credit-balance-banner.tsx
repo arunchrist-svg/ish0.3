@@ -8,7 +8,7 @@ import { LOW_CREDIT_THRESHOLD } from "@/lib/billing/credit-costs";
 export function CreditBalanceBanner() {
   const { session, loading } = useSession();
 
-  if (loading || !session) return null;
+  if (loading || !session || !session.permissions.canManageBilling) return null;
 
   const credits = session.credits;
   const plan = session.tenant.plan ?? "";

@@ -25,7 +25,12 @@ export function SyncRepliesButton({ leadId, leadName, onSynced, className, compa
 
       if (result.errors.length > 0) {
         toast.error(result.errors[0], {
-          description: result.errors.length > 1 ? `${result.errors.length - 1} more issue(s)` : undefined,
+          description:
+            result.errors.length > 1
+              ? `${result.errors.length - 1} more issue(s)`
+              : result.provider === "smtp"
+                ? "Check Settings → Email: IMAP enabled and app-specific password saved."
+                : undefined,
         });
         return;
       }

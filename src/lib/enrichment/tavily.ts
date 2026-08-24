@@ -3,6 +3,10 @@ import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
 import { citySearchClause } from "./city-search";
 import {
+  industrySearchClause,
+  partitionIndustriesForSearch,
+} from "./industry-search";
+import {
   employeeSizeSearchClause,
   extractEmployeesFromHits,
   extractEmployeesFromText,
@@ -162,7 +166,7 @@ Return up to ${params.limit} matching companies. Return [] if the target is not 
         const mapped = filterLookupLlmCompanies(parsed, params.name, params.limit);
         if (mapped.length) return mapped;
       } catch {
-        meta?.warnings.push("AI response could not be parsed — using name lookup fallback.");
+        meta?.warnings.push("AI response could not be parsed. Using name lookup fallback.");
       }
     } catch (e) {
       console.error("[tavily] lookup LLM failed:", e);
@@ -173,7 +177,7 @@ Return up to ${params.limit} matching companies. Return [] if the target is not 
   return fromHits.slice(0, params.limit);
 }
 
-async function tavilyDiscoverCompanies(params: {
+async function tavilyDiscoverCompaniesOnce(params: {
   cities: string[];
   industries: string[];
   limit: number;
@@ -185,7 +189,7 @@ async function tavilyDiscoverCompanies(params: {
   const searchKind = params.searchKind ?? "industry";
   const indStr =
     params.industries.length > 0
-      ? params.industries.join(" OR ")
+      ? industrySearchClause(params.industries)
       : searchKind === "business"
         ? "establishments"
         : "corporate";
@@ -237,7 +241,7 @@ Return up to ${params.limit} companies.`;
       try {
         parsed = parseJsonArrayFromLLM(raw);
       } catch {
-        meta?.warnings.push("AI response could not be parsed — using web parsing fallback.");
+        meta?.warnings.push("AI response could not be parsed. Using web parsing fallback.");
         return heuristic;
       }
 
@@ -262,16 +266,61 @@ Return up to ${params.limit} companies.`;
         if (mapped.length >= params.limit) break;
       }
       if (mapped.length) return mapped;
-      meta?.warnings.push("AI extraction returned no companies — using web parsing fallback.");
+      meta?.warnings.push("AI extraction returned no companies. Using web parsing fallback.");
     } catch (e) {
       console.error("[tavily] LLM failed:", e);
       meta?.warnings.push(llmErrorMessage(e));
     }
   } else {
-    meta?.warnings.push("LLM API key not set — using web parsing fallback.");
+    meta?.warnings.push("LLM API key not set. Using web parsing fallback.");
   }
 
   return heuristic;
+}
+
+function dedupeCompaniesByName(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
+  const seen = new Set<string>();
+  const out: ScoutCompanyResult[] = [];
+  for (const company of companies) {
+    const key = company.name.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(company);
+  }
+  return out;
+}
+
+async function tavilyDiscoverCompanies(params: {
+  cities: string[];
+  industries: string[];
+  limit: number;
+  meta?: DirectorySearchMeta;
+  employeeBands?: string[];
+  searchKind?: "industry" | "business";
+}): Promise<ScoutCompanyResult[]> {
+  const chunks = partitionIndustriesForSearch(params.industries);
+  const perChunkLimit = Math.max(5, Math.ceil(params.limit / Math.max(chunks.length, 1)));
+  const merged: ScoutCompanyResult[] = [];
+  let lastError: unknown = null;
+  for (const chunk of chunks) {
+    if (merged.length >= params.limit) break;
+    try {
+      const batch = await tavilyDiscoverCompaniesOnce({
+        ...params,
+        industries: chunk,
+        limit: Math.max(perChunkLimit, params.limit - merged.length),
+      });
+      merged.push(...batch);
+    } catch (e) {
+      lastError = e;
+      // Keep prior chunks. Quota mid-loop must not discard already-found companies.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/quota|usage limit|432|exhausted/i.test(msg)) break;
+    }
+  }
+  const deduped = dedupeCompaniesByName(merged).slice(0, params.limit);
+  if (!deduped.length && lastError) throw lastError;
+  return deduped;
 }
 
 export async function tavilySearchCompanies(params: {

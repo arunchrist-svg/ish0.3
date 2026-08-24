@@ -20,9 +20,11 @@ function parseConnection(cfg: unknown): WhatsAppConnection {
 }
 
 export async function getWhatsAppConnection(workspaceId: string): Promise<WhatsAppConnection> {
-  const row = await db.query.workspaceSettings.findFirst({
-    where: eq(workspaceSettings.workspaceId, workspaceId),
-  });
+  const [row] = await db
+    .select({ enrichmentConfig: workspaceSettings.enrichmentConfig })
+    .from(workspaceSettings)
+    .where(eq(workspaceSettings.workspaceId, workspaceId))
+    .limit(1);
   return parseConnection(row?.enrichmentConfig);
 }
 
@@ -35,9 +37,11 @@ export async function setWhatsAppConnected(
   workspaceId: string,
   connected: boolean,
 ): Promise<WhatsAppConnection> {
-  const row = await db.query.workspaceSettings.findFirst({
-    where: eq(workspaceSettings.workspaceId, workspaceId),
-  });
+  const [row] = await db
+    .select()
+    .from(workspaceSettings)
+    .where(eq(workspaceSettings.workspaceId, workspaceId))
+    .limit(1);
   const prev = ((row?.enrichmentConfig ?? {}) as EnrichmentConfigBag) ?? {};
   const next: WhatsAppConnection = connected
     ? { connected: true, connectedAt: new Date().toISOString() }

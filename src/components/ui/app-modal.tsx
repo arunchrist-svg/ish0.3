@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -35,7 +36,7 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
     >
       <div
         className={cn(
-          "ish-modal-panel ish-bottom-sheet w-full max-h-[min(92dvh,720px)] overflow-y-auto rounded-t-3xl border border-brand-border bg-white p-6 shadow-2xl",
+          "ish-modal-panel ish-bottom-sheet relative w-full max-h-[min(92dvh,720px)] overflow-y-auto rounded-t-3xl border border-brand-border bg-white p-6 shadow-2xl",
           "lg:max-h-none lg:max-w-md lg:rounded-[22px] lg:p-6 lg:shadow-[var(--shadow-brand-float)]",
           panelClassName,
         )}
@@ -44,6 +45,16 @@ export function AppModal({ open, children, onClose, className, panelClassName }:
         aria-modal="true"
       >
         <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-brand-border lg:hidden" aria-hidden />
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-4 top-4 z-10 flex size-8 items-center justify-center rounded-full text-brand-ink-soft transition hover:bg-brand-canvas hover:text-brand-ink lg:right-5 lg:top-5"
+            aria-label="Close"
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
         {children}
       </div>
     </div>,

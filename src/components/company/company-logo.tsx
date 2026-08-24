@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { getCompanyInitials, getCompanyLogoSources } from "@/lib/company-logo";
+import { companyLogoLookupSrc, getCompanyInitials, getCompanyLogoSources } from "@/lib/company-logo";
 
 type CompanyLogoProps = {
   name: string;
@@ -13,6 +13,8 @@ type CompanyLogoProps = {
   className?: string;
   imageClassName?: string;
   rounded?: string;
+  /** Slow Wikipedia/DDG lookup. Only enable on detail panels, not lists. */
+  wikiLookup?: boolean;
 };
 
 const SIZE_MAP = {
@@ -30,14 +32,32 @@ const INITIAL_TONES = [
   "bg-brand-yellow-soft text-brand-ink",
 ] as const;
 
+const CLIENT_LOOKUP_CACHE = new Map<string, string | null>();
+
 function initialTone(name: string): string {
   let hash = 0;
   for (const ch of name) hash = (hash + ch.charCodeAt(0) * 17) % INITIAL_TONES.length;
   return INITIAL_TONES[hash] ?? INITIAL_TONES[0];
 }
 
-function isLogoLookupApi(src: string): boolean {
-  return src.startsWith("/api/company-logo");
+async function fetchWikiLogo(lookupUrl: string): Promise<string | undefined> {
+  const cached = CLIENT_LOOKUP_CACHE.get(lookupUrl);
+  if (cached !== undefined) return cached ?? undefined;
+
+  try {
+    const res = await fetch(lookupUrl);
+    if (!res.ok) {
+      CLIENT_LOOKUP_CACHE.set(lookupUrl, null);
+      return undefined;
+    }
+    const data = (await res.json()) as { url?: string | null };
+    const url = data.url ?? null;
+    CLIENT_LOOKUP_CACHE.set(lookupUrl, url);
+    return url ?? undefined;
+  } catch {
+    CLIENT_LOOKUP_CACHE.set(lookupUrl, null);
+    return undefined;
+  }
 }
 
 export function CompanyLogo({
@@ -49,51 +69,81 @@ export function CompanyLogo({
   className,
   imageClassName,
   rounded = "rounded-[12px]",
+  wikiLookup = false,
 }: CompanyLogoProps) {
-  const sources = useMemo(
-    () => getCompanyLogoSources({ domain, website, name, logo }, { includeLookup: true }),
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const directSources = useMemo(
+    () => getCompanyLogoSources({ domain, website, name, logo }, { includeLookup: false }),
     [domain, website, name, logo],
   );
+  const lookupUrl = useMemo(
+    () => (wikiLookup ? companyLogoLookupSrc({ domain, website, name }) : undefined),
+    [wikiLookup, domain, website, name],
+  );
+
+  const [sources, setSources] = useState<string[]>(directSources);
   const [sourceIndex, setSourceIndex] = useState(0);
   const [exhausted, setExhausted] = useState(false);
-  const [resolvedSources, setResolvedSources] = useState<string[]>(sources);
+  const wikiRequestedRef = useRef(false);
 
   useEffect(() => {
+    setSources(directSources);
     setSourceIndex(0);
     setExhausted(false);
-    setResolvedSources(sources);
+    wikiRequestedRef.current = false;
+  }, [directSources]);
 
-    const lookupSources = sources.filter(isLogoLookupApi);
-    if (!lookupSources.length) return;
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node) return;
 
-    let cancelled = false;
-    void (async () => {
-      const direct = sources.filter((src) => !isLogoLookupApi(src));
-      const resolved = [...direct];
-      for (const lookup of lookupSources) {
-        try {
-          const res = await fetch(lookup);
-          if (!res.ok) continue;
-          const data = (await res.json()) as { url?: string | null };
-          if (data.url) resolved.push(data.url);
-        } catch {
-          /* skip unresolved lookup */
+    if (typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setVisible(true);
+          observer.disconnect();
         }
-      }
-      if (!cancelled) setResolvedSources([...new Set(resolved)]);
-    })();
+      },
+      { rootMargin: "120px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [sources]);
+  const requestWikiLookup = useCallback(async (): Promise<boolean> => {
+    if (!lookupUrl || wikiRequestedRef.current) return false;
+    wikiRequestedRef.current = true;
+    const url = await fetchWikiLogo(lookupUrl);
+    if (url) {
+      setSources((prev) => {
+        const nextIndex = prev.length;
+        setSourceIndex(nextIndex);
+        return [...prev, url];
+      });
+      setExhausted(false);
+      return true;
+    }
+    return false;
+  }, [lookupUrl]);
 
-  const currentSrc = !exhausted ? resolvedSources[sourceIndex] : undefined;
+  useEffect(() => {
+    if (!visible || !wikiLookup || !lookupUrl || directSources.length > 0) return;
+    void requestWikiLookup();
+  }, [visible, wikiLookup, lookupUrl, directSources.length, requestWikiLookup]);
+
+  const currentSrc = visible && !exhausted ? sources[sourceIndex] : undefined;
   const dims = SIZE_MAP[size];
   const initials = getCompanyInitials(name);
 
   return (
     <div
+      ref={rootRef}
       className={cn(
         "flex shrink-0 items-center justify-center overflow-hidden ring-1 ring-brand-border/50",
         rounded,
@@ -109,14 +159,22 @@ export function CompanyLogo({
           key={currentSrc}
           src={currentSrc}
           alt={`${name} logo`}
+          loading="lazy"
+          decoding="async"
           className={cn("object-contain p-0.5", dims.img, imageClassName)}
           referrerPolicy="no-referrer"
           onError={() => {
-            if (sourceIndex < resolvedSources.length - 1) {
+            if (sourceIndex < sources.length - 1) {
               setSourceIndex((i) => i + 1);
-            } else {
-              setExhausted(true);
+              return;
             }
+            if (wikiLookup && lookupUrl) {
+              void requestWikiLookup().then((found) => {
+                if (!found) setExhausted(true);
+              });
+              return;
+            }
+            setExhausted(true);
           }}
         />
       ) : (

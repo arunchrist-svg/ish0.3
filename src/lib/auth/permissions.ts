@@ -11,6 +11,21 @@ export function canManageBilling(role: TenantRole, platformRole?: string | null)
   return role === "owner";
 }
 
+/** Tenant owner or platform superadmin. Slug admins (tenant role admin) cannot access these areas. */
+export function canManageOwnerSettings(role: TenantRole, platformRole?: string | null): boolean {
+  if (isSuperadmin(platformRole)) return true;
+  return role === "owner";
+}
+
+export function canManageEmailSettings(role: TenantRole, platformRole?: string | null): boolean {
+  if (isSuperadmin(platformRole)) return true;
+  return role === "owner" || role === "admin";
+}
+
+export function canManageIntegrations(role: TenantRole, platformRole?: string | null): boolean {
+  return canManageOwnerSettings(role, platformRole);
+}
+
 export function canManageTeam(role: TenantRole, platformRole?: string | null): boolean {
   if (isSuperadmin(platformRole)) return true;
   return role === "owner" || role === "admin";
@@ -46,6 +61,8 @@ export function requirePipelineWrite(ctx: TenantContext): void {
 export function getPermissionFlags(ctx: TenantContext) {
   return {
     canManageBilling: canManageBilling(ctx.role, ctx.platformRole),
+    canManageEmail: canManageEmailSettings(ctx.role, ctx.platformRole),
+    canManageIntegrations: canManageIntegrations(ctx.role, ctx.platformRole),
     canManageTeam: canManageTeam(ctx.role, ctx.platformRole),
     canManageSettings: canManageSettings(ctx.role, ctx.platformRole),
     canWritePipeline: canWritePipeline(ctx.role, ctx.platformRole),

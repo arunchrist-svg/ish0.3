@@ -13,7 +13,7 @@ export type AgentFlags = {
 
 const DEFAULT_FLAGS: AgentFlags = {
   replyAutoDraft: true,
-  notifyWhatsApp: false,
+  notifyWhatsApp: true,
   searchExactMode: true,
   notifyEmail: true,
   notifyInApp: true,

@@ -15,6 +15,7 @@ export default function ProfilePage() {
   const [orgName, setOrgName] = useState("");
   const [role, setRole] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
+  const [canViewCredits, setCanViewCredits] = useState(false);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
 
   useEffect(() => {
@@ -27,7 +28,10 @@ export default function ProfilePage() {
         }
         if (data.tenant) setOrgName(data.tenant.name);
         if (typeof data.role === "string") setRole(data.role);
-        if (typeof data.credits === "number") setCredits(data.credits);
+        if (data.permissions?.canManageBilling && typeof data.credits === "number") {
+          setCredits(data.credits);
+          setCanViewCredits(true);
+        }
         if (data.isSuperadmin) setIsSuperadmin(true);
       });
   }, []);
@@ -45,7 +49,6 @@ export default function ProfilePage() {
   return (
     <MobilePageLayout
       title="Profile"
-      subtitle={orgName || "Your account"}
       largeTitle
       className="lg:bg-transparent"
       contentClassName="flex flex-col !overflow-hidden"
@@ -53,7 +56,6 @@ export default function ProfilePage() {
       <AppPageHeader
         icon={User}
         title="Profile"
-        subtitle="Account, session, and access information"
       />
       <div className="settings-ambient mx-auto w-full max-w-2xl flex-1 overflow-y-auto ish-page-padding py-6 lg:px-6 lg:py-6 animate-brand-page-in">
         <SettingsGroup title="Identity">
@@ -72,7 +74,7 @@ export default function ProfilePage() {
               ) : null}
             </div>
           </SettingsRow>
-          {credits !== null && (
+          {canViewCredits && credits !== null ? (
             <>
               <SettingsGroupDivider />
               <SettingsRow className="justify-between">
@@ -85,7 +87,7 @@ export default function ProfilePage() {
                 </a>
               </SettingsRow>
             </>
-          )}
+          ) : null}
         </SettingsGroup>
 
         <SettingsGroup title="Session">

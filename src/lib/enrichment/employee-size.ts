@@ -5,7 +5,9 @@ export const EMPLOYEE_SIZE_BANDS = [
     sublabel: "1-10 people",
     min: 1,
     max: 10,
-    searchHint: "micro industry MSME 1-10 employees",
+    // Soft web hints only. Numeric ranges like "51-250 employees" zero Google Places
+    // text search and dilute Tavily/directory queries. Post-filter handles scale.
+    searchHint: "micro MSME",
     apolloRanges: ["1,10"],
   },
   {
@@ -14,7 +16,7 @@ export const EMPLOYEE_SIZE_BANDS = [
     sublabel: "11-50 people",
     min: 11,
     max: 50,
-    searchHint: "small scale industry SSI 11-50 employees",
+    searchHint: "small scale",
     apolloRanges: ["11,50"],
   },
   {
@@ -23,7 +25,7 @@ export const EMPLOYEE_SIZE_BANDS = [
     sublabel: "51-250 people",
     min: 51,
     max: 250,
-    searchHint: "medium scale industry 51-250 employees",
+    searchHint: "medium-sized",
     apolloRanges: ["51,200"],
   },
   {
@@ -32,7 +34,7 @@ export const EMPLOYEE_SIZE_BANDS = [
     sublabel: "250+ people",
     min: 251,
     max: null,
-    searchHint: "large scale industry 250+ employees",
+    searchHint: "large scale",
     apolloRanges: ["201,500", "501,1000", "1001,5000", "5001,10000", "10001"],
   },
 ] as const;
@@ -154,6 +156,14 @@ export function employeeSizeSearchClause(bandIds?: string[]): string {
   const bands = normalizeEmployeeBandIds(bandIds);
   if (!bands.length) return "";
   return bands.map((id) => BAND_BY_ID.get(id)!.searchHint).join(" OR ");
+}
+
+/**
+ * Google Places text search rejects numeric headcount phrases. Never append scale
+ * to Places queries; rankAndFilterByEmployeeBands soft-filters afterward.
+ */
+export function employeeSizePlacesSearchClause(_bandIds?: string[]): string {
+  return "";
 }
 
 /** Apollo organization_num_employees_ranges values for the selected UI bands. */

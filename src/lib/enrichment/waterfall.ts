@@ -11,6 +11,8 @@ import {
   expandCitySearchTerms,
   isNationwideSelection,
   includeHqCorridorForScoutPeople,
+  peopleFilterUsesHqCorridor,
+  shouldApplyPlacesFocusBias,
   nearbyLabelsForScoutCities,
   parentCitiesForNeighborhoods,
   rankCompaniesByLocalityMention,
@@ -35,6 +37,7 @@ import { personLooksOpenToWork } from "./person-company-match";
 import { withCleanedCompanyName } from "./directory-parser";
 import { filterCompaniesWithLlm, shouldSkipCompaniesLlmFilter } from "./filter-companies-llm";
 import { filterBySelectedBusinesses } from "./business-match";
+import { filterBySelectedIndustries } from "./industry-search";
 import {
   type AccountMatchShape,
   filterNewScoutCompanies,
@@ -133,8 +136,8 @@ function tavilyQuotaHit(messages: string[]): boolean {
 let tavilyExhaustionCache: { at: number; exhausted: boolean } | null = null;
 const TAVILY_EXHAUSTION_CACHE_MS = 30_000;
 
-/** Below this many primary-provider hits, backfill from India registry directories. */
-const DIRECTORY_FALLBACK_FLOOR = 5;
+/** Below this many city-matched hits, backfill from India registry directories or Places. */
+const DIRECTORY_FALLBACK_FLOOR = 8;
 
 async function shouldStopBatchForTavilyQuota(messages: string[]): Promise<boolean> {
   if (!tavilyQuotaHit(messages)) return false;
@@ -190,49 +193,6 @@ function filterBySelectedCities(
     ),
     cities,
   );
-}
-
-function filterBySelectedIndustries(
-  results: ScoutCompanyResult[],
-  selectedIndustries: string[],
-): ScoutCompanyResult[] {
-  if (!selectedIndustries.length) return results;
-
-  const selectedSet = new Set(selectedIndustries.map((s) => s.trim()).filter(Boolean));
-
-  // Only do strict filtering when we can classify an inferred industry into
-  // one of the known buckets. Otherwise keep results to avoid accidental empties.
-  const bucketMap: Record<string, string[]> = {
-    BFSI: ["Financial Services"],
-    Finance: ["Financial Services"],
-    Pharma: ["Pharmaceuticals"],
-    Healthcare: ["Healthcare"],
-    Retail: ["Retail"],
-    Education: ["Education"],
-    "Real Estate": ["Real Estate"],
-    Construction: ["Construction"],
-    Automotive: ["Automotive"],
-    Hospitality: ["Hospitality"],
-    Technology: ["Technology", "Electronics"],
-  };
-
-  return results.filter((c) => {
-    const inferred = c.industry?.trim();
-    if (!inferred) return true;
-
-    // Corporate is usually an "establishment" catch-all from Places. If the
-    // user picked explicit industries, we should not show these generic hits.
-    if (inferred === "Corporate") return false;
-
-    // Exact match first (handles directory provider values that already use
-    // the same labels as the UI).
-    if (selectedSet.has(inferred)) return true;
-
-    const normalized = inferred;
-    const mapped = bucketMap[normalized];
-    if (!mapped) return true; // Unknown inferred industry: don't over-filter.
-    return mapped.some((m) => selectedSet.has(m));
-  });
 }
 
 function filterExcluded<T extends ScoutCompanyResult>(
@@ -453,7 +413,8 @@ export async function discoverCompanies(params: {
 
   const remaining = Math.max(limit - (employeeBands.length ? knownDbMatches : dbMapped.length), 0) || limit;
   const stepLimit = Math.min(Math.max(remaining * 2, remaining + 8), 120);
-  const useFocusBias = params.locationScope !== "interest";
+  const searchKind = params.searchKind ?? "industry";
+  const useFocusBias = shouldApplyPlacesFocusBias(params.locationScope, selectionLabels);
   const focusesForBias = cfg.scoutAreasOfFocus?.length
     ? cfg.scoutAreasOfFocus
     : cfg.scoutAreaOfFocus
@@ -468,9 +429,27 @@ export async function discoverCompanies(params: {
     industries: params.industries,
     limit: stepLimit,
     employeeBands,
-    searchKind: params.searchKind ?? "industry",
+    searchKind,
     fetchSeed: params.fetchSeed ?? 0,
     ...(locationBias ? { locationBias } : {}),
+  };
+  const fillFloor = Math.min(limit, Math.max(DIRECTORY_FALLBACK_FLOOR, Math.ceil(limit * 0.5)));
+  const discardedByCity: ScoutCompanyResult[] = [];
+  const cityUsable = (rows: ScoutCompanyResult[]) => {
+    const cityed = filterBySelectedCities(rows, selectionLabels, searchKind);
+    return searchKind === "business"
+      ? filterBySelectedBusinesses(cityed, params.industries)
+      : filterBySelectedIndustries(cityed, params.industries);
+  };
+  /** Free slot capacity for later providers; stash city misses for soft-fail recovery. */
+  const keepCityUsableExternal = () => {
+    if (selectionLooksLikeNeighborhoods(selectionLabels)) return;
+    const kept: ScoutCompanyResult[] = [];
+    for (const row of external) {
+      if (cityUsable([row]).length > 0) kept.push(row);
+      else discardedByCity.push(row);
+    }
+    external.splice(0, external.length, ...kept);
   };
 
   // ── Step 2: Primary search provider (resolved from dataMode) ─────────────
@@ -513,15 +492,10 @@ export async function discoverCompanies(params: {
   }
 
   // Scout under Focus Area: supplement directory/Tavily hits with geo-biased Places.
-  // Industry mode needs this as much as business mode — a pin radius is the only
-  // signal that reliably surfaces companies near a specific locality.
-  if (
-    locationBias &&
-    cfg.searchProvider !== "google_places" &&
-    hasGooglePlacesKey() &&
-    !tavilyQuotaHit([...warnings, ...errors])
-  ) {
-    const placesLimit = Math.max(stepLimit - external.length, Math.min(limit, 20));
+  // Only when the selected chips are neighborhoods. District clusters must not
+  // inherit a leftover Kasturi Nagar / Bengaluru pin.
+  if (locationBias && cfg.searchProvider !== "google_places" && hasGooglePlacesKey()) {
+    const placesLimit = Math.max(stepLimit - cityUsable(external).length, Math.min(limit, 20));
     if (placesLimit > 0) {
       await runStep(
         "google_places_focus",
@@ -540,10 +514,12 @@ export async function discoverCompanies(params: {
     }
   }
 
+  keepCityUsableExternal();
+
   // Tier-2/3 cities return thin results from Apollo/Tavily/Places. Registry directories
-  // (Zauba, Tofler) index them far better, so backfill whenever the primary came up short.
+  // (Zauba, Tofler) index them far better, so backfill whenever city-matched hits are short.
   if (
-    external.length < DIRECTORY_FALLBACK_FLOOR &&
+    cityUsable(external).length < fillFloor &&
     cfg.searchProvider !== "india_directories" &&
     !tavilyQuotaHit([...warnings, ...errors])
   ) {
@@ -565,6 +541,7 @@ export async function discoverCompanies(params: {
       warnings,
       errors,
     );
+    keepCityUsableExternal();
   }
 
   appendTavilyKeySwitchWarning(warnings);
@@ -574,12 +551,20 @@ export async function discoverCompanies(params: {
   const tavilyAccount =
     quotaHitAfterPrimary && hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
 
-  // ── Step 2b: Google Places fallback when ALL Tavily keys are exhausted ────
-  if (external.length === 0 && quotaHitAfterPrimary && allTavilyKeysExhausted(tavilyAccount)) {
-    if (hasGooglePlacesKey()) {
+  // Places fill: Tavily quota, or a one-company Tavily hit on a district cluster.
+  // Drop leftover Focus Area locationBias so Madras+6 is not pinned to Bengaluru.
+  if (cityUsable(external).length < fillFloor && hasGooglePlacesKey()) {
+    const placesFillLimit = Math.max(stepLimit - external.length, limit);
+    if (placesFillLimit > 0) {
+      const beforePlaces = external.length;
       await runStep(
         "google_places_fallback",
-        () => googlePlacesSearchCompanies({ ...providerParams, limit: stepLimit }),
+        () =>
+          googlePlacesSearchCompanies({
+            ...providerParams,
+            limit: placesFillLimit,
+            ...(useFocusBias && locationBias ? { locationBias } : { locationBias: undefined }),
+          }),
         external,
         stepLimit,
         excludeNames,
@@ -587,26 +572,37 @@ export async function discoverCompanies(params: {
         warnings,
         errors,
       );
-      if (external.length > 0) {
+      keepCityUsableExternal();
+      if (
+        quotaHitAfterPrimary &&
+        allTavilyKeysExhausted(tavilyAccount) &&
+        external.length > beforePlaces
+      ) {
         const keptWarnings = warnings.filter((w) => !isTavilyQuotaError(w));
         warnings.length = 0;
-        warnings.push(...keptWarnings, "All Tavily keys exhausted — switched to Google Places for company discovery.");
+        warnings.push(...keptWarnings, "All Tavily keys exhausted. Switched to Google Places for company discovery.");
         const keptErrors = errors.filter((e) => !isTavilyQuotaError(e));
         errors.length = 0;
         errors.push(...keptErrors);
       }
-    } else if (!errors.some((e) => isTavilyQuotaError(e))) {
-      errors.push(
-        "All Tavily keys exhausted. Add TAVILY_API_KEY_2, TAVILY_API_KEY_3, or TAVILY_API_KEY_4 in .env.local, GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
-      );
     }
+  } else if (
+    cityUsable(external).length === 0 &&
+    quotaHitAfterPrimary &&
+    allTavilyKeysExhausted(tavilyAccount) &&
+    !hasGooglePlacesKey() &&
+    !errors.some((e) => isTavilyQuotaError(e))
+  ) {
+    errors.push(
+      "All Tavily keys exhausted. Add TAVILY_API_KEY_2, TAVILY_API_KEY_3, or TAVILY_API_KEY_4 in .env.local, GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
+    );
   }
 
   // ── Step 3: Fallback to AI (Tavily+Gemini) if enabled and results short ──
   if (
     useAI &&
     cfg.fallbackToAI &&
-    external.length < Math.floor(remaining * 0.5) &&
+    cityUsable(external).length < Math.floor(remaining * 0.5) &&
     cfg.searchProvider !== "tavily_ai" &&
     !tavilyQuotaHit([...warnings, ...errors])
   ) {
@@ -617,10 +613,11 @@ export async function discoverCompanies(params: {
         limit: Math.max(stepLimit - external.length, 1),
         meta: searchMeta,
         employeeBands,
-        searchKind: params.searchKind ?? "industry",
+        searchKind,
       }),
       external, stepLimit, excludeNames, savedAccounts, warnings, errors,
     );
+    keepCityUsableExternal();
     appendTavilyKeySwitchWarning(warnings);
   }
 
@@ -628,7 +625,24 @@ export async function discoverCompanies(params: {
     .map(withCleanedCompanyName)
     .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
     .map(hydrateEmployees);
-  const cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry");
+  let cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry");
+  let softCityFail = false;
+  if (
+    cityFiltered.length === 0 &&
+    selectionLabels.length > 0 &&
+    !nationwide &&
+    (merged.length > 0 || discardedByCity.length > 0)
+  ) {
+    softCityFail = true;
+    const recovered = [...merged, ...discardedByCity]
+      .map(withCleanedCompanyName)
+      .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
+      .map(hydrateEmployees);
+    cityFiltered = rankCompaniesByLocalityMention(recovered, selectionLabels);
+    warnings.push(
+      `Found ${cityFiltered.length} candidate${cityFiltered.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.slice(0, 4).join(", ")}${selectionLabels.length > 4 ? ", and more" : ""}. Showing best available matches.`,
+    );
+  }
   const verticalFiltered =
     params.searchKind === "business"
       ? filterBySelectedBusinesses(cityFiltered, params.industries)
@@ -715,7 +729,7 @@ export async function discoverCompanies(params: {
     companies = finalizeScoutCompanies(await filterCompaniesWithLlm(companies, icpMeta));
     // Backstop: never surface zero when the pipeline had candidates going in.
     if (companies.length === 0 && beforeLlmFilter.length > 0) {
-      warnings.push("AI company filter returned no results — showing unfiltered candidates.");
+      warnings.push("AI company filter returned no results. Showing unfiltered candidates.");
       companies = beforeLlmFilter.slice(0, overfetchTarget);
     }
   } else {
@@ -769,7 +783,7 @@ export async function discoverCompanies(params: {
     companies = companies.slice(0, limit);
   }
 
-  if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide) {
+  if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
     warnings.push(
       `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
     );
@@ -1112,20 +1126,18 @@ export async function discoverPeople(params: {
     finalPeople = allPeople;
   }
 
-  // In Focus Area mode, people must be in the focus area itself — ignore the global peopleCities
-  // setting (which might be "South India") and filter strictly to the neighborhood chips + parent
-  // district city. This ensures you get the plant HR, not the corporate HQ.
-  // Outside Focus Area mode, use the explicit people-area filter if set, else company scout cities.
+  // Neighborhood Focus Area: keep parent-metro HQ (Bengaluru for Kasturi Nagar).
+  // LinkedIn almost never lists the ward name. Do not widen to the whole state.
   const peopleCityFilter =
     params.locationScope === "focus"
       ? [...new Set([...scoutCities, ...focusParentCities])]
       : (params.peopleCities?.length ? params.peopleCities : scoutCities);
-  const peopleIncludeHqCorridor =
-    params.locationScope === "focus"
-      ? false
-      : (params.peopleCities?.length
-          ? !isNationwideSelection(params.peopleCities) && !selectionLooksLikeNeighborhoods(params.peopleCities)
-          : includeHqCorridor);
+  const peopleIncludeHqCorridor = peopleFilterUsesHqCorridor({
+    locationScope: params.locationScope,
+    cities: scoutCities,
+    peopleCities: params.peopleCities,
+    localOperators,
+  });
 
   if (peopleCityFilter.length) {
     const selected = selectPeopleForLeadLocation(finalPeople, peopleCityFilter, {
@@ -1139,9 +1151,9 @@ export async function discoverPeople(params: {
     } else if (selected.people.length === 0 && finalPeople.length > 0) {
       warnings.push(
         localOperators || focusArea
-          ? `No people found in ${filterLabel} for ${params.companyName}. Leads stay inside ${focusArea ? "this Focus Area" : "this area"}.${focusArea ? " Switch to Area of Interest to include nearby HQ." : ""}`
+          ? `No people found in ${filterLabel} for ${params.companyName}. Leads stay inside ${focusArea ? "this Focus Area" : "this area"}.${focusArea && !peopleIncludeHqCorridor ? " Switch to Area of Interest to include nearby HQ." : ""}`
           : sweetsGiftingPeople
-            ? `HR/Procurement people found at ${params.companyName} but all had cities outside ${filterLabel} or could not be verified. LinkedIn often omits plant location — if this keeps happening, try Area of Interest instead of Focus Area.`
+            ? `HR/Procurement people found at ${params.companyName} but all had cities outside ${filterLabel} or could not be verified. LinkedIn often omits plant location. If this keeps happening, try Area of Interest instead of Focus Area.`
             : `No decision-makers found in ${filterLabel} for ${params.companyName}. Try another company or nearby city.`,
       );
     }

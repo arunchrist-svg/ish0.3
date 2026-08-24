@@ -198,6 +198,7 @@ export async function importMappedLeads(params: {
             owner: row.owner?.trim() || null,
             researcherEligible: true,
             tags: Array.from(new Set(["Lead", "Excel Import", ...(row.tags ?? [])])),
+            createdByUserId: params.actorId ?? null,
           })),
         ),
       );

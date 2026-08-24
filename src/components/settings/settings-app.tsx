@@ -35,7 +35,7 @@ const ALL_NAV_ITEMS: SettingsNavItem[] = [
 
 const TAB_SUBTITLES: Record<string, string> = {
   enrichment: "Providers, geography, and scout volume",
-  email: "Sending, connection, and sequence",
+  email: "Connect your inbox and send",
   billing: "Balance and top-ups",
   team: "Members and invites",
   integrations: "LinkedIn and WhatsApp",
@@ -53,6 +53,10 @@ function SettingsAppInner() {
         isSuperadmin: me.isSuperadmin,
         role: me.role,
         canManageTeam: me.permissions.canManageTeam,
+        canManageSettings: me.permissions.canManageSettings,
+        canManageEmail: me.permissions.canManageEmail,
+        canManageBilling: me.permissions.canManageBilling,
+        canManageIntegrations: me.permissions.canManageIntegrations,
       }
     : null;
 
@@ -61,9 +65,10 @@ function SettingsAppInner() {
       ALL_NAV_ITEMS.filter((item) => {
         if (item.value === "ai-usage") return session?.isSuperadmin === true;
         if (item.value === "team") return session?.canManageTeam === true;
-        if (item.value === "email" || item.value === "enrichment") {
-          return session?.role === "owner" || session?.role === "admin" || session?.isSuperadmin === true;
-        }
+        if (item.value === "email") return session?.canManageEmail === true;
+        if (item.value === "billing") return session?.canManageBilling === true;
+        if (item.value === "integrations") return session?.canManageIntegrations === true;
+        if (item.value === "enrichment") return session?.canManageSettings === true;
         return true;
       }),
     [session],
@@ -112,14 +117,16 @@ function SettingsAppInner() {
         setZintlrConfigured(Boolean(zintlrReady));
         setConfig(rest);
       });
-    fetch("/api/settings/email")
-      .then((r) => r.json())
-      .then((data) => {
-        setEmailConfig(data);
-        setSmtpPassDraft("");
-        setResendApiKeyDraft("");
-      });
-  }, []);
+    if (me?.permissions.canManageEmail) {
+      fetch("/api/settings/email")
+        .then((r) => r.json())
+        .then((data) => {
+          setEmailConfig(data);
+          setSmtpPassDraft("");
+          setResendApiKeyDraft("");
+        });
+    }
+  }, [me?.permissions.canManageEmail]);
 
   const handleTabChange = useCallback(
     (tab: string) => {
@@ -253,6 +260,8 @@ function SettingsAppInner() {
       const {
         smtpConfigured,
         smtpHint,
+        imapConfigured,
+        imapHint,
         smtpPassSet,
         resendApiKeySet,
         resendConfigured,
@@ -280,8 +289,12 @@ function SettingsAppInner() {
         setResendApiKeyDraft("");
         setEmailDirty(false);
       }
-      if (data.config?.smtpConfigured) {
-        toast.success("SMTP connection verified and saved");
+      if (data.config?.smtpConfigured && data.config?.imapConfigured) {
+        toast.success("Inbox verified for send and reply sync");
+      } else if (data.config?.smtpConfigured) {
+        toast.warning("Sending works, but reply sync failed", {
+          description: data.config.imapHint,
+        });
       } else {
         toast.error(data.config?.smtpHint ?? "SMTP connection not verified");
       }
@@ -299,6 +312,8 @@ function SettingsAppInner() {
       const {
         smtpConfigured,
         smtpHint,
+        imapConfigured,
+        imapHint,
         smtpPassSet,
         resendApiKeySet,
         resendConfigured,
@@ -403,7 +418,7 @@ function SettingsAppInner() {
 
   const settingsList = (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-brand-canvas lg:hidden">
-      <MobileHeader title="Settings" subtitle="Workspace preferences" largeTitle />
+      <MobileHeader title="Settings" largeTitle />
       <div className="ish-page-padding flex-1 overflow-y-auto py-4">
         <ListGroup>
           {NAV_ITEMS.map((item) => {
@@ -429,7 +444,6 @@ function SettingsAppInner() {
         {isMobileLayout ? (
           <MobileHeader
             title={NAV_ITEMS.find((i) => i.value === activeTab)?.label ?? "Settings"}
-            subtitle={TAB_SUBTITLES[activeTab]}
             showBack
             onBack={() => setMobileShowDetail(false)}
             rightSlot={saveAction}
@@ -442,8 +456,9 @@ function SettingsAppInner() {
             <AppPageHeader
               icon={Icon}
               title={item?.label ?? "Settings"}
-              subtitle={TAB_SUBTITLES[activeTab]}
               actions={saveAction}
+              hideAccent
+              className="ish-settings-header w-full !py-0 lg:!flex lg:items-center"
             />
           );
         })()}
@@ -468,10 +483,12 @@ function SettingsAppInner() {
           {activeTab === "team" && <TeamTab />}
 
           {activeTab === "integrations" && (
-            <Suspense fallback={<div className="py-12 text-center text-brand-ink-faint">Loading…</div>}>
+            <>
               <WhatsAppIntegration />
-              <LinkedInIntegration />
-            </Suspense>
+              <Suspense fallback={<div className="py-12 text-center text-brand-ink-faint">Loading LinkedIn…</div>}>
+                <LinkedInIntegration />
+              </Suspense>
+            </>
           )}
 
           {activeTab === "ai-usage" && <AiUsageTab />}
@@ -509,7 +526,9 @@ function SettingsAppInner() {
       {unsavedModal}
     </>
   ) : (
-    <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+    <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="ish-board-hero ish-settings-topbar pointer-events-none absolute inset-x-0 top-0 z-[15]" aria-hidden />
+      <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 z-30" aria-hidden />
       <SettingsNav value={activeTab} onChange={handleTabChange} items={NAV_ITEMS} />
       {settingsDetail}
       {unsavedModal}

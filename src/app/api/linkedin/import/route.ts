@@ -2,15 +2,18 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { importConnectionsFromFile } from "@/lib/linkedin/connections-import";
 import { LINKEDIN_MEMBER_COOKIE } from "@/lib/linkedin/oauth";
-import { requireTenantContext } from "@/lib/tenant";
+import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { assertCredits, creditActorFrom, deductCredits } from "@/lib/billing/credits";
 import { handleApiError } from "@/lib/api-errors";
-import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { requirePipelineWrite, canManageIntegrations } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
+    if (!canManageIntegrations(ctx.role, ctx.platformRole)) {
+      throw new ForbiddenError("Owner access required");
+    }
     const cookieStore = await cookies();
     const memberId = cookieStore.get(LINKEDIN_MEMBER_COOKIE)?.value;
 

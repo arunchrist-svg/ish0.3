@@ -23,6 +23,7 @@ export async function POST(req: Request) {
     const result = await runScoutBatch({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
+      userId: ctx.userId,
       cities,
       industries,
       seniority,

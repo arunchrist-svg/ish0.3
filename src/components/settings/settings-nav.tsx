@@ -21,10 +21,15 @@ export function SettingsNav({ value, onChange, items }: SettingsNavProps) {
   const { containerRef, register, rect, ready } = useSlidingHighlight(value);
 
   return (
-    <aside className="settings-nav-rail ish-glass-sidebar hidden h-full w-[200px] shrink-0 flex-col border-r border-white/50 p-[22px_16px] lg:flex">
-      <div className="settings-nav-stripe mb-4 h-1 w-full rounded-full" aria-hidden />
-      <span className="mb-5 text-lg font-bold tracking-tight text-brand-ink">Settings</span>
-      <nav ref={containerRef} className="relative flex flex-col">
+    <aside className="settings-nav-rail ish-glass-sidebar relative hidden h-full w-[200px] shrink-0 flex-col lg:flex">
+      <div
+        className="settings-nav-divider pointer-events-none absolute bottom-0 right-0 top-[3px] z-20 w-px"
+        aria-hidden
+      />
+      <div className="ish-settings-header relative z-20 flex shrink-0 items-center bg-transparent px-5">
+        <span className="text-[20px] font-extrabold tracking-tight text-brand-ink">Settings</span>
+      </div>
+      <nav ref={containerRef} className="relative flex flex-1 flex-col overflow-y-auto px-3 py-3">
         <SlidingHighlight rect={rect} ready={ready} />
         {items.map((item) => {
           const Icon = item.icon;

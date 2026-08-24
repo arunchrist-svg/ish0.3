@@ -329,7 +329,6 @@ export function BrandIntelligenceDashboard() {
   return (
     <MobilePageLayout
       title="Gift Tracker"
-      subtitle="Corporate gifting intelligence"
       largeTitle={!isMobile}
       className="ish-board-page"
       contentClassName="flex flex-col !overflow-hidden"
@@ -356,7 +355,6 @@ export function BrandIntelligenceDashboard() {
         icon={Radar}
         eyebrow="Brand Intelligence"
         title="Corporate Gift Tracker"
-        subtitle="Discover which companies gifted a competitor brand, announced a store opening, or are hiring for stores that are still coming up."
         actions={
           stats ? (
             <div className="flex flex-wrap gap-2">

@@ -69,6 +69,21 @@ describe("apply writer draft to lead state", () => {
     expect(next.outreach?.id).toBe("e1");
   });
 
+  it("drops local drafts when the server reset the lead back to researched", () => {
+    const prev: LeadDraftState<Draft> = {
+      status: "draft_ready",
+      outreach: draft({ id: "e1", sequencePosition: 1, emailBody: "one" }),
+      outreachSequence: [
+        draft({ id: "e1", sequencePosition: 1, emailBody: "one" }),
+        draft({ id: "e2", sequencePosition: 2, emailBody: "two" }),
+      ],
+    };
+    const incoming: LeadDraftState<Draft> = { status: "researched" };
+    const next = mergeLeadOutreachFromServer(prev, incoming);
+    expect(next.outreach).toBeUndefined();
+    expect(next.outreachSequence).toBeUndefined();
+  });
+
   it("prefers the local copy of a draft the server also returned", () => {
     const prev: LeadDraftState<Draft> = {
       status: "draft_ready",

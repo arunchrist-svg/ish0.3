@@ -12,6 +12,7 @@ import {
   EmailSendRejectedError,
 } from "@/lib/api-client";
 import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
+import { handleWhatsAppAutoOpenResponse } from "@/lib/whatsapp/open-click";
 import {
   defaultSelectedContactEmails,
   EMPTY_SEND_TO_HINT,
@@ -102,7 +103,7 @@ function CompareBodyField({
       placeholder={placeholder}
       disabled={disabled}
       className={cn(
-        "block h-full min-h-[14rem] w-full resize-none overflow-y-auto border-0 bg-transparent px-0 py-0",
+        "block h-full min-h-[16.8rem] w-full resize-none overflow-y-auto border-0 bg-transparent px-0 py-0",
         text.body,
         "whitespace-pre-wrap text-[13px] leading-[1.65] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60",
       )}
@@ -419,13 +420,13 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   const showReRow = Boolean((isReplyDraft || isSequenceFollowUp) && threadSubject);
 
   function handleSubjectChange(key: VariantKey, value: string) {
-    const field = key === "B" ? "subjectB" : key === "C" ? "subjectC" : "subjectA";
+    const field = key === "B" ? "subjectB" : "subjectA";
     setDisplayDraft({ ...displayDraft, [field]: value });
     setDirty(true);
   }
 
   function handleBodyChange(key: VariantKey, value: string) {
-    const field = key === "B" ? "emailBodyB" : key === "C" ? "emailBodyC" : "emailBody";
+    const field = key === "B" ? "emailBodyB" : "emailBody";
     setDisplayDraft({ ...displayDraft, [field]: value });
     setDirty(true);
   }
@@ -497,6 +498,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
           sendFollowUp(scheduleIdForFollowUp, overrides),
         );
         toast.success(`Follow-up sent (${result.mode})`);
+        handleWhatsAppAutoOpenResponse(result.whatsappOpen);
         onSent?.();
         return;
       }
@@ -651,7 +653,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
               <p className="text-[10px] text-brand-ink-faint">Applies to all three sequence emails</p>
             </div>
             <div
-              className="grid grid-cols-1 gap-1.5 sm:grid-cols-3"
+              className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
               role="radiogroup"
               aria-label="Subject options"
             >
@@ -726,7 +728,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
             </p>
           </div>
           <div
-            className="flex gap-2 overflow-x-auto px-3 pb-2 snap-x snap-mandatory scrollbar-none lg:grid lg:grid-cols-3 lg:overflow-visible lg:px-0 lg:pb-2.5"
+            className="flex gap-2 overflow-x-auto px-3 pb-2 snap-x snap-mandatory scrollbar-none lg:grid lg:grid-cols-2 lg:overflow-visible lg:px-0 lg:pb-2.5"
             role="radiogroup"
             aria-label="Body options"
             onScroll={handleBodyStripScroll}
@@ -754,7 +756,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
                   }}
                   className={cn(
                     "ish-email-choice flex w-[85%] shrink-0 snap-center flex-col rounded-[12px] border p-2.5 transition-colors lg:w-auto lg:min-w-0",
-                    "min-h-[13rem] max-h-[21rem]",
+                    "min-h-[15.6rem] max-h-[25.2rem]",
                     checked
                       ? "border-brand-stratus-blue/40 bg-white shadow-[var(--shadow-brand-sm)]"
                       : "border-transparent bg-white/70 hover:border-brand-stratus-blue/20 hover:bg-white",

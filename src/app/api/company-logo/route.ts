@@ -16,7 +16,12 @@ export async function GET(req: Request) {
 
   const url = await resolveCompanyLogoUrl({ name, domain, website });
   if (!url) {
-    return json ? NextResponse.json({ url: null }) : new NextResponse(null, { status: 404 });
+    return json
+      ? NextResponse.json(
+          { url: null },
+          { headers: { "Cache-Control": "public, s-maxage=3600, stale-while-revalidate=86400" } },
+        )
+      : new NextResponse(null, { status: 404 });
   }
 
   if (json) {

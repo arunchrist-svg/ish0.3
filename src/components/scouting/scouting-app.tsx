@@ -4,18 +4,37 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 // import { ScoutingProgressBar } from "./scouting-progress-bar";
 import { ScoutingToolbar, type ScoutMode } from "./scouting-toolbar";
 import { DiscoveringLoader } from "./discovering-loader";
-import { SavingLeadsLoader } from "./saving-leads-loader";
 import { CompaniesGrid } from "./companies-grid";
 import { CompanyDetailPanel } from "./company-detail-panel";
-import { MissingWebsitePrompt } from "./missing-website-prompt";
+import {
+  MissingWebsitePrompt,
+  type WebsitePasteEntry,
+  type WebsiteRowStatus,
+} from "./missing-website-prompt";
 import { LeadsGrid } from "./leads-grid";
 import { PersonDetailPanel } from "./person-detail-panel";
-import { scoutCompanies, scoutCompaniesStream, scoutPeople, scoutPeopleBatchStream, scoutSave, scoutSaveBatchStream, scoutSaveCompanies, scoutSavedCompanies, scoutBootstrap, scoutExactSearch } from "@/lib/api-client";
+import {
+  scoutCompanies,
+  scoutCompaniesStream,
+  scoutPeople,
+  scoutPeopleBatchStream,
+  scoutSave,
+  scoutSaveBatchStream,
+  scoutSaveCompanies,
+  scoutSavedCompanies,
+  scoutBootstrap,
+  scoutExactSearch,
+  scoutCreateSession,
+  scoutUpdateSession,
+  scoutGetSession,
+  type ScoutSessionDetail,
+} from "@/lib/api-client";
 import { useSession } from "@/components/providers/session-provider";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { mapWithConcurrency } from "@/lib/async";
 import { isLogoUrl } from "@/lib/company-logo";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
+import type { ScoutSessionFilters, ScoutSessionPerson, ScoutSessionUiState } from "@/db";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, personFieldOrEmpty, cn } from "@/lib/utils";
 import {
@@ -32,7 +51,10 @@ import {
   MobilePageLayout,
 } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
-import { Compass, Bookmark, BookmarkPlus, MapPin, MoreVertical, Search, Telescope, TriangleAlert, Users } from "lucide-react";
+import { Compass, Bookmark, BookmarkPlus, History, MapPin, MoreVertical, Search, Telescope, TriangleAlert, Users } from "lucide-react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
+import { ScoutHistoryPanel } from "./scout-history-panel";
+import { RolePickerModal, FetchLeadsRiskModal } from "./role-picker-modal";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS, parseScoutVerticalScope, type ScoutVerticalScope } from "@/lib/scouting-data";
 import { extractEmployeesFromText, normalizeEmployeeField } from "@/lib/enrichment/employee-size";
 import {
@@ -287,319 +309,6 @@ function dedupeCompanyShapes(shapes: CompanyShape[]): CompanyShape[] {
   });
 }
 
-/* ─────────────────────────────────────────────
-   Role Picker Modal
-───────────────────────────────────────────── */
-
-
-function RolePickerModal({
-  initialSeniority = [],
-  initialDepartments = [],
-  initialPeopleCities = [],
-  platformIntent,
-  verticalScope,
-  onConfirm,
-  onSkip,
-}: {
-  initialSeniority?: string[];
-  initialDepartments?: string[];
-  initialPeopleCities?: string[];
-  platformIntent?: PlatformIntent | null;
-  verticalScope?: ScoutVerticalScope;
-  onConfirm: (seniority: string[], departments: string[], peopleCities: string[]) => void;
-  onSkip: () => void;
-}) {
-  const [chosenSeniority, setChosenSeniority] = useState<string[]>(initialSeniority);
-  const [chosenDepts, setChosenDepts] = useState<string[]>(initialDepartments);
-
-  const isBusiness = verticalScope === "businesses";
-  const sweetsGuidance = festiveSweetsBuyerGuidance(platformIntent, isBusiness ? "business" : "industry");
-
-  function toggleSeniority(s: string) {
-    setChosenSeniority((prev) =>
-      prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s],
-    );
-  }
-  function toggleDept(d: string) {
-    setChosenDepts((prev) =>
-      prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d],
-    );
-  }
-
-  const hasSelection = chosenSeniority.length > 0 || chosenDepts.length > 0;
-  const andWarning = peopleAndFilterWarning(
-    chosenSeniority,
-    chosenDepts,
-    [],
-    { searchKind: isBusiness ? "business" : "industry" },
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,24,36,0.42)] backdrop-blur-[3px]">
-      <div className="ish-role-picker mx-4 w-full max-w-lg">
-        <div className="ish-role-picker-head px-6 py-4">
-          <p className="text-[16px] font-bold tracking-tight text-brand-ink">Who are you looking for?</p>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-brand-ink-soft">
-            {sweetsGuidance ??
-              "Pick seniority or department. Matching both is stricter and often returns nobody."}
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-5 px-6 py-5">
-          {!isBusiness ? (
-            <>
-              <div>
-                <div className="mb-2.5 flex items-center justify-between gap-2">
-                  <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-                    Seniority
-                  </p>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setChosenSeniority([...SCOUT_SENIORITY])}
-                      disabled={chosenSeniority.length === SCOUT_SENIORITY.length}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChosenSeniority([])}
-                      disabled={chosenSeniority.length === 0}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Clear all
-                    </button>
-                  </div>
-                </div>
-                <div className="ish-scout-chip-grid">
-                  {SCOUT_SENIORITY.map((s) => {
-                    const active = chosenSeniority.includes(s);
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => toggleSeniority(s)}
-                        className={cn(
-                          "ish-scout-filter-chip",
-                          active ? "ish-role-picker-chip-on-yellow" : "ish-scout-chip-off",
-                        )}
-                      >
-                        {s}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-2.5 flex items-center justify-between gap-2">
-                  <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
-                    Department
-                  </p>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setChosenDepts([...SCOUT_DEPARTMENTS])}
-                      disabled={chosenDepts.length === SCOUT_DEPARTMENTS.length}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChosenDepts([])}
-                      disabled={chosenDepts.length === 0}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Clear all
-                    </button>
-                  </div>
-                </div>
-                <div className="ish-scout-chip-grid">
-                  {SCOUT_DEPARTMENTS.map((d) => {
-                    const active = chosenDepts.includes(d);
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        onClick={() => toggleDept(d)}
-                        className={cn(
-                          "ish-scout-filter-chip",
-                          active ? "ish-role-picker-chip-on-blue" : "ish-scout-chip-off",
-                        )}
-                      >
-                        {d}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          ) : null}
-
-          {sweetsGuidance && !isBusiness ? (
-            <button
-              type="button"
-              onClick={() => {
-                setChosenSeniority([]);
-                setChosenDepts([...FESTIVE_SWEETS_BUYER_DEPARTMENTS]);
-              }}
-              className="ish-role-picker-recommend px-3.5 py-2.5 text-left text-[12px] font-semibold"
-            >
-              Use recommended: HR + Procurement
-            </button>
-          ) : null}
-          {isBusiness ? (
-            <button
-              type="button"
-              onClick={() => {
-                setChosenSeniority([]);
-                setChosenDepts([]);
-                onConfirm([], [], []);
-              }}
-              className="ish-role-picker-recommend px-3.5 py-2.5 text-left text-[12px] font-semibold"
-            >
-              Use local seniors for this area
-            </button>
-          ) : null}
-
-          {andWarning ? (
-            <p className="ish-role-picker-warn px-3.5 py-2.5 text-[12px] leading-snug">
-              {andWarning}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="ish-role-picker-foot flex items-center justify-between gap-3 px-6 py-4">
-          <button
-            type="button"
-            onClick={onSkip}
-            className="text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
-          >
-            Skip, find any role
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onConfirm(chosenSeniority, chosenDepts, [...initialPeopleCities]);
-            }}
-            disabled={!hasSelection && !isBusiness}
-            className={cn(
-              "flex items-center gap-1.5 rounded-full px-5 py-2 text-[12.5px] font-bold transition-all duration-150",
-              hasSelection || isBusiness
-                ? "ish-role-picker-cta hover:opacity-95"
-                : "ish-role-picker-cta-muted",
-            )}
-          >
-            Find Decision-Makers →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FetchLeadsRiskModal({
-  companyCount,
-  cities,
-  seniority,
-  departments,
-  searchKind,
-  locationScope,
-  onCancel,
-  onUseSuggestedFilters,
-  onFetchWithoutFilters,
-  onFetchAnyway,
-}: {
-  companyCount: number;
-  cities: string[];
-  seniority: string[];
-  departments: string[];
-  searchKind?: ScoutVerticalScope;
-  locationScope?: ScoutLocationScope;
-  onCancel: () => void;
-  onUseSuggestedFilters: (() => void) | null;
-  onFetchWithoutFilters: () => void;
-  onFetchAnyway: () => void;
-}) {
-  const risk = assessPeopleFetchRisk({
-    companyCount,
-    cities,
-    seniority,
-    departments,
-    searchKind: searchKind === "businesses" ? "business" : "industry",
-    locationScope: locationScope === "focus" ? "focus" : "interest",
-  });
-  const senLabel = seniority.join(", ");
-  const deptLabel = departments.join(", ");
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,24,36,0.42)] backdrop-blur-[3px]">
-      <div className="ish-role-picker mx-4 w-full max-w-md">
-        <div className="ish-role-picker-head px-6 py-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-[rgba(var(--brand-stratus-yellow-rgb),0.35)] text-brand-ink">
-              <TriangleAlert className="size-4" />
-            </div>
-            <div>
-              <p className="text-[15px] font-bold text-brand-ink">{risk.headline}</p>
-              <p className="mt-1 text-[12px] leading-snug text-brand-ink-soft">{risk.costLine}</p>
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3 px-6 py-5">
-          <p className="text-[13px] leading-snug text-brand-ink">
-            {risk.emptyRiskLine}
-          </p>
-          {risk.suggestionLine ? (
-            <p className="rounded-xl bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] px-3 py-2 text-[12px] leading-snug text-brand-ink shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.22)]">
-              {risk.suggestionLine}
-            </p>
-          ) : null}
-          <p className="rounded-xl bg-[rgba(255,255,255,0.7)] px-3 py-2 text-[12px] leading-snug text-brand-ink-soft shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.12)]">
-            Your filters: {senLabel} + {deptLabel}. Too many seniority and department chips at once often matches nobody.
-          </p>
-        </div>
-        <div className="ish-role-picker-foot flex flex-col gap-2 px-6 py-4">
-          {risk.suggestedFilters && onUseSuggestedFilters ? (
-            <button
-              type="button"
-              onClick={onUseSuggestedFilters}
-              className="rounded-full border border-[rgba(var(--brand-stratus-blue-rgb),0.28)] bg-[rgba(var(--brand-stratus-blue-rgb),0.12)] px-4 py-2.5 text-[12.5px] font-bold text-brand-ink hover:bg-[rgba(var(--brand-stratus-blue-rgb),0.18)]"
-            >
-              Use suggested filters and fetch
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={onFetchWithoutFilters}
-            className="ish-role-picker-cta rounded-full px-4 py-2.5 text-[12.5px] font-bold hover:opacity-95"
-          >
-            Fetch with no People filters
-          </button>
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="text-[12px] font-semibold text-brand-ink-soft hover:text-brand-ink"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onFetchAnyway}
-              className="text-[12px] font-semibold text-brand-stratus-blue hover:opacity-90"
-            >
-              Keep my filters and fetch
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 function ScoutCompaniesEmpty({
   hasFetched,
@@ -624,7 +333,7 @@ function ScoutCompaniesEmpty({
         </div>
         <EmptyState
           title="No saved companies yet"
-          description="Select companies from Scout, then tap Save companies. Fetch Leads later from Saved."
+          description="Select companies from Scout, then tap Save companies. Open Saved and use Extract leads to find decision-makers."
           className="py-0"
         />
       </div>
@@ -678,14 +387,16 @@ function ScoutPeopleEmpty({
   headline,
   detail,
   missingWebsites,
-  applyingWebsiteId,
-  onApplyWebsite,
+  applyingWebsites,
+  websiteRowStatus,
+  onFetchWebsites,
 }: {
   headline: string;
   detail: string;
   missingWebsites: { id: string; name: string }[];
-  applyingWebsiteId?: string | null;
-  onApplyWebsite: (companyId: string, website: string) => void | Promise<void>;
+  applyingWebsites?: boolean;
+  websiteRowStatus?: Record<string, WebsiteRowStatus>;
+  onFetchWebsites: (entries: WebsitePasteEntry[]) => void | Promise<void>;
 }) {
   return (
     <div className="mx-4 mt-4 rounded-[24px] border border-brand-border/50 bg-white px-6 py-12 text-center shadow-ish">
@@ -693,11 +404,14 @@ function ScoutPeopleEmpty({
         <Users className="size-7" />
       </div>
       <EmptyState title={headline} description={detail} className="py-0" />
-      <MissingWebsitePrompt
-        companies={missingWebsites}
-        applyingId={applyingWebsiteId}
-        onApply={onApplyWebsite}
-      />
+      <div className="mx-auto mt-6 w-full max-w-lg text-left">
+        <MissingWebsitePrompt
+          companies={missingWebsites}
+          applying={applyingWebsites}
+          rowStatus={websiteRowStatus}
+          onFetch={onFetchWebsites}
+        />
+      </div>
     </div>
   );
 }
@@ -735,14 +449,18 @@ export function ScoutingApp() {
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
   const [saving, setSaving] = useState(false);
   const [savingCompanies, setSavingCompanies] = useState(false);
+  const showingSavedRef = useRef(false);
   const [showingSaved, setShowingSaved] = useState(false);
+  showingSavedRef.current = showingSaved;
   const [saveProgress, setSaveProgress] = useState({ done: 0, total: 0 });
   const [hasMore, setHasMore] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [fetchMessage, setFetchMessage] = useState<string | null>(null);
   const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<{ headline: string; detail: string } | null>(null);
-  const [applyingWebsiteId, setApplyingWebsiteId] = useState<string | null>(null);
+  const [applyingWebsites, setApplyingWebsites] = useState(false);
+  const [applyingWebsiteIds, setApplyingWebsiteIds] = useState<Set<string>>(new Set());
+  const [websiteRowStatus, setWebsiteRowStatus] = useState<Record<string, WebsiteRowStatus>>({});
   const [fetchSeed, setFetchSeed] = useState(0);
   const shownNoticesRef = useRef(new Set<string>());
 
@@ -750,6 +468,12 @@ export function ScoutingApp() {
   const [primaryCompanyId, setPrimaryCompanyId] = useState<string | null>(null);
   const [selectedPersonIds, setSelectedPersonIds] = useState<Set<string>>(new Set());
   const [primaryPersonId, setPrimaryPersonId] = useState<string | null>(null);
+  const peopleRef = useRef(people);
+  peopleRef.current = people;
+  const selectedPersonIdsRef = useRef(selectedPersonIds);
+  selectedPersonIdsRef.current = selectedPersonIds;
+  const primaryPersonIdRef = useRef(primaryPersonId);
+  primaryPersonIdRef.current = primaryPersonId;
   const [existingContactNames, setExistingContactNames] = useState<Set<string>>(new Set());
   const [crmLeadIdsByKey, setCrmLeadIdsByKey] = useState<Map<string, string>>(new Map());
   const [scoutMode, setScoutMode] = useState<ScoutMode>("autopilot");
@@ -764,8 +488,19 @@ export function ScoutingApp() {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [activeSessionTitle, setActiveSessionTitle] = useState<string | null>(null);
 
   const persistAreaSelectionTimer = useRef<number | null>(null);
+  const sessionPersistTimer = useRef<number | null>(null);
+  const activeSessionIdRef = useRef<string | null>(null);
+  activeSessionIdRef.current = activeSessionId;
+  const sessionPersistFailToastRef = useRef(false);
+  const sessionDeepLinkHandled = useRef(false);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const locationScopeRef = useRef<ScoutLocationScope>(locationScope);
   locationScopeRef.current = locationScope;
   const verticalScopeRef = useRef<ScoutVerticalScope>(verticalScope);
@@ -792,6 +527,222 @@ export function ScoutingApp() {
       return defaultLabelsFromLocationOptions(locations);
     });
   }
+
+  function clearActiveSession() {
+    activeSessionIdRef.current = null;
+    setActiveSessionId(null);
+    setActiveSessionTitle(null);
+  }
+
+  function buildSessionFilters(overrides?: Partial<ScoutSessionFilters>): ScoutSessionFilters {
+    return {
+      cities,
+      industries,
+      businesses,
+      employeeBands,
+      seniority,
+      departments,
+      peopleCities,
+      locationScope: locationScope === "focus" ? "focus" : "interest",
+      verticalScope,
+      searchKind: verticalScope === "businesses" ? "business" : "industry",
+      scoutCompaniesLimit,
+      scoutLeadsLimit,
+      ...(companySearchQuery.trim() ? { companyName: companySearchQuery.trim() } : {}),
+      ...overrides,
+    };
+  }
+
+  function companiesForSession(list: CompanyShape[]): ScoutCompanyResult[] {
+    return list.map((c) => ({
+      ...c._raw,
+      externalId: isUsableExternalId(c._raw.externalId) ? c._raw.externalId : c.id,
+    }));
+  }
+
+  function peopleForSession(list: ReturnType<typeof toPersonShape>[]): ScoutSessionPerson[] {
+    return list.map((p) => ({
+      ...p._raw,
+      externalId: isUsableExternalId(p._raw.externalId) ? p._raw.externalId : p.id,
+      companyId: p.companyId,
+    }));
+  }
+
+  function buildSessionUiState(overrides?: Partial<ScoutSessionUiState>): ScoutSessionUiState {
+    return {
+      selectedCompanyIds: [...selectedCompanyIds],
+      selectedPersonIds: [...selectedPersonIds],
+      primaryCompanyId,
+      primaryPersonId,
+      view,
+      fetchSeed,
+      hasMore,
+      companySearchQuery,
+      ...overrides,
+    };
+  }
+
+  function toastSessionPersistError() {
+    if (sessionPersistFailToastRef.current) return;
+    sessionPersistFailToastRef.current = true;
+    toast.error("Could not save Scout session history. Discovery still works.");
+  }
+
+  async function createSessionFromResults(params: {
+    companies: CompanyShape[];
+    people?: ReturnType<typeof toPersonShape>[];
+    mode?: ScoutMode;
+    filters?: ScoutSessionFilters;
+    uiState?: ScoutSessionUiState;
+    warnings?: string[];
+  }) {
+    try {
+      const { session } = await scoutCreateSession({
+        mode: params.mode ?? scoutMode,
+        filters: params.filters ?? buildSessionFilters(),
+        companies: companiesForSession(params.companies),
+        people: peopleForSession(params.people ?? []),
+        uiState: params.uiState ?? buildSessionUiState({
+          selectedCompanyIds: params.companies.map((c) => c.id),
+          view: "companies",
+        }),
+        warnings: params.warnings,
+      });
+      activeSessionIdRef.current = session.id;
+      setActiveSessionId(session.id);
+      setActiveSessionTitle(session.title);
+      sessionPersistFailToastRef.current = false;
+      return session;
+    } catch (e) {
+      console.error("[scouting] create session failed:", e);
+      toastSessionPersistError();
+      return null;
+    }
+  }
+
+  async function patchActiveSession(params: {
+    companies?: CompanyShape[];
+    people?: ReturnType<typeof toPersonShape>[];
+    filters?: ScoutSessionFilters;
+    uiState?: ScoutSessionUiState;
+    warnings?: string[];
+    mode?: ScoutMode;
+  }) {
+    const id = activeSessionIdRef.current;
+    if (!id) return;
+    try {
+      const { session } = await scoutUpdateSession(id, {
+        mode: params.mode,
+        filters: params.filters,
+        companies: params.companies ? companiesForSession(params.companies) : undefined,
+        people: params.people ? peopleForSession(params.people) : undefined,
+        uiState: params.uiState,
+        warnings: params.warnings,
+      });
+      setActiveSessionTitle(session.title);
+      sessionPersistFailToastRef.current = false;
+    } catch (e) {
+      console.error("[scouting] update session failed:", e);
+      toastSessionPersistError();
+    }
+  }
+
+  function scheduleSessionPatch(params: {
+    companies?: CompanyShape[];
+    people?: ReturnType<typeof toPersonShape>[];
+    filters?: ScoutSessionFilters;
+    uiState?: ScoutSessionUiState;
+    warnings?: string[];
+    mode?: ScoutMode;
+  }) {
+    if (!activeSessionIdRef.current) return;
+    if (sessionPersistTimer.current) window.clearTimeout(sessionPersistTimer.current);
+    sessionPersistTimer.current = window.setTimeout(() => {
+      void patchActiveSession(params);
+    }, 1000);
+  }
+
+  async function restoreScoutSession(session: ScoutSessionDetail) {
+    const filters = session.filters;
+    setShowingSaved(false);
+    setScoutMode(session.mode);
+    setLocationScope(filters.locationScope);
+    setVerticalScope(filters.verticalScope);
+    setCities(filters.cities ?? []);
+    citiesByScopeRef.current[filters.locationScope] = filters.cities ?? [];
+    setIndustries(filters.industries ?? []);
+    setBusinesses(filters.businesses ?? []);
+    setEmployeeBands(filters.employeeBands ?? []);
+    setSeniority(filters.seniority ?? []);
+    setDepartments(filters.departments ?? []);
+    setPeopleCities(filters.peopleCities ?? []);
+    setCompanySearchQuery(filters.companyName ?? session.uiState.companySearchQuery ?? "");
+    writeScoutFilterSession({
+      locationScope: filters.locationScope,
+      verticalScope: filters.verticalScope,
+      industries: filters.industries ?? [],
+      businesses: filters.businesses ?? [],
+      citiesByScope: { ...citiesByScopeRef.current },
+    });
+
+    const shaped = dedupeCompanyShapes(session.companies.map((c, i) => toCompanyShape(c, i)));
+    const companyIdByKey = new Map(shaped.map((c) => [c.id, c.id]));
+    const shapedPeople = session.people.map((p, i) => {
+      const companyId = companyIdByKey.get(p.companyId) ? p.companyId : p.companyId;
+      return toPersonShape(p, companyId, i);
+    });
+
+    setCompanies(shaped);
+    setPeople(shapedPeople);
+    peopleRef.current = shapedPeople;
+    setSelectedCompanyIds(new Set(session.uiState.selectedCompanyIds ?? []));
+    setSelectedPersonIds(new Set(session.uiState.selectedPersonIds ?? []));
+    setPrimaryCompanyId(session.uiState.primaryCompanyId ?? shaped[0]?.id ?? null);
+    setPrimaryPersonId(session.uiState.primaryPersonId ?? null);
+    setView(session.uiState.view === "people" && shapedPeople.length ? "people" : "companies");
+    setFetchSeed(session.uiState.fetchSeed ?? 0);
+    setHasMore(Boolean(session.uiState.hasMore));
+    setHasFetched(true);
+    setDiscoveryNotice(session.warnings?.length ? session.warnings.join(" ") : null);
+    setFetchMessage(null);
+    setPeopleNotice(null);
+    activeSessionIdRef.current = session.id;
+    setActiveSessionId(session.id);
+    setActiveSessionTitle(session.title);
+  }
+
+  async function openScoutSessionById(id: string) {
+    const { session } = await scoutGetSession(id);
+    await restoreScoutSession(session);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("session", id);
+    router.replace(`${pathname}?${params.toString()}`);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (sessionPersistTimer.current) window.clearTimeout(sessionPersistTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (sessionDeepLinkHandled.current || !settingsLoaded) return;
+    const sessionId = searchParams.get("session");
+    if (!sessionId) return;
+    sessionDeepLinkHandled.current = true;
+    void openScoutSessionById(sessionId).catch(() => {
+      toast.error("Could not open that Scout session");
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot deep link after bootstrap
+  }, [settingsLoaded, searchParams]);
+
+  useEffect(() => {
+    if (!activeSessionId || showingSaved) return;
+    scheduleSessionPatch({
+      uiState: buildSessionUiState(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selection/view debounce only
+  }, [selectedCompanyIds, selectedPersonIds, primaryCompanyId, primaryPersonId, view, activeSessionId, showingSaved]);
 
   useEffect(() => {
     const defaults = session?.scoutBrandDefaults;
@@ -1108,6 +1059,58 @@ export function ScoutingApp() {
           setFetchMessage(helpfulWarning ?? null);
         }
 
+        const mergedForSession = append ? mergeCompanies(companies, shaped) : shaped;
+        const warnings = response.warnings ?? [];
+        if (!append) {
+          setPeople([]);
+          peopleRef.current = [];
+          setSelectedPersonIds(new Set());
+          void createSessionFromResults({
+            companies: mergedForSession,
+            people: [],
+            mode: scoutMode,
+            filters: buildSessionFilters(
+              options?.companyName ? { companyName: options.companyName } : undefined,
+            ),
+            uiState: {
+              selectedCompanyIds: mergedForSession.map((c) => c.id),
+              selectedPersonIds: [],
+              primaryCompanyId:
+                typeof window !== "undefined" &&
+                window.matchMedia("(min-width: 1024px)").matches &&
+                mergedForSession[0]
+                  ? mergedForSession[0].id
+                  : null,
+              primaryPersonId: null,
+              view: "companies",
+              fetchSeed: seed,
+              hasMore: response.hasMore,
+              companySearchQuery: options?.companyName ?? companySearchQuery,
+            },
+            warnings,
+          });
+        } else if (activeSessionIdRef.current) {
+          void patchActiveSession({
+            companies: mergedForSession,
+            uiState: {
+              selectedCompanyIds: [
+                ...new Set([
+                  ...selectedCompanyIds,
+                  ...shaped.map((c) => c.id),
+                ]),
+              ],
+              selectedPersonIds: [...selectedPersonIds],
+              primaryCompanyId,
+              primaryPersonId,
+              view: "companies",
+              fetchSeed: seed,
+              hasMore: response.hasMore,
+              companySearchQuery,
+            },
+            warnings,
+          });
+        }
+
         window.dispatchEvent(new Event("tavily-usage-refresh"));
       } catch (e) {
         window.dispatchEvent(new Event("tavily-usage-refresh"));
@@ -1120,7 +1123,28 @@ export function ScoutingApp() {
         if (!append) setHasFetched(true);
       }
     },
-    [dataMode, companies, fetchSeed, scoutCompaniesLimit, savedAccountShapes],
+    [
+      dataMode,
+      companies,
+      fetchSeed,
+      scoutCompaniesLimit,
+      savedAccountShapes,
+      scoutMode,
+      cities,
+      industries,
+      businesses,
+      employeeBands,
+      seniority,
+      departments,
+      peopleCities,
+      locationScope,
+      verticalScope,
+      companySearchQuery,
+      selectedCompanyIds,
+      selectedPersonIds,
+      primaryCompanyId,
+      primaryPersonId,
+    ],
   );
 
   function toggleEmployeeBand(bandId: string) {
@@ -1414,7 +1438,9 @@ export function ScoutingApp() {
     setShowFetchRisk(false);
     setPendingFetchIds(null);
     setPendingFetchRoles(null);
-    void runFetchLeads(selected, activeSeniority, activeDepartments);
+    void runFetchLeads(selected, activeSeniority, activeDepartments, {
+      coverageCompanyIds: selected.map((c) => c.id),
+    });
   }
 
   function confirmFetchIfRisky(
@@ -1422,14 +1448,15 @@ export function ScoutingApp() {
     activeSeniority: string[],
     activeDepartments: string[],
   ) {
+    const geo = peopleGeoForSavedBatch(selected);
     const risk = assessPeopleFetchRisk({
       companyCount: selected.length,
-      cities,
+      cities: geo.cities,
       seniority: activeSeniority,
       departments: activeDepartments,
       searchKind: verticalScope === "businesses" ? "business" : "industry",
       businesses,
-      locationScope: locationScope === "focus" ? "focus" : "interest",
+      locationScope: geo.locationScope,
     });
     if (!risk.needsConfirm) {
       beginFetchLeads(selected, activeSeniority, activeDepartments);
@@ -1482,20 +1509,22 @@ export function ScoutingApp() {
 
   function handleUseSuggestedFilters() {
     const roles = pendingFetchRoles ?? { seniority, departments };
+    const selected = companiesForPendingFetch();
+    const geo = peopleGeoForSavedBatch(selected);
     const risk = assessPeopleFetchRisk({
-      companyCount: companiesForPendingFetch().length,
-      cities,
+      companyCount: selected.length,
+      cities: geo.cities,
       seniority: roles.seniority,
       departments: roles.departments,
       searchKind: verticalScope === "businesses" ? "business" : "industry",
       businesses,
-      locationScope: locationScope === "focus" ? "focus" : "interest",
+      locationScope: geo.locationScope,
     });
     if (!risk.suggestedFilters) return;
     setSeniority(risk.suggestedFilters.seniority);
     setDepartments(risk.suggestedFilters.departments);
     beginFetchLeads(
-      companiesForPendingFetch(),
+      selected,
       risk.suggestedFilters.seniority,
       risk.suggestedFilters.departments,
     );
@@ -1520,7 +1549,14 @@ export function ScoutingApp() {
           })),
         ]),
       );
-      toast.success(`Saved ${result.saved} companies. Fetch Leads later from Saved.`);
+      toast.success(`Saved ${result.saved} companies.`, {
+        action: {
+          label: "Extract leads",
+          onClick: () => {
+            void handleShowSaved();
+          },
+        },
+      });
       notifyCrmRecordsChanged({ source: "scout_save_companies", savedAccounts: result.saved });
     } catch (e) {
       toast.error("Could not save companies. Try again.");
@@ -1531,6 +1567,7 @@ export function ScoutingApp() {
   }
 
   async function handleShowSaved() {
+    clearActiveSession();
     setView("companies");
     setShowingSaved(true);
     setHasMore(false);
@@ -1545,7 +1582,8 @@ export function ScoutingApp() {
       const data = await scoutSavedCompanies();
       const shaped = dedupeCompanyShapes(data.companies.map((c, i) => toCompanyShape(c, i)));
       setCompanies(shaped);
-      setSelectedCompanyIds(new Set());
+      // Pre-select so Extract leads is ready immediately.
+      setSelectedCompanyIds(new Set(shaped.map((c) => c.id)));
       setPrimaryCompanyId(
         shaped.length && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches
           ? shaped[0].id
@@ -1590,27 +1628,116 @@ export function ScoutingApp() {
     );
   }
 
-  async function handlePastedWebsite(companyId: string, raw: string) {
-    const company = companies.find((c) => c.id === companyId);
-    if (!company) return;
-    const parsed = parsePastedCompanyWebsite(raw);
-    if (!parsed.domain) {
+  async function handlePastedWebsites(entries: WebsitePasteEntry[]) {
+    if (!entries.length) return;
+
+    const updatedCompanies: CompanyShape[] = [];
+    const statusPatch: Record<string, WebsiteRowStatus> = {};
+    const idSet = new Set<string>();
+
+    for (const entry of entries) {
+      const company = companies.find((c) => c.id === entry.companyId);
+      if (!company) continue;
+      const parsed = parsePastedCompanyWebsite(entry.website);
+      if (!parsed.domain) {
+        statusPatch[entry.companyId] = "error";
+        continue;
+      }
+      applyResolvedCompanyDomain(company.id, parsed.domain, parsed.website);
+      updatedCompanies.push({
+        ...company,
+        domain: parsed.domain,
+        website: parsed.website,
+        _raw: { ...company._raw, domain: parsed.domain, website: parsed.website },
+      });
+      idSet.add(company.id);
+      statusPatch[company.id] = "queued";
+    }
+
+    if (!updatedCompanies.length) {
       toast.error("Use the company website (company.com). Zauba and IndiaMART pages are not accepted.");
+      setWebsiteRowStatus((prev) => ({ ...prev, ...statusPatch }));
       return;
     }
-    applyResolvedCompanyDomain(companyId, parsed.domain, parsed.website);
-    const updated: CompanyShape = {
-      ...company,
-      domain: parsed.domain,
-      website: parsed.website,
-      _raw: { ...company._raw, domain: parsed.domain, website: parsed.website },
-    };
-    setApplyingWebsiteId(companyId);
-    try {
-      await runFetchLeads([updated], seniority, departments, { append: people.length > 0 });
-    } finally {
-      setApplyingWebsiteId(null);
+
+    setWebsiteRowStatus((prev) => ({ ...prev, ...statusPatch }));
+    setApplyingWebsites(true);
+    setApplyingWebsiteIds(idSet);
+    for (const id of idSet) {
+      statusPatch[id] = "fetching";
     }
+    setWebsiteRowStatus((prev) => ({ ...prev, ...statusPatch }));
+
+    try {
+      await runFetchLeads(updatedCompanies, seniority, departments, {
+        append: peopleRef.current.length > 0,
+        coverageCompanyIds: [...selectedCompanyIds],
+      });
+
+      setWebsiteRowStatus((prev) => {
+        const next = { ...prev };
+        const foundCompanyIds = new Set(
+          peopleRef.current
+            .filter((p) => idSet.has(p.companyId))
+            .map((p) => p.companyId),
+        );
+        for (const id of idSet) {
+          next[id] = foundCompanyIds.has(id) ? "done" : "no_match";
+        }
+        return next;
+      });
+    } finally {
+      setApplyingWebsites(false);
+      setApplyingWebsiteIds(new Set());
+    }
+  }
+
+  function peopleGeoForSavedCompany(company: CompanyShape): {
+    cities: string[];
+    peopleCities: string[];
+    locationScope: "focus" | "interest";
+  } {
+    if (!showingSavedRef.current) {
+      return {
+        cities,
+        peopleCities,
+        locationScope: locationScope === "focus" ? "focus" : "interest",
+      };
+    }
+    const city = company.city?.trim() || company._raw.city?.trim() || "";
+    const cityList = city ? [city] : [];
+    return {
+      cities: cityList,
+      peopleCities: cityList,
+      // Saved companies keep their own city; do not apply Focus Area neighborhood filters.
+      locationScope: "interest",
+    };
+  }
+
+  function peopleGeoForSavedBatch(selected: CompanyShape[]): {
+    cities: string[];
+    peopleCities: string[];
+    locationScope: "focus" | "interest";
+  } {
+    if (!showingSavedRef.current) {
+      return {
+        cities,
+        peopleCities,
+        locationScope: locationScope === "focus" ? "focus" : "interest",
+      };
+    }
+    const cityList = [
+      ...new Set(
+        selected
+          .map((c) => c.city?.trim() || c._raw.city?.trim() || "")
+          .filter(Boolean),
+      ),
+    ];
+    return {
+      cities: cityList,
+      peopleCities: cityList,
+      locationScope: "interest",
+    };
   }
 
   async function fetchLeadsParallel(
@@ -1623,6 +1750,7 @@ export function ScoutingApp() {
     let doneCount = 0;
     await mapWithConcurrency(selected, 8, async (company) => {
       try {
+        const geo = peopleGeoForSavedCompany(company);
         const { people: results, warnings, errors, resolvedDomain, resolvedWebsite } = await scoutPeople({
           companyName: company.name,
           companyDomain: resolveCompanyDomain(company._raw),
@@ -1631,17 +1759,20 @@ export function ScoutingApp() {
           limit: peoplePerCompanyLimit(scoutLeadsLimit),
           seniority: activeSeniority,
           departments: activeDepartments,
-          cities,
-          peopleCities,
+          cities: geo.cities,
+          peopleCities: geo.peopleCities,
           searchKind: verticalScope === "businesses" ? "business" : "industry",
           businesses,
-          locationScope: locationScope === "focus" ? "focus" : "interest",
+          locationScope: geo.locationScope,
         });
         applyResolvedCompanyDomain(company.id, resolvedDomain, resolvedWebsite);
         peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
         const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
         allPeople.push(...shaped);
-        setPeople((prev) => [...prev, ...shaped]);
+        setPeople((prev) => {
+          const seen = new Set(prev.map((p) => p.id));
+          return [...prev, ...shaped.filter((p) => !seen.has(p.id))];
+        });
       } catch (e) {
         peopleWarnings.push(
           e instanceof Error ? e.message : `People search failed for ${company.name}`,
@@ -1657,9 +1788,14 @@ export function ScoutingApp() {
     selected: CompanyShape[],
     activeSeniority: string[],
     activeDepartments: string[],
-    opts?: { append?: boolean },
+    opts?: { append?: boolean; coverageCompanyIds?: string[] },
   ) {
     const append = Boolean(opts?.append);
+    const priorPeople = append ? [...peopleRef.current] : [];
+    const priorIds = new Set(priorPeople.map((p) => p.id));
+    const priorSelected = append ? new Set(selectedPersonIdsRef.current) : new Set<string>();
+    const priorPrimary = append ? primaryPersonIdRef.current : null;
+
     setView("people");
     setLoadingPeople(true);
     setFetchProgress({ done: 0, total: selected.length });
@@ -1675,12 +1811,14 @@ export function ScoutingApp() {
       .catch(() => null);
 
     try {
-      const allPeople: ReturnType<typeof toPersonShape>[] = append ? [...people] : [];
+      const allPeople: ReturnType<typeof toPersonShape>[] = append ? [...priorPeople] : [];
       const peopleWarnings: string[] = [];
+      const incomingIds = new Set<string>();
 
       if (selected.length > 1) {
         try {
           let doneCount = 0;
+          const batchGeo = peopleGeoForSavedBatch(selected);
           await scoutPeopleBatchStream(
             {
               companies: selected.map((c) => ({
@@ -1693,11 +1831,11 @@ export function ScoutingApp() {
               limit: peoplePerCompanyLimit(scoutLeadsLimit),
               seniority: activeSeniority,
               departments: activeDepartments,
-              cities,
-              peopleCities,
+              cities: batchGeo.cities,
+              peopleCities: batchGeo.peopleCities,
               searchKind: verticalScope === "businesses" ? "business" : "industry",
               businesses,
-              locationScope: locationScope === "focus" ? "focus" : "interest",
+              locationScope: batchGeo.locationScope,
             },
             (companyId, batchResult) => {
               const company = selected.find((c) => c.id === companyId);
@@ -1705,10 +1843,14 @@ export function ScoutingApp() {
               applyResolvedCompanyDomain(company.id, batchResult.resolvedDomain, batchResult.resolvedWebsite);
               peopleWarnings.push(...(batchResult.warnings ?? []), ...(batchResult.errors ?? []));
               const shaped = batchResult.people.map((p, j) => toPersonShape(p, company.id, j));
+              for (const person of shaped) incomingIds.add(person.id);
               allPeople.push(...shaped);
               doneCount += 1;
               setFetchProgress({ done: doneCount, total: selected.length });
-              setPeople((prev) => [...prev, ...shaped]);
+              setPeople((prev) => {
+                const seen = new Set(prev.map((p) => p.id));
+                return [...prev, ...shaped.filter((p) => !seen.has(p.id))];
+              });
             },
           );
         } catch (batchErr) {
@@ -1718,49 +1860,101 @@ export function ScoutingApp() {
             toast.error(message);
           } else {
             console.warn("[scouting] batch fetch failed, falling back to parallel singles:", batchErr);
+            const beforeLen = allPeople.length;
             await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
+            for (const person of allPeople.slice(beforeLen)) incomingIds.add(person.id);
           }
         }
       } else {
+        const beforeLen = allPeople.length;
         await fetchLeadsParallel(selected, activeSeniority, activeDepartments, allPeople, peopleWarnings);
+        for (const person of allPeople.slice(beforeLen)) incomingIds.add(person.id);
       }
 
       void leadsDedupePromise.then((leadsData) => {
         if (leadsData) applyLeadsDedupe(leadsData);
       });
 
-      const cappedPeople = capFetchedPeople(allPeople, scoutLeadsLimit);
-      allPeople.length = 0;
-      allPeople.push(...cappedPeople);
+      // Dedupe by id, then cap — but never drop people already on screen mid-session.
+      const deduped: ReturnType<typeof toPersonShape>[] = [];
+      const seenIds = new Set<string>();
+      for (const person of allPeople) {
+        if (seenIds.has(person.id)) continue;
+        seenIds.add(person.id);
+        deduped.push(person);
+      }
+      const capped = capFetchedPeople(deduped, scoutLeadsLimit);
+      const cappedById = new Map(capped.map((p) => [p.id, p]));
+      if (append) {
+        for (const person of priorPeople) {
+          cappedById.set(person.id, person);
+        }
+      }
+      const cappedPeople = [...cappedById.values()];
       setPeople(cappedPeople);
+      peopleRef.current = cappedPeople;
 
+      const coverageIds =
+        opts?.coverageCompanyIds?.length
+          ? opts.coverageCompanyIds
+          : selected.map((c) => c.id);
       const coverage = scoutPeopleCoverage({
-        selectedCompanyIds: selected.map((c) => c.id),
+        selectedCompanyIds: coverageIds,
         people: cappedPeople,
       });
 
-      if (allPeople[0]) {
-        if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-          setPrimaryPersonId(allPeople[0].id);
+      if (cappedPeople[0]) {
+        if (append) {
+          const nextSelected = new Set(priorSelected);
+          for (const person of cappedPeople) {
+            if (!incomingIds.has(person.id) && !priorIds.has(person.id)) continue;
+            if (priorIds.has(person.id)) {
+              if (priorSelected.has(person.id)) nextSelected.add(person.id);
+              continue;
+            }
+            if (!existingContactNames.has(person.name.toLowerCase())) {
+              nextSelected.add(person.id);
+            }
+          }
+          for (const id of [...nextSelected]) {
+            if (!cappedById.has(id)) nextSelected.delete(id);
+          }
+          setSelectedPersonIds(nextSelected);
+          if (priorPrimary && cappedById.has(priorPrimary)) {
+            setPrimaryPersonId(priorPrimary);
+          } else if (
+            typeof window !== "undefined" &&
+            window.matchMedia("(min-width: 1024px)").matches &&
+            !priorPrimary
+          ) {
+            setPrimaryPersonId(cappedPeople[0].id);
+          }
         } else {
-          setPrimaryPersonId(null);
+          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+            setPrimaryPersonId(cappedPeople[0].id);
+          } else {
+            setPrimaryPersonId(null);
+          }
+          setSelectedPersonIds(
+            new Set(
+              cappedPeople
+                .filter((p) => !existingContactNames.has(p.name.toLowerCase()))
+                .map((p) => p.id),
+            ),
+          );
         }
-        setSelectedPersonIds(
-          new Set(
-            allPeople
-              .filter((p) => !existingContactNames.has(p.name.toLowerCase()))
-              .map((p) => p.id),
-          ),
-        );
+
         if (coverage.companiesWithoutPeople > 0) {
           setPeopleNotice({
             headline: `Leads from ${coverage.companiesWithPeople} of ${coverage.totalCompanies} companies`,
             detail: `Found ${cappedPeople.length} decision-maker${cappedPeople.length === 1 ? "" : "s"} at ${coverage.companiesWithPeople} of ${coverage.totalCompanies} companies. ${coverage.companiesWithoutPeople} had no match for your People filters or cities.`,
           });
-          toast.message(
-            `Found people at ${coverage.companiesWithPeople}/${coverage.totalCompanies} companies`,
-            { description: `${coverage.companiesWithoutPeople} companies returned no matching roles.` },
-          );
+          if (!append) {
+            toast.message(
+              `Found people at ${coverage.companiesWithPeople}/${coverage.totalCompanies} companies`,
+              { description: `${coverage.companiesWithoutPeople} companies returned no matching roles.` },
+            );
+          }
         } else {
           setPeopleNotice(null);
         }
@@ -1791,6 +1985,29 @@ export function ScoutingApp() {
         } else if (!peopleWarnings.length) {
           toast.info(notice.detail);
         }
+      }
+
+      if (activeSessionIdRef.current) {
+        const nextSelected =
+          cappedPeople.length === 0
+            ? []
+            : cappedPeople
+                .filter((p) => !existingContactNames.has(p.name.toLowerCase()))
+                .map((p) => p.id);
+        void patchActiveSession({
+          companies,
+          people: cappedPeople,
+          uiState: {
+            selectedCompanyIds: [...selectedCompanyIds],
+            selectedPersonIds: nextSelected,
+            primaryCompanyId,
+            primaryPersonId: cappedPeople[0]?.id ?? null,
+            view: "people",
+            fetchSeed,
+            hasMore,
+            companySearchQuery,
+          },
+        });
       }
     } catch (e) {
       toast.error("Could not load people. Try again or contact support.");
@@ -1929,25 +2146,6 @@ export function ScoutingApp() {
     !filtersExpanded &&
     ((view === "companies" && companies.length > 0) || (view === "people" && people.length > 0));
 
-  const mobileSubtitle = useMemo(() => {
-    if (!cities.length) {
-      return locationScope === "focus"
-        ? locationOptions.some((option) => option.kind === "area")
-          ? "Pick a nearby area to start scouting"
-          : "Set Areas of focus in Settings"
-        : "Pick a city to start scouting";
-    }
-    const cityPart =
-      cities.length === 1 ? cities[0] : `${cities.length} cities`;
-    if (view === "people") {
-      return `${cityPart} · ${people.length} decision-maker${people.length === 1 ? "" : "s"}`;
-    }
-    if (companies.length > 0) {
-      return `${cityPart} · ${companies.length} compan${companies.length === 1 ? "y" : "ies"}`;
-    }
-    return cityPart;
-  }, [cities, view, people.length, companies.length, locationOptions, locationScope]);
-
   const canScoutMobile = settingsLoaded && cities.length > 0 && !loadingCompanies;
   const canSearchMobile =
     settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !loadingCompanies;
@@ -1990,6 +2188,8 @@ export function ScoutingApp() {
     onFetchLeads: handleFetchLeads,
     onSaveCompanies: handleSaveCompanies,
     onShowSaved: handleShowSaved,
+    onShowHistory: () => setHistoryOpen(true),
+    activeSessionTitle,
     onAddLeads: handleAddLeads,
     onScoutMore: handleScoutMore,
     onLoadMore: handleLoadMore,
@@ -2048,6 +2248,11 @@ export function ScoutingApp() {
         {discoveryNotice && !showingSaved ? (
           <div className="mx-4 mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950 lg:mx-5">
             {discoveryNotice}
+          </div>
+        ) : null}
+        {showingSaved && companies.length > 0 ? (
+          <div className="mx-4 mt-2 rounded-xl border border-brand-stratus-blue/20 bg-brand-stratus-blue/5 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft lg:mx-5">
+            Saved companies are pre-selected. Tap <span className="font-semibold text-brand-ink">Extract leads</span> to find decision-makers at each company (uses that company&apos;s city, not your Scout city filter).
           </div>
         ) : null}
         {isMobileLayout && scoutCompaniesLimit <= 1 && companies.length > 0 && !showingSaved ? (
@@ -2126,11 +2331,12 @@ export function ScoutingApp() {
           {selectedCompanyIds.size === 1 ? "Company" : "Companies"}
           {selectedPersonIds.size > 0 ? ` · ${selectedPersonIds.size} selected` : ""}
         </div>
-        {people.length > 0 && !loadingPeople ? (
+        {people.length > 0 ? (
           <button
             type="button"
             onClick={allPeopleSelected ? deselectAllPeople : selectAllPeople}
-            className="shrink-0 rounded-full border border-brand-border bg-white px-3 py-1 text-[11px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-app"
+            disabled={loadingPeople && people.length === 0}
+            className="shrink-0 rounded-full border border-brand-border bg-white px-3 py-1 text-[11px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-colors hover:bg-brand-app disabled:opacity-50"
           >
             {allPeopleSelected ? "Deselect all" : "Select all"}
           </button>
@@ -2139,14 +2345,40 @@ export function ScoutingApp() {
       {people.length > 0 && peopleNotice ? (
         <div className="mx-3 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
           <span className="font-semibold">{peopleNotice.headline}.</span> {peopleNotice.detail}
+        </div>
+      ) : null}
+      {people.length > 0 && missingWebsiteCompanies.length > 0 ? (
+        <div className="mx-3 mb-2">
           <MissingWebsitePrompt
             companies={missingWebsiteCompanies}
-            applyingId={applyingWebsiteId}
-            onApply={handlePastedWebsite}
+            applying={applyingWebsites}
+            applyingIds={applyingWebsiteIds}
+            rowStatus={websiteRowStatus}
+            onFetch={handlePastedWebsites}
+            compact
           />
         </div>
       ) : null}
-      {loadingPeople ? (
+      {loadingPeople && people.length > 0 ? (
+        <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-brand-stratus-blue/25 bg-brand-stratus-blue/8 px-3 py-2 text-[12px] font-semibold text-brand-ink">
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-brand-stratus-blue" />
+          {fetchProgress.total > 1
+            ? `Finding people · ${fetchProgress.done} of ${fetchProgress.total} companies`
+            : "Finding decision-makers…"}
+        </div>
+      ) : null}
+      {saving && people.length > 0 ? (
+        <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl border border-brand-stratus-blue/25 bg-white px-3 py-2 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)]">
+          <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-brand-stratus-blue" />
+          Saving leads
+          {saveProgress.total > 0
+            ? ` · ${saveProgress.done} of ${saveProgress.total}`
+            : selectedPersonIds.size > 0
+              ? ` · ${selectedPersonIds.size}`
+              : ""}
+        </div>
+      ) : null}
+      {loadingPeople && people.length === 0 ? (
         <DiscoveringLoader
           message={
             fetchProgress.total > 1
@@ -2166,11 +2398,10 @@ export function ScoutingApp() {
           headline={peopleNotice?.headline ?? "No decision-makers found"}
           detail={peopleNotice?.detail ?? "Try companies with websites or well-known brands."}
           missingWebsites={missingWebsiteCompanies}
-          applyingWebsiteId={applyingWebsiteId}
-          onApplyWebsite={handlePastedWebsite}
+          applyingWebsites={applyingWebsites}
+          websiteRowStatus={websiteRowStatus}
+          onFetchWebsites={handlePastedWebsites}
         />
-      ) : saving ? (
-        <SavingLeadsLoader count={selectedPersonIds.size} progress={saveProgress} />
       ) : (
         <LeadsGrid
           people={people}
@@ -2220,6 +2451,21 @@ export function ScoutingApp() {
     <>
       {rolePicker}
       {fetchRiskConfirm}
+      <ScoutHistoryPanel
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        activeSessionId={activeSessionId}
+        onOpen={openScoutSessionById}
+        onDeleted={(id) => {
+          if (id === activeSessionIdRef.current) {
+            clearActiveSession();
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete("session");
+            const qs = params.toString();
+            router.replace(qs ? `${pathname}?${qs}` : pathname);
+          }
+        }}
+      />
     </>
   );
 
@@ -2230,7 +2476,9 @@ export function ScoutingApp() {
       return "Select people to save";
     }
     if (selectedCompanyIds.size > 0) {
-      return `Fetch Leads · ${selectedCompanyIds.size}`;
+      return showingSaved
+        ? `Extract leads · ${selectedCompanyIds.size}`
+        : `Fetch Leads · ${selectedCompanyIds.size}`;
     }
     if (scoutMode === "search") {
       return loadingCompanies ? "Searching…" : "Search";
@@ -2308,7 +2556,6 @@ export function ScoutingApp() {
       <>
         <MobilePageLayout
           title="Scouting"
-          subtitle={mobileSubtitle}
           largeTitle
           className="ish-scout-page lg:hidden"
           contentClassName="!pb-0"
@@ -2324,7 +2571,7 @@ export function ScoutingApp() {
           }
           footer={
             <ActionBar>
-              {view === "companies" && selectedCompanyIds.size > 0 ? (
+              {view === "companies" && selectedCompanyIds.size > 0 && !showingSaved ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -2393,6 +2640,17 @@ export function ScoutingApp() {
                 Saved companies
               </button>
             ) : null}
+            <button
+              type="button"
+              onClick={() => {
+                setHistoryOpen(true);
+                setOverflowOpen(false);
+              }}
+              className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99]"
+            >
+              <History className="size-4 text-brand-stratus-blue" />
+              Scout history
+            </button>
             {scoutMode === "autopilot" && view === "companies" ? (
               <>
                 <button
@@ -2437,11 +2695,6 @@ export function ScoutingApp() {
         <AppPageHeader
           icon={Telescope}
           title="Scouting"
-          subtitle={
-            view === "people"
-              ? "Review decision-makers and add them as leads"
-              : "Discover companies in your focus areas, then fetch leads"
-          }
         />
         <ScoutingToolbar {...toolbarProps} />
         <div className="flex min-h-0 flex-1 overflow-hidden">

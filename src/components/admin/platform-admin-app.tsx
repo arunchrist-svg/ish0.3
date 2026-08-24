@@ -115,7 +115,6 @@ export function PlatformAdminApp() {
       <AppPageHeader
         icon={Shield}
         title="Platform Admin"
-        subtitle="Provision customer organizations and send owner invite links"
         actions={
           <Button
             type="button"

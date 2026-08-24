@@ -320,16 +320,9 @@ export function HomeApp() {
     return "Good evening";
   })();
 
-  const today = new Date().toLocaleDateString("en-IN", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
   return (
     <MobilePageLayout
       title={greeting}
-      subtitle={today}
       largeTitle
       rightSlot={
         <div className="flex items-center gap-1.5">
@@ -344,7 +337,6 @@ export function HomeApp() {
       <AppPageHeader
         icon={Home}
         title={greeting}
-        subtitle={today}
         actions={
           <>
             {(() => {

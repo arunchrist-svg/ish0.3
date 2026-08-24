@@ -26,7 +26,7 @@ export function LeadsViewToggle({ className }: Props) {
         href="/leads"
         aria-current={!isBoard ? "page" : undefined}
         className={cn(
-          "inline-flex h-full items-center gap-1 rounded-full px-2 text-[10px] font-semibold transition-colors",
+          "inline-flex h-full items-center gap-1 rounded-full px-2.5 text-[10px] font-semibold transition-colors",
           !isBoard
             ? "bg-brand-stratus-blue text-white"
             : "text-brand-ink-soft hover:text-brand-ink",
@@ -39,7 +39,7 @@ export function LeadsViewToggle({ className }: Props) {
         href="/leads/board"
         aria-current={isBoard ? "page" : undefined}
         className={cn(
-          "inline-flex h-full items-center gap-1 rounded-full px-2 text-[10px] font-semibold transition-colors",
+          "inline-flex h-full items-center gap-1 rounded-full px-2.5 text-[10px] font-semibold transition-colors",
           isBoard
             ? "bg-brand-stratus-blue text-white"
             : "text-brand-ink-soft hover:text-brand-ink",

@@ -25,6 +25,7 @@ import {
   GraduationCap,
   Hammer,
   HeartPulse,
+  History,
   Hotel,
   Landmark,
   Monitor,
@@ -107,6 +108,8 @@ type Props = {
   savingCompanies?: boolean;
   showingSaved?: boolean;
   onShowSaved?: () => void;
+  onShowHistory?: () => void;
+  activeSessionTitle?: string | null;
   onAddLeads: () => void;
   onScoutMore: () => void;
   onLoadMore: () => void;
@@ -1666,6 +1669,8 @@ export function ScoutingToolbar({
   savingCompanies = false,
   showingSaved = false,
   onShowSaved,
+  onShowHistory,
+  activeSessionTitle = null,
   onAddLeads,
   onScoutMore,
   onLoadMore,
@@ -2001,7 +2006,23 @@ export function ScoutingToolbar({
                   active={showingSaved}
                 />
               ) : null}
-              {onSaveCompanies && selectedCount > 0 ? (
+              {onShowHistory ? (
+                <SecondaryBtn
+                  onClick={onShowHistory}
+                  disabled={loadingCompanies}
+                  icon={<History className="size-3.5" />}
+                  label="History"
+                />
+              ) : null}
+              {activeSessionTitle && !showingSaved ? (
+                <span
+                  title={activeSessionTitle}
+                  className="hidden max-w-[160px] truncate rounded-full bg-brand-stratus-blue/10 px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue lg:inline-block"
+                >
+                  {activeSessionTitle}
+                </span>
+              ) : null}
+              {onSaveCompanies && selectedCount > 0 && !showingSaved ? (
                 <SecondaryBtn
                   onClick={onSaveCompanies}
                   disabled={savingCompanies}
@@ -2014,8 +2035,12 @@ export function ScoutingToolbar({
                 disabled={selectedCount === 0}
                 label={
                   selectedCount > 0
-                    ? `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
-                    : "Select companies first"
+                    ? showingSaved
+                      ? `Extract leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
+                      : `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
+                    : showingSaved
+                      ? "Select companies to extract"
+                      : "Select companies first"
                 }
                 icon={<ArrowRight className="size-3.5" />}
                 color="green"

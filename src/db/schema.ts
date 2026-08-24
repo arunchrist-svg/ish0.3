@@ -263,6 +263,7 @@ export const leads = pgTable("leads", {
   owner:        text("owner").default("Account Owner"),
   tags:         jsonb("tags").$type<string[]>().default([]),
   researcherEligible: boolean("researcher_eligible").notNull().default(false),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
   createdAt:    timestamp("created_at").defaultNow().notNull(),
   lastReplyContent: text("last_reply_content"),
   lastInboundMessageId: text("last_inbound_message_id"),
@@ -274,6 +275,7 @@ export const leads = pgTable("leads", {
   tenantCreatedIdx: index("leads_tenant_created_idx").on(table.tenantId, table.createdAt),
   workspaceStatusIdx: index("leads_workspace_status_idx").on(table.workspaceId, table.status),
   contactIdx: index("leads_contact_idx").on(table.contactId),
+  workspaceCreatedByIdx: index("leads_workspace_created_by_idx").on(table.workspaceId, table.createdByUserId),
 }));
 
 export type WriterPlan = {
@@ -511,6 +513,74 @@ export const notifications = pgTable("notifications", {
   createdAt:   timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   userUnreadIdx: index("notifications_user_unread_idx").on(table.tenantId, table.userId, table.readAt),
+}));
+
+// ─── Scout Sessions (reopenable Autopilot / Search runs) ───────────────────────
+export type ScoutSessionFilters = {
+  cities: string[];
+  industries: string[];
+  businesses: string[];
+  employeeBands: string[];
+  seniority: string[];
+  departments: string[];
+  peopleCities: string[];
+  locationScope: "focus" | "interest";
+  verticalScope: "industries" | "businesses";
+  companyName?: string;
+  searchKind?: "industry" | "business";
+  scoutCompaniesLimit?: number;
+  scoutLeadsLimit?: number;
+};
+
+export type ScoutSessionUiState = {
+  selectedCompanyIds: string[];
+  selectedPersonIds: string[];
+  primaryCompanyId?: string | null;
+  primaryPersonId?: string | null;
+  view: "companies" | "people";
+  fetchSeed: number;
+  hasMore?: boolean;
+  companySearchQuery?: string;
+};
+
+export type ScoutSessionPerson = import("@/lib/enrichment/types").ScoutPersonResult & {
+  companyId: string;
+};
+
+export const scoutSessions = pgTable("scout_sessions", {
+  id:              uuid("id").defaultRandom().primaryKey(),
+  tenantId:        uuid("tenant_id").notNull().references(() => tenants.id),
+  workspaceId:     uuid("workspace_id").notNull().references(() => workspaces.id),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  title:           text("title").notNull(),
+  mode:            text("mode").notNull().default("autopilot"),
+  filters:         jsonb("filters").$type<ScoutSessionFilters>().notNull().default({
+    cities: [],
+    industries: [],
+    businesses: [],
+    employeeBands: [],
+    seniority: [],
+    departments: [],
+    peopleCities: [],
+    locationScope: "interest",
+    verticalScope: "industries",
+  }),
+  companies:       jsonb("companies").$type<import("@/lib/enrichment/types").ScoutCompanyResult[]>().notNull().default([]),
+  people:          jsonb("people").$type<ScoutSessionPerson[]>().notNull().default([]),
+  uiState:         jsonb("ui_state").$type<ScoutSessionUiState>().notNull().default({
+    selectedCompanyIds: [],
+    selectedPersonIds: [],
+    view: "companies",
+    fetchSeed: 0,
+  }),
+  companyCount:    integer("company_count").notNull().default(0),
+  peopleCount:     integer("people_count").notNull().default(0),
+  warnings:        jsonb("warnings").$type<string[]>().notNull().default([]),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+  updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  workspaceUpdatedIdx: index("scout_sessions_workspace_updated_idx").on(table.workspaceId, table.updatedAt),
+  tenantWorkspaceIdx: index("scout_sessions_tenant_workspace_idx").on(table.tenantId, table.workspaceId),
 }));
 
 // ─── Agent Runs (LLM observability) ───────────────────────────────────────────

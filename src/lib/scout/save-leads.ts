@@ -422,10 +422,11 @@ export async function saveScoutLeads(params: {
   leadSource?: string;
   tenantId: string;
   workspaceId: string;
+  createdByUserId?: string;
   enrichmentConfig?: EnrichmentConfig;
   sweetsGifting?: boolean;
 }): Promise<SaveLeadsResult> {
-  const { people, company, tenantId, workspaceId } = params;
+  const { people, company, tenantId, workspaceId, createdByUserId } = params;
 
   if (!people.length) {
     const { account } = await upsertScoutAccount({
@@ -469,6 +470,7 @@ export async function saveScoutLeads(params: {
       cfg,
       skipGooglePlaces,
       sweetsGifting,
+      createdByUserId,
     });
   });
 
@@ -499,6 +501,7 @@ async function saveOnePerson(params: {
   cfg: EnrichmentConfig;
   skipGooglePlaces: boolean;
   sweetsGifting?: boolean;
+  createdByUserId?: string;
 }): Promise<PersonSaveOutcome> {
   const {
     person,
@@ -513,6 +516,7 @@ async function saveOnePerson(params: {
     cfg,
     skipGooglePlaces,
     sweetsGifting,
+    createdByUserId,
   } = params;
 
   if (personTitleConflictsWithCompany(person.title, resolvedCompany.name)) {
@@ -773,6 +777,7 @@ async function saveOnePerson(params: {
       leadSource,
       researcherEligible: filter.pass,
       tags: ["Lead", "Scout"],
+      createdByUserId: createdByUserId ?? null,
     })
     .returning();
 
@@ -788,6 +793,7 @@ async function saveOnePerson(params: {
   await logAudit({
     tenantId,
     workspaceId,
+    actorId: createdByUserId,
     action: "lead.saved",
     entityType: "lead",
     entityId: lead.id,

@@ -8,6 +8,7 @@ describe("inbox setup guide", () => {
     const guide = inboxSetupGuide("zoho_in");
     expect(guide.label).toBe("Zoho India");
     expect(guide.host).toBe("smtp.zoho.in");
+    expect(guide.steps.map((s) => s.title).join(" ")).toMatch(/IMAP access/);
     expect(guide.steps.map((s) => s.title).join(" ")).toMatch(/App Password/);
     const html = inboxSetupHtml("zoho_in");
     expect(html).toContain("mail.zoho.in");

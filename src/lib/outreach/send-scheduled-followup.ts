@@ -14,6 +14,7 @@ import { isOutreachSendingPaused, resolveOutreachEmailStyle } from "@/lib/email/
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { followUpThreadSubject, resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
 import { cleanEmailAddress } from "@/lib/email/list-cleaner";
+import { maybeAutoOpenWhatsAppAfterSecondEmail, type WhatsAppAutoOpenPayload } from "@/lib/whatsapp/auto-after-second-email";
 
 export class FollowUpQualityError extends Error {
   code = "FOLLOWUP_QUALITY_FAILED" as const;
@@ -35,7 +36,7 @@ export async function sendScheduledFollowUp(params: {
   overridePreflight?: boolean;
   overrideQualityGate?: boolean;
   actorId?: string;
-}): Promise<{ messageId: string; mode: string; outreachId: string }> {
+}): Promise<{ messageId: string; mode: string; outreachId: string; whatsappOpen?: WhatsAppAutoOpenPayload }> {
   const [row] = await db
     .select({ schedule: outreachSchedule, leadTenantId: leads.tenantId })
     .from(outreachSchedule)
@@ -208,7 +209,19 @@ export async function sendScheduledFollowUp(params: {
     },
   });
 
-  return { messageId: rfcMessageId, mode: result.mode, outreachId: generatedOutreach.id };
+  const whatsappOpen = await maybeAutoOpenWhatsAppAfterSecondEmail({
+    leadId: sched.leadId,
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    actorId: params.actorId,
+  });
+
+  return {
+    messageId: rfcMessageId,
+    mode: result.mode,
+    outreachId: generatedOutreach.id,
+    ...(whatsappOpen ? { whatsappOpen } : {}),
+  };
 }
 
 export { InsufficientCreditsError };

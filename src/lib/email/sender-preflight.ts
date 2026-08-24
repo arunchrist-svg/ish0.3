@@ -1,6 +1,13 @@
 import type { EmailConfig } from "@/lib/email/config";
 import { checkDomainAuth, type DomainAuthResult, isPersonalInboxDomain } from "@/lib/email/sender-dns";
-import { assertVolumeWithinCap, countSendsLast24h } from "@/lib/email/sender-volume";
+import {
+  assertGradualRamp,
+  assertVolumeWithinCap,
+  recommendedDailyCap,
+  remainingDailyQuota,
+  warmupCapWarning,
+} from "@/lib/email/sender-warmup";
+import { countSendsInRange, countSendsLast24h } from "@/lib/email/sender-volume";
 import { getWorkspaceBounceStats, type BounceStats } from "@/lib/email/sender-bounce-rate";
 import { setOutreachPaused } from "@/lib/settings/email-settings";
 
@@ -12,11 +19,16 @@ export type SenderIssue = {
   severity: SenderIssueSeverity;
 };
 
+const NON_OVERRIDABLE_ISSUE_IDS = new Set(["bounce_rate", "volume_cap"]);
+
 export type SenderHealthResult = {
   issues: SenderIssue[];
   domainAuth: DomainAuthResult;
   sendsLast24h: number;
   dailyCap: number;
+  remainingToday: number;
+  recommendedDailyCap: number;
+  warmupStage: string;
   projectedAdditional: number;
   bounceStats: BounceStats;
   personalInboxSender: boolean;
@@ -100,15 +112,24 @@ export async function runSenderHealthCheck(
   options?: SenderHealthOptions,
 ): Promise<SenderHealthResult> {
   const fromAddress = config.fromAddress || config.smtpUser;
-  const dailyCap = config.dailySendCapPerDomain ?? 50;
+  const rec = recommendedDailyCap({
+    stage: config.inboxWarmupStage,
+    warmupStartedAt: config.inboxWarmupStartedAt,
+  });
+  const dailyCap = config.dailySendCapPerDomain ?? rec.recommended;
   const projectedAdditional = Math.max(0, options?.projectedAdditional ?? 0);
+  const now = Date.now();
+  const last24hStart = new Date(now - 24 * 60 * 60 * 1000);
+  const prior24hStart = new Date(now - 48 * 60 * 60 * 1000);
 
-  const [domainAuth, sendsLast24h, bounceStats] = await Promise.all([
+  const [domainAuth, sendsLast24h, sendsPrior24h, bounceStats] = await Promise.all([
     checkDomainAuth(fromAddress, { dkimSelector: config.dkimSelector }),
     countSendsLast24h(workspaceId, fromAddress ?? ""),
+    countSendsInRange(workspaceId, fromAddress ?? "", prior24hStart, last24hStart),
     getWorkspaceBounceStats(workspaceId),
   ]);
 
+  const remainingToday = remainingDailyQuota(sendsLast24h, dailyCap);
   const personalInboxSender = isPersonalInboxDomain(fromAddress ?? "");
   const issues = buildDnsIssues(domainAuth);
 
@@ -120,20 +141,53 @@ export async function runSenderHealthCheck(
     });
   }
 
+  const highCap = warmupCapWarning(dailyCap, rec);
+  if (highCap) {
+    issues.push({ id: "warmup_cap_high", label: highCap, severity: "warn" });
+  }
+
   const volume = assertVolumeWithinCap({
     sendsLast24h,
     dailyCap,
     projectedAdditional,
   });
   if (!volume.ok) {
+    const remainingLabel =
+      remainingToday === 0
+        ? `Daily send quota is used up (0 remaining of ${dailyCap} today). Wait until tomorrow, or raise the daily cap in Settings → Email if this inbox is warmed.`
+        : projectedAdditional > 0
+          ? `Daily send cap would be exceeded (${volume.projectedTotal}/${dailyCap} including ${projectedAdditional} queued, ${remainingToday} remaining).`
+          : `Daily send cap reached (${sendsLast24h}/${dailyCap} in last 24h).`;
     issues.push({
       id: "volume_cap",
-      label:
-        projectedAdditional > 0
-          ? `Daily send cap would be exceeded (${volume.projectedTotal}/${dailyCap} including ${projectedAdditional} queued)`
-          : `Daily send cap reached (${sendsLast24h}/${dailyCap} in last 24h)`,
+      label: remainingLabel,
       severity: "critical",
     });
+  } else if (projectedAdditional > 0) {
+    if (volume.projectedTotal > rec.max) {
+      issues.push({
+        id: "warmup_recommend",
+        label:
+          rec.stage === "new"
+            ? `This batch would send ${volume.projectedTotal} today. New inboxes should stay at 20–40/day for the first 2–4 weeks.`
+            : `This batch would send ${volume.projectedTotal} today. Recommended for a ${rec.stage} inbox is ${rec.min}–${rec.max}/day.`,
+        severity: "critical",
+      });
+    } else {
+      const ramp = assertGradualRamp({
+        sendsPrior24h,
+        projectedTotal: volume.projectedTotal,
+        projectedAdditional,
+        recommended: rec,
+      });
+      if (!ramp.ok) {
+        issues.push({
+          id: "warmup_spike",
+          label: `Avoid a sudden spike: this batch would bring today to ${volume.projectedTotal} sends (prior day ${sendsPrior24h}). Scale gradually, stay near ${ramp.allowedToday}/day, then confirm if you still need to send.`,
+          severity: "critical",
+        });
+      }
+    }
   }
 
   if (bounceStats.exceedsThreshold) {
@@ -152,6 +206,9 @@ export async function runSenderHealthCheck(
     domainAuth,
     sendsLast24h,
     dailyCap,
+    remainingToday,
+    recommendedDailyCap: rec.recommended,
+    warmupStage: rec.stage,
     projectedAdditional,
     bounceStats,
     personalInboxSender,
@@ -181,12 +238,12 @@ export async function assertSenderPreflight(
     }
   }
 
-  if (config.sendMode === "live" && health.hasCritical && !options?.override) {
-    throw new SenderPreflightError(
-      health.issues.filter((i) => i.severity === "critical"),
-      // Bounce-rate pause should not be casually overridden
-      !health.issues.some((i) => i.id === "bounce_rate"),
-    );
+  const critical = health.issues.filter((i) => i.severity === "critical");
+  const canOverride =
+    critical.length > 0 && critical.every((i) => !NON_OVERRIDABLE_ISSUE_IDS.has(i.id));
+
+  if (config.sendMode === "live" && critical.length > 0 && !(options?.override && canOverride)) {
+    throw new SenderPreflightError(critical, canOverride);
   }
   return health;
 }

@@ -90,6 +90,7 @@ export function SenderHealthMeter({ className }: Props) {
             ) : null}
             <p className="text-brand-ink-soft">
               Sends last 24h: {health.sendsLast24h}/{health.dailyCap}
+              {typeof health.remainingToday === "number" ? ` · ${health.remainingToday} remaining` : ""}
             </p>
             {health.issues.length > 0 ? (
               <ul className="mt-1 list-disc space-y-0.5 pl-4 text-brand-ink-soft">

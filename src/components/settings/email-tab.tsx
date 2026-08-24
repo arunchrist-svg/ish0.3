@@ -1,6 +1,7 @@
 "use client";
 
 import { InboxSetupSteps } from "@/components/settings/inbox-setup-steps";
+import { MailboxWarmupSettings } from "@/components/settings/mailbox-warmup-settings";
 import { SenderHealthSettings } from "@/components/settings/sender-health-settings";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import {
@@ -72,9 +73,9 @@ function AppPasswordHelp({ variant }: { variant: "gmail" | "zoho" }) {
         <p className="text-[12px] font-semibold text-brand-ink">App Password</p>
         {variant === "zoho" ? (
           <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-brand-ink-soft">
-            <p>1. Sign in to Zoho Mail as this inbox.</p>
-            <p>2. Open My Account → Security → App Passwords.</p>
-            <p>3. Generate one for Mail, then paste it and verify. India datacenter: pick Zoho India.</p>
+            <p>1. Zoho Mail → Settings → Mail Accounts → your address → enable IMAP Access.</p>
+            <p>2. accounts.zoho.in → Security → App Passwords → generate one for Mail.</p>
+            <p>3. Paste it here and click Verify inbox. India datacenter: pick Zoho IN.</p>
           </div>
         ) : (
           <div className="mt-1.5 space-y-1 text-[12px] leading-relaxed text-brand-ink-soft">
@@ -249,6 +250,7 @@ export function EmailTab({
   const providerReady = isSmtp ? config.smtpConfigured : resendReady;
   const canSelectLive = config.sendMode === "live" || providerReady;
   const smtpEmail = config.smtpUser || "";
+  const simpleInbox = session?.role === "admin" && !session.isSuperadmin;
   const selectedPack =
     config.brandConfig?.verticalPackId ??
     (config.brandConfig?.brandSlug === "ish"
@@ -323,6 +325,135 @@ export function EmailTab({
     }
   }
 
+  if (simpleInbox) {
+    const sendMode = config.sendMode === "live" ? "live" : "test";
+    return (
+      <div className="ish-email-settings pb-6">
+        {config.validationWarnings.length > 0 ? (
+          <div className="mb-4 rounded-xl border border-brand-stratus-salmon/30 bg-brand-pink-soft/40 px-4 py-3">
+            <div className="flex items-start gap-2 text-[12px] leading-relaxed text-brand-stratus-salmon">
+              <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              <ul className="space-y-0.5">
+                {config.validationWarnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : null}
+
+        <SettingsGroup
+          title="Your inbox"
+          footer="Use a Zoho or Gmail App Password. Your normal mailbox password will not work."
+          className="mb-4"
+        >
+          <SettingsRow className="justify-between py-2.5">
+            <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand-ink">
+              Mail host
+              <InboxSetupSteps mailHost={smtpServer} />
+            </span>
+            <SettingsSegmented
+              value={smtpServer}
+              onChange={(next) => {
+                onUpdate("provider", "smtp");
+                const patch = applySmtpServer(next as SmtpServerId);
+                onUpdate("smtpHost", patch.smtpHost);
+                onUpdate("smtpPort", patch.smtpPort);
+                onUpdate("smtpSecure", patch.smtpSecure);
+              }}
+              options={SMTP_SERVER_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label === "Zoho India" ? "Zoho IN" : option.label,
+              }))}
+            />
+          </SettingsRow>
+          <SettingsGroupDivider />
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5">
+            <p className="min-w-0 text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
+            <StatusBadge ok={config.smtpConfigured} okLabel="Send OK" failLabel="Send failed" />
+          </div>
+          <div className="flex items-center justify-between gap-2 px-4 pb-1">
+            <p className="min-w-0 text-[12px] text-brand-ink-soft">{config.imapHint}</p>
+            <StatusBadge ok={config.imapConfigured} okLabel="Sync OK" failLabel="Sync failed" />
+          </div>
+          <div className="space-y-3 px-4 pb-3">
+            <Field
+              label={isZoho ? "Work email" : "Gmail"}
+              value={config.smtpUser}
+              onChange={handleSmtpUserChange}
+              placeholder={isZoho ? "you@company.com" : "you@gmail.com"}
+              type="email"
+            />
+            <Field
+              label="App Password"
+              accessory={<AppPasswordHelp variant={isZoho ? "zoho" : "gmail"} />}
+              value={smtpPassDraft}
+              onChange={onSmtpPassChange}
+              placeholder={config.smtpPassSet ? "••••••••••••••••" : "Paste App Password"}
+              type="password"
+            />
+            <button
+              type="button"
+              onClick={onVerify}
+              disabled={verifying || !config.smtpUser}
+              className="h-[38px] w-full rounded-full bg-brand-stratus-blue px-4 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {verifying ? "Verifying…" : "Verify inbox"}
+            </button>
+          </div>
+        </SettingsGroup>
+
+        <SettingsGroup title="Send outreach" footer="Test sends to your test inbox first. Switch to Live when mail arrives." className="mb-4">
+          <SettingsRow className="justify-between py-2.5">
+            <span className="text-[13px] font-semibold text-brand-ink">Mode</span>
+            <SettingsSegmented
+              value={sendMode}
+              onChange={(next) => onUpdate("sendMode", next)}
+              options={[
+                { value: "test", label: "Test" },
+                { value: "live", label: "Live" },
+              ]}
+              disabledValue={canSelectLive ? undefined : "live"}
+            />
+          </SettingsRow>
+          <SettingsGroupDivider />
+          <div className="grid gap-3 px-4 py-3 sm:grid-cols-2">
+            <Field
+              label="From name"
+              value={config.fromName}
+              onChange={(v) => onUpdate("fromName", v)}
+              placeholder="Your name"
+            />
+            <Field
+              label="From phone"
+              value={config.fromPhone ?? ""}
+              onChange={(v) => onUpdate("fromPhone", v)}
+              placeholder="+91 98XXX XXXXX"
+            />
+            <Field
+              label="From email"
+              value={config.fromAddress}
+              onChange={(v) => onUpdate("fromAddress", v)}
+              placeholder={smtpEmail || "you@company.com"}
+              type="email"
+            />
+            {sendMode === "test" ? (
+              <Field
+                label="Test inbox"
+                value={config.testRecipient}
+                onChange={(v) => onUpdate("testRecipient", v)}
+                placeholder={smtpEmail || "you@company.com"}
+                type="email"
+              />
+            ) : null}
+          </div>
+        </SettingsGroup>
+
+        <MailboxWarmupSettings config={config} onUpdate={onUpdate} />
+      </div>
+    );
+  }
+
   return (
     <div className="ish-email-settings pb-6">
       {config.validationWarnings.length > 0 && (
@@ -369,6 +500,12 @@ export function EmailTab({
             placeholder="Arun (your real name)"
           />
           <Field
+            label="From phone"
+            value={config.fromPhone ?? ""}
+            onChange={(v) => onUpdate("fromPhone", v)}
+            placeholder="+91 98XXX XXXXX"
+          />
+          <Field
             label="From email"
             value={config.fromAddress}
             onChange={(v) => {
@@ -392,6 +529,8 @@ export function EmailTab({
         </div>
       </SettingsGroup>
 
+      <MailboxWarmupSettings config={config} onUpdate={onUpdate} />
+
       <SettingsGroup title="Connection" className="mb-4">
         <SettingsRow className="justify-between py-2.5">
           <span className="text-[13px] font-semibold text-brand-ink">Provider</span>
@@ -408,7 +547,10 @@ export function EmailTab({
           <>
             <SettingsGroupDivider />
             <SettingsRow className="justify-between py-2.5">
-              <span className="text-[13px] font-semibold text-brand-ink">Mail host</span>
+              <span className="inline-flex items-center gap-1 text-[13px] font-semibold text-brand-ink">
+                Mail host
+                <InboxSetupSteps mailHost={smtpServer} />
+              </span>
               <SettingsSegmented
                 value={smtpServer}
                 onChange={(next) => {
@@ -426,7 +568,11 @@ export function EmailTab({
             <SettingsGroupDivider />
             <div className="flex items-center justify-between gap-2 px-4 py-2">
               <p className="min-w-0 truncate text-[12px] text-brand-ink-soft">{config.smtpHint}</p>
-              <StatusBadge ok={config.smtpConfigured} okLabel="Verified" failLabel="Not verified" />
+              <StatusBadge ok={config.smtpConfigured} okLabel="Send OK" failLabel="Send failed" />
+            </div>
+            <div className="flex items-center justify-between gap-2 px-4 pb-1">
+              <p className="min-w-0 truncate text-[12px] text-brand-ink-soft">{config.imapHint}</p>
+              <StatusBadge ok={config.imapConfigured} okLabel="Sync OK" failLabel="Sync failed" />
             </div>
             <div className="grid gap-3 px-4 pb-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <Field
@@ -452,11 +598,6 @@ export function EmailTab({
               >
                 {verifying ? "Verifying…" : "Verify"}
               </button>
-            </div>
-            <div className="px-4 pb-4">
-              <div className="rounded-xl border border-brand-border bg-brand-app/60 px-4 py-3">
-                <InboxSetupSteps mailHost={smtpServer} />
-              </div>
             </div>
           </>
         ) : null}
@@ -650,13 +791,6 @@ export function EmailTab({
               value={config.dkimSelector ?? ""}
               onChange={(v) => onUpdate("dkimSelector", v)}
               placeholder="google"
-            />
-            <Field
-              label="Daily send cap"
-              value={String(config.dailySendCapPerDomain ?? 50)}
-              onChange={(v) => onUpdate("dailySendCapPerDomain", Math.max(1, Number(v) || 50))}
-              placeholder="50"
-              type="number"
             />
             <Field
               label="App URL"

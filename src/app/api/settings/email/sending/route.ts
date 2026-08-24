@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
-import { canManageSettings } from "@/lib/auth/permissions";
+import { canManageEmailSettings } from "@/lib/auth/permissions";
 import { handleApiError } from "@/lib/api-errors";
 import { getEmailConfigForApi, setOutreachPaused } from "@/lib/settings/email-settings";
 
@@ -17,7 +17,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
-    if (!canManageSettings(ctx.role, ctx.platformRole)) {
+    if (!canManageEmailSettings(ctx.role, ctx.platformRole)) {
       throw new ForbiddenError("Admin access required");
     }
     const body = (await req.json()) as { paused?: boolean };

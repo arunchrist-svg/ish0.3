@@ -63,6 +63,7 @@ const TITLE_ROLE_TOKENS = new Set([
   "head",
   "director",
   "manager",
+  "deputy",
   "chief",
   "officer",
   "president",
@@ -402,18 +403,23 @@ export function currentEmployerFromHeadline(title: string): string | null {
 
   const atMatch = cleaned.match(/\bat\s+([^|\n]+)/i);
   if (atMatch?.[1]) {
-    const company = atMatch[1].replace(/\s+[|\-–—].*$/, "").trim();
+    const company = atMatch[1].replace(/\s+[|/\\·•\-–—].*$/, "").trim();
     if (company.length >= 2 && company.length < 80 && !looksLikeRoleOrDepartment(company)) {
       return company;
     }
   }
 
-  // "CHRO - Finocontrol", "HR Director | Titan Company", multi-segment headlines
-  const parts = cleaned.split(/\s*[|\-–—]\s*/).map((part) => part.trim()).filter(Boolean);
+  // "CHRO - Finocontrol", "HR Director | Titan Company", "Pricol / Yashaswi Group/HR Specialist"
+  const parts = cleaned
+    .split(/\s*[|/\\·•\-–—]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
   if (parts.length >= 2) {
-    const last = parts[parts.length - 1] ?? "";
-    if (last.length >= 2 && last.length < 80 && !looksLikeRoleOrDepartment(last)) {
-      return last;
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const candidate = parts[i] ?? "";
+      if (candidate.length >= 2 && candidate.length < 80 && !looksLikeRoleOrDepartment(candidate)) {
+        return candidate;
+      }
     }
   }
   return null;

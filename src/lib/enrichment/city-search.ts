@@ -68,7 +68,7 @@ export function expandCityMatchTerms(cities: string[]): string[] {
   return applyCityAliases(matchTermsForScoutLabels(cities));
 }
 
-export function citySearchClause(cities?: string[], max = 6): string {
+export function citySearchClause(cities?: string[], max = 8): string {
   const selected = (cities ?? []).map((c) => c.trim()).filter(Boolean);
   if (!selected.length) return "";
   if (isNationwideSelection(selected)) return "India";
@@ -162,6 +162,43 @@ export function includeHqCorridorForScoutPeople(params: {
   return !params.localOperators;
 }
 
+/** Places circle bias is for neighborhood Focus Area, not Area of Interest district chips. */
+export function shouldApplyPlacesFocusBias(
+  locationScope: "focus" | "interest" | undefined,
+  selectedCities: string[],
+): boolean {
+  if (!selectionLooksLikeNeighborhoods(selectedCities)) return false;
+  return locationScope !== "interest";
+}
+
+/**
+ * Neighborhood Focus Area (Kasturi Nagar) must keep Bengaluru HQ profiles.
+ * LinkedIn says the metro, not the ward. Do not widen to the whole state.
+ * Local-business scouts stay inside the pin.
+ */
+export function peopleFilterUsesHqCorridor(params: {
+  locationScope?: "focus" | "interest";
+  cities?: string[];
+  peopleCities?: string[];
+  localOperators?: boolean;
+}): boolean {
+  if (params.localOperators) return false;
+  if (params.locationScope === "focus") {
+    return selectionLooksLikeNeighborhoods(params.cities ?? []);
+  }
+  if (params.peopleCities?.length) {
+    return (
+      !isNationwideSelection(params.peopleCities) &&
+      !selectionLooksLikeNeighborhoods(params.peopleCities)
+    );
+  }
+  return includeHqCorridorForScoutPeople({
+    cities: params.cities,
+    locationScope: params.locationScope,
+    localOperators: params.localOperators,
+  });
+}
+
 function companyHaystack(company: { city?: string | null; intelNotes?: string | null }): string {
   return `${company.city ?? ""} ${company.intelNotes ?? ""}`.toLowerCase();
 }
@@ -208,10 +245,18 @@ export function companyMatchesScoutSelection(
   selectedCities: string[],
   opts?: CompanyScoutMatchOpts,
 ): boolean {
-  if (!selectionLooksLikeNeighborhoods(selectedCities)) {
-    return companyCityMatchesSelection(company.city, selectedCities);
-  }
   if (selectedCities.length === 0 || isNationwideSelection(selectedCities)) return true;
+
+  if (!selectionLooksLikeNeighborhoods(selectedCities)) {
+    if (companyCityMatchesSelection(company.city, selectedCities)) return true;
+    // Places often parses a ward ("Anna Colony") while Address still has Salem/Erode.
+    const haystack = companyHaystack(company);
+    if (!haystack.trim()) return false;
+    return expandCityMatchTerms(selectedCities)
+      .map(normalizeCity)
+      .filter((alias) => alias.length >= 4)
+      .some((alias) => haystack.includes(alias));
+  }
 
   // Google Places results under a geo-bias circle can be local even when
   // the address text does not contain the exact selected locality chip names.

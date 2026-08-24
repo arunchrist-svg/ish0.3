@@ -1,13 +1,12 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { Button, text } from "@/design-system";
+import { Button } from "@/design-system";
 import { AuthField } from "@/components/auth/auth-field";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { completeLoginRedirect, safeInternalNextPath } from "@/lib/auth/complete-login";
-import { cn } from "@/lib/utils";
 
 type OrgOption = { slug: string; name: string };
 
@@ -19,7 +18,6 @@ function LoginForm() {
   const [orgOptions, setOrgOptions] = useState<OrgOption[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
   const inviteRequired = errorCode === "invite_required";
@@ -112,19 +110,16 @@ function LoginForm() {
 
   return (
     <AuthShell>
-      <div className="mb-8">
-        <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-brand-stratus-blue">Sign in</p>
-        <h1 className={cn("mb-2 leading-tight", text.display)}>Welcome back</h1>
-        <p className="text-[14px] leading-relaxed text-brand-ink-soft">Use the same email and password as the web app.</p>
-      </div>
+      <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-brand-stratus-blue">Sign in</p>
+      <h1 className="mb-4 text-[22px] font-extrabold leading-tight tracking-tight text-brand-ink">Welcome back</h1>
 
       {inviteRequired ? (
-        <p className="mb-4 rounded-2xl border border-brand-stratus-yellow/40 bg-brand-yellow-soft/80 px-4 py-2.5 text-center text-[13px] text-brand-ink">
-          You need an invite to join. Ask your admin for an invite link to create your account.
+        <p className="mb-3 rounded-xl border border-brand-stratus-yellow/40 bg-brand-yellow-soft/80 px-3 py-2 text-center text-[12px] text-brand-ink">
+          You need an invite to join. Ask your admin for an invite link.
         </p>
       ) : null}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <AuthField
           id="email"
           label="Email"
@@ -137,13 +132,13 @@ function LoginForm() {
         {slugRequired ? (
           orgOptions.length > 0 ? (
             <div>
-              <label htmlFor="slug" className="mb-1.5 block text-[12px] font-semibold text-brand-ink">Organization</label>
+              <label htmlFor="slug" className="mb-1 block text-[12px] font-semibold text-brand-ink">Organization</label>
               <select
                 id="slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 required
-                className="w-full rounded-xl border border-brand-border/60 bg-white/80 px-4 py-2.5 text-[13px] outline-none focus:border-brand-stratus-blue/50 focus:ring-2 focus:ring-brand-stratus-blue/20"
+                className="w-full rounded-xl border border-brand-border/60 bg-white/80 px-3 py-2 text-[13px] outline-none focus:border-brand-stratus-blue/50 focus:ring-2 focus:ring-brand-stratus-blue/20"
               >
                 <option value="">Select organization</option>
                 {orgOptions.map((o) => (
@@ -175,17 +170,13 @@ function LoginForm() {
         />
 
         {error ? (
-          <p className="rounded-2xl border border-brand-stratus-salmon/35 bg-brand-pink-soft/80 px-4 py-2.5 text-center text-[13px] font-medium text-brand-stratus-salmon">{error}</p>
+          <p className="rounded-xl border border-brand-stratus-salmon/35 bg-brand-pink-soft/80 px-3 py-2 text-center text-[12px] font-medium text-brand-stratus-salmon">{error}</p>
         ) : null}
 
         <Button
           type="submit"
           disabled={loading || !email.trim() || password.trim().length < 8 || (slugRequired && !slug.trim())}
-          className={cn(
-            "h-12 w-full rounded-2xl text-[14px] font-bold text-white shadow-[var(--shadow-brand)]",
-            "bg-brand-black hover:bg-brand-black/90 disabled:opacity-50",
-            "ring-1 ring-brand-stratus-blue/20",
-          )}
+          className="ish-scout-cta-blue h-10 w-full rounded-full text-[13px] font-semibold text-white hover:opacity-95 disabled:opacity-50"
         >
           {loading ? (
             <span className="inline-flex items-center gap-2">
@@ -197,8 +188,8 @@ function LoginForm() {
           )}
         </Button>
 
-        <p className="text-center text-[12px] text-brand-ink-faint">
-          Need an account? Use the invite link your admin sent you.
+        <p className="text-center text-[11px] text-brand-ink-faint">
+          Need an account? Use the invite from your admin.
         </p>
       </form>
     </AuthShell>

@@ -14,6 +14,7 @@ import {
   type EmailOverviewData,
 } from "@/lib/api-client";
 import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
+import { handleWhatsAppAutoOpenResponse } from "@/lib/whatsapp/open-click";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
@@ -110,9 +111,12 @@ export function MobileInboxApp() {
     setBusyId(row.leadId);
     try {
       if (followUp && row.pendingFollowUpScheduleId) {
-        await sendWithGateConfirm((overrides) => sendFollowUp(row.pendingFollowUpScheduleId!, overrides));
+        const result = await sendWithGateConfirm((overrides) =>
+          sendFollowUp(row.pendingFollowUpScheduleId!, overrides),
+        );
         void hapticLight();
         toast.success(`Follow-up sent to ${row.contactName}`);
+        handleWhatsAppAutoOpenResponse(result.whatsappOpen);
       } else if (row.draftOutreachId) {
         const { approvalId } = await approveOutreach({
           leadOutreachId: row.draftOutreachId,
@@ -160,7 +164,6 @@ export function MobileInboxApp() {
       <AppPageHeader
         icon={Inbox}
         title="Inbox"
-        subtitle="Review drafts and replies waiting for you"
         actions={
           <button
             type="button"

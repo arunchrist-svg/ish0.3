@@ -139,7 +139,6 @@ export function AgentsApp() {
       <AppPageHeader
         icon={Bot}
         title="Agents"
-        subtitle="Scout, research, write, sequence, reply, and brand intel, with last-run status."
       />
       <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
       <div className="mx-auto max-w-3xl">

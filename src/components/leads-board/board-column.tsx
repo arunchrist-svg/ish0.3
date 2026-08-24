@@ -24,9 +24,27 @@ type Props = {
   leads: LeadQueueItem[];
   action?: ColumnAction;
   queueByLeadId?: Record<string, SendQueueItem>;
+  queueItems?: SendQueueItem[];
 };
 
-export function BoardColumn({ stage, leads, action, queueByLeadId }: Props) {
+function queueStatusLabel(item: SendQueueItem): string {
+  switch (item.status) {
+    case "waiting":
+      return item.gapMinutes ? `Waiting ${item.gapMinutes}m` : "Waiting";
+    case "sending":
+      return "Sending";
+    case "sent":
+      return "Sent";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Queued";
+  }
+}
+
+export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }: Props) {
   const accent = PIPELINE_STAGE_ACCENTS[stage];
 
   return (
@@ -66,6 +84,32 @@ export function BoardColumn({ stage, leads, action, queueByLeadId }: Props) {
               </button>
             ) : null}
           </div>
+        ) : null}
+        {queueItems?.length ? (
+          <ul className="max-h-36 space-y-1 overflow-y-auto rounded-xl border border-[#e8ebf1] bg-[#ffffff] p-1.5">
+            {queueItems.map((item) => (
+              <li
+                key={item.leadId}
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1"
+                title={item.error}
+              >
+                <span className="min-w-0 truncate text-[11px] font-medium text-brand-ink">{item.name}</span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums",
+                    item.status === "sent" && "bg-brand-green-soft text-brand-green",
+                    item.status === "failed" && "bg-red-50 text-red-600",
+                    item.status === "sending" && "bg-brand-stratus-blue/12 text-brand-stratus-blue",
+                    item.status === "waiting" && "bg-brand-stratus-yellow/25 text-brand-ink",
+                    (item.status === "queued" || item.status === "cancelled") &&
+                      "bg-brand-canvas text-brand-ink-soft",
+                  )}
+                >
+                  {queueStatusLabel(item)}
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : null}
       </header>
 

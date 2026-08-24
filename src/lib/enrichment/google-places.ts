@@ -1,9 +1,11 @@
 import type { ScoutCompanyResult } from "./types";
-import { employeeSizeSearchClause } from "./employee-size";
+import { employeeSizePlacesSearchClause } from "./employee-size";
+import { industrySearchClause, partitionIndustriesForSearch } from "./industry-search";
 import { isPlausibleCompanyName } from "./directory-parser";
 import { isGeographicEntity } from "./company-name-match";
 import { placesTypeForScoutBusiness } from "@/lib/scouting-data";
 import { placeTypesMatchScoutBusiness } from "./business-match";
+import { expandCityMatchTerms } from "./city-search";
 
 const NEW_API = "https://places.googleapis.com/v1/places:searchText";
 const NEW_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete";
@@ -266,13 +268,63 @@ export async function googlePlacesGeocodePlace(placeId: string): Promise<{ lat: 
   return null;
 }
 
-function extractCityFromAddress(address?: string): string | undefined {
-  if (!address) return undefined;
-  const parts = address.split(",").map((p) => p.trim());
-  const KNOWN_CITIES = ["Bangalore", "Bengaluru", "Hosur", "Mysore", "Mysuru", "Pune", "Chennai", "Mumbai", "Delhi", "Hyderabad"];
+function extractCityFromAddress(address?: string, queryCity?: string): string | undefined {
+  if (!address) return queryCity || undefined;
+  const normalizedAddress = address.toLowerCase();
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+
+  // Prefer the city we queried: Places locality tokens ("Anna Colony") often beat the metro.
+  if (queryCity?.trim()) {
+    const aliases = expandCityMatchTerms([queryCity]).filter((a) => a.trim().length >= 3);
+    for (const alias of aliases) {
+      const needle = alias.toLowerCase();
+      if (normalizedAddress.includes(needle)) {
+        // Madras chip → Chennai on cards when the address says Chennai.
+        if (/^madras$/i.test(queryCity) && /chennai/i.test(address)) return "Chennai";
+        return alias === "Bangalore" || alias === "Bengaluru"
+          ? /bengaluru/i.test(address)
+            ? "Bengaluru"
+            : "Bangalore"
+          : alias;
+      }
+    }
+  }
+
+  const KNOWN_CITIES = [
+    "Bangalore",
+    "Bengaluru",
+    "Hosur",
+    "Mysore",
+    "Mysuru",
+    "Pune",
+    "Chennai",
+    "Madras",
+    "Mumbai",
+    "Delhi",
+    "Hyderabad",
+    "Salem",
+    "Erode",
+    "Dharmapuri",
+    "Krishnagiri",
+    "Namakkal",
+    "Coimbatore",
+    "Madurai",
+    "Tiruppur",
+    "Vellore",
+  ];
   for (const part of parts) {
     const match = KNOWN_CITIES.find((c) => part.toLowerCase().includes(c.toLowerCase()));
-    if (match) return match === "Bengaluru" ? "Bangalore" : match === "Mysuru" ? "Mysore" : match;
+    if (match) {
+      if (match === "Madras") return "Chennai";
+      if (match === "Bengaluru") return "Bengaluru";
+      if (match === "Mysuru") return "Mysuru";
+      return match;
+    }
+  }
+
+  // Last resort: trust the query city for unbiased text search in that city.
+  if (queryCity?.trim()) {
+    return /^madras$/i.test(queryCity) ? "Chennai" : queryCity.trim();
   }
   return parts.length >= 3 ? parts[parts.length - 3] : undefined;
 }
@@ -327,8 +379,12 @@ function extractDomain(url: string): string | undefined {
   }
 }
 
-function toScoutResult(place: PlacesResult, geoVerified = false): ScoutCompanyResult {
-  const cityExtracted = extractCityFromAddress(place.formatted_address);
+function toScoutResult(
+  place: PlacesResult,
+  geoVerified = false,
+  queryCity?: string,
+): ScoutCompanyResult {
+  const cityExtracted = extractCityFromAddress(place.formatted_address, queryCity);
   const domain = place.website ? extractDomain(place.website) : undefined;
 
   return {
@@ -379,19 +435,28 @@ export async function googlePlacesSearchCompanies(params: {
   const allCities = params.cities.filter(Boolean);
   const citySlots = params.locationBias
     ? rotatedSlots(allCities, Math.min(4, allCities.length || 1), seed % Math.max(allCities.length, 1))
-    : allCities.slice(0, 3);
+    : allCities.slice(0, Math.min(6, Math.max(allCities.length, 1)));
+  const industryChunks = partitionIndustriesForSearch(params.industries, 3).map((chunk) =>
+    industrySearchClause(chunk) || "corporate",
+  );
   const allTerms =
     params.searchKind === "business"
       ? params.industries.length
         ? params.industries
         : ["establishment"]
-      : [params.industries.slice(0, 2).join(" ") || "corporate"];
-  const termSlots =
+      : industryChunks;
+  const termCap =
     params.searchKind === "business"
-      ? rotatedSlots(allTerms, Math.min(5, allTerms.length), seed % Math.max(allTerms.length, 1))
-      : allTerms;
+      ? Math.min(5, allTerms.length)
+      : Math.min(3, allTerms.length);
+  const termSlots = rotatedSlots(
+    allTerms,
+    Math.max(1, termCap),
+    seed % Math.max(allTerms.length, 1),
+  );
   const geoVerified = Boolean(params.locationBias);
-  const sizeStr = employeeSizeSearchClause(params.employeeBands);
+  // Places cannot rank by headcount; injecting scale phrases returns ZERO_RESULTS.
+  const sizeStr = employeeSizePlacesSearchClause(params.employeeBands);
 
   for (const city of citySlots) {
     if (results.length >= limit) break;
@@ -426,7 +491,7 @@ export async function googlePlacesSearchCompanies(params: {
             }
           }
 
-          results.push(toScoutResult(merged, geoVerified));
+          results.push(toScoutResult(merged, geoVerified, city));
         }
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));

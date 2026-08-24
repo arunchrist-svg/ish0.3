@@ -57,6 +57,7 @@ export function SenderHealthSettings() {
           ) : null}
           <p className="text-[11px] text-brand-ink-soft">
             Sends last 24h: {health.sendsLast24h} / cap {health.dailyCap}
+            {typeof health.remainingToday === "number" ? ` (${health.remainingToday} remaining)` : ""}
           </p>
           {health.personalInboxSender ? (
             <p className="text-[11px] font-medium text-[#e8a000]">

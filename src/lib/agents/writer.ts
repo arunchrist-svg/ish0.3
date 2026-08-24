@@ -243,26 +243,22 @@ ${antiSpamRules}
     ? `{
   "subjectA": "string (Re: prefix)",
   "subjectB": "string (Re: prefix, distinct)",
-  "subjectC": "string (Re: prefix, distinct)",
   "emailBody": "string (max ${options?.followUpMode === "final_reminder" ? "90" : "80"} words)",
   "emailBodyB": "string (same structure, different urgency angle)",
-  "emailBodyC": "string (same structure, different close)",
   "outreachGoal": "one sentence",
   "templateVariant": "${options?.followUpMode}"
 }`
     : `{
   "subjectA": "string (e.g. Sample box for festive tasting, {first})",
   "subjectB": "string (e.g. Festive sweets sample for {company})",
-  "subjectC": "string (e.g. A tasting box for your team)",
   "emailBody": "string (max 120 words, 3-beat body option 1)",
   "emailBodyB": "string (max 120 words, 3-beat body option 2, different hook)",
-  "emailBodyC": "string (max 120 words, 3-beat body option 3, different hook)",
   "outreachGoal": "one sentence",
   "templateVariant": "high_confidence|low_confidence"
 }`;
 
   const systemPrompt = `You are ${brandConfig.brandName}'s outreach writer and personalization engine. Transform BASE_TEXT into a targeted email for this buyer.
-${isFollowUp ? (options?.followUpMode === "follow_up" ? "Email 2: Re: Email 1 subject. Seasonal urgency plus sampler CTA. Never just following up or circling back. Return 3 distinct subjects and 3 distinct bodies." : "Email 3 (breakup): Re: Email 1 subject. Last note, I won't email further, wish a happy festival season. Do not close with Diwali. Return 3 distinct subjects and 3 distinct bodies.") : "Email 1: three beats after greeting: persona hook, taste-first, one CTA. Rewrite the hook only. No No worries line. Return 3 distinct subject lines and 3 distinct body options. The user will pick one subject and one body."}
+${isFollowUp ? (options?.followUpMode === "follow_up" ? "Email 2: Re: Email 1 subject. Seasonal urgency plus sampler CTA. Never just following up or circling back. Return 2 distinct subjects and 2 distinct bodies." : "Email 3 (breakup): Re: Email 1 subject. Last note, I won't email further, wish a happy festival season. Do not close with Diwali. Return 2 distinct subjects and 2 distinct bodies.") : "Email 1: three beats after greeting: persona hook, taste-first, one CTA. Rewrite the hook only. No No worries line. Return 2 distinct subject lines and 2 distinct body options. The user will pick one subject and one body."}
 Rules:
 ${rules}
 ${toneRules}
@@ -298,10 +294,8 @@ Return ONLY the rewritten email fields in JSON.`;
 
   let emailBody = "";
   let emailBodyB = "";
-  let emailBodyC = "";
   let subjectA = "";
   let subjectB = "";
-  let subjectC = "";
   let templateVariant = "low_confidence";
   let outreachGoal = "";
   let revisionCount = 0;
@@ -361,20 +355,16 @@ Return ONLY the rewritten email fields in JSON.`;
     const parsedWithFallback = {
       subjectA: parsed.subjectA ?? `Outreach for ${companyDisplayName}`,
       subjectB: parsed.subjectB ?? `Note for ${contactFirstName}`,
-      subjectC: parsed.subjectC ?? `A tasting box for your team`,
       emailBody: parsed.emailBody,
       emailBodyB: parsed.emailBodyB,
-      emailBodyC: parsed.emailBodyC,
       outreachGoal: parsed.outreachGoal ?? template.label,
       templateVariant: parsed.templateVariant,
     };
 
     emailBody = normalizeEmailBody(parsedWithFallback.emailBody ?? "");
     emailBodyB = parsedWithFallback.emailBodyB ? normalizeEmailBody(parsedWithFallback.emailBodyB) : "";
-    emailBodyC = parsedWithFallback.emailBodyC ? normalizeEmailBody(parsedWithFallback.emailBodyC) : "";
     subjectA = parsedWithFallback.subjectA ?? `Outreach for ${companyDisplayName}`;
     subjectB = parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`;
-    subjectC = parsedWithFallback.subjectC ?? `A tasting box for your team`;
     templateVariant = options?.followUpMode ?? template.id;
     outreachGoal = parsedWithFallback.outreachGoal ?? template.label;
     revisionCount = attempt;
@@ -417,10 +407,10 @@ Return ONLY the rewritten email fields in JSON.`;
           draftSource: "llm",
           subjectA,
           subjectB,
-          subjectC,
+          subjectC: null,
           emailBody,
           emailBodyB: emailBodyB || null,
-          emailBodyC: emailBodyC || null,
+          emailBodyC: null,
           chosenSubjectKey: "A",
           chosenBodyKey: "A",
           deliverabilityScore: delivScore,
@@ -509,10 +499,11 @@ async function persistIshTemplateDraft(params: {
     templateId,
     occasionId,
     occasionTiming: openingFamily ? detected?.timing : undefined,
+    senderPhone: emailConfig.fromPhone,
+    fromAddress: emailConfig.fromAddress,
   });
   const emailBody = normalizeEmailBody(copy.emailBody);
-  const emailBodyB = normalizeEmailBody(copy.emailBodyB);
-  const emailBodyC = normalizeEmailBody(copy.emailBodyC);
+  const emailBodyB = copy.emailBodyB ? normalizeEmailBody(copy.emailBodyB) : null;
   const delivOpts = {
     emailStyle,
     fromName,
@@ -547,10 +538,10 @@ async function persistIshTemplateDraft(params: {
       draftSource: "template",
       subjectA: copy.subjectA,
       subjectB: copy.subjectB,
-      subjectC: copy.subjectC,
+      subjectC: null,
       emailBody,
       emailBodyB,
-      emailBodyC,
+      emailBodyC: null,
       chosenSubjectKey: "A",
       chosenBodyKey: "A",
       deliverabilityScore: delivScore,

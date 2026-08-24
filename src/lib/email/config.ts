@@ -1,5 +1,12 @@
 import { resolveBrandConfig } from "@/lib/email/brand-presets";
 import type { PlatformIntent } from "@/lib/brand/platform-intent";
+import {
+  clampDailySendCap,
+  defaultDailyCapForStage,
+  recommendedDailyCap,
+  warmupCapWarning,
+  type InboxWarmupStage,
+} from "@/lib/email/sender-warmup";
 
 export type EmailSendMode = "dry_run" | "test" | "live";
 export type EmailStyle = "primary" | "marketing";
@@ -85,6 +92,8 @@ export type EmailConfig = {
   smtpPass: string;
   fromAddress: string;
   fromName: string;
+  /** Optional phone shown under Warmly sign-off on ISH festive drafts. */
+  fromPhone?: string;
   replyToAddress: string;
   replyToName: string;
   testRecipient: string;
@@ -99,6 +108,10 @@ export type EmailConfig = {
   campaignMode: CampaignMode;
   campaignNotes?: string;
   dailySendCapPerDomain?: number;
+  /** Mailbox age for warmup guidance. Applies to every workspace slug. */
+  inboxWarmupStage?: InboxWarmupStage;
+  /** ISO timestamp when warmup tracking started (first save or when stage is set to new). */
+  inboxWarmupStartedAt?: string;
   outreachPaused?: boolean;
   followUpPolicy?: "auto_send" | "review_all_followups";
   dkimSelector?: string;
@@ -268,6 +281,7 @@ export function getDefaultEmailConfig(): EmailConfig {
     smtpPass: "",
     fromAddress: "",
     fromName: "",
+    fromPhone: "",
     replyToAddress: "",
     replyToName: "",
     testRecipient: "",
@@ -276,7 +290,8 @@ export function getDefaultEmailConfig(): EmailConfig {
     emailStyle: "primary",
     brandConfig: resolveBrandConfig({ brandSlug: "custom", verticalPackId: "general" }),
     campaignMode: "custom",
-    dailySendCapPerDomain: 50,
+    dailySendCapPerDomain: defaultDailyCapForStage("new"),
+    inboxWarmupStage: "new",
     followUpPolicy: "auto_send",
   };
 }
@@ -306,7 +321,12 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     emailStyle,
     brandConfig,
     campaignMode,
-    dailySendCapPerDomain: merged.dailySendCapPerDomain ?? 50,
+    dailySendCapPerDomain: clampDailySendCap(
+      merged.dailySendCapPerDomain,
+      defaultDailyCapForStage(merged.inboxWarmupStage ?? "new"),
+    ),
+    inboxWarmupStage: merged.inboxWarmupStage ?? "new",
+    inboxWarmupStartedAt: merged.inboxWarmupStartedAt,
     outreachPaused: merged.outreachPaused ?? false,
     followUpPolicy: merged.followUpPolicy ?? "auto_send",
   };
@@ -474,6 +494,12 @@ export function getDeliverabilityHints(config: EmailConfig): string[] {
       "From email must be on a domain verified in Resend (SPF/DKIM). Shared or unverified domains land in spam more often.",
     );
   }
+  const rec = recommendedDailyCap({
+    stage: config.inboxWarmupStage,
+    warmupStartedAt: config.inboxWarmupStartedAt,
+  });
+  const capWarning = warmupCapWarning(config.dailySendCapPerDomain ?? rec.recommended, rec);
+  if (capWarning) hints.push(capWarning);
   return hints;
 }
 

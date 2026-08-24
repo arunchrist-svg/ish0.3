@@ -130,6 +130,16 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function del<T>(path: string): Promise<T> {
+  const res = await fetch(path, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throwFromErrorBody(err, res.statusText);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
 
 // ─── Company Overview ─────────────────────────────────────────────────────────
 export type { CompanyOverview, CompanyOverviewInput, CompanyOverviewResult, PastGiftingBrand } from "./company-overview";
@@ -388,6 +398,64 @@ export async function scoutSavedCompanies(): Promise<{ companies: ScoutCompanyRe
   return get("/api/scout/saved-companies");
 }
 
+export type ScoutSessionSummary = {
+  id: string;
+  title: string;
+  mode: "autopilot" | "search";
+  companyCount: number;
+  peopleCount: number;
+  filters: import("@/db").ScoutSessionFilters;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScoutSessionDetail = ScoutSessionSummary & {
+  companies: ScoutCompanyResult[];
+  people: import("@/db").ScoutSessionPerson[];
+  uiState: import("@/db").ScoutSessionUiState;
+  warnings: string[];
+  createdByUserId: string | null;
+};
+
+export async function scoutListSessions(): Promise<{ sessions: ScoutSessionSummary[] }> {
+  return get("/api/scout/sessions");
+}
+
+export async function scoutGetSession(id: string): Promise<{ session: ScoutSessionDetail }> {
+  return get(`/api/scout/sessions/${id}`);
+}
+
+export async function scoutCreateSession(params: {
+  mode: "autopilot" | "search";
+  filters: import("@/db").ScoutSessionFilters;
+  companies?: ScoutCompanyResult[];
+  people?: import("@/db").ScoutSessionPerson[];
+  uiState?: import("@/db").ScoutSessionUiState;
+  warnings?: string[];
+  title?: string;
+}): Promise<{ session: ScoutSessionDetail }> {
+  return post("/api/scout/sessions", params);
+}
+
+export async function scoutUpdateSession(
+  id: string,
+  params: {
+    mode?: "autopilot" | "search";
+    filters?: import("@/db").ScoutSessionFilters;
+    companies?: ScoutCompanyResult[];
+    people?: import("@/db").ScoutSessionPerson[];
+    uiState?: import("@/db").ScoutSessionUiState;
+    warnings?: string[];
+    title?: string;
+  },
+): Promise<{ session: ScoutSessionDetail }> {
+  return patch(`/api/scout/sessions/${id}`, params);
+}
+
+export async function scoutDeleteSession(id: string): Promise<{ ok: boolean }> {
+  return del(`/api/scout/sessions/${id}`);
+}
+
 export type ScoutBootstrapPayload = {
   leads: { id: string; name: string; company: string }[];
   companies: ScoutCompanyResult[];
@@ -477,9 +545,11 @@ export async function runScoutAgent(params: {
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
-export async function fetchLeads(params?: { status?: string }): Promise<LeadQueueItem[]> {
-  const qs = params?.status ? `?status=${params.status}` : "";
-  const data = await get<{ leads: LeadQueueItem[] }>(`/api/leads${qs}`);
+export async function fetchLeads(params?: { status?: string; limit?: number }): Promise<LeadQueueItem[]> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  qs.set("limit", String(params?.limit ?? 5000));
+  const data = await get<{ leads: LeadQueueItem[] }>(`/api/leads?${qs.toString()}`);
   return data.leads;
 }
 
@@ -1021,9 +1091,27 @@ export type LeadQueueItem = {
   status: string;
   action: string;
   emailStatus: string;
+  email?: string;
+  phone?: string;
+  linkedIn?: string;
+  leadSource?: string;
+  isPinned?: boolean;
+  createdByUserId?: string;
+  createdByName?: string;
   nextActionDate?: string;
   createdAt?: string;
 };
+
+export type LeadAddedByUser = {
+  id: string;
+  name: string;
+  email: string;
+};
+
+export async function fetchLeadAddedByUsers(): Promise<LeadAddedByUser[]> {
+  const data = await get<{ users: LeadAddedByUser[] }>("/api/leads/added-by-users");
+  return data.users;
+}
 
 export type EmailTestStatus = "saved" | "sent" | "rejected";
 
@@ -1096,6 +1184,8 @@ export type LeadDetailRecord = {
   fitScore?: number;
   budgetBand?: string;
   isPinned?: boolean;
+  createdByUserId?: string;
+  createdByName?: string;
   outreachTemplates?: { id: string; label: string; shortLabel: string; description: string }[];
   defaultOutreachCta?: string;
 };
@@ -1302,6 +1392,8 @@ export type DirectoryCompany = {
   website?: string;
   companyOverview?: CompanyOverview;
   overviewEnrichedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   contacts: Omit<DirectoryContact, "companyId" | "companyName" | "companyCity" | "companyIndustry">[];
 };
 
@@ -1439,6 +1531,9 @@ export type SenderHealthResponse = {
   issues: { id: string; label: string; severity: string }[];
   sendsLast24h: number;
   dailyCap: number;
+  remainingToday?: number;
+  recommendedDailyCap?: number;
+  warmupStage?: string;
   projectedAdditional?: number;
   bounceStats?: {
     sent: number;
@@ -1537,8 +1632,8 @@ export async function confirmGiftIntelMerge(params: {
 export async function sendFollowUp(
   scheduleId: string,
   options?: { overridePreflight?: boolean; overrideQualityGate?: boolean },
-): Promise<{ messageId: string; mode: string; outreachId: string }> {
-  return post<{ messageId: string; mode: string; outreachId: string }>("/api/outreach/send-followup", {
+): Promise<{ messageId: string; mode: string; outreachId: string; whatsappOpen?: { url: string; to: string } }> {
+  return post<{ messageId: string; mode: string; outreachId: string; whatsappOpen?: { url: string; to: string } }>("/api/outreach/send-followup", {
     scheduleId,
     overridePreflight: options?.overridePreflight,
     overrideQualityGate: options?.overrideQualityGate,

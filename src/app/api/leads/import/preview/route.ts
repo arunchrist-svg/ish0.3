@@ -40,11 +40,26 @@ export async function POST(req: Request) {
       warnings.push(`Required fields not mapped yet: ${required.missing.join(", ")}`);
     }
     if (applied.skipped.length) {
+      const missingEmail = applied.skipped.filter((row) => row.reason === "Missing email").length;
+      const invalidEmail = applied.skipped.filter((row) => row.reason === "Invalid email").length;
+      const parts: string[] = [];
+      if (missingEmail) {
+        parts.push(
+          `${missingEmail} row${missingEmail === 1 ? "" : "s"} with no email`,
+        );
+      }
+      if (invalidEmail) {
+        parts.push(
+          `${invalidEmail} row${invalidEmail === 1 ? "" : "s"} with an invalid email`,
+        );
+      }
       warnings.push(
-        `Skipping ${applied.skipped.length} row${applied.skipped.length === 1 ? "" : "s"} with no email. ${applied.rows.length} will load.`,
+        `Skipping ${parts.join(" and ")}. ${applied.rows.length} with a valid email can load. Duplicate people (same name and company) are also skipped.`,
       );
     } else if (applied.rows.length) {
-      warnings.push(`${applied.rows.length} row${applied.rows.length === 1 ? "" : "s"} have an email and will load.`);
+      warnings.push(
+        `${applied.rows.length} row${applied.rows.length === 1 ? "" : "s"} have a valid email and can load. Duplicate people (same name and company) are skipped.`,
+      );
     }
     if (applied.invalid.length) {
       warnings.push(

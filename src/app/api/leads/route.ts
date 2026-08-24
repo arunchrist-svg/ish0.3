@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
-import { db, leads, contacts, accounts } from "@/db";
+import { db, leads, contacts, accounts, users } from "@/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { createManualLead } from "@/lib/leads/crud";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
+import { MAX_IMPORT_ROWS } from "@/lib/leads/import/types";
 
 export async function GET(req: Request) {
   try {
@@ -16,7 +17,9 @@ export async function GET(req: Request) {
     const statusFilter = searchParams.get("status");
     const statuses = statusFilter ? statusFilter.split(",").filter(Boolean) : null;
     const limitParam = searchParams.get("limit");
-    const rowLimit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 100, 1), 100) : 100;
+    const rowLimit = limitParam
+      ? Math.min(Math.max(parseInt(limitParam, 10) || MAX_IMPORT_ROWS, 1), MAX_IMPORT_ROWS)
+      : MAX_IMPORT_ROWS;
 
     const rows = await db
       .select({
@@ -25,9 +28,16 @@ export async function GET(req: Request) {
         score: leads.score,
         createdAt: leads.createdAt,
         researcherEligible: leads.researcherEligible,
+        leadSource: leads.leadSource,
+        isPinned: leads.isPinned,
+        createdByUserId: leads.createdByUserId,
+        createdByName: users.name,
         name: contacts.name,
         title: contacts.title,
         emailStatus: contacts.emailStatus,
+        email: contacts.email,
+        phone: contacts.phone,
+        linkedIn: contacts.linkedIn,
         company: accounts.name,
         employees: accounts.employees,
         city: accounts.city,
@@ -35,6 +45,7 @@ export async function GET(req: Request) {
       .from(leads)
       .innerJoin(contacts, eq(contacts.id, leads.contactId))
       .innerJoin(accounts, eq(accounts.id, leads.accountId))
+      .leftJoin(users, eq(users.id, leads.createdByUserId))
       .where(
         statuses?.length
           ? and(eq(leads.tenantId, ctx.tenantId), inArray(leads.status, statuses))
@@ -54,6 +65,13 @@ export async function GET(req: Request) {
       status: r.status,
       action: deriveQueueAction(r.status),
       emailStatus: r.emailStatus ?? "missing",
+      email: r.email ?? undefined,
+      phone: r.phone ?? undefined,
+      linkedIn: r.linkedIn ?? undefined,
+      leadSource: r.leadSource ?? undefined,
+      isPinned: r.isPinned ?? false,
+      createdByUserId: r.createdByUserId ?? undefined,
+      createdByName: r.createdByName?.trim() || undefined,
       nextActionDate: undefined,
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt ?? undefined,
     }));

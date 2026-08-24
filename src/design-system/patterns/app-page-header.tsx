@@ -7,13 +7,16 @@ import { cn } from "@/lib/utils";
 type AppPageHeaderProps = {
   icon: LucideIcon | ComponentType<SVGProps<SVGSVGElement>>;
   title: string;
-  subtitle?: string;
   eyebrow?: string;
+  /** Sits immediately after the title on the same row (e.g. List / Board). */
+  titleAddon?: ReactNode;
   actions?: ReactNode;
   children?: ReactNode;
   className?: string;
   /** Slightly tighter padding for denser pages (e.g. board). */
   compact?: boolean;
+  /** Skip the top accent stripe when a parent already draws a continuous one. */
+  hideAccent?: boolean;
 };
 
 /**
@@ -23,24 +26,30 @@ type AppPageHeaderProps = {
 export function AppPageHeader({
   icon: Icon,
   title,
-  subtitle,
   eyebrow,
+  titleAddon,
   actions,
   children,
   className,
   compact,
+  hideAccent,
 }: AppPageHeaderProps) {
   return (
     <header
       className={cn(
-        "ish-board-hero relative hidden shrink-0 overflow-hidden border-b border-brand-border/60 px-6 lg:block",
+        "relative hidden shrink-0 overflow-hidden px-6 lg:block",
+        hideAccent
+          ? "z-20 border-b-0 bg-transparent"
+          : "ish-board-hero border-b border-brand-border/60",
         compact ? "py-4" : "py-5",
         className,
       )}
     >
-      <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0 h-[3px]" aria-hidden />
-      <div className="relative flex flex-wrap items-center gap-4">
-        <div className="flex min-w-0 flex-1 items-center gap-3.5">
+      {hideAccent ? null : (
+        <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0" aria-hidden />
+      )}
+      <div className="relative flex w-full items-center gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div
             className={cn(
               "flex shrink-0 items-center justify-center rounded-2xl bg-brand-yellow shadow-[var(--shadow-brand-yellow-sm)]",
@@ -63,14 +72,10 @@ export function AppPageHeader({
             >
               {title}
             </h1>
-            {subtitle ? (
-              <p className="mt-0.5 max-w-xl text-[12.5px] leading-relaxed text-brand-ink-soft">
-                {subtitle}
-              </p>
-            ) : null}
           </div>
+          {titleAddon ? <div className="shrink-0">{titleAddon}</div> : null}
         </div>
-        {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+        {actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
       </div>
       {children ? <div className="relative mt-3">{children}</div> : null}
     </header>

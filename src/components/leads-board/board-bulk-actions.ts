@@ -7,6 +7,7 @@ import {
   type WriterDraft,
 } from "@/lib/api-client";
 import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
+import { resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
 
 export const MIN_SEND_GAP_MINUTES = 1;
 export const MAX_SEND_GAP_MINUTES = 5;
@@ -70,15 +71,9 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 function pickDraftCopy(draft: WriterDraft): { subject?: string; body?: string } {
-  const sk = draft.chosenSubjectKey ?? "A";
-  const bk = draft.chosenBodyKey ?? "A";
-  const subject =
-    sk === "B" ? draft.subjectB : sk === "C" ? draft.subjectC : draft.subjectA;
-  const body =
-    bk === "B" ? draft.emailBodyB : bk === "C" ? draft.emailBodyC : draft.emailBody;
   return {
-    subject: subject ?? draft.subjectA,
-    body: body ?? draft.emailBody,
+    subject: resolveDraftSubject(draft) || draft.subjectA,
+    body: resolveDraftBody(draft) || draft.emailBody,
   };
 }
 

@@ -11,6 +11,7 @@ import { invalidateEmailConfigCache } from "@/lib/email/email-sender";
 import { isPublicAppUrl } from "@/lib/email/plain-text";
 import { smtpTransport } from "@/lib/email/smtp-transport";
 import { resendTransport } from "@/lib/email/resend-transport";
+import { verifyImapAccess } from "@/lib/email/imap-inbox";
 import { repliesCapability } from "@/lib/email/replies-capability";
 import {
   sealEmailSecrets,
@@ -25,6 +26,8 @@ export type EmailConfigResponse = Omit<EmailConfig, "smtpPass" | "resendApiKey">
   resendApiKeySet: boolean;
   smtpConfigured: boolean;
   smtpHint: string;
+  imapConfigured: boolean;
+  imapHint: string;
   resendConfigured: boolean;
   resendHint: string;
   repliesSupported: boolean;
@@ -74,6 +77,8 @@ function toPublicResponse(
   extras: {
     smtpConfigured: boolean;
     smtpHint: string;
+    imapConfigured: boolean;
+    imapHint: string;
     resendConfigured: boolean;
     resendHint: string;
     validationWarnings: string[];
@@ -100,7 +105,11 @@ export function clearResolvedEmailConfigCache() {
 
 export async function persistEmailConfig(config: EmailConfig, workspaceId?: string): Promise<void> {
   const resolvedWorkspaceId = workspaceId ?? (await requireTenantContext()).workspaceId;
-  const sealed = sealEmailSecrets(config);
+  const toStore: EmailConfig = {
+    ...config,
+    inboxWarmupStartedAt: config.inboxWarmupStartedAt ?? new Date().toISOString(),
+  };
+  const sealed = sealEmailSecrets(toStore);
   await db
     .insert(workspaceSettings)
     .values({
@@ -134,11 +143,18 @@ async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfi
 
   let smtpConfigured = false;
   let smtpHint = smtpTransport.getStatus(config).hint;
+  let imapConfigured = false;
+  let imapHint = "Reply sync checks IMAP with the same App Password";
 
   if (config.provider === "smtp") {
-    const verified = await smtpTransport.verify(config);
+    const [verified, imapStatus] = await Promise.all([
+      smtpTransport.verify(config),
+      verifyImapAccess(config),
+    ]);
     smtpConfigured = verified.configured;
     smtpHint = verified.hint;
+    imapConfigured = imapStatus.configured;
+    imapHint = imapStatus.hint;
   }
 
   const validationWarnings = validateEmailConfig(config, {
@@ -146,6 +162,11 @@ async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfi
     resendConfigured: resendStatus.configured,
   });
   validationWarnings.push(...getDeliverabilityHints(config));
+  if (config.provider === "smtp" && smtpConfigured && !imapConfigured) {
+    validationWarnings.push(
+      "Sending works, but Sync replies needs IMAP enabled in Zoho Mail (Settings → Mail Accounts → IMAP Access) with the same App Password.",
+    );
+  }
   if (!isPublicAppUrl(config.appUrl)) {
     validationWarnings.push(
       "App URL is localhost. Open tracking stays off until you set a public HTTPS App URL (tracking is optional; Primary outreach does not need it).",
@@ -155,6 +176,8 @@ async function buildEmailConfigResponse(config: EmailConfig): Promise<EmailConfi
   return toPublicResponse(config, {
     smtpConfigured,
     smtpHint,
+    imapConfigured,
+    imapHint,
     resendConfigured: resendStatus.configured,
     resendHint: resendStatus.hint,
     validationWarnings,
@@ -234,7 +257,10 @@ export async function verifyEmailConnection(
     mergedPartial.resendApiKey = existing.resendApiKey;
   }
   const merged = resolveEmailConfig({ ...existing, ...mergedPartial });
-  const verified = await smtpTransport.verify(merged);
+  const [verified, imapStatus] = await Promise.all([
+    smtpTransport.verify(merged),
+    merged.provider === "smtp" ? verifyImapAccess(merged) : Promise.resolve({ configured: false, hint: "" }),
+  ]);
 
   if (verified.configured) {
     await persistEmailConfig(merged);
@@ -247,10 +273,17 @@ export async function verifyEmailConnection(
     resendConfigured: resendStatus.configured,
   });
   validationWarnings.push(...getDeliverabilityHints(merged));
+  if (merged.provider === "smtp" && verified.configured && !imapStatus.configured) {
+    validationWarnings.push(
+      "Sending works, but Sync replies needs IMAP enabled in Zoho Mail (Settings → Mail Accounts → IMAP Access) with the same App Password.",
+    );
+  }
 
   return toPublicResponse(merged, {
     smtpConfigured: verified.configured,
     smtpHint: verified.hint,
+    imapConfigured: imapStatus.configured,
+    imapHint: imapStatus.hint || "Reply sync checks IMAP with the same App Password",
     resendConfigured: resendStatus.configured,
     resendHint: resendStatus.hint,
     validationWarnings,

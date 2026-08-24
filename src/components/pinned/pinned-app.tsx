@@ -77,7 +77,6 @@ export function PinnedApp() {
   return (
     <MobilePageLayout
       title="Pinned"
-      subtitle="Priority leads and companies"
       largeTitle
       className="ish-pinned-page"
       contentClassName="flex flex-col !overflow-hidden"
@@ -86,7 +85,6 @@ export function PinnedApp() {
       <AppPageHeader
         icon={Pin}
         title="Pinned"
-        subtitle="Your priority leads and companies, one tap away"
         actions={
           <>
             <div className="relative w-[220px] max-w-full">

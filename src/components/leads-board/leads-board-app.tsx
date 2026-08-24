@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeads } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeads } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   groupLeadsByPipelineStage,
@@ -19,6 +19,23 @@ import {
 } from "./board-bulk-actions";
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
+import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
+import {
+  applyLeadListView,
+  LEAD_ADDED_BY_STORAGE_KEY,
+  LEAD_PANEL_FILTERS_STORAGE_KEY,
+  LEAD_QUEUE_SORT_STORAGE_KEY,
+  LEAD_QUICK_FILTER_STORAGE_KEY,
+  parseAddedByUserId,
+  parseLeadQueueSort,
+  parsePanelFilters,
+  parseQuickFilter,
+  sortLeadsQueue,
+  type LeadAddedByUserOption,
+  type LeadPanelFilterId,
+  type LeadQueueSort,
+  type LeadQuickFilterId,
+} from "@/lib/leads/lead-filters";
 
 const SEND_QUEUE_STORAGE_KEY = "ish-board-send-queue";
 
@@ -73,13 +90,6 @@ function persistSendQueue(queue: SendQueueItem[]) {
   }
 }
 
-function matchesQuery(item: LeadQueueItem, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  return [item.name, item.company, item.title, item.city, item.status, item.action, item.emailStatus]
-    .some((field) => field?.toLowerCase().includes(q));
-}
-
 function sendBusyLabel(queue: SendQueueItem[]): string {
   const total = queue.length;
   if (!total) return "Sending…";
@@ -100,6 +110,11 @@ export function LeadsBoardApp() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
+  const [queueSort, setQueueSort] = useState<LeadQueueSort>("score");
+  const [quickFilter, setQuickFilter] = useState<LeadQuickFilterId | null>(null);
+  const [panelFilters, setPanelFilters] = useState<Set<LeadPanelFilterId>>(new Set());
+  const [addedByUserId, setAddedByUserId] = useState<string | null>(null);
+  const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [writingProgress, setWritingProgress] = useState<BoardBulkProgress | null>(null);
   const [sending, setSending] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
@@ -108,9 +123,44 @@ export function LeadsBoardApp() {
   const queueHydrated = useRef(false);
 
   useEffect(() => {
-    setSendQueue(loadStoredSendQueue());
+    const stored = loadStoredSendQueue().filter(
+      (item) => item.status === "sent" || item.status === "failed",
+    );
+    setSendQueue(stored);
     queueHydrated.current = true;
+    setQueueSort(parseLeadQueueSort(localStorage.getItem(LEAD_QUEUE_SORT_STORAGE_KEY)));
+    setQuickFilter(parseQuickFilter(localStorage.getItem(LEAD_QUICK_FILTER_STORAGE_KEY)));
+    setPanelFilters(parsePanelFilters(localStorage.getItem(LEAD_PANEL_FILTERS_STORAGE_KEY)));
+    setAddedByUserId(parseAddedByUserId(localStorage.getItem(LEAD_ADDED_BY_STORAGE_KEY)));
   }, []);
+
+  useEffect(() => {
+    void fetchLeadAddedByUsers()
+      .then((users) => setAddedByUsers(users.map((user) => ({ id: user.id, name: user.name }))))
+      .catch(() => setAddedByUsers([]));
+  }, []);
+
+  function handleQuickFilterChange(next: LeadQuickFilterId | null) {
+    setQuickFilter(next);
+    if (next) localStorage.setItem(LEAD_QUICK_FILTER_STORAGE_KEY, next);
+    else localStorage.removeItem(LEAD_QUICK_FILTER_STORAGE_KEY);
+  }
+
+  function handlePanelFiltersChange(next: Set<LeadPanelFilterId>) {
+    setPanelFilters(next);
+    localStorage.setItem(LEAD_PANEL_FILTERS_STORAGE_KEY, JSON.stringify([...next]));
+  }
+
+  function handleQueueSortChange(next: LeadQueueSort) {
+    setQueueSort(next);
+    localStorage.setItem(LEAD_QUEUE_SORT_STORAGE_KEY, next);
+  }
+
+  function handleAddedByUserIdChange(next: string | null) {
+    setAddedByUserId(next);
+    if (next) localStorage.setItem(LEAD_ADDED_BY_STORAGE_KEY, next);
+    else localStorage.removeItem(LEAD_ADDED_BY_STORAGE_KEY);
+  }
 
   useEffect(() => {
     if (!queueHydrated.current) return;
@@ -146,14 +196,22 @@ export function LeadsBoardApp() {
   }, []);
 
   const filteredLeads = useMemo(
-    () => leads.filter((item) => matchesQuery(item, search)),
-    [leads, search],
+    () =>
+      applyLeadListView(leads, {
+        search,
+        filters: { quick: quickFilter, panel: panelFilters, addedByUserId },
+        sort: queueSort,
+      }),
+    [leads, search, quickFilter, panelFilters, addedByUserId, queueSort],
   );
 
-  const grouped = useMemo(
-    () => groupLeadsByPipelineStage(filteredLeads),
-    [filteredLeads],
-  );
+  const grouped = useMemo(() => {
+    const groups = groupLeadsByPipelineStage(filteredLeads);
+    for (const stage of PIPELINE_STAGES) {
+      groups[stage] = sortLeadsQueue(groups[stage] ?? [], queueSort);
+    }
+    return groups;
+  }, [filteredLeads, queueSort]);
 
   const sendQueueByLeadId = useMemo(
     () =>
@@ -236,6 +294,13 @@ export function LeadsBoardApp() {
         );
       }
       await load({ silent: true });
+      if (result.failed > 0) {
+        setSendQueue((prev) => prev.filter((item) => item.status === "failed"));
+      } else {
+        window.setTimeout(() => {
+          setSendQueue((prev) => (prev.some((item) => item.status === "sending" || item.status === "waiting") ? prev : []));
+        }, 4000);
+      }
     } finally {
       sendAbortRef.current = null;
       setSending(false);
@@ -255,15 +320,30 @@ export function LeadsBoardApp() {
       <div className="flex items-center justify-between gap-2 px-4 pb-2 lg:hidden">
         <LeadsViewToggle />
       </div>
-      <SearchBar value={search} onChange={setSearch} placeholder="Search leads" sticky className="lg:hidden" />
+      <div className="flex items-center gap-2 px-4 pb-2 lg:hidden">
+        <div className="min-w-0 flex-1">
+          <SearchBar value={search} onChange={setSearch} placeholder="Search leads" className="!px-0 !py-0" />
+        </div>
+        <LeadFilterBar
+          quick={quickFilter}
+          panel={panelFilters}
+          sort={queueSort}
+          addedByUserId={addedByUserId}
+          addedByUsers={addedByUsers}
+          onQuickChange={handleQuickFilterChange}
+          onPanelChange={handlePanelFiltersChange}
+          onSortChange={handleQueueSortChange}
+          onAddedByUserIdChange={handleAddedByUserIdChange}
+          size={40}
+        />
+      </div>
       <AppPageHeader
         compact
         icon={Columns3}
         title="Leads"
-        subtitle="Board view"
+        titleAddon={<LeadsViewToggle className="h-8" />}
         actions={
           <>
-            <LeadsViewToggle />
             <div className="relative w-[220px] max-w-full">
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
               <input
@@ -274,6 +354,18 @@ export function LeadsBoardApp() {
                 className="w-full rounded-full border border-brand-border/70 bg-white/70 py-2 pl-9 pr-3 text-[12px] text-brand-ink outline-none backdrop-blur-sm transition-colors focus:border-[rgba(var(--brand-stratus-blue-rgb),0.45)] focus:bg-white"
               />
             </div>
+            <LeadFilterBar
+              quick={quickFilter}
+              panel={panelFilters}
+              sort={queueSort}
+              addedByUserId={addedByUserId}
+              addedByUsers={addedByUsers}
+              onQuickChange={handleQuickFilterChange}
+              onPanelChange={handlePanelFiltersChange}
+              onSortChange={handleQueueSortChange}
+              onAddedByUserIdChange={handleAddedByUserIdChange}
+              size={36}
+            />
             <button
               type="button"
               onClick={() => load({ silent: true })}
@@ -310,7 +402,7 @@ export function LeadsBoardApp() {
           <div className="flex flex-col items-center justify-center gap-2 py-20 text-center">
             <Search className="size-8 text-brand-ink-faint" />
             <div className="text-[14px] font-semibold text-brand-ink">No matches</div>
-            <p className="text-[12px] text-brand-ink-soft">Try a different search term</p>
+            <p className="text-[12px] text-brand-ink-soft">Try a different search or clear filters</p>
           </div>
         ) : (
           <div className="flex h-full gap-4 overflow-x-auto pb-2 scrollbar-none">
@@ -350,6 +442,13 @@ export function LeadsBoardApp() {
                   queueByLeadId={
                     stage === "Email" || stage === "Email Sent" ? sendQueueByLeadId : undefined
                   }
+                  queueItems={stage === "Email" && sendQueue.length > 0
+                    ? sendQueue.map((item) =>
+                        item.status === "waiting"
+                          ? { ...item, gapMinutes: remainingGapMinutes(item, now) }
+                          : item,
+                      )
+                    : undefined}
                 />
               );
             })}

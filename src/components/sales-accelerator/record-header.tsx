@@ -10,6 +10,7 @@ import { markReplied, updateLeadStatus, togglePin } from "@/lib/api-client";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { getNextManualStatus } from "@/lib/pipeline-status";
 import { AppModal } from "@/components/ui/app-modal";
+import { LeadAddedByLabel } from "@/components/leads/lead-added-by-button";
 
 type Props = {
   current: QueueItem;
@@ -131,7 +132,10 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
           {formatSubtitle(current.title, current.company)}
         </div>
 
-        <div className="shrink-0 lg:hidden"><ScoreBadge score={lead.score} /></div>
+        <div className="flex shrink-0 flex-col items-end gap-1 lg:hidden">
+          <ScoreBadge score={lead.score} />
+          <LeadAddedByLabel name={lead.createdByName} leadSource={lead.leadSource} />
+        </div>
         <div className="hidden shrink-0 flex-wrap items-center justify-end gap-2 lg:flex">
           {showMarkReplied && (
             <Button

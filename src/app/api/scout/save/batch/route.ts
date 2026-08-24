@@ -85,6 +85,7 @@ export async function POST(req: Request) {
         leadSource: "scout_wizard",
         tenantId: ctx.tenantId,
         workspaceId: ctx.workspaceId,
+        createdByUserId: ctx.userId,
       });
       return { id: entry.id, ...result };
     };

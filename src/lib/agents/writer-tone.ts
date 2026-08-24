@@ -49,18 +49,18 @@ export function getWriterFewShotExample(
 
   const packId = resolveVerticalPackId(verticalPackId, _brandSlug as BrandConfig["brandSlug"]);
 
-  if (packId === "gifting-sweets" && occasionId && !isFestiveWriteOccasion(occasionId)) {
+  if (packId === "gifting-sweets") {
     const copy = fillIshDraftVariants({
       contactFirstName,
       companyName,
       senderFirstName,
       brandName,
       sequencePosition: 1,
-      occasionId,
+      occasionId: occasionId && !isFestiveWriteOccasion(occasionId) ? occasionId : undefined,
     });
     return `
 ---
-ISH TEMPLATES (keep ~90% of this wording; only fill name and company; return as subjectA/B/C + emailBody/B/C):
+ISH TEMPLATES (keep ~90% of this wording; only fill name and company; return as subjectA/B + emailBody/B):
 
 Subject A: ${copy.subjectA}
 Body A:
@@ -69,59 +69,6 @@ ${copy.emailBody}
 Subject B: ${copy.subjectB}
 Body B:
 ${copy.emailBodyB}
-
-Subject C: ${copy.subjectC}
-Body C:
-${copy.emailBodyC}
-
----
-`;
-  }
-
-  if (packId === "gifting-sweets") {
-    return `
----
-ISH TEMPLATES (keep ~90% of this wording; only fill name and company; return as subjectA/B/C + emailBody/B/C):
-
-Subject A: Sample box for festive tasting, ${contactFirstName}
-Body A:
-Hi ${contactFirstName},
-
-Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for the team at ${companyName} this year.
-
-At ${brandName}, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.
-
-Since tasting is believing, I would love to send a sample box to ${companyName} as our treat. What is the best delivery address to ship it to?
-
-Best,
-${senderFirstName}
-${brandName}
-
-Subject B: Festive sweets sample for ${companyName}
-Body B:
-Hi ${contactFirstName},
-
-A good Diwali gift for employees and clients should feel authentic. ${brandName} can bring that to ${companyName}: sweets crafted fresh every morning, using organic milk from our own farm. We never add preservatives or chemicals.
-
-Taste it before you trust it. Send me an address and I'll ship a sampler to ${companyName} this week.
-
-Thanks & Regards
-${senderFirstName}
-${brandName}
-
-Subject C: A tasting box for your team
-Body C:
-Hi ${contactFirstName},
-
-For Diwali gifting to employees and clients at ${companyName}, ${brandName} can bring farm-fresh mithai: organic milk from our own farm, and we never add preservatives or chemicals. Production is highly hygienic.
-
-Happy to send a small sampler your way, no obligation, just proof.
-
-Want it sent to ${companyName} this week?
-
-Thanks & Regards
-${senderFirstName}
-${brandName}
 
 ---
 `;

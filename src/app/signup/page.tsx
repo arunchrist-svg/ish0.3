@@ -65,8 +65,8 @@ function SignupForm() {
   if (!inviteToken) {
     return (
       <AuthShell>
-        <div className="mb-8">
-          <h1 className={cn("mb-2 leading-tight", text.display)}>Sign up</h1>
+        <div className="mb-4">
+          <h1 className="mb-1 text-[22px] font-extrabold leading-tight tracking-tight text-brand-ink">Sign up</h1>
           <p className="text-[14px] text-brand-ink-soft">
             You need an invite link from your admin to create an account.
           </p>
@@ -104,14 +104,14 @@ function SignupForm() {
 
   return (
     <AuthShell>
-      <div className="mb-8">
-        <h1 className={cn("mb-2 leading-tight", text.display)}>Sign up</h1>
-        <p className="text-[14px] text-brand-ink-soft">
+      <div className="mb-4">
+        <h1 className="mb-1 text-[22px] font-extrabold leading-tight tracking-tight text-brand-ink">Sign up</h1>
+        <p className="text-[13px] text-brand-ink-soft">
           Join <strong>{invite.tenantName}</strong> as {invite.email}
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <AuthField
           id="name"
           label="Your name"
@@ -181,9 +181,10 @@ function SignupForm() {
         </Button>
 
         {mailHost ? (
-          <div className="mt-6 rounded-2xl border border-brand-border bg-brand-app/70 px-4 py-3 text-left">
+          <p className="mt-4 flex items-center justify-center gap-1.5 text-[12px] text-brand-ink-soft">
+            Inbox setup
             <InboxSetupSteps mailHost={mailHost} />
-          </div>
+          </p>
         ) : null}
 
         <p className="text-center text-[12px] text-brand-ink-faint">

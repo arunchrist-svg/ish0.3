@@ -87,14 +87,9 @@ export function LeadFormModal({ open, mode, initial, createDraft, onClose, onSub
 
   return (
     <AppModal open={open} onClose={onClose} panelClassName="max-h-[90vh] overflow-y-auto">
-      <h3 className="text-[16px] font-bold text-brand-ink">
+      <h3 className="pr-10 text-[16px] font-bold text-brand-ink">
         {mode === "create" ? "Add lead" : "Edit lead"}
       </h3>
-      <p className="mt-1.5 text-[13px] leading-relaxed text-brand-ink-soft">
-        {mode === "create"
-          ? "Create a lead manually with contact and company details."
-          : "Update contact and company details for this lead."}
-      </p>
 
       <form onSubmit={(e) => void handleSubmit(e)} className="mt-4 space-y-3.5">
         <div>
@@ -159,7 +154,7 @@ export function LeadFormModal({ open, mode, initial, createDraft, onClose, onSub
             variant="ghost"
             size="sm"
             disabled={submitting}
-            className="h-auto rounded-[14px] bg-brand-black px-4 py-2 text-[12px] font-semibold text-white shadow-[var(--shadow-brand-sm)] hover:bg-brand-black/90 disabled:opacity-40"
+            className="ish-scout-cta-blue h-auto rounded-[14px] px-4 py-2 text-[12px] font-semibold text-white disabled:opacity-40"
           >
             {submitting ? (
               <span className="inline-flex items-center gap-2">

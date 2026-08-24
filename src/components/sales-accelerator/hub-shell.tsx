@@ -49,7 +49,7 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
         open={drawerOpen}
         pathname={pathname}
         isSuperadmin={session?.isSuperadmin ?? false}
-        credits={session?.credits ?? null}
+        credits={session?.permissions.canManageBilling ? (session?.credits ?? null) : null}
         onClose={closeDrawer}
       />
     </>

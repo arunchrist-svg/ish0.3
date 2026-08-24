@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MapPin, Pencil, X } from "lucide-react";
+import { MapPin, Pencil } from "lucide-react";
 import { Button } from "@/design-system";
 import { AppModal } from "@/components/ui/app-modal";
 import { AreaOfInterestWizard } from "@/components/settings/area-of-interest-wizard";
@@ -113,21 +113,11 @@ export function AreaOfInterestSettings({ value, onComplete }: Props) {
         onClose={() => setOpen(false)}
         panelClassName="max-h-[min(92dvh,800px)] lg:max-w-xl"
       >
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-[16px] font-bold text-brand-ink">Choose Region</h3>
-            <p className="mt-0.5 text-[12px] text-brand-ink-soft">
-              Map first, then districts. Scout uses only what you complete here.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-brand-ink-soft hover:bg-black/[0.04] hover:text-brand-ink"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
+        <div className="mb-3 pr-10">
+          <h3 className="text-[16px] font-bold text-brand-ink">Choose Region</h3>
+          <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+            Map first, then districts. Scout uses only what you complete here.
+          </p>
         </div>
         <AreaOfInterestWizard
           key={open ? "open" : "closed"}

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireTenantContext } from "@/lib/tenant";
+import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { canManageBilling } from "@/lib/auth/permissions";
 import { getCreditBalance } from "@/lib/billing/credits";
 import { CREDIT_COST_CATALOG } from "@/lib/billing/credit-costs";
@@ -11,6 +11,9 @@ import { handleApiError } from "@/lib/api-errors";
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
+    if (!canManageBilling(ctx.role, ctx.platformRole)) {
+      throw new ForbiddenError("Owner access required");
+    }
 
     const balance = await getCreditBalance(ctx.tenantId);
     const { plan, tenant } = await getTenantPlan(ctx.tenantId);

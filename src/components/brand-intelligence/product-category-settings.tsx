@@ -106,21 +106,11 @@ export function ProductCategorySettings({ value, onChange }: Props) {
         onClose={() => setOpen(false)}
         panelClassName="max-h-[min(92dvh,800px)] lg:max-w-lg"
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-[16px] font-bold text-brand-ink">Update product category</h3>
-            <p className="mt-0.5 text-[12px] text-brand-ink-soft">
-              Add, update, or remove categories used for OSINT sweeps.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-brand-ink-soft hover:bg-black/[0.04] hover:text-brand-ink"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
+        <div className="mb-4 pr-10">
+          <h3 className="text-[16px] font-bold text-brand-ink">Update product category</h3>
+          <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+            Add, update, or remove categories used for OSINT sweeps.
+          </p>
         </div>
 
         {draft.length > 0 ? (

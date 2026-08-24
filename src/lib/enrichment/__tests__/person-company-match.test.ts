@@ -225,6 +225,37 @@ describe("current employer matching", () => {
     ).toBe(true);
   });
 
+  it("does not treat another Motor company as TVS Motor", () => {
+    const title = "Gowtham Giri | Head of Human Resources | LinkedIn";
+    const content =
+      "Head of Human Resources\nKMB Motor LLP · Full-time\nAug 2023 – Sep 2024 · 1 yr 2 mos\nVadavalli";
+    expect(hitShowsCurrentEmployment({ title, content }, "TVS Motor Company")).toBe(false);
+
+    const currentHeadline =
+      "Gowtham Giri | Pricol / Yashaswi Group/HR Operations Specialist | LinkedIn";
+    const currentContent =
+      "Human Resources Operations Specialist\nYashaswi Group · Full-time\nSep 2024 - Present · 2 yrs\n" +
+      "Managed HR operations for Pricol Plant. Previously Head of Human Resources at KMB Motor LLP.";
+    expect(currentEmployerFromHeadline(currentHeadline)).toBe("Yashaswi Group");
+    expect(hitShowsCurrentEmployment({ title: currentHeadline, content: currentContent }, "TVS Motor Company")).toBe(
+      false,
+    );
+
+    const results = parsePeopleFromSearchResults(
+      [
+        {
+          title: currentHeadline,
+          url: "https://www.linkedin.com/in/gowtham-giri-053b34277/",
+          content: currentContent,
+        },
+      ],
+      5,
+      "web_heuristic",
+      "TVS Motor Company",
+    );
+    expect(results).toHaveLength(0);
+  });
+
   it("matches short brands like TVS in LinkedIn headlines", () => {
     expect(
       hitShowsCurrentEmployment(

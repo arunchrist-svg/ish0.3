@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   apolloEmployeeRanges,
   employeeMatchesBands,
+  employeeSizePlacesSearchClause,
   employeeSizeSearchClause,
   extractEmployeesFromHits,
   extractEmployeesFromText,
@@ -35,8 +36,10 @@ describe("employeeMatchesBands", () => {
 });
 
 describe("employee search helpers", () => {
-  it("builds a scale clause and Apollo ranges", () => {
-    expect(employeeSizeSearchClause(["medium"])).toContain("medium scale");
+  it("builds a soft scale clause and Apollo ranges", () => {
+    expect(employeeSizeSearchClause(["medium"])).toBe("medium-sized");
+    expect(employeeSizeSearchClause(["medium"])).not.toMatch(/\d{2,}-\d{2,}/);
+    expect(employeeSizePlacesSearchClause(["medium"])).toBe("");
     expect(apolloEmployeeRanges(["micro", "large"])).toEqual([
       "1,10",
       "201,500",

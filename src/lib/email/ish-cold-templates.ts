@@ -7,28 +7,56 @@ import { isFestiveWriteOccasion, type WriteOccasionId } from "@/lib/occasions/ca
 export type IshFillParams = {
   contactFirstName: string;
   companyName: string;
+  /** Full From name from Email settings. */
   senderFirstName: string;
   brandName: string;
   sequencePosition: number;
   templateId?: string | null;
   occasionId?: WriteOccasionId | null;
   occasionTiming?: "upcoming" | "recent";
+  /** Optional From phone from Email settings. */
+  senderPhone?: string | null;
+  fromAddress?: string | null;
 };
 
 type IshEmail = { subject: string; body: string };
 
-function signOff(sender: string, brand: string, style: "thanks" | "best" = "thanks"): string {
+function signOff(
+  sender: string,
+  brand: string,
+  style: "thanks" | "best" | "warmly" = "thanks",
+  phone?: string | null,
+  fromAddress?: string | null,
+): string {
   const name = sender.trim() || "Srilaksha";
-  if (style === "best") return `Best,\n${name}\n${brand}`;
-  return `Thanks & Regards\n${name}\n${brand}`;
+  const brandLine =
+    style === "warmly" && /india sweet house/i.test(brand) ? `${brand}, Kasturinagar` : brand;
+  let closing: string;
+  if (style === "warmly") closing = `Warmly,\n${name}\n${brandLine}`;
+  else if (style === "best") closing = `Best,\n${name}\n${brand}`;
+  else closing = `Thanks & Regards\n${name}\n${brand}`;
+
+  const phoneTrim = phone?.trim();
+  if (style === "warmly" && phoneTrim) {
+    const emailTrim = fromAddress?.trim();
+    const contactLine = emailTrim ? `${phoneTrim} | ${emailTrim}` : phoneTrim;
+    closing = `${closing}\n\n${contactLine}`;
+  }
+  return closing;
 }
 
+const SAMPLE_ADDRESS_CTAS = [
+  /I'd love to send a sample box over to your office as our treat so you can try it out firsthand\. What is the best delivery address to ship it to\?/,
+  /I'd love to send a sample box to your office as our treat so you can evaluate the quality yourself\. What is the best delivery address to send it to\?/,
+  /Would you be open to trying a sample box with your team at .+\? Just let me know where to ship it!/,
+];
+
 function applyCta(paragraphs: string, templateId?: string | null): string {
-  const tastingCta =
-    /Since tasting is believing, I would love to send a sample box to .+ as our treat\. What is the best delivery address to ship it to\?/;
   if (templateId === "meet_online") {
-    if (tastingCta.test(paragraphs)) {
-      return paragraphs.replace(tastingCta, "Open to a 15-minute online walkthrough this week?");
+    for (const cta of SAMPLE_ADDRESS_CTAS) {
+      if (cta.test(paragraphs)) {
+        return paragraphs.replace(cta, "Open to a 15-minute online walkthrough this week?");
+      }
     }
     if (/\n[^\n]+\?\s*$/.test(paragraphs)) {
       return paragraphs.replace(/\n[^\n]+\?\s*$/, "\nOpen to a 15-minute online walkthrough this week?");
@@ -36,8 +64,10 @@ function applyCta(paragraphs: string, templateId?: string | null): string {
     return `${paragraphs}\n\nOpen to a 15-minute online walkthrough this week?`;
   }
   if (templateId === "meet_in_person") {
-    if (tastingCta.test(paragraphs)) {
-      return paragraphs.replace(tastingCta, "Open to a brief in-person tasting at your office?");
+    for (const cta of SAMPLE_ADDRESS_CTAS) {
+      if (cta.test(paragraphs)) {
+        return paragraphs.replace(cta, "Open to a brief in-person tasting at your office?");
+      }
     }
     if (/\n[^\n]+\?\s*$/.test(paragraphs)) {
       return paragraphs.replace(/\n[^\n]+\?\s*$/, "\nOpen to a brief in-person tasting at your office?");
@@ -52,9 +82,11 @@ function wrap(
   sender: string,
   brand: string,
   paragraphs: string,
-  closing: "thanks" | "best" = "thanks",
+  closing: "thanks" | "best" | "warmly" = "thanks",
+  phone?: string | null,
+  fromAddress?: string | null,
 ): string {
-  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing)}`;
+  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing, phone, fromAddress)}`;
 }
 
 /** Sequences 1, 2, 3 from the ISH cold-email file. */
@@ -65,84 +97,77 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
   const brand = params.brandName?.trim() || "India Sweet House";
   const step = params.sequencePosition >= 3 ? 3 : params.sequencePosition === 2 ? 2 : 1;
   const cta = step === 1 ? params.templateId : undefined;
+  const phone = params.senderPhone;
+  const fromAddress = params.fromAddress;
 
   const sequences: Array<Array<{ subject: string; paragraphs: string }>> = [
     [
       {
-        subject: `Sample box for festive tasting, ${first}`,
-        paragraphs: `Most corporate festival gifts are forgotten by the next day. We wanted to offer something memorable and distinctive for the team at ${company} this year.\n\nAt ${brand}, traditional sweets are crafted fresh every morning with organic milk, ghee, and khova from our own farm. We never add preservatives or chemicals.\n\nSince tasting is believing, I would love to send a sample box to ${company} as our treat. What is the best delivery address to ship it to?`,
+        subject: `A festive sample for ${company}`,
+        paragraphs: `A festive gift shouldn't just be another line item. It's a real reflection of how much you value your team at ${company}.\n\nTo match that standard, ${brand} makes every sweet the exact same way we would for our own family. Because we use 100% pure ghee and fresh dairy straight from our own Karma Farm, everything is handcrafted with clean ingredients, zero varak, and no chemicals so every box carries that genuine, home-style warmth.\n\nI'd love to send a sample box over to your office as our treat so you can try it out firsthand. What is the best delivery address to ship it to?`,
       },
       {
-        subject: `Re: Sample box for festive tasting, ${first}`,
-        paragraphs: `What sets ${brand} apart for Diwali at ${company} is our own farm: organic milk, mithai crafted fresh every morning, and we never add preservatives or chemicals.\n\nThat is how the team at ${company} can relish authentic traditional sweets this season.\n\nHappy to send ${company} a small tasting box so you can judge for yourself. Shall I ship one this week?`,
+        subject: `Re: A festive sample for ${company}`,
+        paragraphs: `${brand} is known for a wide menu: more than 200 traditional sweets and namkeens, plus diet-conscious picks like Jaggery Kaju Katli and Sugarfree Honey Laddu, all made with organic milk from our own farm.\n\nIf ${company} wants festive gifting that feels thoughtful, a tasting box shows it fastest.\n\nWould you be open to a sample box for ${company} this week? Just reply with the best address to ship it to.`,
       },
       {
-        subject: `Re: Sample box for festive tasting, ${first}`,
-        paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If festive gifting at ${company} comes up later this season, ${brand} would be glad to help with mithai made from organic milk from our own farm.\n\nI won't email further, but a tasting box for ${company} stays open if you ever want to reach out.\n\nWishing you a happy festival season.`,
+        subject: `Re: A festive sample for ${company}`,
+        paragraphs: `I don't want to keep filling your inbox, so I'll leave it here. If festive gifting at ${company} comes up later, ${brand} is still happy to send a sample box from Karma Farm.\n\nIf a sample box would still help the team at ${company}, reply with where to ship it. I won't email further, but the door stays open if you want to reach out.\n\nWishing you a happy festival season.`,
       },
     ],
     [
       {
         subject: `Festive sweets sample for ${company}`,
-        paragraphs: `A good Diwali gift for employees and clients should feel authentic. ${brand} can bring that to ${company}: sweets crafted fresh every morning, using organic milk from our own farm. We never add preservatives or chemicals.\n\nTaste it before you trust it. Send me an address and I'll ship a sampler to ${company} this week.`,
+        paragraphs: `A festive gift shouldn't just be another line item. It's a real reflection of how much you value your team at ${company}.\n\nTo match that standard, ${brand} makes sweets with the same care we use at home. We start with 100% pure ghee and fresh milk from our own farm, skipping varak and chemicals, and handcrafting every batch so your gesture feels warm, personal, and truly special.\n\nI'd love to send a sample box to your office as our treat so you can evaluate the quality yourself. What is the best delivery address to send it to?`,
       },
       {
         subject: `Re: Festive sweets sample for ${company}`,
-        paragraphs: `${brand} is known for a wide menu: more than 200 traditional sweets and namkeens, plus diet-conscious picks like Jaggery Kaju Katli and Sugarfree Honey Laddu, all made with organic milk from our own farm.\n\nIf ${company} wants Diwali gifting that feels thoughtful, a tasting box shows it fastest.\n\nWhere should I send one for ${company}?`,
+        paragraphs: `What sets ${brand} apart is ownership of the dairy: organic milk from Karma Farm, mithai crafted fresh every morning, and recipes our own office votes on before they go out.\n\nIf festive gifting at ${company} should feel that honest, a tasting box shows it fastest.\n\nOpen to a sample box at ${company}? Send me the delivery address and I'll ship one.`,
       },
       {
         subject: `Re: Festive sweets sample for ${company}`,
-        paragraphs: `I'll stop following up after this one. If a tasting box or gifting quote is useful later, ${brand} is here for ${company} with mithai crafted fresh every morning. We never add preservatives or chemicals.\n\nI won't email further, but the door stays open. Wishing ${company} a happy festival season.`,
-      },
-    ],
-    [
-      {
-        subject: "A tasting box for your team",
-        paragraphs: `For Diwali gifting to employees and clients at ${company}, ${brand} can bring farm-fresh mithai: organic milk from our own farm, and we never add preservatives or chemicals. Production is highly hygienic.\n\nHappy to send a small sampler your way, no obligation, just proof.\n\nWant it sent to ${company} this week?`,
-      },
-      {
-        subject: "Re: A tasting box for your team",
-        paragraphs: `For Diwali gifting at ${company}, the ingredients matter. ${brand} sources organic milk from its own dairy farm, crafts mithai fresh every morning, and never adds preservatives or chemicals. Kitchens are highly hygienic.\n\nThat is why the taste holds up in a corporate gift box for ${company}.\n\nShould I send ${company} a tasting box?`,
-      },
-      {
-        subject: "Re: A tasting box for your team",
-        paragraphs: `I'll leave it here so I'm not cluttering your inbox further. If festive gifting for ${company} comes up this season, ${brand} can help with organic milk from our own farm and hygienic production.\n\nI won't email further, but feel free to reach out anytime. Wishing the team at ${company} a happy festival season.`,
+        paragraphs: `I'll stop following up after this one. If festive gifting for ${company} comes up later, ${brand} is here with Karma Farm mithai and a sample box ready to ship.\n\nIf you'd like a sample box before the season ends, reply with where to ship it at ${company}. I won't email further, but the door stays open. Wishing ${company} a happy festival season.`,
       },
     ],
   ];
 
-  return sequences.map((seq, i) => {
+  return sequences.map((seq) => {
     const email = seq[step - 1];
-    const closing = step === 1 && i === 0 ? "best" : "thanks";
+    const closing = step === 1 ? "warmly" : "thanks";
     return {
       subject: email.subject,
-      body: wrap(first, sender, brand, applyCta(email.paragraphs, cta), closing),
+      body: wrap(
+        first,
+        sender,
+        brand,
+        applyCta(email.paragraphs, cta),
+        closing,
+        closing === "warmly" ? phone : undefined,
+        closing === "warmly" ? fromAddress : undefined,
+      ),
     };
   });
 }
 
 export function fillIshDraftVariants(params: IshFillParams) {
   if (params.occasionId && !isFestiveWriteOccasion(params.occasionId)) {
-    const [a, b, c] = getIshOccasionEmails({
+    const [a, b] = getIshOccasionEmails({
       ...params,
       occasionId: params.occasionId,
     });
-    return {
-      subjectA: a.subject,
-      subjectB: b.subject,
-      subjectC: c.subject,
-      emailBody: a.body,
-      emailBodyB: b.body,
-      emailBodyC: c.body,
-    };
+    return toDraftCopy(a, b);
   }
-  const [a, b, c] = getIshSequenceEmails(params);
+  const [a, b] = getIshSequenceEmails(params);
+  return toDraftCopy(a, b);
+}
+
+function toDraftCopy(a?: IshEmail, b?: IshEmail) {
   return {
-    subjectA: a.subject,
-    subjectB: b.subject,
-    subjectC: c.subject,
-    emailBody: a.body,
-    emailBodyB: b.body,
-    emailBodyC: c.body,
+    subjectA: a?.subject ?? "",
+    subjectB: b?.subject ?? "",
+    subjectC: "",
+    emailBody: a?.body ?? "",
+    emailBodyB: b?.body ?? "",
+    emailBodyC: "",
   };
 }

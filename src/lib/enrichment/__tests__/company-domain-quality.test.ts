@@ -20,6 +20,8 @@ describe("company domain quality", () => {
     expect(distinctiveBrandTokens("Trilife Hospital")).toEqual(["trilife"]);
     expect(distinctiveBrandTokens("HDFC Bank")).toEqual(["hdfc"]);
     expect(distinctiveBrandTokens("Manav Charitable Hospital")).toEqual(["manav", "charitable"]);
+    expect(distinctiveBrandTokens("TVS Motor Company")).toEqual(["tvs"]);
+    expect(distinctiveBrandTokens("KMB Motor LLP")).toEqual(["kmb"]);
   });
 
   it("rejects news and directory hosts", () => {

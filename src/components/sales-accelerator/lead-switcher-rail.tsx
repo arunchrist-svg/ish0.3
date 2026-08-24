@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { BottomSheet, IshAvatar, SearchBar } from "@/design-system";
 import { getScoreTone, scoreToneClasses } from "@/design-system/tokens";
 import type { LeadQueueItem } from "@/lib/api-client";
+import { LeadAddedByLabel } from "@/components/leads/lead-added-by-button";
 import { hapticLight } from "@/lib/capacitor/platform";
 
 const CHIP_LIMIT = 5;
@@ -194,14 +195,17 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
                       {[lead.title, lead.company].filter(Boolean).join(" · ") || "—"}
                     </div>
                   </div>
-                  <span
-                    className={cn(
-                      "flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
-                      scoreToneClasses[tone],
-                    )}
-                  >
-                    {lead.score}
-                  </span>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span
+                      className={cn(
+                        "flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold",
+                        scoreToneClasses[tone],
+                      )}
+                    >
+                      {lead.score}
+                    </span>
+                    <LeadAddedByLabel name={lead.createdByName} leadSource={lead.leadSource} />
+                  </div>
                 </button>
               );
             })

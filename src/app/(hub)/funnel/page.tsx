@@ -53,7 +53,6 @@ export default function FunnelPage() {
       <AppPageHeader
         icon={GitFork}
         title="Yield Funnel"
-        subtitle="Lead progression across all stages"
       />
       <div className="min-w-0 flex-1 overflow-y-auto bg-transparent p-8">
           {loading ? (

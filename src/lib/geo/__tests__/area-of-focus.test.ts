@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAreaOfFocusFromCatalog, setAllNearbyAreasSelected, areaOfFocusSearchLabels, normalizeScoutAreasOfFocus, upsertScoutAreaOfFocus } from "@/lib/geo/area-of-focus";
+import { resolveAreaOfFocusFromCatalog, setAllNearbyAreasSelected, areaOfFocusSearchLabels, normalizeScoutAreasOfFocus, upsertScoutAreaOfFocus, placesLocationBiasFromFocuses } from "@/lib/geo/area-of-focus";
 import { scoutLocationOptions, locationOptionsFromSelection, defaultLabelsFromLocationOptions } from "@/lib/geo/india";
 import { DEFAULT_SCOUT_GEO } from "@/lib/geo/india";
 import { companyMatchesScoutSelection, expandCitySearchTerms } from "@/lib/enrichment/city-search";
@@ -194,5 +194,22 @@ describe("neighborhood-only company filter", () => {
         geoVerified: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("placesLocationBiasFromFocuses", () => {
+  it("does not pin Tamil Nadu district chips to a Bengaluru Focus Area", () => {
+    const focus = resolveAreaOfFocusFromCatalog({
+      city: "Bengaluru",
+      query: "Kasturi Nagar",
+      radiusKm: 5,
+    });
+    expect(focus).not.toBeNull();
+    expect(
+      placesLocationBiasFromFocuses([focus!], ["Madras", "Dharmapuri", "Erode", "Hosur", "Salem"]),
+    ).toBeUndefined();
+    const kasturiBias = placesLocationBiasFromFocuses([focus!], ["Kasturi Nagar"]);
+    expect(kasturiBias?.lat).toBe(focus!.lat);
+    expect(kasturiBias?.lng).toBe(focus!.lng);
   });
 });

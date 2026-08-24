@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
-import { db, leads, contacts, accounts, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
+import { db, leads, contacts, accounts, users, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
 import { eq, desc, asc, and, inArray } from "drizzle-orm";
 import { canManuallyAdvance, isEmailOutreachStarted, parseDealAmount } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
@@ -24,10 +24,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const ctx = await requireTenantContext();
 
     const rows = await db
-      .select({ lead: leads, contact: contacts, account: accounts })
+      .select({
+        lead: leads,
+        contact: contacts,
+        account: accounts,
+        createdByName: users.name,
+      })
       .from(leads)
       .innerJoin(contacts, eq(contacts.id, leads.contactId))
       .innerJoin(accounts, eq(accounts.id, leads.accountId))
+      .leftJoin(users, eq(users.id, leads.createdByUserId))
       .where(eq(leads.id, id))
       .limit(1);
 
@@ -35,7 +41,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    const { lead, contact, account } = rows[0];
+    const { lead, contact, account, createdByName } = rows[0];
 
     if (lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
@@ -234,6 +240,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       fitScore: account.fitScore ?? undefined,
       budgetBand: account.budgetBand ?? undefined,
       isPinned: lead.isPinned ?? false,
+      createdByUserId: lead.createdByUserId ?? undefined,
+      createdByName: createdByName?.trim() || undefined,
       emailThread,
       outreachTemplates: getOutreachTemplatesForBrand(emailConfig.brandConfig).map((t) => ({
         id: t.id,
