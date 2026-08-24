@@ -618,16 +618,17 @@ function LocationAreaPicker({
             type="button"
             onClick={() => onCitiesChange(labels)}
             disabled={allSelected}
-            className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
           >
-            Select all
+            All
           </button>
           <button
             type="button"
             onClick={() => onCitiesChange([])}
-            className="text-[11px] font-semibold text-brand-stratus-blue"
+            disabled={noneSelected}
+            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
           >
-            Clear all
+            Clear
           </button>
         </div>
       </div>
