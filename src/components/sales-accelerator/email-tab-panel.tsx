@@ -29,6 +29,7 @@ import {
 } from "@/lib/outreach/send-recipients";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { OutreachJourneyPanel } from "./outreach-journey-panel";
+import { ConversationTimeline } from "./conversation-timeline";
 import { SequenceControlButtons } from "./sequence-control-buttons";
 import { SyncRepliesButton } from "./sync-replies-button";
 import {
@@ -110,10 +111,13 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }, [thread?.selectedNodeId, lead.id]);
 
   useEffect(() => {
-    if (isReplyLead && thread?.barMode === "reply" && phase !== "reply_sent") {
-      setSelectedNodeId("reply");
+    if (isReplyLead && phase === "drafting_reply") {
+      setSelectedNodeId("reply-draft");
+    } else if (isReplyLead && phase === "they_replied" && thread?.events) {
+      const inbound = thread.events.find((e) => e.kind === "inbound_reply");
+      if (inbound) setSelectedNodeId(inbound.id);
     }
-  }, [isReplyLead, thread?.barMode, phase, lead.id]);
+  }, [isReplyLead, phase, lead.id, thread?.events]);
 
   useEffect(() => {
     setActiveDraft(draft);
@@ -157,14 +161,21 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }, [lead.id, taggedOccasion, detectedOccasion?.type]);
 
   const selectedNode = thread?.barNodes.find((n) => n.id === selectedNodeId);
+  const selectedEvent = thread?.events.find((e) => e.id === selectedNodeId);
 
   const resolvedDraft = useMemo(() => {
+    if (selectedNodeId === "reply-draft" || selectedEvent?.label === "Your reply") {
+      return replyDraft;
+    }
     if (isReplyLead) {
       if (selectedNode?.outreachId && replyDraft?.id === selectedNode.outreachId) return replyDraft;
-      if (selectedNode?.id === "reply" || selectedNode?.kind === "reply_draft" || selectedNode?.kind === "inbound") {
-        return replyDraft;
-      }
+      if (selectedEvent?.kind === "inbound_reply") return replyDraft;
       return replyDraft;
+    }
+    if (selectedNodeId?.startsWith("draft-")) {
+      const pos = Number(selectedNodeId.replace("draft-", ""));
+      const fromSequence = sequence.find((d) => d.sequencePosition === pos);
+      if (fromSequence) return fromSequence;
     }
     if (selectedNode?.outreachId) {
       if (activeDraft?.id === selectedNode.outreachId) return activeDraft;
@@ -173,7 +184,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       if (draft?.id === selectedNode.outreachId) return draft;
     }
     return activeDraft ?? draft;
-  }, [selectedNode, sequence, activeDraft, draft, isReplyLead, replyDraft]);
+  }, [selectedNode, selectedNodeId, selectedEvent, sequence, activeDraft, draft, isReplyLead, replyDraft]);
 
   const contentQuality = useMemo(() => {
     if (!resolvedDraft?.emailBody) return null;
@@ -200,17 +211,25 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       : WRITE_THEME_OCCASIONS.find((o) => o.id === selectedOccasion) ??
         { id: selectedOccasion, label: selectedOccasion, pitch: detectedOccasion?.label ?? "Account event" };
   const isEmptyCompose = canWrite && !hasDraft && !isReplyLead && (phase === "compose" || thread?.barMode === "hidden");
-  const isEditableNode =
-    isEmptyCompose ||
+  const selectingEditableDraft =
     selectedNode?.kind === "draft" ||
     selectedNode?.kind === "reply_draft" ||
     selectedNode?.kind === "scheduled" ||
+    selectedNodeId === "reply-draft" ||
+    selectedNodeId?.startsWith("draft-") ||
+    selectedEvent?.status === "draft" ||
+    selectedEvent?.status === "scheduled";
+  const isEditableNode =
+    isEmptyCompose ||
+    selectingEditableDraft ||
     thread?.barMode === "drafts" ||
-    (thread?.barMode === "reply" && isReplyDraft);
+    (thread?.barMode === "reply" && isReplyDraft) ||
+    (isReplyLead && Boolean(replyDraft) && phase !== "reply_sent");
   const showComposeZone =
     isEditableNode ||
     thread?.showComposeZone ||
-    (hasDraft && phase !== "reply_sent" && phase !== "complete");
+    (hasDraft && phase !== "reply_sent" && phase !== "complete") ||
+    needsReplyDraft;
   const followUpPosition =
     selectedNode?.kind === "scheduled" && selectedNode.id === "e2"
       ? 2
@@ -241,7 +260,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         const newDraft = await runReplyWriter(lead.id);
         setActiveDraft(newDraft);
         onDraftUpdated(newDraft);
-        setSelectedNodeId("reply");
+        setSelectedNodeId("reply-draft");
         onSilentRefresh();
         toast.success("Reply draft updated");
         return;
@@ -308,7 +327,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       const newDraft = await runReplyWriter(lead.id);
       setActiveDraft(newDraft);
       onDraftUpdated(newDraft);
-      setSelectedNodeId("reply");
+      setSelectedNodeId("reply-draft");
       onSilentRefresh();
       composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       toast.success("Reply draft ready");
@@ -347,6 +366,18 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   function handleNodeSelect(nodeId: string) {
     setSelectedNodeId(nodeId);
+    if (nodeId === "reply-draft") {
+      if (replyDraft) setActiveDraft(replyDraft);
+      composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
+    if (nodeId.startsWith("draft-")) {
+      const pos = Number(nodeId.replace("draft-", ""));
+      const d = sequence.find((s) => s.sequencePosition === pos);
+      if (d) setActiveDraft(d);
+      composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const node = thread?.barNodes.find((n) => n.id === nodeId);
     if (node?.outreachId) {
       const d = sequence.find((s) => s.id === node.outreachId) ?? (draft?.id === node.outreachId ? draft : undefined);
@@ -354,7 +385,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         setActiveDraft(d);
       }
     }
-    if (node?.kind === "draft" || node?.kind === "reply_draft") {
+    if (node?.kind === "draft" || node?.kind === "reply_draft" || node?.kind === "scheduled") {
       composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }
@@ -842,139 +873,160 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         processActions={processActions}
         selectedNodeId={selectedNodeId}
         onNodeSelect={handleNodeSelect}
-        onDraftReply={() => void handleDraftReply()}
-        draftReplyLoading={draftingReply}
       />
+
+      {thread?.nextStep && (thread.events?.length ?? 0) > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-brand-stratus-blue/12 bg-white/90 px-3 py-2.5 shadow-[var(--shadow-brand-sm)]">
+          <div className="min-w-0">
+            <p className="text-[13px] font-bold text-brand-ink">{thread.nextStep.title}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-brand-ink-soft">{thread.nextStep.description}</p>
+          </div>
+          {needsReplyDraft ? (
+            <button
+              type="button"
+              disabled={!canWrite || draftingReply}
+              onClick={() => void handleDraftReply()}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-black px-3.5 py-2 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              {draftingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
+              {draftingReply ? "Writing…" : "Generate AI reply"}
+            </button>
+          ) : thread.nextStep.primaryAction && phase === "drafting_reply" ? (
+            <button
+              type="button"
+              disabled={!composeActions?.canSend}
+              onClick={() => approvalRef.current?.send()}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-semibold transition-opacity",
+                composeActions?.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
+              )}
+            >
+              <Send className="size-3.5" />
+              {composeActions?.sendLabel || "Send Reply"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {generating ? (
         <div className="border-y border-brand-border bg-white py-10 lg:mx-0 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-brand-sm)]">
           {streamMessage ? (
-        <div className="mx-3 rounded-xl bg-brand-yellow-soft px-3 py-2.5 text-[13px] font-medium text-brand-ink lg:mx-4 lg:px-4 lg:py-3">{streamMessage}</div>
-      ) : null}
-      <WritingLoader
+            <div className="mx-3 rounded-xl bg-brand-yellow-soft px-3 py-2.5 text-[13px] font-medium text-brand-ink lg:mx-4 lg:px-4 lg:py-3">
+              {streamMessage}
+            </div>
+          ) : null}
+          <WritingLoader
             contactName={lead.name}
             companyName={lead.company}
             sequenceLabel={generatingLabel}
           />
         </div>
-      ) : canWrite && !hasDraft && !generating ? (
-        <div className="border-y border-dashed border-brand-stratus-blue/30 bg-gradient-to-br from-brand-canvas/80 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-brand-sm)]">
-          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-yellow-soft">
-            <Sparkles className="size-5 text-brand-ink" />
-          </div>
-          <p className="text-[15px] font-bold text-brand-ink">Start writing smart emails</p>
-          <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-            AI will write 3 smart emails for {lead.name ?? "this contact"} using the{" "}
-            <span className="font-semibold text-brand-ink">{activeTemplate.shortLabel}</span> template.
-          </p>
-          <button
-            type="button"
-            disabled={!canWrite || generating}
-            onClick={() => void handleGenerate()}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            <Sparkles className="size-4" />
-            Write smart emails
-          </button>
-        </div>
-      ) : needsReplyDraft ? (
-        <div className="border-y border-brand-stratus-blue/25 bg-gradient-to-br from-brand-green-soft/40 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-brand-sm)]">
-          <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-green-soft">
-            <Sparkles className="size-5 text-brand-stratus-blue" />
-          </div>
-          <p className="text-[15px] font-bold text-brand-ink">They replied</p>
-          {thread?.inboundSnippet ? (
-            <p className="mx-auto mt-3 max-w-lg rounded-[14px] bg-white/80 px-4 py-3 text-left text-[12px] italic leading-relaxed text-brand-ink-soft ring-1 ring-brand-border/50">
-              &ldquo;{thread.inboundSnippet}&rdquo;
-            </p>
-          ) : null}
-          <p className="mx-auto mt-3 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-            Generate a smart reply using their message, your original outreach, and gifting context.
-          </p>
-          <button
-            type="button"
-            disabled={!canWrite || draftingReply}
-            onClick={() => void handleDraftReply()}
-            className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
-          >
-            {draftingReply ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            {draftingReply ? "Writing smart emails…" : "Generate AI reply"}
-          </button>
-        </div>
       ) : draftingReply ? (
         <div className="border-y border-brand-border bg-white py-10 lg:rounded-[20px] lg:border lg:py-12 lg:shadow-[var(--shadow-brand-sm)]">
           <WritingLoader contactName={lead.name} companyName={lead.company} sequenceLabel="Drafting reply" />
         </div>
-      ) : showComposeZone && isEditableNode && resolvedDraft ? (
-        <div ref={composeRef} className="pt-3">
-          <OutreachApprovalCard
-            ref={approvalRef}
-            key={`${lead.id}-${resolvedDraft.id}`}
-            draft={resolvedDraft}
-            leadId={lead.id}
-            leadStatus={lead.status}
-            contactName={lead.name}
-            companyName={lead.company}
-            contactEmail={lead.email}
-            contactEmails={lead.emails}
-            selectedEmails={sequenceRecipients}
-            onSelectedEmailsChange={setSequenceRecipients}
-            chosenSubjectKey={sequenceSubjectKey}
-            onChosenSubjectKeyChange={
-              resolvedDraft.sequencePosition === 1 || resolvedDraft.sequencePosition == null
-                ? handleSequenceSubjectKey
-                : undefined
-            }
-            emailThread={thread}
-            onDraftUpdated={(d) => {
-              setActiveDraft(d);
-              onDraftUpdated(d);
-            }}
-            onSavingChange={setDraftSaving}
-            onComposeActionsChange={setComposeActions}
-            contentScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
-            onSent={onSent ?? onSilentRefresh}
-            onGenerateReply={() => void handleDraftReply()}
-            generatingReply={draftingReply}
-            onSendFailed={onSilentRefresh}
-            startSequenceDraft={
-              sequence.find((d) => d.sequencePosition === 1) ??
-              (resolvedDraft.sequencePosition === 1 ? resolvedDraft : undefined)
-            }
+      ) : (
+        <>
+          <ConversationTimeline
+            thread={thread}
+            selectedEventId={selectedNodeId}
+            onSelect={handleNodeSelect}
           />
-        </div>
-      ) : isEmptyCompose ? (
-        <div className="border-y border-dashed border-brand-stratus-blue/25 bg-brand-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-brand-sm)]">
-          <p className="text-[15px] font-bold text-brand-ink">Ready to write smart emails</p>
-          <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-            {writerMode === "ai"
-              ? `AI Writer will draft a 3-email sequence for ${lead.name || "this contact"} using research and brand context. Pick a template above, then click Write smart emails.`
-              : `Standard fills the ISH templates for ${lead.name || "this contact"}. Pick a template above, then click Write smart emails.`}
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            disabled={!canWrite || generating}
-            className="mt-5 h-auto rounded-full bg-brand-black px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-brand-black/90 disabled:opacity-40"
-            onClick={() => void handleGenerate()}
-          >
-            <FileText className="size-3.5" />
-            Write smart emails
-          </Button>
-        </div>
-      ) : (phase === "reply_sent" || phase === "complete") && isReplyLead ? (
-        <div className="flex justify-end pt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-auto rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white"
-            onClick={() => void handleGenerate()}
-          >
-            Draft another reply
-          </Button>
-        </div>
-      ) : null}
+
+          {canWrite && !hasDraft && !isReplyLead && !generating ? (
+            <div className="border-y border-dashed border-brand-stratus-blue/30 bg-gradient-to-br from-brand-canvas/80 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-brand-sm)]">
+              <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-yellow-soft">
+                <Sparkles className="size-5 text-brand-ink" />
+              </div>
+              <p className="text-[15px] font-bold text-brand-ink">Start writing smart emails</p>
+              <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
+                AI will write 3 smart emails for {lead.name ?? "this contact"} using the{" "}
+                <span className="font-semibold text-brand-ink">{activeTemplate.shortLabel}</span> template.
+              </p>
+              <button
+                type="button"
+                disabled={!canWrite || generating}
+                onClick={() => void handleGenerate()}
+                className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
+              >
+                <Sparkles className="size-4" />
+                Write smart emails
+              </button>
+            </div>
+          ) : null}
+
+          {showComposeZone && isEditableNode && resolvedDraft && !needsReplyDraft ? (
+            <div ref={composeRef} className="pt-1">
+              <OutreachApprovalCard
+                ref={approvalRef}
+                key={`${lead.id}-${resolvedDraft.id}`}
+                draft={resolvedDraft}
+                leadId={lead.id}
+                leadStatus={lead.status}
+                contactName={lead.name}
+                companyName={lead.company}
+                contactEmail={lead.email}
+                contactEmails={lead.emails}
+                selectedEmails={sequenceRecipients}
+                onSelectedEmailsChange={setSequenceRecipients}
+                chosenSubjectKey={sequenceSubjectKey}
+                onChosenSubjectKeyChange={
+                  resolvedDraft.sequencePosition === 1 || resolvedDraft.sequencePosition == null
+                    ? handleSequenceSubjectKey
+                    : undefined
+                }
+                emailThread={thread}
+                onDraftUpdated={(d) => {
+                  setActiveDraft(d);
+                  onDraftUpdated(d);
+                }}
+                onSavingChange={setDraftSaving}
+                onComposeActionsChange={setComposeActions}
+                contentScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
+                onSent={onSent ?? onSilentRefresh}
+                onGenerateReply={() => void handleDraftReply()}
+                generatingReply={draftingReply}
+                onSendFailed={onSilentRefresh}
+                startSequenceDraft={
+                  sequence.find((d) => d.sequencePosition === 1) ??
+                  (resolvedDraft.sequencePosition === 1 ? resolvedDraft : undefined)
+                }
+              />
+            </div>
+          ) : isEmptyCompose ? (
+            <div className="border-y border-dashed border-brand-stratus-blue/25 bg-brand-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-brand-sm)]">
+              <p className="text-[15px] font-bold text-brand-ink">Ready to write smart emails</p>
+              <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
+                {writerMode === "ai"
+                  ? `AI Writer will draft a 3-email sequence for ${lead.name || "this contact"} using research and brand context. Pick a template above, then click Write smart emails.`
+                  : `Standard fills the ISH templates for ${lead.name || "this contact"}. Pick a template above, then click Write smart emails.`}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!canWrite || generating}
+                className="mt-5 h-auto rounded-full bg-brand-black px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-brand-black/90 disabled:opacity-40"
+                onClick={() => void handleGenerate()}
+              >
+                <FileText className="size-3.5" />
+                Write smart emails
+              </Button>
+            </div>
+          ) : (phase === "reply_sent" || phase === "complete") && isReplyLead ? (
+            <div className="flex justify-end pt-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto rounded-full bg-brand-black px-4 py-2 text-[12px] font-semibold text-white"
+                onClick={() => void handleGenerate()}
+              >
+                Draft another reply
+              </Button>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

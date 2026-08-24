@@ -20,6 +20,8 @@ describe("cadence", () => {
   it("labels email steps", () => {
     expect(emailStepLabel(0, [4, 8])).toBe("Email 1");
     expect(emailStepLabel(4, [4, 8])).toBe("Email 2");
+    expect(emailStepLabel(-2)).toBe("They replied");
+    expect(emailStepLabel(-1)).toBe("Your reply");
   });
 
   it("summarizes cadence for UI copy", () => {

@@ -265,6 +265,12 @@ export function refreshPermutationEmails(input: {
   alternateEmails?: ContactEmailEntry[] | null;
   /** Keep a user-typed address even when the domain does not match the company. */
   preservePrimary?: boolean;
+  /**
+   * When false, do not promote first.last@domain to primary.
+   * Use when a LinkedIn profile is present but paid enrich found no email, so a guess
+   * would look like exact contact info.
+   */
+  fillPermutationPrimary?: boolean;
 }): {
   email: string | null;
   emailStatus: ContactEmailEntry["emailStatus"];
@@ -314,7 +320,7 @@ export function refreshPermutationEmails(input: {
     enrichmentSource = null;
   }
 
-  if (!email && resolvedDomain) {
+  if (!email && resolvedDomain && input.fillPermutationPrimary !== false) {
     const { firstName, lastName } = resolveContactName(identity);
     const firstLast = generateEmailPermutations({ firstName, lastName, domain: resolvedDomain }).find(
       (item) => item.pattern === "first.last",

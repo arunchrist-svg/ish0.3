@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db, outreachSchedule } from "@/db";
 import { eq } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
+import { promoteFollowUpToFestiveCatalog } from "@/lib/email/promote-catalog-on-open";
 
 // 43-byte 1x1 transparent GIF
 const TRANSPARENT_GIF = Buffer.from(
@@ -31,6 +32,17 @@ export async function GET(req: Request) {
           entityId: row.leadId,
           metadata: { scheduleId: row.id, sequenceDay: row.sequenceDay },
         });
+
+        // Opened = likely not sitting unread in spam. Swap the next pending
+        // follow-up to the full festive catalogue while it is still unsent.
+        try {
+          await promoteFollowUpToFestiveCatalog({
+            leadId: row.leadId,
+            openedSequenceDay: row.sequenceDay,
+          });
+        } catch (promoteErr) {
+          console.error("[track/open] catalog promote", promoteErr);
+        }
       }
     } catch (e) {
       console.error("[track/open]", e);

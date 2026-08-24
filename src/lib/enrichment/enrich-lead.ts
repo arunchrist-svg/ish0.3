@@ -370,6 +370,10 @@ export async function enrichLeadById(params: {
     enrichmentProvider: enriched.enrichmentProvider ?? contact.enrichmentProvider,
     enrichmentSource: enriched.enrichmentSource ?? contact.enrichmentSource,
     alternateEmails: discovered,
+    fillPermutationPrimary: !(
+      Boolean(normalizeLinkedInUrl(contact.linkedIn) || normalizeLinkedInUrl(enriched.linkedIn)) &&
+      !nextEmail
+    ),
   });
 
   await db

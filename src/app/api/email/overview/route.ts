@@ -163,7 +163,7 @@ function buildLeadRow(
       : "upcoming";
     return {
       sequenceDay: day,
-      label: `E${idx + 1}`,
+      label: `Email ${idx + 1}`,
       status: ["scheduled", "sent", "cancelled", "paused"].includes(status) ? status : "upcoming",
       openedAt: row?.openedAt ? new Date(row.openedAt).toISOString() : null,
       bouncedAt: row?.bouncedAt ? new Date(row.bouncedAt).toISOString() : null,

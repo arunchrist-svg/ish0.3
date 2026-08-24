@@ -94,6 +94,8 @@ export type EmailConfig = {
   fromName: string;
   /** Optional phone shown under Warmly sign-off on ISH festive drafts. */
   fromPhone?: string;
+  /** Optional branch/location under brand on Warmly (e.g. Kasturinagar). From Email settings. */
+  fromLocation?: string;
   replyToAddress: string;
   replyToName: string;
   testRecipient: string;
@@ -282,6 +284,7 @@ export function getDefaultEmailConfig(): EmailConfig {
     fromAddress: "",
     fromName: "",
     fromPhone: "",
+    fromLocation: "",
     replyToAddress: "",
     replyToName: "",
     testRecipient: "",

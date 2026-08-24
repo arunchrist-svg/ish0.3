@@ -4,11 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
-  Ban,
-  Eye,
   MessageSquare,
-  Clock,
-  Zap,
   CheckCircle2,
   ChevronRight,
   RefreshCw,
@@ -247,9 +243,9 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
   }, [row.nextEmailDue, row.sequenceEmails]);
 
   const fallbackSteps = [
-    { day: d0, short: "E1" },
-    { day: d1, short: "E2" },
-    { day: d2, short: "E3" },
+    { day: d0, short: "Email 1" },
+    { day: d1, short: "Email 2" },
+    { day: d2, short: "Email 3" },
   ];
   const sequenceSteps =
     row.sequenceEmails?.length > 0
@@ -275,226 +271,136 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
     const draft = row.hasReplyDraft || row.threadStage === "reply_draft";
     const sentReply = row.hasOutboundReply || row.threadStage === "reply_sent";
     replySteps.push(
-      { id: "rep", label: "Reply", done: replied, active: row.threadStage === "they_replied" },
+      { id: "rep", label: "They replied", done: replied, active: row.threadStage === "they_replied" },
       { id: "draft", label: "Draft", done: draft || sentReply, active: row.threadStage === "reply_draft" },
-      { id: "sent", label: "Sent", done: sentReply, active: false },
+      { id: "sent", label: "You replied", done: sentReply, active: false },
     );
   }
 
   return (
-    <div className="ish-email-seq inline-flex flex-wrap items-center gap-1 rounded-full border px-1.5 py-1">
+    <div
+      className="ish-email-seq inline-flex max-w-full items-center gap-1 truncate text-[10px] font-medium text-brand-ink-faint"
+      title={sequenceSteps
+        .map((step) => {
+          const done = step.status === "sent";
+          const opened = Boolean(step.openedAt);
+          const bounced = Boolean(step.bouncedAt);
+          const label = emailStepLabel(step.day, normalized);
+          if (bounced) return `${label}: Bounced`;
+          if (opened) return `${label}: Opened`;
+          if (done) return `${label}: Sent`;
+          return label;
+        })
+        .concat(replySteps.filter((s) => s.active || s.done).map((s) => s.label))
+        .join(" · ")}
+    >
       {sequenceSteps.map((step, i) => {
         const done = step.status === "sent";
         const opened = Boolean(step.openedAt);
         const bounced = Boolean(step.bouncedAt);
-        const isScheduled = step.status === "scheduled" || step.status === "paused";
         const active = row.nextEmailDay === step.day && !done;
-        const label = emailStepLabel(step.day, normalized);
         const display = sequenceStepDisplay(step, row.nextEmailDay, row.nextEmailDue);
-        const dueForTooltip =
-          step.scheduledFor ?? (step.day === row.nextEmailDay ? row.nextEmailDue : null);
-        const daysLeft = step.day > 0 && step.status !== "sent" ? daysUntilSend(dueForTooltip) : null;
-        const title = bounced
-          ? `${label}: Bounced`
-          : opened
-            ? `${label}: Opened ${timeAgo(step.openedAt!)}`
-            : done
-              ? `${label}: Sent · Not opened`
-              : isScheduled && daysLeft !== null
-                ? `${label}: Sends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
-                : daysLeft !== null && step.day > 0 && !done
-                  ? `${label}: Sends in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
-                  : active
-                  ? `${label}: Next`
-                  : label;
         return (
-          <div key={step.day} className="flex items-center gap-1">
-            <div
-              title={title}
+          <span key={step.day} className="inline-flex items-center gap-0.5">
+            {i > 0 && <span className="text-brand-border">·</span>}
+            <span
               className={cn(
-                "flex h-6 items-center justify-center gap-0.5 rounded-full px-2 text-[8px] font-bold uppercase tracking-wide whitespace-nowrap",
+                "whitespace-nowrap",
                 bounced
-                  ? "bg-brand-stratus-salmon text-white"
+                  ? "font-semibold text-brand-stratus-salmon"
                   : opened
-                    ? "bg-brand-stratus-yellow text-brand-ink"
+                    ? "font-semibold text-brand-ink"
                     : done
-                      ? "bg-brand-stratus-blue text-white"
-                      : isScheduled
-                        ? "border border-dashed border-brand-stratus-blue/35 bg-white text-brand-stratus-blue"
-                        : active
-                          ? "bg-brand-stratus-yellow text-brand-ink ring-2 ring-brand-stratus-yellow/45"
-                          : "bg-white/80 text-brand-ink-faint",
+                      ? "text-brand-stratus-blue"
+                      : active
+                        ? "font-semibold text-brand-ink"
+                        : "text-brand-ink-faint",
               )}
             >
-              {bounced && <Ban className="size-2.5 shrink-0" strokeWidth={2.5} />}
-              {opened && !bounced && <Eye className="size-2.5 shrink-0" strokeWidth={2.5} />}
-              {display}
-            </div>
-            {i < sequenceSteps.length - 1 && (
-              <div className={cn("h-px w-2.5", done || opened ? "bg-brand-stratus-blue/40" : "bg-brand-border")} />
-            )}
-          </div>
+              {bounced ? `${display} bounced` : opened ? `${display} opened` : display}
+            </span>
+          </span>
         );
       })}
-      {replySteps.length > 0 && (
-        <>
-          <div className="mx-0.5 h-px w-2.5 bg-brand-border" />
-          {replySteps.map((step, i) => (
-            <div key={step.id} className="flex items-center gap-1">
-              <div
-                className={cn(
-                  "flex h-6 min-w-[40px] items-center justify-center rounded-full px-1.5 text-[8px] font-bold uppercase tracking-wide",
-                  step.done
-                    ? "bg-brand-stratus-blue text-white"
-                    : step.active
-                      ? "bg-brand-stratus-yellow text-brand-ink ring-2 ring-brand-stratus-yellow/45"
-                      : "bg-white/80 text-brand-ink-faint",
-                )}
-              >
-                {step.label}
-              </div>
-              {i < replySteps.length - 1 && (
-                <div className={cn("h-px w-2.5", step.done ? "bg-brand-stratus-blue/40" : "bg-brand-border")} />
+      {replySteps
+        .filter((s) => s.active || s.done)
+        .map((step) => (
+          <span key={step.id} className="inline-flex items-center gap-0.5">
+            <span className="text-brand-border">·</span>
+            <span
+              className={cn(
+                "whitespace-nowrap",
+                step.active ? "font-semibold text-brand-stratus-blue" : "text-brand-stratus-blue",
               )}
-            </div>
-          ))}
-        </>
-      )}
+            >
+              {step.label}
+            </span>
+          </span>
+        ))}
     </div>
   );
 }
 
-// ─── Next action card ─────────────────────────────────────────────────────────
-
-function NextActionCard({
-  row,
-  onNavigate,
-}: {
-  row: LeadEmailRow;
-  onNavigate: (id: string) => void;
-}) {
-  const action = row.nextAction;
-  if (!action) return null;
-
-  return (
-    <div
-      className="ish-email-reply mt-3 rounded-[16px] border p-3"
-      onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
-    >
-      <div className="flex items-start gap-3">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-brand-stratus-yellow text-brand-ink shadow-[var(--shadow-brand-yellow-sm)]">
-          <Zap className="size-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-bold text-brand-ink">{action.title}</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-brand-ink-soft">{action.description}</p>
-          {row.inboundSnippet && (
-            <p className="mt-2 line-clamp-3 text-[12px] leading-relaxed text-brand-ink">
-              {row.inboundSnippet}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => onNavigate(row.leadId)}
-            className="mt-2.5 inline-flex items-center gap-1.5 rounded-full bg-brand-stratus-blue px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90"
-          >
-            {action.cta}
-            <ChevronRight className="size-3" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Status pill ──────────────────────────────────────────────────────────────
-
-function StatusPill({ row }: { row: LeadEmailRow }) {
-  if (row.queueStatus === "needs_review") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-yellow-soft px-2.5 py-1 text-[10px] font-bold text-brand-ink ring-1 ring-brand-yellow/40">
-        <FileText className="size-3" /> Review Email 1
-      </span>
-    );
+function inboxPreview(row: LeadEmailRow, tab: QueueTab): { subject: string; snippet: string } {
+  if (tab === "replies") {
+    const snippet = (row.inboundSnippet ?? row.nextAction?.description ?? "")
+      .replace(/\s+/g, " ")
+      .trim();
+    return {
+      subject: row.nextAction?.title ?? "They replied",
+      snippet,
+    };
   }
-  const bouncedStep = row.sequenceEmails?.find((step) => step.bouncedAt);
-  if (bouncedStep) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft px-2.5 py-1 text-[10px] font-bold text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/30">
-        <Ban className="size-3" /> {bouncedStep.label} bounced
-      </span>
-    );
-  }
-  if (row.queueStatus === "replies") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-stratus-blue/15 px-2.5 py-1 text-[10px] font-bold text-brand-stratus-blue ring-1 ring-brand-stratus-blue/25">
-        <MessageSquare className="size-3" /> Sequence paused
-      </span>
-    );
+  if (tab === "needs_review") {
+    return {
+      subject: row.draftSubject ?? (row.isFollowUpReview ? "Follow-up draft" : "Email 1 draft"),
+      snippet: (row.draftPreview ?? "").replace(/\s+/g, " ").trim(),
+    };
   }
   if (row.openedAt) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-stratus-yellow/25 px-2.5 py-1 text-[10px] font-bold text-brand-ink ring-1 ring-brand-stratus-yellow/40">
-        <Eye className="size-3" /> Opened {timeAgo(row.openedAt)}
-      </span>
-    );
-  }
-  if (row.emailsSent > 0 && (row.queueStatus === "active" || row.queueStatus === "hot" || row.threadStage === "awaiting_reply")) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-white/70 px-2.5 py-1 text-[10px] font-bold text-brand-ink-soft ring-1 ring-brand-stratus-blue/20">
-        <Mail className="size-3" /> Not opened
-      </span>
-    );
-  }
-  if (row.threadStage === "reply_sent") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-stratus-blue/15 px-2.5 py-1 text-[10px] font-bold text-brand-stratus-blue ring-1 ring-brand-stratus-blue/25">
-        <MessageSquare className="size-3" /> Reply sent
-      </span>
-    );
-  }
-  if (row.sequenceState === "paused") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft/50 px-2.5 py-1 text-[10px] font-bold text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/25">
-        <Pause className="size-3" /> Paused
-      </span>
-    );
-  }
-  if (row.threadStage === "awaiting_reply") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-canvas px-2.5 py-1 text-[10px] font-bold text-brand-ink-soft ring-1 ring-brand-border">
-        <Clock className="size-3" /> Awaiting reply
-      </span>
-    );
-  }
-  if (row.queueStatus === "done") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-brand-canvas px-2.5 py-1 text-[10px] font-bold text-brand-ink-faint">
-        <CheckCircle2 className="size-3" /> Complete
-      </span>
-    );
+    return {
+      subject: `Opened ${timeAgo(row.openedAt)}`,
+      snippet: row.contactEmail ?? row.companyName,
+    };
   }
   if (row.nextEmailDue) {
-    const isToday = isDueToday(row.nextEmailDue);
-    return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold",
-          isToday
-            ? "bg-brand-pink-soft text-brand-stratus-salmon ring-1 ring-brand-stratus-salmon/25"
-            : "bg-brand-canvas text-brand-ink-soft ring-1 ring-brand-border",
-        )}
-      >
-        <Clock className="size-3" />
-        {isToday ? "Due today" : `Due ${formatDate(row.nextEmailDue)}`}
-      </span>
-    );
+    return {
+      subject: isDueToday(row.nextEmailDue)
+        ? "Follow-up due today"
+        : `Next email ${formatDate(row.nextEmailDue)}`,
+      snippet: row.contactEmail ?? "",
+    };
   }
-  return null;
+  if (row.emailsSent > 0) {
+    return {
+      subject: `${row.emailsSent} email${row.emailsSent === 1 ? "" : "s"} sent`,
+      snippet: row.contactEmail ?? "",
+    };
+  }
+  return {
+    subject: "In sequence",
+    snippet: row.contactEmail ?? "",
+  };
 }
 
-// ─── Lead card ────────────────────────────────────────────────────────────────
+function inboxMeta(row: LeadEmailRow, tab: QueueTab): string {
+  if (tab === "needs_review") return "Review";
+  const bouncedStep = row.sequenceEmails?.find((step) => step.bouncedAt);
+  if (bouncedStep) return "Bounced";
+  if (tab === "replies") {
+    if (row.hasOutboundReply) return "You replied";
+    if (row.hasReplyDraft) return "Draft";
+    return row.nextAction?.cta ?? "They replied";
+  }
+  if (row.openedAt) return timeAgo(row.openedAt);
+  if (row.nextEmailDue) return isDueToday(row.nextEmailDue) ? "Today" : formatDate(row.nextEmailDue);
+  if (row.sequenceState === "paused") return "Paused";
+  if (tab === "done") return "Done";
+  if (row.emailsSent > 0) return "Waiting";
+  return "";
+}
+
+// ─── Lead card (Gmail-style inbox row) ────────────────────────────────────────
 
 function LeadCard({
   row,
@@ -507,7 +413,10 @@ function LeadCard({
   tab: QueueTab;
   onNavigate: (id: string) => void;
 }) {
-  const location = [row.city, row.industry].filter(Boolean).join(" · ");
+  const { subject, snippet } = inboxPreview(row, tab);
+  const meta = inboxMeta(row, tab);
+  const unread = tab === "replies" && !row.hasOutboundReply;
+  const metaAccent = tab === "replies" && !row.hasOutboundReply;
 
   return (
     <div
@@ -520,25 +429,12 @@ function LeadCard({
           onNavigate(row.leadId);
         }
       }}
-      className="ish-email-card group relative w-full cursor-pointer overflow-hidden rounded-[20px] border border-brand-stratus-blue/18 p-4 pl-5 text-left transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.995]"
+      className="ish-email-card group w-full cursor-pointer px-3 py-2.5 text-left transition-colors duration-150 sm:px-4"
     >
-      <span
-        aria-hidden
-        className={cn(
-          "absolute inset-y-3 left-0 w-[3px] rounded-full",
-          tab === "needs_review"
-            ? "bg-brand-stratus-yellow"
-            : tab === "hot"
-              ? "bg-brand-stratus-salmon"
-              : tab === "done"
-                ? "bg-brand-stratus-blue/35"
-                : "bg-brand-stratus-blue",
-        )}
-      />
-      <div className="flex items-start gap-3.5">
+      <div className="flex items-center gap-3">
         <div
           className={cn(
-            "flex size-11 shrink-0 items-center justify-center rounded-2xl text-[12px] font-extrabold text-brand-ink ring-2 ring-white/80 shadow-[var(--shadow-brand-sm)]",
+            "flex size-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-brand-ink",
             avatarColor(row.contactName),
           )}
         >
@@ -546,33 +442,81 @@ function LeadCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[14px] font-bold text-brand-ink">{row.contactName}</span>
-            <span className="text-brand-ink-faint">·</span>
-            <span className="truncate text-[12px] font-medium text-brand-ink-soft">{row.companyName}</span>
+          {/* Desktop: sender | subject – snippet | meta */}
+          <div className="hidden items-center gap-3 md:flex">
+            <span
+              className={cn(
+                "w-[148px] shrink-0 truncate text-[13px] text-brand-ink",
+                unread ? "font-bold" : "font-semibold",
+              )}
+            >
+              {row.contactName}
+            </span>
+            <p className="min-w-0 flex-1 truncate text-[13px] leading-snug">
+              <span className={cn("text-brand-ink", unread ? "font-semibold" : "font-medium")}>
+                {subject}
+              </span>
+              {snippet ? (
+                <>
+                  <span className="text-brand-ink-faint"> – </span>
+                  <span className="text-brand-ink-soft">{snippet}</span>
+                </>
+              ) : null}
+            </p>
+            {meta ? (
+              <span
+                className={cn(
+                  "shrink-0 text-[11px] tabular-nums",
+                  metaAccent ? "font-semibold text-brand-stratus-blue" : "text-brand-ink-faint",
+                )}
+              >
+                {meta}
+              </span>
+            ) : null}
           </div>
-          {location && <p className="mt-0.5 truncate text-[11px] text-brand-ink-faint">{location}</p>}
 
-          {tab === "needs_review" && (row.draftSubject || row.draftPreview) && (
-            <div className="mt-2.5 rounded-[12px] border border-brand-stratus-blue/15 bg-white/60 px-3 py-2.5">
-              {row.draftSubject && (
-                <p className="truncate text-[11px] font-semibold text-brand-ink">{row.draftSubject}</p>
-              )}
-              {row.draftPreview && (
-                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-brand-ink-soft">{row.draftPreview}</p>
-              )}
+          {/* Mobile: stacked */}
+          <div className="md:hidden">
+            <div className="flex items-baseline justify-between gap-2">
+              <span
+                className={cn(
+                  "min-w-0 truncate text-[13px] text-brand-ink",
+                  unread ? "font-bold" : "font-semibold",
+                )}
+              >
+                {row.contactName}
+              </span>
+              {meta ? (
+                <span
+                  className={cn(
+                    "shrink-0 text-[11px] tabular-nums",
+                    metaAccent ? "font-semibold text-brand-stratus-blue" : "text-brand-ink-faint",
+                  )}
+                >
+                  {meta}
+                </span>
+              ) : null}
             </div>
-          )}
-
-          <div className="mt-3 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <SequenceRail row={row} cadence={cadence} />
-            <StatusPill row={row} />
+            <p className="mt-0.5 truncate text-[12px] leading-snug">
+              <span className={cn("text-brand-ink", unread ? "font-semibold" : "font-medium")}>
+                {subject}
+              </span>
+              {snippet ? (
+                <>
+                  <span className="text-brand-ink-faint"> – </span>
+                  <span className="text-brand-ink-soft">{snippet}</span>
+                </>
+              ) : null}
+            </p>
           </div>
 
-          {tab === "replies" && <NextActionCard row={row} onNavigate={onNavigate} />}
+          <div className="mt-1 flex min-w-0 items-center gap-2">
+            <span className="truncate text-[11px] text-brand-ink-faint">{row.companyName}</span>
+            <SequenceRail row={row} cadence={cadence} />
+          </div>
         </div>
 
-        <ChevronRight className="mt-1 size-4 shrink-0 text-brand-ink-faint transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand-ink" />
+        <ChevronRight className="hidden size-3.5 shrink-0 text-brand-ink-faint opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
       </div>
     </div>
   );
@@ -586,11 +530,11 @@ function TabEmptyState({ tab }: { tab: QueueTab }) {
   const Icon = tabMeta.icon;
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-[20px] border border-brand-stratus-blue/16 bg-white/65 py-16 text-center shadow-[var(--shadow-brand-sm)] backdrop-blur-sm">
-      <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-brand-stratus-yellow/80 shadow-[var(--shadow-brand-yellow-sm)]">
-        <Icon className="size-6 text-brand-ink" />
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="mb-3 flex size-12 items-center justify-center rounded-full bg-brand-stratus-yellow/50">
+        <Icon className="size-5 text-brand-ink" />
       </div>
-      <p className="text-[15px] font-bold text-brand-ink">{copy.title}</p>
+      <p className="text-[14px] font-semibold text-brand-ink">{copy.title}</p>
       <p className="mt-1 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">{copy.body}</p>
     </div>
   );
@@ -606,7 +550,17 @@ function LoadingSkeleton() {
           <div key={i} className="h-14 rounded-[16px] bg-white/60 ring-1 ring-brand-stratus-blue/10" />
         ))}
       </div>
-      <div className="h-48 rounded-[20px] bg-white/60 ring-1 ring-brand-stratus-blue/10" />
+      <div className="overflow-hidden rounded-[12px] border border-brand-stratus-blue/10 bg-white/70">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex items-center gap-3 border-b border-brand-stratus-blue/8 px-4 py-3 last:border-0">
+            <div className="size-8 rounded-full bg-brand-stratus-blue/10" />
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="h-3 w-3/4 rounded bg-brand-stratus-blue/10" />
+              <div className="h-2.5 w-1/3 rounded bg-brand-stratus-blue/8" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -779,7 +733,7 @@ export function EmailApp() {
         tab: "replies" as PageTab,
         label: "Replies",
         value: tabCount(data, "replies"),
-        sub: "Sequence paused",
+        sub: "They replied",
         icon: MessageSquare,
         iconClass: "bg-brand-stratus-blue/20 text-brand-stratus-blue",
       },
@@ -934,10 +888,10 @@ export function EmailApp() {
                 onRowClick={handleNavigate}
               />
             ) : (
-            <div className="space-y-2.5 pb-6">
+            <div className="ish-email-inbox overflow-hidden rounded-[12px] border border-brand-stratus-blue/14 bg-white/90 pb-0 shadow-[var(--shadow-brand-sm)]">
               {visibleRows.length === 0 ? (
                 search.trim() ? (
-                  <PanelCard className="flex flex-col items-center justify-center py-14 text-center">
+                  <PanelCard className="flex flex-col items-center justify-center border-0 py-14 text-center shadow-none">
                     <Mail className="mb-2 size-8 text-brand-ink-faint" />
                     <p className={cn(text.body, "font-semibold text-brand-ink")}>No matches in this tab</p>
                     <p className="mt-1 text-[12px] text-brand-ink-soft">Try a different name or clear search.</p>

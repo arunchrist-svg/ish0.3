@@ -15,6 +15,8 @@ import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { followUpThreadSubject, resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
 import { cleanEmailAddress } from "@/lib/email/list-cleaner";
 import { maybeAutoOpenWhatsAppAfterSecondEmail, type WhatsAppAutoOpenPayload } from "@/lib/whatsapp/auto-after-second-email";
+import { ensureCatalogFollowUpBeforeSend } from "@/lib/email/promote-catalog-on-open";
+import { isIshFestiveCatalogBody } from "@/lib/email/ish-festive-catalog";
 
 export class FollowUpQualityError extends Error {
   code = "FOLLOWUP_QUALITY_FAILED" as const;
@@ -85,9 +87,25 @@ export async function sendScheduledFollowUp(params: {
       : await db.query.leadOutreach.findFirst({
           where: and(eq(leadOutreach.leadId, sched.leadId), eq(leadOutreach.sequencePosition, 1)),
         });
+
+  const seqPos = generatedOutreach.sequencePosition ?? 2;
+  const catalogSwap = await ensureCatalogFollowUpBeforeSend({
+    leadId: sched.leadId,
+    followUpOutreachId: generatedOutreach.id,
+    sequencePosition: seqPos,
+  });
+  if (catalogSwap) {
+    generatedOutreach = {
+      ...generatedOutreach,
+      emailBody: catalogSwap.emailBody,
+      subjectA: catalogSwap.subjectA || generatedOutreach.subjectA,
+    };
+  }
+
   const followUpDraftSubject = resolveDraftSubject(generatedOutreach);
   const email1Subject = email1Outreach ? resolveDraftSubject(email1Outreach) : "";
   const body = resolveDraftBody(generatedOutreach);
+  const isCatalog = isIshFestiveCatalogBody(body);
 
   const quality = await evaluateOutreachDraft({
     subject: followUpDraftSubject || email1Subject || `Re: Outreach for ${account.name}`,
@@ -95,10 +113,15 @@ export async function sendScheduledFollowUp(params: {
     contact: { name: contact.name, firstName: contact.firstName, title: contact.title },
     account,
     outreachHook: research?.outreachHook,
-    sequencePosition: generatedOutreach.sequencePosition ?? 2,
+    sequencePosition: seqPos,
   });
 
-  if (emailConfig.sendMode === "live" && !quality.passes && !params.overrideQualityGate) {
+  if (
+    emailConfig.sendMode === "live" &&
+    !isCatalog &&
+    !quality.passes &&
+    !params.overrideQualityGate
+  ) {
     throw new FollowUpQualityError(quality.delivScore, quality.rubricTotal);
   }
 

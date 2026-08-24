@@ -26,7 +26,7 @@ I'd love to send a sample box over to your office as our treat so you can try it
 
 Warmly,
 Srilaksha
-India Sweet House, Kasturinagar`;
+India Sweet House`;
 
 describe("email similarity", () => {
   it("flags a light BASE_TEXT noun swap as a near paraphrase", () => {

@@ -32,46 +32,62 @@ export const apolloEnrichProvider: EnrichmentProvider = {
     if (!hasApolloKey()) return null;
 
     const { firstName, lastName } = parseName(input.name);
-    const payload: Record<string, unknown> = { reveal_personal_emails: true };
+
+    async function match(payload: Record<string, unknown>): Promise<EnrichmentResult | null> {
+      try {
+        const data = await apolloPost("/people/match", payload);
+        const person = data.person;
+        if (!person) return null;
+
+        const phones = person.phone_numbers as
+          | Array<{ sanitized_number?: string; raw_number?: string }>
+          | undefined;
+        const email = sanitizeEmail(person.email as string | undefined);
+        const phone = sanitizePhone(phones?.[0]?.sanitized_number ?? phones?.[0]?.raw_number);
+        if (!email && !phone) return null;
+
+        return {
+          providerId: "apollo",
+          contact: {
+            name: (person.name as string) ?? input.name,
+            title: (person.title as string) ?? input.title,
+            company: input.company,
+            city: input.city,
+            email,
+            phone,
+            linkedinUrl:
+              normalizeLinkedInUrl(person.linkedin_url as string | undefined) ?? input.linkedinUrl,
+          },
+          raw: person,
+        };
+      } catch (e) {
+        console.error("[apollo-enrich] failed:", e);
+        return null;
+      }
+    }
 
     if (input.email) {
-      payload.email = input.email;
-    } else if (input.linkedinUrl) {
-      payload.linkedin_url = normalizeLinkedInUrl(input.linkedinUrl);
-    } else if (firstName && lastName && input.company) {
-      payload.first_name = firstName;
-      payload.last_name = lastName;
-      payload.organization_name = input.company;
-    } else {
-      return null;
+      return match({ email: input.email, reveal_personal_emails: true });
     }
 
-    try {
-      const data = await apolloPost("/people/match", payload);
-      const person = data.person;
-      if (!person) return null;
-
-      const phones = person.phone_numbers as Array<{ sanitized_number?: string; raw_number?: string }> | undefined;
-      const email = sanitizeEmail(person.email as string | undefined);
-      const phone = sanitizePhone(phones?.[0]?.sanitized_number ?? phones?.[0]?.raw_number);
-      if (!email && !phone) return null;
-
-      return {
-        providerId: "apollo",
-        contact: {
-          name: (person.name as string) ?? input.name,
-          title: (person.title as string) ?? input.title,
-          company: input.company,
-          city: input.city,
-          email,
-          phone,
-          linkedinUrl: normalizeLinkedInUrl(person.linkedin_url as string | undefined) ?? input.linkedinUrl,
-        },
-        raw: person,
-      };
-    } catch (e) {
-      console.error("[apollo-enrich] failed:", e);
-      return null;
+    // LinkedIn first when present, then classic first + last + company (like other lead lookups).
+    if (input.linkedinUrl) {
+      const byLinkedIn = await match({
+        linkedin_url: normalizeLinkedInUrl(input.linkedinUrl),
+        reveal_personal_emails: true,
+      });
+      if (byLinkedIn) return byLinkedIn;
     }
+
+    if (firstName && lastName && input.company) {
+      return match({
+        first_name: firstName,
+        last_name: lastName,
+        organization_name: input.company,
+        reveal_personal_emails: true,
+      });
+    }
+
+    return null;
   },
 };

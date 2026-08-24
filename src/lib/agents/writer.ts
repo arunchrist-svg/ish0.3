@@ -1,8 +1,8 @@
 import { callLLM, type LLMProvider } from "@/lib/llm";
 import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { retrieveRelevantRules } from "@/lib/rag";
-import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel, outreachSchedule } from "@/db";
+import { and, eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
 import { getOutreachTemplate, packIdFromBrand, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
@@ -33,6 +33,7 @@ import {
 } from "@/lib/agents/personalization-context";
 import { getBaselineEmail, TRANSFORMATION_RULES } from "@/lib/email/baseline-templates";
 import { fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import { isIshFestiveCatalogBody } from "@/lib/email/ish-festive-catalog";
 import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { latestDetectedOccasion, resolveWriteOccasion } from "@/lib/occasions/resolve";
 import { FESTIVE_OCCASION_SENTINEL } from "@/lib/occasions/catalog";
@@ -89,7 +90,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const { brandConfig, campaignMode, fromName } = emailConfig;
   const emailStyle = resolveOutreachEmailStyle(emailConfig.emailStyle);
   const senderFirstName = fromName.split(" ")[0] || fromName;
-  const senderName = fromName.trim() || senderFirstName || "Srilaksha";
+  const senderName = fromName.trim() || senderFirstName || "Team";
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
   const companyDisplayName = companyNameForEmail(account.name);
   const isFollowUp = !!options?.followUpMode;
@@ -490,10 +491,31 @@ async function persistIshTemplateDraft(params: {
     occasionId === "office_inauguration" ||
     occasionId === "foundation_day" ||
     occasionId === "milestone";
+
+  let inboxOpened = false;
+  if (sequencePosition >= 2) {
+    const sent = await db.query.outreachSchedule.findMany({
+      where: and(eq(outreachSchedule.leadId, leadId), eq(outreachSchedule.status, "sent")),
+    });
+    if (sequencePosition === 2) {
+      inboxOpened = sent.some((row) => row.sequenceDay === 0 && row.openedAt);
+    } else {
+      const e2 = await db.query.leadOutreach.findFirst({
+        where: and(eq(leadOutreach.leadId, leadId), eq(leadOutreach.sequencePosition, 2)),
+      });
+      const e2WasCatalog = isIshFestiveCatalogBody(e2?.emailBody);
+      const e2Opened = sent.some(
+        (row) => row.sequenceDay > 0 && row.openedAt && row.draftLeadOutreachId === e2?.id,
+      );
+      const e1Opened = sent.some((row) => row.sequenceDay === 0 && row.openedAt);
+      inboxOpened = !e2WasCatalog && (e2Opened || e1Opened);
+    }
+  }
+
   const copy = fillIshDraftVariants({
     contactFirstName,
     companyName: companyDisplayName,
-    senderFirstName: fromName.trim() || senderFirstName || "Srilaksha",
+    senderFirstName: fromName.trim() || senderFirstName || "Team",
     brandName: brandConfig.brandName,
     sequencePosition,
     templateId,
@@ -501,9 +523,12 @@ async function persistIshTemplateDraft(params: {
     occasionTiming: openingFamily ? detected?.timing : undefined,
     senderPhone: emailConfig.fromPhone,
     fromAddress: emailConfig.fromAddress,
+    fromLocation: emailConfig.fromLocation,
+    inboxOpened,
   });
   const emailBody = normalizeEmailBody(copy.emailBody);
   const emailBodyB = copy.emailBodyB ? normalizeEmailBody(copy.emailBodyB) : null;
+  const isCatalog = isIshFestiveCatalogBody(emailBody);
   const delivOpts = {
     emailStyle,
     fromName,
@@ -518,23 +543,37 @@ async function persistIshTemplateDraft(params: {
     },
     contact: { firstName: contactFirstName, title: contact.title },
   };
-  const spamResult = scoreSpamMeter(emailBody, copy.subjectA, delivOpts);
-  const rubric = await scoreRubric({
-    subjectA: copy.subjectA,
-    emailBody,
-    contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
-    account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
-    deliverabilityOptions: delivOpts,
-  });
+  const spamResult = isCatalog
+    ? { inboxScore: 100, ruleHits: [] as import("@/lib/email/content-rules").ContentRuleHit[] }
+    : scoreSpamMeter(emailBody, copy.subjectA, delivOpts);
+  const rubric = isCatalog
+    ? {
+        spam_signal_risk: 25,
+        personalization_depth: 25,
+        value_clarity: 25,
+        cta_quality: 25,
+      }
+    : await scoreRubric({
+        subjectA: copy.subjectA,
+        emailBody,
+        contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
+        account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
+        deliverabilityOptions: delivOpts,
+      });
   const delivScore = spamResult.inboxScore;
-  const outreachGoal =
-    sequencePosition === 2 ? "Follow-up reminder" : sequencePosition === 3 ? "Final reminder" : "Gift sampling";
+  const outreachGoal = isCatalog
+    ? "Festive catalogue (opened)"
+    : sequencePosition === 2
+      ? "Follow-up reminder"
+      : sequencePosition === 3
+        ? "Final reminder"
+        : "Gift sampling";
 
   const [outreach] = await db
     .insert(leadOutreach)
     .values({
       leadId,
-      promptVersion: ISH_TEMPLATE_PROMPT_VERSION,
+      promptVersion: isCatalog ? "v2.8-ish-catalog-on-open" : ISH_TEMPLATE_PROMPT_VERSION,
       draftSource: "template",
       subjectA: copy.subjectA,
       subjectB: copy.subjectB,

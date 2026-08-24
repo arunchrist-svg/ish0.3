@@ -27,6 +27,8 @@ export type ContentRuleContext = {
   emailStyle?: EmailStyle;
   outreachHook?: string | null;
   recentSubjects?: string[];
+  /** Skip length / pitch rules for intentional festive catalogue follow-ups. */
+  allowLongCatalog?: boolean;
 };
 
 const INFO_ASK = rulesConfig.infoAskPhrases.map((p) => p.toLowerCase());
@@ -247,7 +249,7 @@ export function applyContentRules(
     }
   }
 
-  if (sequencePosition === 3 && wordCount > 90) {
+  if (sequencePosition === 3 && wordCount > 90 && !ctx.allowLongCatalog) {
     hits.push({
       id: "J",
       label: "Breakup email should stay short and human (under 70 words)",
@@ -256,7 +258,7 @@ export function applyContentRules(
     });
   }
 
-  if (sequencePosition <= 2) {
+  if (sequencePosition <= 2 && !ctx.allowLongCatalog) {
     const pitchParts = body.trim().split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
     const pitch = pitchParts.length > 2 ? pitchParts.slice(1, -1).join(" ") : pitchParts.slice(1).join(" ");
     const sentenceCount = pitch

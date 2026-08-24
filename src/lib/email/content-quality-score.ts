@@ -2,6 +2,7 @@ import type { EmailStyle } from "@/lib/email/config";
 import { applyContentRules, type ContentRuleContext, type ContentRuleHit } from "@/lib/email/content-rules";
 import { looksLikeLlmJsonDump } from "@/lib/agents/schemas/writer-output";
 import { isNearParaphrase, BASELINE_PARAPHRASE_THRESHOLD } from "@/lib/email/email-similarity";
+import { isIshFestiveCatalogBody } from "@/lib/email/ish-festive-catalog";
 
 export type ContentFactor = { label: string; delta: number; ruleId?: string };
 export type ContentQualityVerdict = "SAFE" | "CAUTION" | "RISK";
@@ -74,6 +75,17 @@ export function scoreContentQuality(
   const subjectLower = subject.trim().toLowerCase();
   const emailStyle = options?.emailStyle ?? "primary";
   const wordCount = body.trim().split(/\s+/).filter(Boolean).length;
+  const isCatalog = isIshFestiveCatalogBody(body);
+
+  if (isCatalog) {
+    return {
+      contentScore: 100,
+      inboxScore: 100,
+      verdict: "SAFE",
+      factors: [{ label: "festive catalogue after open", delta: 0 }],
+      ruleHits: [],
+    };
+  }
 
   if (looksLikeLlmJsonDump(body) || /^```/m.test(body.trim())) {
     score -= 80;

@@ -1,5 +1,6 @@
 import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { getIshOccasionEmails } from "@/lib/email/ish-occasion-templates";
+import { buildIshFestiveCatalogParagraphs } from "@/lib/email/ish-festive-catalog";
 import { isFestiveWriteOccasion, type WriteOccasionId } from "@/lib/occasions/catalog";
 
 /** India Sweet House sequences from ISH_Cold_Email_Templates.md. Fill name/company only. */
@@ -17,6 +18,13 @@ export type IshFillParams = {
   /** Optional From phone from Email settings. */
   senderPhone?: string | null;
   fromAddress?: string | null;
+  /** Optional branch/location from Email settings (e.g. Kasturinagar). */
+  fromLocation?: string | null;
+  /**
+   * When prior Email 1 (or Email 2) was opened via tracking pixel,
+   * use the full festive catalogue for this follow-up instead of the short sample nudge.
+   */
+  inboxOpened?: boolean;
 };
 
 type IshEmail = { subject: string; body: string };
@@ -27,10 +35,11 @@ function signOff(
   style: "thanks" | "best" | "warmly" = "thanks",
   phone?: string | null,
   fromAddress?: string | null,
+  fromLocation?: string | null,
 ): string {
-  const name = sender.trim() || "Srilaksha";
-  const brandLine =
-    style === "warmly" && /india sweet house/i.test(brand) ? `${brand}, Kasturinagar` : brand;
+  const name = sender.trim() || "Team";
+  const location = fromLocation?.trim();
+  const brandLine = location ? `${brand}, ${location}` : brand;
   let closing: string;
   if (style === "warmly") closing = `Warmly,\n${name}\n${brandLine}`;
   else if (style === "best") closing = `Best,\n${name}\n${brand}`;
@@ -85,20 +94,51 @@ function wrap(
   closing: "thanks" | "best" | "warmly" = "thanks",
   phone?: string | null,
   fromAddress?: string | null,
+  fromLocation?: string | null,
 ): string {
-  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing, phone, fromAddress)}`;
+  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing, phone, fromAddress, fromLocation)}`;
+}
+
+function catalogFollowUp(params: {
+  first: string;
+  sender: string;
+  brand: string;
+  company: string;
+  subjectBase: string;
+  phone?: string | null;
+  fromAddress?: string | null;
+  fromLocation?: string | null;
+}): IshEmail {
+  const subject = params.subjectBase.startsWith("Re:")
+    ? params.subjectBase
+    : `Re: ${params.subjectBase}`;
+  return {
+    subject,
+    body: wrap(
+      params.first,
+      params.sender,
+      params.brand,
+      buildIshFestiveCatalogParagraphs(params.brand),
+      "warmly",
+      params.phone,
+      params.fromAddress,
+      params.fromLocation,
+    ),
+  };
 }
 
 /** Sequences 1, 2, 3 from the ISH cold-email file. */
 export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
   const first = params.contactFirstName || "there";
   const company = companyNameForEmail(params.companyName);
-  const sender = params.senderFirstName?.trim() || "Srilaksha";
+  const sender = params.senderFirstName?.trim() || "Team";
   const brand = params.brandName?.trim() || "India Sweet House";
   const step = params.sequencePosition >= 3 ? 3 : params.sequencePosition === 2 ? 2 : 1;
   const cta = step === 1 ? params.templateId : undefined;
   const phone = params.senderPhone;
   const fromAddress = params.fromAddress;
+  const fromLocation = params.fromLocation;
+  const useCatalog = Boolean(params.inboxOpened) && step >= 2;
 
   const sequences: Array<Array<{ subject: string; paragraphs: string }>> = [
     [
@@ -133,6 +173,18 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
 
   return sequences.map((seq) => {
     const email = seq[step - 1];
+    if (useCatalog) {
+      return catalogFollowUp({
+        first,
+        sender,
+        brand,
+        company,
+        subjectBase: email.subject,
+        phone,
+        fromAddress,
+        fromLocation,
+      });
+    }
     const closing = step === 1 ? "warmly" : "thanks";
     return {
       subject: email.subject,
@@ -144,6 +196,7 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
         closing,
         closing === "warmly" ? phone : undefined,
         closing === "warmly" ? fromAddress : undefined,
+        closing === "warmly" ? fromLocation : undefined,
       ),
     };
   });

@@ -78,7 +78,19 @@ function extractTavilyErrorText(status: number, data: unknown): string {
   return `Tavily failed: ${status}`;
 }
 
-function classifyTavilyFailure(status: number, rawMsg: string): "quota" | "rate_limit" | "other" {
+function isTavilyAuthStatus(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
+function isTavilyAuthError(msg: string): boolean {
+  return /unauthorized|forbidden|invalid.?api.?key|authentication|api.?key.?rejected/i.test(msg);
+}
+
+function classifyTavilyFailure(
+  status: number,
+  rawMsg: string,
+): "quota" | "rate_limit" | "auth" | "other" {
+  if (isTavilyAuthStatus(status) || isTavilyAuthError(rawMsg)) return "auth";
   if (isTavilyPlanQuotaStatus(status)) return "quota";
   if (isTavilyRateLimitStatus(status)) return "rate_limit";
   if (isTavilyRateLimitError(rawMsg)) return "rate_limit";
@@ -86,11 +98,17 @@ function classifyTavilyFailure(status: number, rawMsg: string): "quota" | "rate_
   return "other";
 }
 
-function tavilyErrorMessage(status: number, data: unknown): { kind: "quota" | "rate_limit" | "other"; msg: string } {
+function tavilyErrorMessage(
+  status: number,
+  data: unknown,
+): { kind: "quota" | "rate_limit" | "auth" | "other"; msg: string } {
   const raw = extractTavilyErrorText(status, data);
   const kind = classifyTavilyFailure(status, raw);
   if (kind === "quota") return { kind, msg: TAVILY_QUOTA_COMPANY_MSG };
   if (kind === "rate_limit") return { kind, msg: TAVILY_RATE_LIMIT_MSG };
+  if (kind === "auth") {
+    return { kind, msg: "Tavily API key was rejected. Check the key in .env.local and restart." };
+  }
   return { kind, msg: raw };
 }
 
@@ -156,7 +174,7 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
         const classified = tavilyErrorMessage(res.status, data);
         lastError = new Error(classified.msg);
 
-        if (classified.kind === "quota") {
+        if (classified.kind === "quota" || classified.kind === "auth") {
           triedQuota.add(keyEntry.id);
           rateRetries = 0;
           if (!accountKeys.length) {
@@ -200,7 +218,7 @@ export async function tavilySearch(query: string, limit = 8): Promise<TavilyHit[
         continue;
       }
       const kind = classifyTavilyFailure(0, err.message);
-      if (kind === "quota") {
+      if (kind === "quota" || kind === "auth") {
         lastError = err;
         triedQuota.add(keyEntry.id);
         rateRetries = 0;

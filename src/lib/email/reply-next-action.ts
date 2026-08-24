@@ -15,8 +15,8 @@ export function suggestReplyNextAction(params: {
   if (hasOutboundReply) {
     return {
       action: "book_tasting",
-      title: "Reply sent. Move the deal forward.",
-      description: "They are in thread. Mark tasting sent or continue the conversation from Leads.",
+      title: "Reply sent",
+      description: "They are in thread. Mark tasting sent or continue from Leads.",
       cta: "Open lead",
     };
   }
@@ -24,11 +24,11 @@ export function suggestReplyNextAction(params: {
   if (hasReplyDraft) {
     return {
       action: "send_reply",
-      title: "AI drafted a reply for you",
+      title: "Reply draft ready",
       description: inboundSnippet
         ? "Review the suggested response and send it in their thread."
         : "Your reply draft is ready. Review and send to keep momentum.",
-      cta: "Review & send reply",
+      cta: "Review & send",
     };
   }
 
@@ -36,16 +36,16 @@ export function suggestReplyNextAction(params: {
   if (/\b(not interested|unsubscribe|remove|stop emailing)\b/.test(lower)) {
     return {
       action: "mark_not_interested",
-      title: "They may not be interested",
+      title: "May not be interested",
       description: "Consider closing this lead or sending a brief, respectful final note.",
-      cta: "Draft a reply",
+      cta: "Draft reply",
     };
   }
 
   return {
     action: "send_reply",
-    title: "They replied. Sequence paused.",
-    description: "Follow-ups are on hold. Draft a reply to continue the conversation.",
-    cta: "Draft reply with AI",
+    title: "They replied",
+    description: "Draft a reply to continue the conversation.",
+    cta: "Draft reply",
   };
 }

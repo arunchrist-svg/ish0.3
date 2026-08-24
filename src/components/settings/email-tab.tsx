@@ -425,6 +425,12 @@ export function EmailTab({
               placeholder="Your name"
             />
             <Field
+              label="From location"
+              value={config.fromLocation ?? ""}
+              onChange={(v) => onUpdate("fromLocation", v)}
+              placeholder="e.g. Kasturinagar"
+            />
+            <Field
               label="From phone"
               value={config.fromPhone ?? ""}
               onChange={(v) => onUpdate("fromPhone", v)}
@@ -498,6 +504,12 @@ export function EmailTab({
             value={config.fromName}
             onChange={(v) => onUpdate("fromName", v)}
             placeholder="Arun (your real name)"
+          />
+          <Field
+            label="From location"
+            value={config.fromLocation ?? ""}
+            onChange={(v) => onUpdate("fromLocation", v)}
+            placeholder="e.g. Kasturinagar"
           />
           <Field
             label="From phone"

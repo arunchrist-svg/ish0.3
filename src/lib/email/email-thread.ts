@@ -2,6 +2,7 @@ import type { leads, leadOutreach, outreachSchedule } from "@/db/schema";
 import { normalizeReplySubject } from "@/lib/email/threading";
 import { resolveDraftSubject } from "@/lib/email/draft-variants";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
+import { emailStepLabel, normalizeCadenceDays } from "@/lib/email/cadence";
 
 export type ThreadEventKind = "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
 export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft" | "opened" | "bounced";
@@ -120,6 +121,16 @@ function inferKind(row: ScheduleRow): ThreadEventKind {
   return "initial";
 }
 
+function eventLabelForRow(
+  kind: ThreadEventKind,
+  sequenceDay: number,
+  cadenceDays: number[],
+): string {
+  if (kind === "inbound_reply") return "They replied";
+  if (kind === "outbound_reply") return "Your reply";
+  return emailStepLabel(sequenceDay, normalizeCadenceDays(cadenceDays));
+}
+
 export function buildEmailThread(params: {
   lead: LeadRow;
   scheduleRows: ScheduleRow[];
@@ -162,7 +173,7 @@ export function buildEmailThread(params: {
     events.push({
       id: row.id,
       kind: isScheduled ? "scheduled" : kind,
-      label: isScheduled ? `Follow-up (day ${row.sequenceDay})` : kind,
+      label: eventLabelForRow(kind, row.sequenceDay, cadenceDays),
       subject: row.subjectSent ?? undefined,
       snippet: kind === "inbound_reply" ? preview(lead.lastReplyContent) : preview(body),
       body: kind === "inbound_reply" ? clip(lead.lastReplyContent) : clip(body),
@@ -192,6 +203,43 @@ export function buildEmailThread(params: {
       at: inboundReplyAt ?? undefined,
       status: "sent",
       sequenceDay: -2,
+    });
+  }
+
+  const coveredPositions = new Set<number>();
+  for (const ev of events) {
+    if (ev.kind === "inbound_reply" || ev.kind === "outbound_reply") continue;
+    if (ev.sequenceDay === 0) coveredPositions.add(1);
+    else if (ev.sequenceDay === cadenceDays[0]) coveredPositions.add(2);
+    else if (ev.sequenceDay === cadenceDays[1]) coveredPositions.add(3);
+  }
+
+  for (const d of [...sequenceDrafts].sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99))) {
+    const pos = d.sequencePosition ?? 1;
+    if (pos < 1 || pos > 3) continue;
+    if (coveredPositions.has(pos)) continue;
+    events.push({
+      id: `draft-${pos}`,
+      kind: "draft",
+      label: `Email ${pos}`,
+      subject: resolveDraftSubject(d) || undefined,
+      snippet: preview(d.emailBody),
+      body: clip(d.emailBody),
+      status: "draft",
+      sequenceDay: pos === 1 ? 0 : cadenceDays[pos - 2] ?? pos,
+    });
+  }
+
+  if (isReplyDraft && !replyDraftSent && !hasOutboundReply) {
+    events.push({
+      id: "reply-draft",
+      kind: "draft",
+      label: "Your reply",
+      subject: latestOutreach?.subjectA ?? undefined,
+      snippet: preview(latestOutreach?.emailBody),
+      body: clip(latestOutreach?.emailBody),
+      status: "draft",
+      sequenceDay: -1,
     });
   }
 
@@ -255,7 +303,16 @@ export function buildEmailThread(params: {
     outreachBodiesByApprovalId,
   });
 
-  const selectedNodeId = barNodes.find((n) => n.state === "current")?.id ?? barNodes[barNodes.length - 1]?.id;
+  let selectedNodeId =
+    barNodes.find((n) => n.state === "current")?.id ?? barNodes[0]?.id;
+  if (phase === "drafting_reply") {
+    selectedNodeId = "reply-draft";
+  } else if (phase === "they_replied") {
+    const inbound = events.find((e) => e.kind === "inbound_reply");
+    selectedNodeId = inbound?.id ?? selectedNodeId;
+  } else if (barMode === "drafts") {
+    selectedNodeId = barNodes.find((n) => n.state === "current")?.id ?? "draft-1";
+  }
 
   return {
     threadRootSubject: threadRootSubject ? normalizeReplySubject(threadRootSubject) : undefined,
@@ -301,47 +358,17 @@ function buildBarNodes(params: {
     (a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99),
   );
 
-  if (hasInbound || lead.status === "replied") {
-    const e1Row = scheduleRows.find((r) => r.sequenceDay === 0 && r.status === "sent");
-    const e1Body = e1Row?.bodySnippet ?? (e1Row?.approvalId ? outreachBodiesByApprovalId[e1Row.approvalId] : undefined);
-    const nodes: BarNode[] = [
-      {
-        id: "e1",
-        label: "E1",
-        state: "done",
-        kind: "sent",
-        scheduleId: e1Row?.id,
-        subject: e1Row?.subjectSent ?? undefined,
-        body: clip(e1Body),
-        snippet: preview(e1Body),
-        at: e1Row?.sentAt?.toISOString(),
-        openedAt: e1Row?.openedAt?.toISOString(),
-        ...bounceFields(e1Row),
-      },
-      {
-        id: "reply",
-        label: "Reply",
-        state: isReplyDraft && !replyDraftSent ? "current" : hasInbound ? "current" : "upcoming",
-        kind: isReplyDraft ? "reply_draft" : "inbound",
-        outreachId: isReplyDraft ? latestOutreach?.id : undefined,
-        subject: isReplyDraft ? latestOutreach?.subjectA ?? undefined : undefined,
-        body: isReplyDraft ? clip(latestOutreach?.emailBody) : clip(lead.lastReplyContent),
-        snippet: isReplyDraft ? preview(latestOutreach?.emailBody) : preview(lead.lastReplyContent),
-        action: !isReplyDraft ? "draft_reply" : undefined,
-      },
-    ];
-    return { barMode: "reply", barNodes: nodes };
-  }
-
-  if (initialSent) {
+  // Progress strip always shows Email 1–3 when the sequence has started or drafts exist.
+  // Conversation history (including replies) lives in `events`, not this strip.
+  if (initialSent || hasInbound || lead.status === "replied" || lead.status === "outreached") {
     const nodes: BarNode[] = [];
     const e1Row = scheduleRows.find((r) => r.sequenceDay === 0 && r.status === "sent");
     const e1Body = e1Row?.bodySnippet ?? (e1Row?.approvalId ? outreachBodiesByApprovalId[e1Row.approvalId] : undefined);
     nodes.push({
       id: "e1",
-      label: "E1",
-      state: "done",
-      kind: "sent",
+      label: "Email 1",
+      state: e1Row ? "done" : "upcoming",
+      kind: e1Row ? "sent" : "scheduled",
       scheduleId: e1Row?.id,
       subject: e1Row?.subjectSent ?? undefined,
       body: clip(e1Body),
@@ -355,7 +382,7 @@ function buildBarNodes(params: {
       .filter((r) => r.sequenceDay > 0)
       .sort((a, b) => a.sequenceDay - b.sequenceDay);
 
-  const cadence = cadenceDays.length >= 2 ? cadenceDays : [3, 7];
+    const cadence = cadenceDays.length >= 2 ? cadenceDays : [3, 7];
     for (let i = 0; i < cadence.length; i++) {
       const day = cadence[i];
       const row = followupSchedules.find((r) => r.sequenceDay === day) ?? followupSchedules[i];
@@ -365,12 +392,11 @@ function buildBarNodes(params: {
       const isPaused = row?.status === "paused";
       const body = row ? bodyForScheduleRow(row, outreachBodiesByApprovalId) : undefined;
       const days = row && isScheduled ? daysUntil(row.scheduledFor) : undefined;
-
       const linkedDraft = sortedDrafts.find((d) => d.sequencePosition === emailNum);
+
       nodes.push({
         id: `e${emailNum}`,
-        // Keep the base label stable; the countdown suffix is computed dynamically in the UI.
-        label: isSent ? `E${emailNum}` : isPaused ? `E${emailNum} (paused)` : `E${emailNum}`,
+        label: `Email ${emailNum}`,
         state: isSent ? "done" : isPaused ? "paused" : isScheduled ? "scheduled" : "upcoming",
         kind: isSent ? "sent" : "scheduled",
         scheduleId: row?.id,
@@ -385,14 +411,19 @@ function buildBarNodes(params: {
       });
     }
 
+    // Keep barMode "reply" when they replied so compose wiring can detect reply flows,
+    // but the strip still shows Email 1–3 progress.
+    if (hasInbound || lead.status === "replied") {
+      return { barMode: "reply", barNodes: nodes };
+    }
     return { barMode: "sequence", barNodes: nodes };
   }
 
   if (sortedDrafts.length > 0) {
     const nodes: BarNode[] = sortedDrafts.map((d, i) => ({
       id: `draft-${d.sequencePosition ?? i + 1}`,
-      label: `Draft ${d.sequencePosition ?? i + 1}`,
-      state: i === 0 ? "current" : "upcoming",
+      label: `Email ${d.sequencePosition ?? i + 1}`,
+      state: i === 0 ? ("current" as const) : ("upcoming" as const),
       kind: "draft" as const,
       outreachId: d.id,
       subject: d.subjectA ?? undefined,
@@ -403,6 +434,9 @@ function buildBarNodes(params: {
     return { barMode: "drafts", barNodes: nodes };
   }
 
+  void latestOutreach;
+  void isReplyDraft;
+  void replyDraftSent;
   return { barMode: "hidden", barNodes: [] };
 }
 

@@ -15,7 +15,7 @@ const TASTING_CTA_ADDRESS =
   "Since tasting is believing, I would love to send a sample box to your office as our treat. What is the best delivery address to ship it to?";
 
 function signOff(sender: string, brand: string, style: "thanks" | "best" = "thanks"): string {
-  const name = sender.trim() || "Srilaksha";
+  const name = sender.trim() || "Team";
   if (style === "best") return `Best,\n${name}\n${brand}`;
   return `Thanks & Regards\n${name}\n${brand}`;
 }
@@ -415,7 +415,7 @@ export function getIshOccasionEmails(params: {
   }
   const first = params.contactFirstName || "there";
   const company = companyNameForEmail(params.companyName);
-  const sender = params.senderFirstName?.trim() || "Srilaksha";
+  const sender = params.senderFirstName?.trim() || "Team";
   const brand = params.brandName?.trim() || "India Sweet House";
   const step = params.sequencePosition >= 3 ? 3 : params.sequencePosition === 2 ? 2 : 1;
   const cta = step === 1 ? params.templateId : undefined;

@@ -25,40 +25,47 @@ export const hunterProvider: EnrichmentProvider = {
   async enrich(input: EnrichmentInput): Promise<EnrichmentResult | null> {
     if (!hasHunterKey()) return null;
 
-    const params: Record<string, string> = {};
+    const { firstName, lastName } = parseName(input.name);
+    const domain = domainFromWebsite(input.websiteUrl) ?? domainFromCompany(input.company);
     const handle = linkedinHandle(input.linkedinUrl);
+
+    async function find(params: Record<string, string>): Promise<EnrichmentResult | null> {
+      try {
+        const response = await hunterFetch("/email-finder", params);
+        const email = sanitizeEmail(response.data?.email);
+        if (!email) return null;
+        return {
+          providerId: "hunter",
+          contact: {
+            name: input.name,
+            title: input.title,
+            company: input.company,
+            city: input.city,
+            email,
+            linkedinUrl: response.data?.linkedin_url ?? input.linkedinUrl,
+          },
+          raw: response.data,
+        };
+      } catch (e) {
+        console.error("[hunter] enrich failed:", e);
+        return null;
+      }
+    }
+
     if (handle) {
-      params.linkedin_handle = handle;
-    } else {
-      const { firstName, lastName } = parseName(input.name);
-      if (firstName) params.first_name = firstName;
-      if (lastName) params.last_name = lastName;
-      const domain = domainFromWebsite(input.websiteUrl) ?? domainFromCompany(input.company);
-      if (domain) params.domain = domain;
-      else if (input.company) params.company = input.company;
+      const byLinkedIn = await find({ linkedin_handle: handle });
+      if (byLinkedIn) return byLinkedIn;
     }
 
-    if (!params.linkedin_handle && !params.domain && !params.company) return null;
+    // Classic: first + last + company domain/website
+    const classic: Record<string, string> = {};
+    if (firstName) classic.first_name = firstName;
+    if (lastName) classic.last_name = lastName;
+    if (domain) classic.domain = domain;
+    else if (input.company) classic.company = input.company;
+    if (!classic.domain && !classic.company) return null;
+    if (!classic.first_name && !classic.last_name && !handle) return null;
 
-    try {
-      const response = await hunterFetch("/email-finder", params);
-      const email = sanitizeEmail(response.data?.email);
-      if (!email) return null;
-      return {
-        providerId: "hunter",
-        contact: {
-          name: input.name,
-          title: input.title,
-          company: input.company,
-          city: input.city,
-          email,
-          linkedinUrl: response.data?.linkedin_url ?? input.linkedinUrl,
-        },
-        raw: response.data,
-      };
-    } catch (e) {
-      console.error("[hunter] enrich failed:", e);
-      return null;
-    }
+    return find(classic);
   },
 };

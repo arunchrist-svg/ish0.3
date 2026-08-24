@@ -14,36 +14,54 @@ describe("ISH cold email templates", () => {
   const e3 = fillIshDraftVariants({ ...names, sequencePosition: 3 });
 
   it("keeps Option 1 and Option 3 Email 1 wording", () => {
-    expect(e1.subjectA).toBe("A festive sample for Acme Auto");
-    expect(e1.subjectB).toBe("Festive sweets sample for Acme Auto");
-    expect(e1.subjectC).toBe("");
-    expect(e1.emailBody).toMatch(/shouldn't just be another line item/);
-    expect(e1.emailBody).toMatch(/value your team at Acme Auto/);
-    expect(e1.emailBody).toMatch(/To match that standard/);
-    expect(e1.emailBody).toMatch(/100% pure ghee/);
-    expect(e1.emailBody).toMatch(/Karma Farm/);
-    expect(e1.emailBody).toMatch(/zero varak/);
-    expect(e1.emailBody).toMatch(/no chemicals/);
-    expect(e1.emailBody).toMatch(/as our treat/);
-    expect(e1.emailBody).toMatch(/best delivery address to ship it to/);
-    expect(e1.emailBody).not.toMatch(/₹165|Manikya|net weight/i);
-    expect(e1.emailBodyB).toMatch(/shouldn't just be another line item/);
-    expect(e1.emailBodyB).toMatch(/same care we use at home/);
-    expect(e1.emailBodyB).toMatch(/100% pure ghee/);
-    expect(e1.emailBodyB).toMatch(/skipping varak and chemicals/);
-    expect(e1.emailBodyB).toMatch(/evaluate the quality yourself/);
-    expect(e1.emailBodyB).toMatch(/best delivery address to send it to/);
-    expect(e1.emailBodyC).toBe("");
-    expect(e1.emailBody).toMatch(/Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar/);
-    expect(e1.emailBody).not.toMatch(/Thanks & Regards/);
-    expect(e1.emailBody).not.toMatch(/Franchise Owner/);
-    expect(e1.emailBody).not.toMatch(/Partnerships/);
+    const withLocation = fillIshDraftVariants({
+      ...names,
+      sequencePosition: 1,
+      fromLocation: "Kasturinagar",
+    });
+    expect(withLocation.subjectA).toBe("A festive sample for Acme Auto");
+    expect(withLocation.subjectB).toBe("Festive sweets sample for Acme Auto");
+    expect(withLocation.subjectC).toBe("");
+    expect(withLocation.emailBody).toMatch(/shouldn't just be another line item/);
+    expect(withLocation.emailBody).toMatch(/value your team at Acme Auto/);
+    expect(withLocation.emailBody).toMatch(/To match that standard/);
+    expect(withLocation.emailBody).toMatch(/100% pure ghee/);
+    expect(withLocation.emailBody).toMatch(/Karma Farm/);
+    expect(withLocation.emailBody).toMatch(/zero varak/);
+    expect(withLocation.emailBody).toMatch(/no chemicals/);
+    expect(withLocation.emailBody).toMatch(/as our treat/);
+    expect(withLocation.emailBody).toMatch(/best delivery address to ship it to/);
+    expect(withLocation.emailBody).not.toMatch(/₹165|Manikya|net weight/i);
+    expect(withLocation.emailBodyB).toMatch(/shouldn't just be another line item/);
+    expect(withLocation.emailBodyB).toMatch(/same care we use at home/);
+    expect(withLocation.emailBodyB).toMatch(/100% pure ghee/);
+    expect(withLocation.emailBodyB).toMatch(/skipping varak and chemicals/);
+    expect(withLocation.emailBodyB).toMatch(/evaluate the quality yourself/);
+    expect(withLocation.emailBodyB).toMatch(/best delivery address to send it to/);
+    expect(withLocation.emailBodyC).toBe("");
+    expect(withLocation.emailBody).toMatch(/Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar/);
+    expect(withLocation.emailBody).not.toMatch(/Thanks & Regards/);
+    expect(withLocation.emailBody).not.toMatch(/Franchise Owner/);
+    expect(withLocation.emailBody).not.toMatch(/Partnerships/);
+  });
+
+  it("uses From name and omits location when Settings leave location blank", () => {
+    const draft = fillIshDraftVariants({
+      contactFirstName: "Arun",
+      companyName: "Moneyview",
+      senderFirstName: "Prasanth",
+      brandName: "India Sweet House",
+      sequencePosition: 1,
+    });
+    expect(draft.emailBody).toMatch(/Warmly,\nPrasanth\nIndia Sweet House$/);
+    expect(draft.emailBody).not.toMatch(/Kasturinagar/);
   });
 
   it("appends From phone and email under Warmly when set", () => {
     const withPhone = fillIshDraftVariants({
       ...names,
       sequencePosition: 1,
+      fromLocation: "Kasturinagar",
       senderPhone: "+91 98765 43210",
       fromAddress: "srilaksha@indiasweethouse.in",
     });
@@ -84,6 +102,28 @@ describe("ISH cold email templates", () => {
     expect(e2.emailBodyB).toMatch(/delivery address/);
     expect(e2.emailBodyB).not.toMatch(/e-gift coupons|Kanaka|Manikya/i);
     expect(e2.emailBodyC).toBe("");
+  });
+
+  it("uses the full festive catalogue for Email 2/3 when prior email was opened", () => {
+    const openedE2 = fillIshDraftVariants({ ...names, sequencePosition: 2, inboxOpened: true });
+    expect(openedE2.emailBody).toMatch(/Every festive gift carries a message/);
+    expect(openedE2.emailBody).toMatch(/nine gifting ranges/);
+    expect(openedE2.emailBody).toMatch(/Karma Farm/);
+    expect(openedE2.emailBody).toMatch(/Manikya & Neelam/);
+    expect(openedE2.emailBody).toMatch(/e-gift coupons/);
+    expect(openedE2.emailBody).toMatch(/flat minimum 10%/);
+    expect(openedE2.emailBody).toMatch(/2026 catalogue/);
+    expect(openedE2.emailBody).toMatch(/Warmly,/);
+    expect(openedE2.emailBody).not.toMatch(/—/);
+    expect(openedE2.emailBodyB).toMatch(/nine gifting ranges/);
+
+    const openedE3 = fillIshDraftVariants({ ...names, sequencePosition: 3, inboxOpened: true });
+    expect(openedE3.emailBody).toMatch(/nine gifting ranges/);
+    expect(openedE3.emailBody).not.toMatch(/I won't email further/);
+  });
+
+  it("keeps short Email 2 when not opened", () => {
+    expect(e2.emailBody).not.toMatch(/nine gifting ranges/);
   });
 
   it("fills E3 breakup with a short ISH authenticity line", () => {

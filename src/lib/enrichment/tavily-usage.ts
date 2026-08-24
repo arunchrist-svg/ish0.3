@@ -34,8 +34,9 @@ export function recordTavilySearch(keyId: string, credits = BASIC_SEARCH_CREDITS
   entry.sessionUsed += credits;
   entry.lastUsedAt = Date.now();
   sessionByKeyId.set(keyId, entry);
-  // Stay on the same key until it hits plan quota (432).
-  // Rate-limit 429 must not advance or reject the key: credits are still there.
+  // Round-robin: spread load across keys after each successful search.
+  // Rate-limit 429 does not call this until a search succeeds on some key.
+  advanceActiveKey(keyId);
 }
 
 /** Mark key unavailable for this session after a quota rejection (rotation only). */
@@ -116,18 +117,32 @@ export function getNextTavilyKey(
   return null;
 }
 
-/** Jump to the first key that still has credits instead of always starting on key-1. */
+/**
+ * Keep the current round-robin slot when it still has credits.
+ * Only move when the active key is rejected or exhausted (preserves load spreading).
+ */
 export function bootstrapActiveTavilyKey(accountKeys?: TavilyAccountKeyUsage[]): void {
   if (!accountKeys?.length) return;
   syncSessionKeysFromAccount(accountKeys);
   const keys = getTavilyKeys();
+  if (!keys.length) return;
+
   const accountById = new Map(accountKeys.map((k) => [k.keyId, k]));
-  for (let i = 0; i < keys.length; i++) {
-    const candidate = keys[i];
-    if (sessionRejectedKeys.has(candidate.id)) continue;
+  const isAvailable = (candidate: (typeof keys)[number]) => {
+    if (sessionRejectedKeys.has(candidate.id)) return false;
     const account = accountById.get(candidate.id);
-    if (account && !account.fetchError && account.exhausted) continue;
-    activeKeyIndex = i;
+    if (account && !account.fetchError && account.exhausted) return false;
+    return true;
+  };
+
+  const current = keys[activeKeyIndex % keys.length];
+  if (current && isAvailable(current)) return;
+
+  for (let i = 0; i < keys.length; i++) {
+    const idx = (activeKeyIndex + i) % keys.length;
+    const candidate = keys[idx];
+    if (!isAvailable(candidate)) continue;
+    activeKeyIndex = idx;
     return;
   }
 }

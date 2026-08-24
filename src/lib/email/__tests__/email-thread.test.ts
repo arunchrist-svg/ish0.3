@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildEmailThread } from "@/lib/email/email-thread";
+import {
+  conversationSide,
+  conversationStatusChip,
+} from "@/lib/email/conversation-view";
 
 const baseLead = {
   id: "lead-1",
@@ -21,7 +25,7 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes).toHaveLength(0);
   });
 
-  it("shows draft bar with 3 nodes before send", () => {
+  it("shows draft bar with Email 1/2/3 labels before send", () => {
     const thread = buildEmailThread({
       lead: { ...baseLead, status: "draft_ready" } as Parameters<typeof buildEmailThread>[0]["lead"],
       scheduleRows: [],
@@ -34,8 +38,10 @@ describe("buildEmailThread", () => {
 
     expect(thread.barMode).toBe("drafts");
     expect(thread.barNodes).toHaveLength(3);
-    expect(thread.barNodes[0].label).toBe("Draft 1");
+    expect(thread.barNodes[0].label).toBe("Email 1");
     expect(thread.barNodes[0].state).toBe("current");
+    expect(thread.events.map((e) => e.label)).toEqual(["Email 1", "Email 2", "Email 3"]);
+    expect(thread.events.every((e) => e.status === "draft")).toBe(true);
   });
 
   it("uses Email 1 chosen subject as the thread root before send", () => {
@@ -60,7 +66,7 @@ describe("buildEmailThread", () => {
     expect(thread.threadRootSubject).toBe("Re: Hello B");
   });
 
-  it("shows sequence bar with E1 done and scheduled follow-ups", () => {
+  it("shows sequence bar with Email 1 done and scheduled follow-ups", () => {
     const thread = buildEmailThread({
       lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],
       scheduleRows: [
@@ -96,11 +102,13 @@ describe("buildEmailThread", () => {
     });
 
     expect(thread.barMode).toBe("sequence");
-    expect(thread.barNodes[0].label).toBe("E1");
+    expect(thread.barNodes[0].label).toBe("Email 1");
     expect(thread.barNodes[0].state).toBe("done");
     expect(thread.barNodes[0].openedAt).toBeUndefined();
-    expect(thread.barNodes[1].label).toMatch(/^E2/);
+    expect(thread.barNodes[1].label).toBe("Email 2");
     expect(thread.barNodes[1].state).toBe("scheduled");
+    expect(thread.events[0].label).toBe("Email 1");
+    expect(thread.events[1].label).toBe("Email 2");
   });
 
   it("marks opened emails on bar nodes and thread events", () => {
@@ -135,6 +143,8 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes[0].openedAt).toBe(openedAt.toISOString());
     expect(thread.events[0].status).toBe("opened");
     expect(thread.events[0].openedAt).toBe(openedAt.toISOString());
+    expect(conversationStatusChip(thread.events[0]).label).toBe("Opened");
+    expect(conversationSide(thread.events[0])).toBe("us");
   });
 
   it("marks bounced outreach on the matching bar node", () => {
@@ -175,7 +185,7 @@ describe("buildEmailThread", () => {
     expect(thread.nextStep.title).toBe("Email bounced");
   });
 
-  it("shows reply bar with draft_reply action when no reply draft", () => {
+  it("keeps Email 1-2-3 progress after they reply and puts inbound in events", () => {
     const thread = buildEmailThread({
       lead: {
         ...baseLead,
@@ -193,20 +203,47 @@ describe("buildEmailThread", () => {
           subjectSent: "Diwali gifting for Acme",
           bodySnippet: "Hi there",
         },
+        {
+          id: "s2",
+          sequenceDay: 3,
+          emailKind: "followup",
+          status: "scheduled",
+          scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+          bodySnippet: "Follow-up body",
+        },
       ] as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
       inboundReplyAt: "2026-06-25T14:00:00Z",
+      cadenceDays: [3, 7],
     });
 
     expect(thread.barMode).toBe("reply");
-    expect(thread.barNodes).toHaveLength(2);
-    expect(thread.barNodes[1].action).toBe("draft_reply");
+    expect(thread.barNodes).toHaveLength(3);
+    expect(thread.barNodes.map((n) => n.label)).toEqual(["Email 1", "Email 2", "Email 3"]);
+    const inbound = thread.events.find((e) => e.kind === "inbound_reply");
+    expect(inbound?.label).toBe("They replied");
+    expect(inbound?.body).toMatch(/sample please/);
+    expect(conversationSide(inbound!)).toBe("them");
+    expect(conversationStatusChip(inbound!).label).toBe("They replied");
     expect(thread.phase).toBe("they_replied");
   });
 
-  it("sets drafting_reply when reply draft exists", () => {
+  it("sets drafting_reply when reply draft exists and adds Your reply event", () => {
     const thread = buildEmailThread({
-      lead: { ...baseLead, status: "replied" } as Parameters<typeof buildEmailThread>[0]["lead"],
-      scheduleRows: [],
+      lead: { ...baseLead, status: "replied", lastReplyContent: "Yes" } as Parameters<
+        typeof buildEmailThread
+      >[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          scheduledFor: new Date("2026-06-25T10:00:00Z"),
+          sentAt: new Date("2026-06-25T10:00:00Z"),
+          subjectSent: "Hi",
+          bodySnippet: "Body",
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
       latestOutreach: {
         id: "o1",
         templateVariant: "reply",
@@ -214,11 +251,15 @@ describe("buildEmailThread", () => {
         emailBody: "Thanks for your note!",
       } as Parameters<typeof buildEmailThread>[0]["latestOutreach"],
       replyDraftSent: false,
+      cadenceDays: [3, 7],
     });
 
     expect(thread.phase).toBe("drafting_reply");
     expect(thread.showComposeZone).toBe(true);
-    expect(thread.barNodes[1].kind).toBe("reply_draft");
+    expect(thread.selectedNodeId).toBe("reply-draft");
+    const replyDraft = thread.events.find((e) => e.id === "reply-draft");
+    expect(replyDraft?.label).toBe("Your reply");
+    expect(replyDraft?.status).toBe("draft");
   });
 
   it("hides compose zone after reply sent", () => {
@@ -232,6 +273,8 @@ describe("buildEmailThread", () => {
           status: "sent",
           scheduledFor: new Date(),
           sentAt: new Date(),
+          subjectSent: "Re: Hi",
+          bodySnippet: "Thanks!",
         },
       ] as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
       latestOutreach: { id: "o1", templateVariant: "reply" } as Parameters<typeof buildEmailThread>[0]["latestOutreach"],
@@ -241,5 +284,8 @@ describe("buildEmailThread", () => {
     expect(thread.phase).toBe("reply_sent");
     expect(thread.showComposeZone).toBe(false);
     expect(thread.nextStep.primaryAction).toBe("Mark tasting sent");
+    const outbound = thread.events.find((e) => e.kind === "outbound_reply");
+    expect(outbound?.label).toBe("Your reply");
+    expect(conversationStatusChip(outbound!).label).toBe("You replied");
   });
 });

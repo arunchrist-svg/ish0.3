@@ -59,11 +59,103 @@ function buildMatchData(input: EnrichmentInput): Record<string, string> | null {
   return null;
 }
 
-function revealedVerifiedEmail(person: ProspeoPerson | null | undefined): string | undefined {
+function emailStatus(person: ProspeoPerson | null | undefined): string {
+  return String(person?.email?.status ?? "").toUpperCase();
+}
+
+/** Prefer verified reveals; LinkedIn matches may still return a usable revealed address. */
+function revealedEmail(
+  person: ProspeoPerson | null | undefined,
+  options?: { allowUnverified?: boolean },
+): string | undefined {
   const block = person?.email;
   if (!block?.revealed) return undefined;
-  if (String(block.status ?? "").toUpperCase() !== "VERIFIED") return undefined;
+  const status = emailStatus(person);
+  if (status === "VERIFIED") return sanitizeEmail(block.email ?? undefined);
+  if (!options?.allowUnverified) return undefined;
+  if (status === "UNAVAILABLE") return undefined;
   return sanitizeEmail(block.email ?? undefined);
+}
+
+async function prospeoEnrichRequest(
+  apiKey: string,
+  data: Record<string, string>,
+  onlyVerifiedEmail: boolean,
+): Promise<ProspeoResponse | null> {
+  const res = await fetch(PROSPEO_ENRICH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-KEY": apiKey,
+    },
+    body: JSON.stringify({
+      only_verified_email: onlyVerifiedEmail,
+      // India mobiles stay on Zintlr. Prospeo mobile unlocks cost 10 credits.
+      enrich_mobile: false,
+      data,
+    }),
+  });
+
+  const body = (await res.json().catch(() => null)) as ProspeoResponse | null;
+  if (!res.ok || body?.error || !body?.person) {
+    if (body?.error_code && body.error_code !== "NO_MATCH") {
+      console.error("[prospeo] enrich failed:", body.error_code, res.status);
+    }
+    return null;
+  }
+  return body;
+}
+
+function toEnrichmentResult(
+  input: EnrichmentInput,
+  body: ProspeoResponse,
+  email: string,
+): EnrichmentResult {
+  const person = body.person!;
+  const fullName =
+    person.full_name?.trim() ||
+    [person.first_name, person.last_name].filter(Boolean).join(" ").trim() ||
+    input.name;
+
+  return {
+    providerId: "prospeo",
+    contact: {
+      name: fullName,
+      title: person.current_job_title?.trim() || input.title,
+      company: input.company,
+      city: input.city,
+      email,
+      linkedinUrl: normalizeLinkedInUrl(person.linkedin_url ?? undefined) ?? input.linkedinUrl,
+    },
+    raw: body,
+  };
+}
+
+function hasClassicNameMatch(data: Record<string, string>): boolean {
+  const hasName = Boolean((data.first_name && data.last_name) || data.full_name);
+  return hasName && Boolean(data.company_website || data.company_name);
+}
+
+function withoutLinkedIn(data: Record<string, string>): Record<string, string> | null {
+  const { linkedin_url: _linkedin, ...rest } = data;
+  return hasClassicNameMatch(rest) ? rest : null;
+}
+
+async function resolveProspeoEmail(
+  apiKey: string,
+  data: Record<string, string>,
+  options: { allowUnverified: boolean },
+): Promise<{ body: ProspeoResponse; email: string } | null> {
+  const verifiedBody = await prospeoEnrichRequest(apiKey, data, true);
+  const verified = revealedEmail(verifiedBody?.person);
+  if (verifiedBody && verified) return { body: verifiedBody, email: verified };
+
+  if (!options.allowUnverified) return null;
+
+  const fallbackBody = await prospeoEnrichRequest(apiKey, data, false);
+  const fallback = revealedEmail(fallbackBody?.person, { allowUnverified: true });
+  if (!fallbackBody || !fallback) return null;
+  return { body: fallbackBody, email: fallback };
 }
 
 export const prospeoProvider: EnrichmentProvider = {
@@ -80,51 +172,22 @@ export const prospeoProvider: EnrichmentProvider = {
 
     const apiKey = getProspeoApiKey();
     if (!apiKey) return null;
+    const matchedViaLinkedIn = Boolean(data.linkedin_url);
 
     try {
-      const res = await fetch(PROSPEO_ENRICH_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-KEY": apiKey,
-        },
-        body: JSON.stringify({
-          only_verified_email: true,
-          // India mobiles stay on Zintlr. Prospeo mobile unlocks cost 10 credits.
-          enrich_mobile: false,
-          data,
-        }),
+      // 1) LinkedIn-first when present (same credits path as before)
+      const primary = await resolveProspeoEmail(apiKey, data, {
+        allowUnverified: matchedViaLinkedIn,
       });
+      if (primary) return toEnrichmentResult(input, primary.body, primary.email);
 
-      const body = (await res.json().catch(() => null)) as ProspeoResponse | null;
-      if (!res.ok || body?.error || !body?.person) {
-        if (body?.error_code && body.error_code !== "NO_MATCH") {
-          console.error("[prospeo] enrich failed:", body.error_code, res.status);
-        }
-        return null;
-      }
+      // 2) Classic lead lookup: first + last + company/website (like Scout enrich without LI)
+      const classic = matchedViaLinkedIn ? withoutLinkedIn(data) : null;
+      if (!classic) return null;
 
-      const email = revealedVerifiedEmail(body.person);
-      if (!email) return null;
-
-      const fullName =
-        body.person.full_name?.trim() ||
-        [body.person.first_name, body.person.last_name].filter(Boolean).join(" ").trim() ||
-        input.name;
-
-      return {
-        providerId: "prospeo",
-        contact: {
-          name: fullName,
-          title: body.person.current_job_title?.trim() || input.title,
-          company: input.company,
-          city: input.city,
-          email,
-          linkedinUrl:
-            normalizeLinkedInUrl(body.person.linkedin_url ?? undefined) ?? input.linkedinUrl,
-        },
-        raw: body,
-      };
+      const byName = await resolveProspeoEmail(apiKey, classic, { allowUnverified: false });
+      if (!byName) return null;
+      return toEnrichmentResult(input, byName.body, byName.email);
     } catch (e) {
       console.error("[prospeo] enrich failed:", e);
       return null;

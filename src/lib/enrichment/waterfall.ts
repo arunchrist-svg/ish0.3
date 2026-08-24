@@ -594,7 +594,7 @@ export async function discoverCompanies(params: {
     !errors.some((e) => isTavilyQuotaError(e))
   ) {
     errors.push(
-      "All Tavily keys exhausted. Add TAVILY_API_KEY_2, TAVILY_API_KEY_3, or TAVILY_API_KEY_4 in .env.local, GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
+      "All Tavily keys exhausted. Add more keys (TAVILY_API_KEY_2, TAVILY_API_KEY_3, ...) or TAVILY_API_KEYS in .env.local, set GOOGLE_PLACES_API_KEY, or wait for monthly reset.",
     );
   }
 
@@ -1071,7 +1071,7 @@ export async function discoverPeople(params: {
 
     if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
       const allExhaustedMsg =
-        "All Tavily keys exhausted for people search. Add TAVILY_API_KEY_2, TAVILY_API_KEY_3, or TAVILY_API_KEY_4 in .env.local, switch to Apollo mode, or wait for monthly reset.";
+        "All Tavily keys exhausted for people search. Add more keys (TAVILY_API_KEY_2, ...) or TAVILY_API_KEYS in .env.local, switch to Apollo mode, or wait for monthly reset.";
       if (!combined.some((m) => /all tavily keys exhausted/i.test(m))) {
         errors.push(allExhaustedMsg);
       }

@@ -19,6 +19,7 @@ import { isGenericCompanyEmail, sanitizeEmail, sanitizePhone, resolveSavedWhatsA
 import {
   emailBelongsToCompany,
   isAcceptableCompanyDomain,
+  isKeepableContactEmail,
   usableStoredDomain,
 } from "@/lib/enrichment/company-domain-quality";
 import { normalizeDomain, resolveCompanyDomain } from "@/lib/enrichment/resolve-company-domain";
@@ -530,7 +531,12 @@ async function saveOnePerson(params: {
   }
 
   let resolvedEmail = sanitizeEmail(person.email);
-  if (resolvedEmail && !emailBelongsToCompany(resolvedEmail, resolvedCompany.name)) {
+  const hasLinkedIn = Boolean(normalizeLinkedInUrl(person.linkedIn));
+  const emailFitsCompany = (email: string) =>
+    hasLinkedIn
+      ? isKeepableContactEmail(email, resolvedCompany.name)
+      : emailBelongsToCompany(email, resolvedCompany.name);
+  if (resolvedEmail && !emailFitsCompany(resolvedEmail)) {
     resolvedEmail = undefined;
   }
   let resolvedPhone = sanitizePhone(person.phone);
@@ -546,7 +552,7 @@ async function saveOnePerson(params: {
   const emailAlreadyReady =
     Boolean(resolvedEmail) &&
     !isGenericCompanyEmail(resolvedEmail!) &&
-    emailBelongsToCompany(resolvedEmail!, resolvedCompany.name);
+    emailFitsCompany(resolvedEmail!);
 
   // Fast CRM add:
   // - keepable email already present → skip providers
@@ -568,10 +574,16 @@ async function saveOnePerson(params: {
     enrichAttempts = enriched.attempts;
     const named = isNamedPerson(person.name);
     resolvedTitle = sanitizeJobTitle(enriched.title) ?? sanitizeJobTitle(person.title);
+    const linkedInProviderHit =
+      hasLinkedIn &&
+      (enriched.enrichmentProvider === "prospeo" ||
+        enriched.enrichmentProvider === "hunter" ||
+        enriched.enrichmentProvider === "apollo");
     if (
       enriched.email &&
-      emailBelongsToCompany(enriched.email, resolvedCompany.name) &&
-      shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named })
+      emailFitsCompany(enriched.email) &&
+      (shouldAutoAcceptEmail(enriched.emailConfidence, enriched.email, { namedPerson: named }) ||
+        (linkedInProviderHit && !isGenericCompanyEmail(enriched.email)))
     ) {
       resolvedEmail = enriched.email;
       emailConfidence = enriched.emailConfidence;
@@ -670,7 +682,9 @@ async function saveOnePerson(params: {
   if (existingContact) {
     const nextEmail =
       resolvedEmail ??
-      (emailBelongsToCompany(existingContact.email, resolvedCompany.name) ? existingContact.email : undefined);
+      (existingContact.email && emailFitsCompany(existingContact.email)
+        ? existingContact.email
+        : undefined);
     const refreshed = refreshPermutationEmails({
       ...secondaryIdentity,
       primaryEmail: nextEmail,
@@ -678,6 +692,8 @@ async function saveOnePerson(params: {
       enrichmentProvider: enrichmentSource ? enrichmentProvider : existingContact.enrichmentProvider,
       enrichmentSource: enrichmentSource ?? existingContact.enrichmentSource,
       alternateEmails: (existingContact.alternateEmails as ContactEmailEntry[] | null) ?? [],
+      // LinkedIn without a confirmed email must not become a fake first.last@domain primary.
+      fillPermutationPrimary: !(hasLinkedIn && !resolvedEmail),
     });
     await db
       .update(contacts)
@@ -724,6 +740,7 @@ async function saveOnePerson(params: {
       enrichmentProvider,
       enrichmentSource,
       alternateEmails: [],
+      fillPermutationPrimary: !(hasLinkedIn && !resolvedEmail),
     });
     const [contact] = await db
       .insert(contacts)

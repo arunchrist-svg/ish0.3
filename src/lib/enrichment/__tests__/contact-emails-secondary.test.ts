@@ -65,6 +65,22 @@ describe("first.last secondary email", () => {
 });
 
 describe("refreshPermutationEmails", () => {
+  it("skips promoting first.last when fillPermutationPrimary is false", () => {
+    const next = refreshPermutationEmails({
+      firstName: "Priya",
+      lastName: "Sharma",
+      companyName: "Acme Corp",
+      domain: "acme.in",
+      primaryEmail: null,
+      fillPermutationPrimary: false,
+      alternateEmails: [],
+    });
+
+    expect(next.email).toBeNull();
+    expect(next.emailStatus).toBe("missing");
+    expect(next.enrichmentProvider).toBeNull();
+  });
+
   it("drops a competitor-domain guess for Tata Steel", () => {
     const next = refreshPermutationEmails({
       firstName: "Sandeep",

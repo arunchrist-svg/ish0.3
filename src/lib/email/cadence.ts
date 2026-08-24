@@ -16,6 +16,8 @@ export function sequenceStepDays(cadence: CadenceDays): [number, number, number]
 }
 
 export function emailStepLabel(sequenceDay: number, cadence?: CadenceDays): string {
+  if (sequenceDay === -2) return "They replied";
+  if (sequenceDay === -1) return "Your reply";
   const [d0, d1, d2] = sequenceStepDays(normalizeCadenceDays(cadence));
   if (sequenceDay === d0) return "Email 1";
   if (sequenceDay === d1) return "Email 2";

@@ -10,6 +10,7 @@ import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { isOutreachSendingPaused } from "@/lib/email/config";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
+import { ensureCatalogFollowUpBeforeSend } from "@/lib/email/promote-catalog-on-open";
 
 export async function runSequencer(): Promise<{
   processed: number;
@@ -90,6 +91,19 @@ export async function runSequencer(): Promise<{
       }
 
       if (!generatedOutreach) throw new Error("No outreach draft for follow-up");
+
+      const catalogSwap = await ensureCatalogFollowUpBeforeSend({
+        leadId: sched.leadId,
+        followUpOutreachId: generatedOutreach.id,
+        sequencePosition: generatedOutreach.sequencePosition ?? 2,
+      });
+      if (catalogSwap) {
+        generatedOutreach = {
+          ...generatedOutreach,
+          emailBody: catalogSwap.emailBody,
+          subjectA: catalogSwap.subjectA || generatedOutreach.subjectA,
+        };
+      }
 
       const subject = generatedOutreach.subjectA ?? `Re: Outreach for ${account.name}`;
       const body = generatedOutreach.emailBody ?? "";
