@@ -10,6 +10,7 @@ import {
   resolveScoutLabel,
   scoutGeoFromStateAndDistrictPicks,
   searchTermsForScoutLabels,
+  setScoutStateDistricts,
   toggleScoutDistrictPick,
 } from "@/lib/geo/india";
 
@@ -80,6 +81,39 @@ describe("scout geo label expansion", () => {
       expect(isScoutDistrictPicked(next, bengaluru.district)).toBe(false);
     }
     expect(next.length).toBeGreaterThan(2);
+  });
+
+  it("allows clearing every district so nothing is selected", () => {
+    const hosur = resolveScoutLabel("Hosur");
+    const madras = resolveScoutLabel("Madras");
+    expect(hosur?.kind).toBe("district");
+    expect(madras?.kind).toBe("district");
+    if (hosur?.kind !== "district" || madras?.kind !== "district") return;
+
+    const cleared = setScoutStateDistricts(["Hosur", "Madras"], "TN", false, [
+      hosur.district.id,
+      madras.district.id,
+    ]);
+    expect(cleared).toEqual([]);
+
+    const emptied = toggleScoutDistrictPick(["Hosur"], hosur.district.id);
+    expect(emptied).toEqual([]);
+  });
+
+  it("keeps All and Clear independent: Clear then All restores the state pool", () => {
+    const hosur = resolveScoutLabel("Hosur");
+    const madras = resolveScoutLabel("Madras");
+    expect(hosur?.kind).toBe("district");
+    expect(madras?.kind).toBe("district");
+    if (hosur?.kind !== "district" || madras?.kind !== "district") return;
+
+    const cleared = setScoutStateDistricts(["Hosur", "Madras"], "TN", false);
+    expect(cleared).toEqual([]);
+    const restored = setScoutStateDistricts(cleared, "TN", true, [
+      hosur.district.id,
+      madras.district.id,
+    ]);
+    expect(restored.sort()).toEqual(["Hosur", "Madras"].sort());
   });
 
   it("does not pass Entire India as a gift intel city", () => {
