@@ -222,7 +222,7 @@ function localityMentionTerms(selectedCities: string[]): string[] {
   return [...terms].filter((term) => term.length >= 3);
 }
 
-function mentionsSelectedLocality(
+export function mentionsSelectedLocality(
   haystack: string,
   selectedCities: string[],
 ): boolean {

@@ -1,8 +1,14 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { db, orgMembers, tenants, workspaces, sessions } from "@/db";
 import { and, eq } from "drizzle-orm";
 import { getSessionTokenFromCookies, getSessionRecord } from "@/lib/auth/session";
 import { isSuperadmin } from "@/lib/auth/platform";
+import {
+  SEALED_SESSION_COOKIE,
+  unsealTenantClaims,
+  type SealedTenantClaims,
+} from "@/lib/auth/sealed-session";
 
 export type TenantRole = "owner" | "admin" | "member" | "viewer";
 export type MemberStatus = "active" | "disabled";
@@ -87,7 +93,38 @@ export function clearTenantContextCache() {
   tenantCtxCache.clear();
 }
 
-async function loadTenantContext(): Promise<TenantContext> {
+function claimsToContext(claims: SealedTenantClaims): TenantContext {
+  return {
+    userId: claims.userId,
+    tenantId: claims.tenantId,
+    workspaceId: claims.workspaceId,
+    role: claims.role as TenantRole,
+    platformRole: claims.platformRole,
+    isSuperadmin: isSuperadmin(claims.platformRole),
+    onboardingStatus: claims.onboardingStatus,
+    onboardingStep: claims.onboardingStep,
+    demoMode: claims.demoMode,
+    tenantSlug: claims.tenantSlug,
+    mustChangePassword: claims.mustChangePassword,
+  };
+}
+
+export function tenantContextToSealClaims(ctx: TenantContext): Omit<SealedTenantClaims, "exp"> {
+  return {
+    userId: ctx.userId,
+    tenantId: ctx.tenantId,
+    workspaceId: ctx.workspaceId,
+    role: ctx.role,
+    platformRole: ctx.platformRole,
+    tenantSlug: ctx.tenantSlug,
+    onboardingStatus: ctx.onboardingStatus,
+    onboardingStep: ctx.onboardingStep,
+    demoMode: ctx.demoMode,
+    mustChangePassword: ctx.mustChangePassword,
+  };
+}
+
+async function loadTenantContextFromDb(): Promise<TenantContext> {
   const token = await getSessionTokenFromCookies();
   if (token) {
     const cached = tenantCtxCache.get(token);
@@ -146,10 +183,34 @@ async function loadTenantContext(): Promise<TenantContext> {
   return ctx;
 }
 
+async function loadTenantContext(): Promise<TenantContext> {
+  const cookieStore = await cookies();
+  const sealed = unsealTenantClaims(cookieStore.get(SEALED_SESSION_COOKIE)?.value);
+  if (sealed) {
+    const sessionToken = await getSessionTokenFromCookies();
+    // Still require a session cookie so logout/revocation works.
+    if (sessionToken) {
+      const cacheKey = `seal:${sessionToken}`;
+      const cached = tenantCtxCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) return cached.ctx;
+      const ctx = claimsToContext(sealed);
+      tenantCtxCache.set(cacheKey, { ctx, expiresAt: Date.now() + TENANT_CTX_TTL_MS });
+      return ctx;
+    }
+  }
+  return loadTenantContextFromDb();
+}
+
 const requireTenantContextImpl = cache(loadTenantContext);
 
 export async function requireTenantContext(): Promise<TenantContext> {
   return requireTenantContextImpl();
+}
+
+/** Force DB resolution (e.g. after org switch). */
+export async function requireTenantContextFresh(): Promise<TenantContext> {
+  clearTenantContextCache();
+  return loadTenantContextFromDb();
 }
 
 export async function requireSuperadmin(): Promise<{ userId: string; email: string }> {

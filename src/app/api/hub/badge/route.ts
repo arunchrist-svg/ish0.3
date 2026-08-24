@@ -3,12 +3,19 @@ import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, leads, outreachSchedule, notifications } from "@/db";
 import { eq, and, isNull, desc, sql } from "drizzle-orm";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+
+export const preferredRegion = ["sin1"];
 
 /** Lightweight hub badges: notifications + email inbox counts in one round trip. */
 export async function GET() {
+  const { marks, t0 } = startTiming();
   try {
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
+    mark(marks, "auth", authStart);
 
+    const dbStart = performance.now();
     const [notifRows, needsReviewRow, repliesRow] = await Promise.all([
       db
         .select({
@@ -58,11 +65,12 @@ export async function GET() {
           ),
         ),
     ]);
+    mark(marks, "db", dbStart);
 
     const needsReview = needsReviewRow[0]?.count ?? 0;
     const replies = repliesRow[0]?.count ?? 0;
 
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         notifications: notifRows,
         unreadCount: notifRows.length,
@@ -72,6 +80,7 @@ export async function GET() {
       },
       { headers: { "Cache-Control": "private, max-age=15" } },
     );
+    return withServerTiming(res, marks, t0);
   } catch (e) {
     return handleApiError(e, "[api/hub/badge]");
   }

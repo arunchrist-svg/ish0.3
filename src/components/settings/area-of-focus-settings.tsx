@@ -206,6 +206,9 @@ export function AreaOfFocusSettings({ scoutGeo, value, onChange }: Props) {
           onChange={(e) => {
             setCity(e.target.value);
             setPreview(null);
+            setQuery("");
+            setSuggestions([]);
+            setError(null);
           }}
           className="max-w-[55%] rounded-full border border-brand-stratus-blue/25 bg-white px-3 py-1.5 text-[12px] font-semibold text-brand-ink"
         >
@@ -234,7 +237,7 @@ export function AreaOfFocusSettings({ scoutGeo, value, onChange }: Props) {
                 void resolvePreview(query);
               }
             }}
-            placeholder="Kasturi Nagar"
+            placeholder={city === "Hassan" ? "BM Road, Vidyanagar…" : "Kasturi Nagar"}
             disabled={atLimit}
             className="w-full rounded-full border border-brand-stratus-blue/25 bg-white px-3 py-1.5 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint disabled:opacity-60"
             aria-autocomplete="list"

@@ -774,8 +774,21 @@ export function ScoutingApp() {
 
     void scoutBootstrap()
       .then((data) => {
-        if (data.leads?.length) {
-          const map = new Map<string, string>();
+        const map = new Map<string, string>();
+        if (data.dedupeKeys?.length) {
+          for (const row of data.dedupeKeys) {
+            map.set(row.key, row.id);
+            if (row.name) map.set(row.name.toLowerCase(), row.id);
+          }
+          setCrmLeadIdsByKey(map);
+          setExistingContactNames(
+            new Set(
+              data.dedupeKeys
+                .map((r) => r.name?.toLowerCase() ?? r.key.split("|").pop() ?? "")
+                .filter(Boolean),
+            ),
+          );
+        } else if (data.leads?.length) {
           for (const lead of data.leads) {
             map.set(`${lead.company.toLowerCase()}|${lead.name.toLowerCase()}`, lead.id);
             map.set(lead.name.toLowerCase(), lead.id);
@@ -788,8 +801,11 @@ export function ScoutingApp() {
             uniqueScoutCompanies(
               data.companies.map((company) => ({
                 name: company.name,
-                city: company.city,
-                domain: resolveCompanyDomain(company),
+                city: "city" in company ? company.city : undefined,
+                domain:
+                  "domain" in company && company.domain
+                    ? company.domain
+                    : resolveCompanyDomain(company as never),
               })),
             ),
           );

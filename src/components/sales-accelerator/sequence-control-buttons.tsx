@@ -13,6 +13,8 @@ type Props = {
   sequenceState: SequenceControlState;
   disabled?: boolean;
   sending?: boolean;
+  /** Hide Start when the toolbar already has Send (same action). */
+  hideStart?: boolean;
   onUpdated: (meta?: { action: "start" | "pause" | "cancel" | "reset" }) => void;
   onStartSequence?: () => void | Promise<void>;
 };
@@ -25,6 +27,7 @@ export function SequenceControlButtons({
   sequenceState,
   disabled,
   sending,
+  hideStart,
   onUpdated,
   onStartSequence,
 }: Props) {
@@ -80,28 +83,30 @@ export function SequenceControlButtons({
   return (
     <>
       <div className="flex shrink-0 items-center gap-1">
-        {(sequenceState === "not_started" || sequenceState === "paused") && (
+        {sequenceState === "not_started" && !hideStart ? (
           <button
             type="button"
             disabled={disabled || loading !== null || Boolean(sending)}
             onClick={() => void run("start")}
-            title={
-              sequenceState === "not_started"
-                ? "Send Email 1 and start the follow-up sequence"
-                : "Resume scheduled follow-ups"
-            }
+            title="Send Email 1 and start the follow-up sequence"
             className={cn(btnClass, "ish-scout-cta-blue hover:opacity-95")}
           >
             {startBusy ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
-            {sequenceState === "not_started"
-              ? startBusy
-                ? "Sending…"
-                : "Start"
-              : loading === "start"
-                ? "Resuming…"
-                : "Resume"}
+            {startBusy ? "Sending…" : "Start"}
           </button>
-        )}
+        ) : null}
+        {sequenceState === "paused" ? (
+          <button
+            type="button"
+            disabled={disabled || loading !== null || Boolean(sending)}
+            onClick={() => void run("start")}
+            title="Resume scheduled follow-ups"
+            className={cn(btnClass, "ish-scout-ghost hover:opacity-95")}
+          >
+            {loading === "start" ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+            {loading === "start" ? "Resuming…" : "Resume"}
+          </button>
+        ) : null}
         {sequenceState === "active" && (
           <button
             type="button"

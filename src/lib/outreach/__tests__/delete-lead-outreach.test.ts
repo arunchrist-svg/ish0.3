@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   selectFromWhere: vi.fn(),
   deleteWhere: vi.fn(),
   updateSetWhere: vi.fn(),
+  transaction: vi.fn(),
 }));
 
 vi.mock("@/db", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/db", () => ({
         where: mocks.updateSetWhere,
       })),
     })),
+    transaction: mocks.transaction,
   },
   leadOutreach: { id: "id" },
   outreachEditMessages: { leadOutreachId: "leadOutreachId" },
@@ -52,6 +54,8 @@ describe("deleteLeadOutreachWhere", () => {
 
     expect(mocks.deleteWhere).toHaveBeenCalledTimes(3);
     expect(mocks.updateSetWhere).toHaveBeenCalledTimes(2);
+    // neon-http cannot use interactive transactions; this path must stay sequential.
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it("no-ops when no outreach rows match", async () => {

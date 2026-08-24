@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { acceptInvite, getInviteByToken } from "@/lib/auth/invites";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
 import { provisionNewTenant } from "@/lib/auth/provision";
+import { attachSealedSessionCookie } from "@/lib/auth/attach-sealed-session";
 
 function isInviteOnly(): boolean {
   return process.env.INVITE_ONLY !== "false";
@@ -56,6 +57,12 @@ export async function POST(req: Request) {
       const token = await createSession(user.id, accepted.tenantId);
       const res = NextResponse.json({ ok: true, redirect: accepted.redirect });
       res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
+      await attachSealedSessionCookie(res, {
+        userId: user.id,
+        tenantId: accepted.tenantId,
+        platformRole: user.platformRole,
+        mustChangePassword: user.mustChangePassword,
+      });
       return res;
     }
 
@@ -87,6 +94,12 @@ export async function POST(req: Request) {
     const token = await createSession(user.id, tenantId);
     const res = NextResponse.json({ ok: true, redirect: "/onboarding" });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
+    await attachSealedSessionCookie(res, {
+      userId: user.id,
+      tenantId,
+      platformRole: user.platformRole,
+      mustChangePassword: user.mustChangePassword,
+    });
     return res;
   } catch (e) {
     console.error("[auth/signup]", e);

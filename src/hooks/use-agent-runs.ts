@@ -7,11 +7,14 @@ type AgentRunsResponse = {
   runs: (AgentRunItem & { startedAt: string; completedAt: string | null })[];
 };
 
-export function useAgentRuns(pollMs = 30_000) {
+const ACTIVE_POLL_MS = 8_000;
+
+export function useAgentRuns(pollMs = ACTIVE_POLL_MS) {
   const [runs, setRuns] = useState<AgentRunItem[]>([]);
+  const hasRunning = runs.some((r) => r.status === "running");
 
   const refresh = useCallback(async () => {
-    if (document.visibilityState !== "visible") return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     try {
       const res = await fetch("/api/agents/runs/active");
       if (!res.ok) return;
@@ -28,18 +31,22 @@ export function useAgentRuns(pollMs = 30_000) {
   useEffect(() => {
     void refreshRef.current();
 
-    const id = window.setInterval(() => void refreshRef.current(), pollMs);
-
     function onVisible() {
       if (document.visibilityState === "visible") void refreshRef.current();
     }
     document.addEventListener("visibilitychange", onVisible);
 
+    // Interval only while a run is actively running.
+    let id: number | undefined;
+    if (hasRunning) {
+      id = window.setInterval(() => void refreshRef.current(), pollMs);
+    }
+
     return () => {
-      window.clearInterval(id);
+      if (id != null) window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [pollMs]);
+  }, [pollMs, hasRunning]);
 
   return { runs, refresh };
 }

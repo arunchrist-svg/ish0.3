@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BoardLeadCard } from "./board-lead-card";
 import type { SendQueueItem } from "./board-bulk-actions";
+import { VirtualList } from "@/components/ui/virtual-list";
 
 type ColumnAction = {
   label: string;
@@ -46,6 +47,7 @@ function queueStatusLabel(item: SendQueueItem): string {
 
 export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }: Props) {
   const accent = PIPELINE_STAGE_ACCENTS[stage];
+  const useVirtual = leads.length > 40;
 
   return (
     <section className="ish-board-column flex w-[280px] shrink-0 flex-col rounded-[18px]">
@@ -113,13 +115,34 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }:
         ) : null}
       </header>
 
-      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-0.5 pb-1 scrollbar-none">
-        {leads.length === 0 ? (
+      {leads.length === 0 ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-0.5 pb-1">
           <div className="rounded-xl border border-dashed border-brand-border/60 px-3 py-8 text-center text-[11px] text-brand-ink-faint">
             No leads
           </div>
-        ) : (
-          leads.map((lead, i) => (
+        </div>
+      ) : useVirtual ? (
+        <VirtualList
+          items={leads}
+          estimateSize={88}
+          overscan={6}
+          className="min-h-0 flex-1 px-0.5 pb-1 scrollbar-none"
+          getItemKey={(lead) => lead.id}
+          renderItem={(lead, i) => (
+            <div className="pb-2.5">
+              <BoardLeadCard
+                lead={lead}
+                index={i}
+                accent={accent}
+                stage={stage}
+                sendStatus={queueByLeadId?.[lead.id]}
+              />
+            </div>
+          )}
+        />
+      ) : (
+        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-0.5 pb-1 scrollbar-none">
+          {leads.map((lead, i) => (
             <BoardLeadCard
               key={lead.id}
               lead={lead}
@@ -128,9 +151,9 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }:
               stage={stage}
               sendStatus={queueByLeadId?.[lead.id]}
             />
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

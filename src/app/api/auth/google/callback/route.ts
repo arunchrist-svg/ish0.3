@@ -11,6 +11,7 @@ import { acceptInvite, findPendingInviteForEmail } from "@/lib/auth/invites";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
 import { orgMembers } from "@/db";
 import { resolvePostAuthDestination } from "@/lib/auth/post-auth-redirect";
+import { attachSealedSessionCookie } from "@/lib/auth/attach-sealed-session";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -80,6 +81,12 @@ export async function GET(req: Request) {
       const token = await createSession(user.id, tenantId);
       const res = NextResponse.redirect(new URL(redirect, url.origin));
       res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
+      await attachSealedSessionCookie(res, {
+        userId: user.id,
+        tenantId,
+        platformRole: user.platformRole,
+        mustChangePassword: user.mustChangePassword,
+      });
       return res;
     }
 
@@ -96,6 +103,12 @@ export async function GET(req: Request) {
     const token = await createSession(user.id, tenantId);
     const res = NextResponse.redirect(new URL(redirect, url.origin));
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
+    await attachSealedSessionCookie(res, {
+      userId: user.id,
+      tenantId,
+      platformRole: user.platformRole,
+      mustChangePassword: user.mustChangePassword,
+    });
     return res;
   } catch (e) {
     console.error("[google/callback]", e);

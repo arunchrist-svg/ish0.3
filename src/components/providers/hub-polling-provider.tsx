@@ -29,7 +29,7 @@ type InboxBadgeContextValue = {
 const NotificationsContext = createContext<NotificationsContextValue | null>(null);
 const InboxBadgeContext = createContext<InboxBadgeContextValue | null>(null);
 
-const BADGE_POLL_MS = 60_000;
+const BADGE_POLL_MS = 120_000;
 
 function useVisiblePolling(callback: () => void, intervalMs: number) {
   const callbackRef = useRef(callback);

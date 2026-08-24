@@ -1,10 +1,136 @@
 import { NextResponse } from "next/server";
-import { db, leadOutreach, leads } from "@/db";
-import { eq } from "drizzle-orm";
+import { db, leadOutreach, leads, yieldFunnel } from "@/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { normalizeEmailBody } from "@/lib/email/email-body-format";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
+import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
+import { toWriterDraft } from "@/lib/agents/writer-draft";
+import { isContactReadyStage, isManualStage } from "@/lib/pipeline-status";
+import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+
+/** Create a blank 3-email sequence the user can write themselves. */
+export async function POST(req: Request) {
+  try {
+    const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
+    const body = await req.json().catch(() => ({}));
+    const { leadId, outreachTemplate } = body as {
+      leadId?: string;
+      outreachTemplate?: string;
+    };
+
+    if (!leadId) {
+      return NextResponse.json({ error: "leadId required" }, { status: 400 });
+    }
+
+    const lead = await db.query.leads.findFirst({
+      where: eq(leads.id, leadId),
+      with: { contact: true, account: true },
+    });
+    if (!lead || lead.tenantId !== ctx.tenantId) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+    if (isManualStage(lead.status)) {
+      return NextResponse.json({ error: `Cannot draft in ${lead.status} stage` }, { status: 400 });
+    }
+    if (!isContactReadyStage(lead.status) && lead.status !== "draft_ready") {
+      return NextResponse.json({ error: "Lead is not ready for drafting" }, { status: 400 });
+    }
+
+    const templateId =
+      OUTREACH_TEMPLATES.some((t) => t.id === outreachTemplate)
+        ? (outreachTemplate as OutreachTemplateId)
+        : "gift_sampling";
+    const company = companyNameForEmail(lead.account?.name ?? "your team");
+
+    await deleteLeadOutreachWhere(
+      and(eq(leadOutreach.leadId, leadId), inArray(leadOutreach.sequencePosition, [1, 2, 3])),
+    );
+
+    const rows = await db
+      .insert(leadOutreach)
+      .values([
+        {
+          leadId,
+          draftSource: "manual",
+          promptVersion: "manual-blank",
+          subjectA: `Email for ${company}`,
+          subjectB: null,
+          subjectC: null,
+          emailBody: "",
+          emailBodyB: null,
+          emailBodyC: null,
+          chosenSubjectKey: "A",
+          chosenBodyKey: "A",
+          templateVariant: templateId,
+          outreachGoal: "Gift sampling",
+          confidenceTier: "manual",
+          sequencePosition: 1,
+          deliverabilityScore: null,
+          deliverabilityVerdict: null,
+          revisionCount: 0,
+          revisionTimeout: false,
+        },
+        {
+          leadId,
+          draftSource: "manual",
+          promptVersion: "manual-blank",
+          subjectA: `Re: Email for ${company}`,
+          subjectB: null,
+          subjectC: null,
+          emailBody: "",
+          emailBodyB: null,
+          emailBodyC: null,
+          chosenSubjectKey: "A",
+          chosenBodyKey: "A",
+          templateVariant: templateId,
+          outreachGoal: "Follow-up reminder",
+          confidenceTier: "manual",
+          sequencePosition: 2,
+          deliverabilityScore: null,
+          deliverabilityVerdict: null,
+          revisionCount: 0,
+          revisionTimeout: false,
+        },
+        {
+          leadId,
+          draftSource: "manual",
+          promptVersion: "manual-blank",
+          subjectA: `Re: Email for ${company}`,
+          subjectB: null,
+          subjectC: null,
+          emailBody: "",
+          emailBodyB: null,
+          emailBodyC: null,
+          chosenSubjectKey: "A",
+          chosenBodyKey: "A",
+          templateVariant: templateId,
+          outreachGoal: "Final reminder",
+          confidenceTier: "manual",
+          sequencePosition: 3,
+          deliverabilityScore: null,
+          deliverabilityVerdict: null,
+          revisionCount: 0,
+          revisionTimeout: false,
+        },
+      ])
+      .returning();
+
+    await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
+    await db.insert(yieldFunnel).values({ leadId, stage: "draft_ready", metadata: { source: "manual" } });
+
+    const drafts = rows
+      .sort((a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0))
+      .map((r) => toWriterDraft(r, { sequencePosition: r.sequencePosition ?? undefined }));
+
+    return NextResponse.json({ drafts, draft: drafts[0] });
+  } catch (e) {
+    return handleApiError(e, "[api/outreach/draft POST]");
+  }
+}
 
 export async function PATCH(req: Request) {
   try {

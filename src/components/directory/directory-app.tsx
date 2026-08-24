@@ -10,7 +10,7 @@ import { LeadsGrid } from "@/components/scouting/leads-grid";
 import { PeopleList } from "@/components/scouting/people-list";
 import { CompanyOverviewPanel } from "@/components/company/company-overview-panel";
 import { FacetFilterBar } from "@/components/filters/facet-filter-bar";
-import { fetchDirectory, type DirectoryCompany, type DirectoryContact } from "@/lib/api-client";
+import { fetchDirectory, fetchDirectoryContacts, type DirectoryCompany, type DirectoryContact } from "@/lib/api-client";
 import { subscribeCrmRecordsRefresh } from "@/lib/crm-refresh";
 import { directoryCompanyToCard, directoryContactToPerson } from "@/lib/directory-mappers";
 import {
@@ -117,19 +117,56 @@ export function DirectoryApp() {
     writeLocal(ACCOUNT_CONTACT_SORT_STORAGE_KEY, contactSort);
   }, [contactSort]);
 
+  const [nextCompanyCursor, setNextCompanyCursor] = useState<string | null>(null);
+  const [nextContactCursor, setNextContactCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   async function load() {
     setLoading(true);
     try {
-      const data = await fetchDirectory();
-      setCompanies(data.companies);
-      setContacts(data.contacts);
-      if (data.companies[0] && !selectedCompanyId) {
-        setSelectedCompanyId(data.companies[0].id);
+      const [companiesPage, contactsPage] = await Promise.all([
+        fetchDirectory({ limit: 50 }),
+        fetchDirectoryContacts({ limit: 50 }),
+      ]);
+      setCompanies(companiesPage.companies);
+      setContacts(contactsPage.contacts);
+      setNextCompanyCursor(companiesPage.nextCursor ?? null);
+      setNextContactCursor(contactsPage.nextCursor ?? null);
+      if (companiesPage.companies[0] && !selectedCompanyId) {
+        setSelectedCompanyId(companiesPage.companies[0].id);
       }
     } catch {
       toast.error("Could not load scout directory");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMoreCompanies() {
+    if (!nextCompanyCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchDirectory({ limit: 50, cursor: nextCompanyCursor });
+      setCompanies((prev) => [...prev, ...page.companies]);
+      setNextCompanyCursor(page.nextCursor ?? null);
+    } catch {
+      toast.error("Could not load more companies");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function loadMoreContacts() {
+    if (!nextContactCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchDirectoryContacts({ limit: 50, cursor: nextContactCursor });
+      setContacts((prev) => [...prev, ...page.contacts]);
+      setNextContactCursor(page.nextCursor ?? null);
+    } catch {
+      toast.error("Could not load more contacts");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -331,6 +368,18 @@ export function DirectoryApp() {
                       selectable={false}
                     />
                   )}
+                  {nextCompanyCursor ? (
+                    <div className="flex justify-center py-4">
+                      <button
+                        type="button"
+                        onClick={() => void loadMoreCompanies()}
+                        disabled={loadingMore}
+                        className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+                      >
+                        {loadingMore ? "Loading…" : "Load more companies"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="fixed inset-0 z-40 flex flex-col overflow-y-auto border-l border-brand-border bg-white lg:relative lg:inset-auto lg:z-auto lg:w-[360px] lg:shrink-0">
@@ -409,6 +458,18 @@ export function DirectoryApp() {
                     getDirectoryLeadId={(person) => contactMetaByLeadId.get(person.id)?.leadId}
                   />
                 )}
+                {nextContactCursor ? (
+                  <div className="flex justify-center py-4">
+                    <button
+                      type="button"
+                      onClick={() => void loadMoreContacts()}
+                      disabled={loadingMore}
+                      className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+                    >
+                      {loadingMore ? "Loading…" : "Load more contacts"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

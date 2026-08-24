@@ -1,7 +1,6 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContactEmailEntry, EmailThread, WriterDraft } from "@/lib/api-client";
 import {
@@ -57,7 +56,6 @@ type Props = {
   contactEmail?: string;
   contactEmails?: ContactEmailEntry[];
   onDraftUpdated: (draft: WriterDraft) => void;
-  onSavingChange?: (saving: boolean) => void;
   onComposeActionsChange?: (state: ComposeActionState | null) => void;
   onSent?: () => void;
   onSendFailed?: () => void;
@@ -67,8 +65,6 @@ type Props = {
   onSelectedEmailsChange?: (emails: string[]) => void;
   chosenSubjectKey?: VariantKey;
   onChosenSubjectKeyChange?: (key: VariantKey) => void;
-  onGenerateReply?: () => void;
-  generatingReply?: boolean;
   contentScore?: number;
   emailThread?: EmailThread;
   scheduleIdForFollowUp?: string;
@@ -76,46 +72,46 @@ type Props = {
 
 export { defaultSelectedContactEmails };
 
-function CompareBodyField({
+function VariantSegment({
   value,
-  onChange,
+  options,
   disabled,
-  editable,
-  placeholder,
+  onChange,
 }: {
-  value: string;
-  onChange: (value: string) => void;
+  value: VariantKey;
+  options: VariantKey[];
   disabled?: boolean;
-  editable: boolean;
-  placeholder?: string;
+  onChange: (key: VariantKey) => void;
 }) {
-  if (!editable || disabled) {
-    return (
-      <p className={cn(text.body, "whitespace-pre-wrap text-[13px] leading-[1.65] text-brand-ink-soft")}>
-        {value || placeholder}
-      </p>
-    );
-  }
+  if (options.length < 2) return null;
   return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      disabled={disabled}
-      className={cn(
-        "block h-full min-h-[16.8rem] w-full resize-none overflow-y-auto border-0 bg-transparent px-0 py-0",
-        text.body,
-        "whitespace-pre-wrap text-[13px] leading-[1.65] placeholder:text-brand-ink-faint focus:outline-none focus:ring-0 disabled:opacity-60",
-      )}
-    />
-  );
-}
-
-function EnvelopeRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 border-b border-brand-stratus-blue/10 px-4 py-3 last:border-b-0 lg:grid lg:grid-cols-[56px_1fr] lg:gap-3 lg:px-0 lg:py-3">
-      <span className={cn(text.label, "w-10 shrink-0 text-[10px] lg:w-auto")}>{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
+    <div
+      role="radiogroup"
+      aria-label="Draft version"
+      className="ish-email-segment inline-flex rounded-[9px] bg-black/[0.05] p-0.5"
+    >
+      {options.map((key) => {
+        const checked = key === value;
+        return (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            disabled={disabled}
+            onClick={() => onChange(key)}
+            className={cn(
+              "min-w-[2.25rem] rounded-[7px] px-3 py-1 text-[12px] font-semibold tracking-wide transition-all",
+              checked
+                ? "bg-white text-brand-ink shadow-[0_1px_2px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.04)]"
+                : "text-brand-ink-soft hover:text-brand-ink",
+              disabled && "cursor-default opacity-50",
+            )}
+          >
+            {key}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -160,7 +156,6 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   contactEmail,
   contactEmails,
   onDraftUpdated,
-  onSavingChange,
   onComposeActionsChange,
   onSent,
   onSendFailed,
@@ -169,8 +164,6 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   onSelectedEmailsChange,
   chosenSubjectKey: chosenSubjectKeyProp,
   onChosenSubjectKeyChange,
-  onGenerateReply,
-  generatingReply,
   contentScore,
   emailThread,
   scheduleIdForFollowUp,
@@ -187,7 +180,6 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   const [dirty, setDirty] = useState(false);
   const [sending, setSending] = useState(false);
   const [outreachPaused, setOutreachPaused] = useState(false);
-  const [bodyPage, setBodyPage] = useState(1);
   const dirtyRef = useRef(false);
   const displayDraftRef = useRef(displayDraft);
   const subjectKeyRef = useRef(subjectKey);
@@ -285,13 +277,34 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
 
   const subjectOptions = draftSubjectOptions(displayDraft);
   const bodyOptions = draftBodyOptions(displayDraft);
-  const safeSubjectKey = subjectOptions.some((s) => s.key === subjectKey)
-    ? subjectKey
-    : (subjectOptions[0]?.key ?? "A");
-  const safeBodyKey = bodyOptions.some((b) => b.key === bodyKey)
-    ? bodyKey
-    : (bodyOptions[0]?.key ?? "A");
-  const bodyText = resolveDraftBody(displayDraft, safeBodyKey);
+  /** Keep A|B sticky while editing. Do not re-derive from trimmed/filtered options. */
+  const activeVariant: VariantKey = asVariantKey(
+    subjectKey === bodyKey ? subjectKey : bodyKey,
+  );
+  // Raw field values only. Never trim or fall back to the other variant in the editor,
+  // or the caret jumps to the end on every keystroke.
+  const bodyText =
+    activeVariant === "B"
+      ? (displayDraft.emailBodyB ?? "")
+      : (displayDraft.emailBody ?? "");
+  const activeSubject =
+    activeVariant === "B"
+      ? (displayDraft.subjectB ?? "")
+      : (displayDraft.subjectA ?? "");
+  const hasVariantB =
+    activeVariant === "B" ||
+    Boolean(displayDraft.emailBodyB?.trim()) ||
+    Boolean(displayDraft.subjectB?.trim()) ||
+    bodyOptions.some((o) => o.key === "B") ||
+    subjectOptions.some((o) => o.key === "B");
+  const variantOptions: VariantKey[] = hasVariantB ? ["A", "B"] : ["A"];
+
+  function selectVariant(key: VariantKey) {
+    if (isDraftLocked) return;
+    setSubjectKey(key);
+    setBodyKey(key);
+    setDirty(true);
+  }
 
   dirtyRef.current = dirty;
   displayDraftRef.current = displayDraft;
@@ -302,17 +315,14 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
 
   useEffect(() => {
     setDisplayDraft(draft);
-    if (!onChosenSubjectKeyChange) setSubjectKeyLocal(asVariantKey(draft.chosenSubjectKey));
-    setBodyKey(asVariantKey(draft.chosenBodyKey));
+    const key = asVariantKey(draft.chosenSubjectKey ?? draft.chosenBodyKey);
+    if (!onChosenSubjectKeyChange) setSubjectKeyLocal(key);
+    setBodyKey(key);
     setDirty(false);
     // Only reset the editor when switching to a different draft. Same-id parent
     // refreshes must not wipe in-progress edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draft.id]);
-
-  useEffect(() => {
-    onSavingChange?.(saving);
-  }, [saving, onSavingChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -345,25 +355,44 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
       >,
     ) => {
       setSaving(true);
+      const snapshot = displayDraftRef.current;
+      const variant = asVariantKey(
+        subjectKeyRef.current === bodyKeyRef.current
+          ? subjectKeyRef.current
+          : bodyKeyRef.current,
+      );
       try {
         const updated = await updateOutreachDraft({
-          ...draftPatchPayload(displayDraft, subjectKey, bodyKey, payload),
+          ...draftPatchPayload(snapshot, variant, variant, payload),
           leadOutreachId: draft.id,
         });
+        // Prefer any edits typed while the request was in flight.
+        const latest = displayDraftRef.current;
         const next = {
-          ...displayDraft,
-          subjectA: updated.subjectA ?? displayDraft.subjectA,
-          subjectB: updated.subjectB ?? displayDraft.subjectB,
-          subjectC: updated.subjectC ?? displayDraft.subjectC,
-          emailBody: updated.emailBody ?? displayDraft.emailBody,
-          emailBodyB: updated.emailBodyB ?? displayDraft.emailBodyB,
-          emailBodyC: updated.emailBodyC ?? displayDraft.emailBodyC,
-          chosenSubjectKey: updated.chosenSubjectKey ?? subjectKey,
-          chosenBodyKey: updated.chosenBodyKey ?? bodyKey,
+          ...latest,
+          subjectA: latest.subjectA !== snapshot.subjectA ? latest.subjectA : (updated.subjectA ?? latest.subjectA),
+          subjectB: latest.subjectB !== snapshot.subjectB ? latest.subjectB : (updated.subjectB ?? latest.subjectB),
+          subjectC: latest.subjectC !== snapshot.subjectC ? latest.subjectC : (updated.subjectC ?? latest.subjectC),
+          emailBody: latest.emailBody !== snapshot.emailBody ? latest.emailBody : (updated.emailBody ?? latest.emailBody),
+          emailBodyB:
+            latest.emailBodyB !== snapshot.emailBodyB
+              ? latest.emailBodyB
+              : (updated.emailBodyB ?? latest.emailBodyB),
+          emailBodyC:
+            latest.emailBodyC !== snapshot.emailBodyC
+              ? latest.emailBodyC
+              : (updated.emailBodyC ?? latest.emailBodyC),
+          chosenSubjectKey: updated.chosenSubjectKey ?? variant,
+          chosenBodyKey: updated.chosenBodyKey ?? variant,
         };
         setDisplayDraft(next);
         onDraftUpdated(next);
-        setDirty(false);
+        const stillDirty =
+          latest.emailBody !== snapshot.emailBody ||
+          latest.emailBodyB !== snapshot.emailBodyB ||
+          latest.subjectA !== snapshot.subjectA ||
+          latest.subjectB !== snapshot.subjectB;
+        setDirty(stillDirty);
         return true;
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Could not save draft");
@@ -372,7 +401,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         setSaving(false);
       }
     },
-    [draft.id, displayDraft, onDraftUpdated, subjectKey, bodyKey],
+    [draft.id, onDraftUpdated],
   );
 
   useEffect(() => {
@@ -411,7 +440,6 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     setDirty(false);
   }
 
-  const activeSubject = resolveDraftSubject(displayDraft, safeSubjectKey);
   const threadSubject = followUpThreadSubject({
     threadRootSubject: emailThread?.threadRootSubject,
     email1Draft: startSequenceDraft,
@@ -419,15 +447,15 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   });
   const showReRow = Boolean((isReplyDraft || isSequenceFollowUp) && threadSubject);
 
-  function handleSubjectChange(key: VariantKey, value: string) {
-    const field = key === "B" ? "subjectB" : "subjectA";
-    setDisplayDraft({ ...displayDraft, [field]: value });
+  function handleSubjectChange(value: string) {
+    const field = activeVariant === "B" ? "subjectB" : "subjectA";
+    setDisplayDraft((prev) => ({ ...prev, [field]: value }));
     setDirty(true);
   }
 
-  function handleBodyChange(key: VariantKey, value: string) {
-    const field = key === "B" ? "emailBodyB" : "emailBody";
-    setDisplayDraft({ ...displayDraft, [field]: value });
+  function handleBodyChange(value: string) {
+    const field = activeVariant === "B" ? "emailBodyB" : "emailBody";
+    setDisplayDraft((prev) => ({ ...prev, [field]: value }));
     setDirty(true);
   }
 
@@ -456,10 +484,10 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         ? startSequenceDraft
         : displayDraft;
 
-    const sendSubjectKey = safeSubjectKey;
+    const sendSubjectKey = activeVariant;
     const sendBodyKey =
       sendDraft.id === displayDraft.id
-        ? safeBodyKey
+        ? activeVariant
         : asVariantKey(sendDraft.chosenBodyKey);
     const subjectToSend =
       isReplyDraft && threadSubject
@@ -481,14 +509,14 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     try {
       if (!isDraftLocked) {
         const saved = await persistDraft({
-          chosenSubjectKey: safeSubjectKey,
-          chosenBodyKey: safeBodyKey,
+          chosenSubjectKey: activeVariant,
+          chosenBodyKey: activeVariant,
         });
         if (!saved) return;
         if (sendDraft.id !== displayDraft.id) {
           await updateOutreachDraft({
             leadOutreachId: sendDraft.id,
-            chosenSubjectKey: safeSubjectKey,
+            chosenSubjectKey: activeVariant,
           });
         }
       }
@@ -558,15 +586,6 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     }
   }
 
-  function handleBodyStripScroll(e: { currentTarget: HTMLDivElement }) {
-    const el = e.currentTarget;
-    const count = Math.max(1, bodyOptions.length || 1);
-    const cardWidth = el.scrollWidth / count;
-    if (cardWidth <= 0) return;
-    const page = Math.min(count, Math.max(1, Math.round(el.scrollLeft / cardWidth) + 1));
-    setBodyPage(page);
-  }
-
   const sendLabel = isFollowUpReview
     ? "Send follow-up"
     : isReplyDraft
@@ -585,7 +604,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     }),
     // Handlers close over latest state each render
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dirty, saving, sending, selectedEmails, displayDraft, safeSubjectKey, safeBodyKey, outreachPaused],
+    [dirty, saving, sending, selectedEmails, displayDraft, activeVariant, outreachPaused],
   );
 
   useEffect(() => {
@@ -615,184 +634,83 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   return (
     <div
       id="approval-card"
-      className="ish-email-compose min-w-0 bg-white lg:rounded-[22px] lg:border lg:border-brand-stratus-blue/20 lg:shadow-[var(--shadow-brand-sm)]"
+      className="ish-email-compose min-w-0 overflow-hidden bg-white lg:rounded-[16px] lg:border lg:border-black/[0.08] lg:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)]"
     >
-      <div className="flex min-w-0 flex-col p-0 lg:p-4">
-
-        {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet && (
-          <div className="mx-3 mb-2 mt-2 rounded-[12px] border border-brand-stratus-blue/22 bg-brand-green-soft px-3 py-2 lg:mx-0 lg:mt-0">
-            <div className="mb-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-stratus-blue">They said</div>
-            <p className="line-clamp-2 text-[12px] leading-snug text-brand-ink-soft">{emailThread.inboundSnippet}</p>
+      <div className="flex min-w-0 flex-col">
+        {variantOptions.length > 1 ? (
+          <div className="flex items-center justify-end gap-3 border-b border-black/[0.06] px-4 py-2.5">
+            <VariantSegment
+              value={activeVariant}
+              options={variantOptions}
+              disabled={isDraftLocked}
+              onChange={selectVariant}
+            />
           </div>
-        )}
+        ) : null}
 
-        {isReplyDraft && !isDraftLocked && onGenerateReply ? (
-          <div className="flex justify-end px-3 py-1.5 lg:px-0">
-            <button
-              type="button"
-              disabled={generatingReply || saving || sending}
-              onClick={() => onGenerateReply()}
-              className="inline-flex items-center gap-1.5 rounded-full border border-brand-stratus-blue/25 bg-white px-3 py-1.5 text-[12px] font-semibold text-brand-ink shadow-[var(--shadow-brand-sm)] transition-opacity hover:bg-brand-canvas disabled:opacity-50"
-            >
-              {generatingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              {generatingReply ? "Writing smart emails…" : "Regenerate reply"}
-            </button>
+        {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet ? (
+          <div className="border-b border-black/[0.06] bg-[#f5f5f7] px-4 py-2.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-ink-faint">
+              They wrote
+            </p>
+            <p className="mt-0.5 line-clamp-2 text-[12px] leading-snug text-brand-ink-soft">
+              {emailThread.inboundSnippet}
+            </p>
           </div>
         ) : null}
 
         {showReRow ? (
-          <div className="px-3 pt-2 lg:px-0">
-            <EnvelopeRow label="Re">
-              <p className="truncate text-[12px] font-semibold text-brand-stratus-blue">{threadSubject}</p>
-            </EnvelopeRow>
+          <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-2.5">
+            <span className="w-14 shrink-0 text-[12px] font-medium text-brand-ink-faint">Re</span>
+            <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-brand-ink">
+              {threadSubject}
+            </p>
           </div>
         ) : (
-          <div className="px-3 pt-2.5 lg:px-0">
-            <div className="mb-1.5 flex items-baseline justify-between gap-3">
-              <p className="text-[11px] font-semibold text-brand-ink">Subject</p>
-              <p className="text-[10px] text-brand-ink-faint">Applies to all three sequence emails</p>
-            </div>
-            <div
-              className="grid grid-cols-1 gap-1.5 sm:grid-cols-2"
-              role="radiogroup"
-              aria-label="Subject options"
-            >
-              {(subjectOptions.length ? subjectOptions : [{ key: "A" as const, value: activeSubject }]).map(
-                (option) => {
-                  const checked = option.key === safeSubjectKey;
-                  return (
-                    <div
-                      key={option.key}
-                      role="radio"
-                      aria-checked={checked}
-                      tabIndex={isDraftLocked ? -1 : 0}
-                      onClick={() => {
-                        if (isDraftLocked) return;
-                        setSubjectKey(option.key);
-                        setDirty(true);
-                      }}
-                      onKeyDown={(e) => {
-                        if (isDraftLocked) return;
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          setSubjectKey(option.key);
-                          setDirty(true);
-                        }
-                      }}
-                      className={cn(
-                        "ish-email-choice flex min-w-0 cursor-pointer flex-col gap-1 rounded-[12px] border px-2.5 py-2 transition-colors",
-                        checked
-                          ? "border-brand-stratus-blue/40 bg-white shadow-[var(--shadow-brand-sm)]"
-                          : "border-transparent bg-white/70 hover:border-brand-stratus-blue/20 hover:bg-white",
-                        isDraftLocked && "cursor-default opacity-60",
-                      )}
-                    >
-                      <span className="text-[9px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-                        {option.key}
-                      </span>
-                      {checked && !isDraftLocked ? (
-                        <input
-                          type="text"
-                          value={option.value}
-                          onChange={(e) => handleSubjectChange(option.key, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          placeholder={`Subject ${option.key}`}
-                          className={cn(
-                            "w-full border-0 bg-transparent px-0 py-0 leading-snug",
-                            text.body,
-                            "text-[12px] font-medium placeholder:text-brand-ink-faint focus:outline-none focus:ring-0",
-                          )}
-                        />
-                      ) : (
-                        <p className="line-clamp-2 text-[12px] font-medium leading-snug text-brand-ink">
-                          {option.value}
-                        </p>
-                      )}
-                    </div>
-                  );
-                },
-              )}
-            </div>
+          <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-2.5">
+            <span className="w-14 shrink-0 text-[12px] font-medium text-brand-ink-faint">Subject</span>
+            {isDraftLocked ? (
+              <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-brand-ink">
+                {activeSubject || "No subject"}
+              </p>
+            ) : (
+              <input
+                type="text"
+                value={activeSubject}
+                onChange={(e) => handleSubjectChange(e.target.value)}
+                placeholder="Subject"
+                className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-brand-ink placeholder:text-brand-ink-faint focus:outline-none focus:ring-0"
+              />
+            )}
           </div>
         )}
 
-        <div className="ish-email-body relative mt-2.5 min-w-0 px-0 pt-2 lg:rounded-[14px] lg:border lg:border-brand-stratus-blue/15 lg:bg-brand-canvas/25 lg:px-3 lg:pt-2.5 lg:shadow-[var(--shadow-brand-sm)]">
-          <div className="mb-1.5 flex items-center justify-between gap-3 px-3 lg:px-0">
-            <p className="text-[11px] font-semibold text-brand-ink">Body</p>
-            <p className="text-[10px] text-brand-ink-faint">
-              {bodyOptions.length > 1 ? (
-                <span className="lg:hidden">{bodyPage} / {bodyOptions.length} · </span>
-              ) : null}
-              {displayDraft.draftSource} · {displayDraft.revisionCount ?? 0} rev
-              {displayDraft.rubricTotal != null ? ` · rubric ${displayDraft.rubricTotal}` : ""}
+        <div className="ish-email-body px-4 py-3">
+          {isDraftLocked ? (
+            <p
+              className={cn(
+                text.body,
+                "min-h-[12rem] whitespace-pre-wrap text-[14px] leading-[1.55] text-brand-ink-soft",
+              )}
+            >
+              {bodyText || "No message"}
             </p>
-          </div>
-          <div
-            className="flex gap-2 overflow-x-auto px-3 pb-2 snap-x snap-mandatory scrollbar-none lg:grid lg:grid-cols-2 lg:overflow-visible lg:px-0 lg:pb-2.5"
-            role="radiogroup"
-            aria-label="Body options"
-            onScroll={handleBodyStripScroll}
-          >
-            {(bodyOptions.length ? bodyOptions : [{ key: "A" as const, value: bodyText }]).map((option) => {
-              const checked = option.key === safeBodyKey;
-              return (
-                <div
-                  key={option.key}
-                  role="radio"
-                  aria-checked={checked}
-                  tabIndex={isDraftLocked ? -1 : 0}
-                  onClick={() => {
-                    if (isDraftLocked) return;
-                    setBodyKey(option.key);
-                    setDirty(true);
-                  }}
-                  onKeyDown={(e) => {
-                    if (isDraftLocked) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      setBodyKey(option.key);
-                      setDirty(true);
-                    }
-                  }}
-                  className={cn(
-                    "ish-email-choice flex w-[85%] shrink-0 snap-center flex-col rounded-[12px] border p-2.5 transition-colors lg:w-auto lg:min-w-0",
-                    "min-h-[15.6rem] max-h-[25.2rem]",
-                    checked
-                      ? "border-brand-stratus-blue/40 bg-white shadow-[var(--shadow-brand-sm)]"
-                      : "border-transparent bg-white/70 hover:border-brand-stratus-blue/20 hover:bg-white",
-                    isDraftLocked ? "cursor-default opacity-60" : "cursor-pointer",
-                  )}
-                >
-                  <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <p className="text-[9px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-                      {option.key}
-                    </p>
-                  </div>
-                  <div
-                    className="min-h-0 flex-1 overflow-y-auto"
-                    onClick={(e) => {
-                      if (checked) e.stopPropagation();
-                    }}
-                    onKeyDown={(e) => {
-                      if (checked) e.stopPropagation();
-                    }}
-                  >
-                    <CompareBodyField
-                      value={option.value}
-                      onChange={(value) => handleBodyChange(option.key, value)}
-                      disabled={isDraftLocked}
-                      editable={checked}
-                      placeholder="Write your message…"
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          ) : (
+            <textarea
+              value={bodyText}
+              onChange={(e) => handleBodyChange(e.target.value)}
+              placeholder="Write your message…"
+              className={cn(
+                "block min-h-[16rem] w-full resize-none border-0 bg-transparent px-0 py-0",
+                text.body,
+                "whitespace-pre-wrap text-[14px] leading-[1.55] text-brand-ink placeholder:text-brand-ink-faint focus:outline-none focus:ring-0",
+              )}
+            />
+          )}
         </div>
 
-        {!isDraftLocked && (
-          <div className="mt-2 px-0 lg:px-0">
+        {!isDraftLocked ? (
+          <div className="border-t border-black/[0.06] px-3 py-2.5 lg:px-4">
             <EmailEditChat
               embedded
               contentScore={contentScore}
@@ -803,7 +721,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
               }
             />
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

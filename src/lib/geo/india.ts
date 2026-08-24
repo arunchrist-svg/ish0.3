@@ -822,7 +822,8 @@ export function toggleScoutDistrictPick(
   if (selected.has(district.id)) selected.delete(district.id);
   else selected.add(district.id);
 
-  if (selected.size === 0) return kept.length ? kept : cities;
+  // Empty selection is allowed (scout blocks until the user picks again).
+  if (selected.size === 0) return kept;
   const canUseStateLabel = pool.length === state.districts.length;
   if (canUseStateLabel && selected.size === pool.length) {
     return uniqueKeepLabels([...kept, state.name]);
@@ -843,7 +844,7 @@ export function setScoutStateDistricts(
   if (!state) return cities;
   const pool = districtsInPool(state, allowedDistrictIds);
   const kept = explodeCitiesForState(cities, state);
-  if (!selectAll) return kept.length ? kept : cities;
+  if (!selectAll) return kept;
   if (pool.length === state.districts.length) {
     return uniqueKeepLabels([...kept, state.name]);
   }

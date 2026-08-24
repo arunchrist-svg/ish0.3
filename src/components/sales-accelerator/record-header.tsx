@@ -114,15 +114,15 @@ export function RecordHeader({ current, lead, onRefresh, refreshing, onLeadUpdat
 
   return (
     <>
-      <div className="flex items-center justify-between gap-2 px-3 py-1.5 lg:gap-4 lg:px-[22px] lg:py-4">
-        <div className="hidden min-w-0 flex-1 items-center gap-[18px] lg:flex">
-          <IshAvatar name={current.name} index={0} size={64} />
+      <div className="flex items-center justify-between gap-2 px-3 py-1.5 lg:gap-4 lg:px-[22px] lg:py-2.5">
+        <div className="hidden min-w-0 flex-1 items-center gap-3 lg:flex">
+          <IshAvatar name={current.name} index={0} size={48} />
           <div className="min-w-0 flex-1">
-            <div className="mb-1 flex min-w-0 items-center gap-2.5">
+            <div className="mb-0.5 flex min-w-0 items-center gap-2">
               <div className={cn("truncate", text.display)}>{current.name}</div>
               {linkedInLink}
             </div>
-            <div className="truncate text-[13px] font-semibold text-brand-ink-soft">
+            <div className="truncate text-[12px] font-semibold text-brand-ink-soft">
               {formatSubtitle(current.title, current.company)}
             </div>
           </div>

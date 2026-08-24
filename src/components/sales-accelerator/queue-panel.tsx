@@ -61,6 +61,9 @@ type Props = {
   addedByUsers?: LeadAddedByUserOption[];
   onMergeDuplicates?: () => void | Promise<void>;
   mergingDuplicates?: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void | Promise<void>;
 };
 
 
@@ -249,6 +252,9 @@ export function QueuePanel({
   addedByUsers = [],
   onMergeDuplicates,
   mergingDuplicates,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: Props) {
   const isMobile = useIsMobileLayout();
   const [internalSearch, setInternalSearch] = useState("");
@@ -410,6 +416,18 @@ export function QueuePanel({
                 ))}
               </div>
             )}
+            {hasMore && onLoadMore ? (
+              <div className="flex justify-center py-4">
+                <button
+                  type="button"
+                  onClick={() => void onLoadMore()}
+                  disabled={loadingMore}
+                  className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading…" : "Load more leads"}
+                </button>
+              </div>
+            ) : null}
           </div>
           {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
         </div>
@@ -458,6 +476,18 @@ export function QueuePanel({
               />
             ))
           )}
+          {hasMore && onLoadMore ? (
+            <div className="flex justify-center py-3">
+              <button
+                type="button"
+                onClick={() => void onLoadMore()}
+                disabled={loadingMore}
+                className="rounded-full border border-brand-border/70 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink disabled:opacity-50"
+              >
+                {loadingMore ? "Loading…" : "Load more"}
+              </button>
+            </div>
+          ) : null}
         </div>
         {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
       </div>

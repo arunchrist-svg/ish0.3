@@ -742,16 +742,16 @@ function LocationDistrictPicker({
 
   return (
     <div className="flex flex-col">
-      <div className={cn("border-b border-brand-border", compact ? "px-3 py-2" : "p-3")}>
-        <div className="ish-scout-search flex items-center gap-2 rounded-full px-3 py-2">
-          <Search className="size-3.5 shrink-0 text-brand-stratus-blue" />
+      <div className={cn("border-b border-brand-border/60", compact ? "px-3 py-2.5" : "px-3.5 py-3")}>
+        <div className="ish-scout-search flex items-center gap-2 rounded-2xl px-3.5 py-2.5">
+          <Search className="size-3.5 shrink-0 text-brand-stratus-blue/80" />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search districts or states…"
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
+            placeholder="Search districts or states"
+            className="min-w-0 flex-1 bg-transparent text-[13px] font-medium tracking-tight text-brand-ink outline-none placeholder:font-normal placeholder:text-brand-ink-faint"
           />
           {query ? (
             <button
@@ -760,68 +760,153 @@ function LocationDistrictPicker({
                 setQuery("");
                 inputRef.current?.focus();
               }}
-              className="text-brand-ink-faint hover:text-brand-ink"
+              className="flex size-5 items-center justify-center rounded-full bg-brand-ink-faint/15 text-brand-ink-soft hover:bg-brand-ink-faint/25"
+              aria-label="Clear search"
             >
               <X className="size-3" />
             </button>
           ) : null}
         </div>
+        <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
+          <p className="text-[11px] font-medium text-brand-ink-faint">
+            {cities.length === 0
+              ? "Nothing selected"
+              : `${cities.length} location${cities.length === 1 ? "" : "s"} selected`}
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                let next = cities;
+                for (const group of groups) {
+                  next = setScoutStateDistricts(
+                    next,
+                    group.state.id,
+                    true,
+                    group.districts.map((d) => d.id),
+                  );
+                }
+                onCitiesChange(next);
+              }}
+              disabled={groups.every(
+                (g) => g.districts.length > 0 && g.districts.every((d) => isScoutDistrictPicked(cities, d)),
+              )}
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
+            >
+              All
+            </button>
+            <span className="text-[10px] text-brand-ink-faint/50" aria-hidden>
+              ·
+            </span>
+            <button
+              type="button"
+              onClick={() => onCitiesChange([])}
+              disabled={cities.length === 0}
+              className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div className={cn(compact ? "px-3 py-2" : "p-3")}>
+      <div className={cn("flex flex-col gap-2", compact ? "px-2.5 py-2.5" : "px-3 py-3")}>
         {filtered.length === 0 ? (
-          <p className="py-6 text-center text-[12px] text-brand-ink-faint">No districts match.</p>
+          <p className="py-8 text-center text-[12.5px] font-medium text-brand-ink-faint">No districts match</p>
         ) : (
           filtered.map((group) => {
             const allowedIds = group.districts.map((d) => d.id);
             const selectedCount = group.districts.filter((d) => isScoutDistrictPicked(cities, d)).length;
             const allOn = selectedCount === group.districts.length && group.districts.length > 0;
+            const noneOn = selectedCount === 0;
             const expanded = isExpanded(group.state.id, group.districts.length);
             const selectedNames = group.districts
               .filter((d) => isScoutDistrictPicked(cities, d))
               .map((d) => d.displayName);
             return (
-              <div key={group.state.id} className="mb-2 last:mb-0">
-                <div className="flex items-center gap-2 rounded-xl bg-brand-canvas/70 px-2 py-1.5">
+              <div
+                key={group.state.id}
+                className="overflow-hidden rounded-2xl bg-white/70 shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.10)]"
+              >
+                <div className="flex items-center gap-1.5 px-2 py-1.5">
                   <button
                     type="button"
                     onClick={() =>
                       setCollapsed((prev) => ({ ...prev, [group.state.id]: expanded }))
                     }
-                    className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1.5 py-1.5 text-left transition-colors hover:bg-brand-stratus-blue/[0.06]"
                   >
-                    <ChevronDown
+                    <span
                       className={cn(
-                        "size-3.5 shrink-0 text-brand-ink-faint transition-transform",
+                        "flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-canvas text-brand-ink-soft transition-transform",
                         expanded ? "rotate-0" : "-rotate-90",
                       )}
-                    />
-                    <span className="truncate text-[11px] font-bold uppercase tracking-widest text-brand-ink">
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold tracking-tight text-brand-ink">
                       {group.state.name}
                     </span>
-                    <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[10px] font-semibold text-brand-ink-soft shadow-[var(--shadow-brand-sm)]">
+                    <span
+                      className={cn(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold tabular-nums",
+                        selectedCount > 0
+                          ? "bg-brand-stratus-blue/15 text-brand-ink"
+                          : "bg-brand-canvas text-brand-ink-faint",
+                      )}
+                    >
                       {selectedCount}/{group.districts.length}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onCitiesChange(setScoutStateDistricts(cities, group.state.id, !allOn, allowedIds))}
-                    className="shrink-0 text-[11px] font-semibold text-brand-stratus-blue"
+                  <div
+                    className="flex shrink-0 items-center rounded-full bg-brand-canvas/90 p-0.5 shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.10)]"
+                    role="group"
+                    aria-label={`${group.state.name} selection`}
                   >
-                    {allOn ? "Clear" : "All"}
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onCitiesChange(setScoutStateDistricts(cities, group.state.id, true, allowedIds))
+                      }
+                      disabled={allOn}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                        allOn
+                          ? "bg-white text-brand-ink shadow-[var(--shadow-brand-sm)]"
+                          : "text-brand-stratus-blue hover:text-brand-ink disabled:text-brand-ink-faint",
+                      )}
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onCitiesChange(setScoutStateDistricts(cities, group.state.id, false, allowedIds))
+                      }
+                      disabled={noneOn}
+                      className={cn(
+                        "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                        noneOn
+                          ? "bg-white text-brand-ink shadow-[var(--shadow-brand-sm)]"
+                          : "text-brand-stratus-blue hover:text-brand-ink disabled:text-brand-ink-faint",
+                      )}
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
 
                 {!expanded ? (
-                  <p className="px-8 py-1.5 text-[11px] text-brand-ink-soft">
+                  <p className="px-11 pb-2.5 text-[11.5px] leading-snug text-brand-ink-soft">
                     {allOn
                       ? `All ${group.districts.length} districts`
                       : selectedNames.length
-                        ? selectedNames.slice(0, 4).join(", ") + (selectedNames.length > 4 ? ` +${selectedNames.length - 4}` : "")
+                        ? selectedNames.slice(0, 4).join(", ") +
+                          (selectedNames.length > 4 ? ` +${selectedNames.length - 4}` : "")
                         : "None selected"}
                   </p>
                 ) : (
-                  <ScoutChipGrid className="mt-1.5 px-1 pb-2">
+                  <ScoutChipGrid className="px-3 pb-3 pt-0.5">
                     {group.districts.map((district) => {
                       const selected = isScoutDistrictPicked(cities, district);
                       return (
@@ -841,6 +926,11 @@ function LocationDistrictPicker({
             );
           })
         )}
+        {cities.length === 0 ? (
+          <p className="px-1 pt-0.5 text-[11px] leading-relaxed text-brand-ink-faint">
+            Select districts to scout, or leave empty until you are ready.
+          </p>
+        ) : null}
       </div>
     </div>
   );

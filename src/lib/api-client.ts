@@ -1,5 +1,6 @@
 import type { CompanyOverview, CompanyOverviewInput, CompanyOverviewResult } from "./company-overview";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "./enrichment/types";
+import { cachedFetch, invalidateCached } from "@/lib/client-fetch-cache";
 
 export function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -128,6 +129,12 @@ async function get<T>(path: string): Promise<T> {
     throwFromErrorBody(err, res.statusText);
   }
   return res.json();
+}
+
+function invalidateLeadCaches(leadId?: string) {
+  invalidateCached("/api/leads?");
+  if (leadId) invalidateCached(`/api/leads/${leadId}`);
+  else invalidateCached("/api/leads/");
 }
 
 async function del<T>(path: string): Promise<T> {
@@ -456,9 +463,21 @@ export async function scoutDeleteSession(id: string): Promise<{ ok: boolean }> {
   return del(`/api/scout/sessions/${id}`);
 }
 
+export type ScoutBootstrapCompany = {
+  id: string;
+  name: string;
+  domain?: string | null;
+  city?: string | null;
+};
+
 export type ScoutBootstrapPayload = {
-  leads: { id: string; name: string; company: string }[];
-  companies: ScoutCompanyResult[];
+  /** Compact dedupe entries: key is `company|name` lowercase. */
+  dedupeKeys?: { id: string; key: string; name?: string; company?: string }[];
+  /** Lead id by dedupe key (`name|company` lowercase). */
+  dedupeLeadIds?: Record<string, string>;
+  /** @deprecated Prefer dedupeKeys. Kept for older clients. */
+  leads?: { id: string; name: string; company: string }[];
+  companies: ScoutBootstrapCompany[] | ScoutCompanyResult[];
   dataMode?: DataMode;
   scoutCompaniesLimit?: number;
   scoutLeadsLimit?: number;
@@ -545,16 +564,57 @@ export async function runScoutAgent(params: {
 }
 
 // ─── Leads ────────────────────────────────────────────────────────────────────
-export async function fetchLeads(params?: { status?: string; limit?: number }): Promise<LeadQueueItem[]> {
-  const qs = new URLSearchParams();
-  if (params?.status) qs.set("status", params.status);
-  qs.set("limit", String(params?.limit ?? 5000));
-  const data = await get<{ leads: LeadQueueItem[] }>(`/api/leads?${qs.toString()}`);
-  return data.leads;
+export type LeadsPage = {
+  leads: LeadQueueItem[];
+  nextCursor: string | null;
+  totals?: { leads: number };
+};
+
+export async function fetchLeads(params?: {
+  status?: string;
+  limit?: number;
+  cursor?: string | null;
+  totals?: boolean;
+}): Promise<LeadQueueItem[]> {
+  const page = await fetchLeadsPage(params);
+  return page.leads;
 }
 
-export async function fetchLead(id: string): Promise<LeadDetailRecord> {
-  const data = await get<{ lead: LeadDetailRecord }>(`/api/leads/${id}`);
+export async function fetchLeadsPage(params?: {
+  status?: string;
+  limit?: number;
+  cursor?: string | null;
+  totals?: boolean;
+  force?: boolean;
+}): Promise<LeadsPage> {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  qs.set("limit", String(params?.limit ?? 50));
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  if (params?.totals) qs.set("totals", "1");
+  const path = `/api/leads?${qs.toString()}`;
+  // Cache first page only; paginated pages stay uncached to avoid stale appends.
+  const useCache = !params?.cursor;
+  const data = useCache
+    ? await cachedFetch(
+        path,
+        () => get<{ leads: LeadQueueItem[]; nextCursor?: string | null; totals?: { leads: number } }>(path),
+        { force: params?.force },
+      )
+    : await get<{ leads: LeadQueueItem[]; nextCursor?: string | null; totals?: { leads: number } }>(path);
+  return {
+    leads: data.leads,
+    nextCursor: data.nextCursor ?? null,
+    totals: data.totals,
+  };
+}
+
+export async function fetchLead(id: string, opts?: { force?: boolean }): Promise<LeadDetailRecord> {
+  const path = `/api/leads/${id}`;
+  const data = await cachedFetch(path, () => get<{ lead: LeadDetailRecord }>(path), {
+    ttlMs: 20_000,
+    force: opts?.force,
+  });
   return data.lead;
 }
 
@@ -792,6 +852,22 @@ export async function reviseDraft(
 }
 
 
+export async function createBlankOutreachSequence(params: {
+  leadId: string;
+  outreachTemplate?: string;
+}): Promise<{ drafts: WriterDraft[]; draft: WriterDraft }> {
+  const res = await fetch("/api/outreach/draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? "Failed to start blank drafts");
+  }
+  return res.json();
+}
+
 export async function updateOutreachDraft(params: {
   leadOutreachId: string;
   emailBody?: string;
@@ -877,6 +953,7 @@ export type LeadFormInput = {
 
 export async function createLead(input: LeadFormInput): Promise<{ id: string; existing?: boolean }> {
   const data = await post<{ ok: boolean; id: string; existing?: boolean }>("/api/leads", input);
+  invalidateLeadCaches();
   return { id: data.id, existing: data.existing };
 }
 
@@ -1027,6 +1104,7 @@ export async function mergeLeadDuplicates(input?: {
 
 export async function updateLead(leadId: string, input: Partial<LeadFormInput>): Promise<void> {
   await patch(`/api/leads/${leadId}`, input);
+  invalidateLeadCaches(leadId);
 }
 
 export async function deleteLead(leadId: string): Promise<void> {
@@ -1035,6 +1113,7 @@ export async function deleteLead(leadId: string): Promise<void> {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error ?? res.statusText);
   }
+  invalidateLeadCaches(leadId);
 }
 
 export async function updateLeadStatus(
@@ -1042,6 +1121,7 @@ export async function updateLeadStatus(
   params: { status: "tasting_sent" | "negotiate" | "closed"; closedDealAmount?: string },
 ): Promise<void> {
   await patch(`/api/leads/${leadId}`, params);
+  invalidateLeadCaches(leadId);
 }
 
 export type InboxReplySyncResult = {
@@ -1083,6 +1163,7 @@ export type LeadQueueItem = {
   name: string;
   title: string;
   company: string;
+  companyDomain?: string;
   employees?: string;
   domain?: string;
   website?: string;
@@ -1400,11 +1481,44 @@ export type DirectoryCompany = {
 export type DirectoryResponse = {
   companies: DirectoryCompany[];
   contacts: DirectoryContact[];
+  nextCursor?: string | null;
   totals: { companies: number; contacts: number };
 };
 
-export async function fetchDirectory(): Promise<DirectoryResponse> {
-  return get<DirectoryResponse>("/api/directory");
+export type FetchDirectoryParams = {
+  limit?: number;
+  cursor?: string | null;
+  totals?: boolean;
+};
+
+export async function fetchDirectory(params?: FetchDirectoryParams): Promise<DirectoryResponse> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(params?.limit ?? 50));
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  if (params?.totals === false) qs.set("totals", "0");
+  const path = `/api/directory?${qs.toString()}`;
+  if (params?.cursor) return get<DirectoryResponse>(path);
+  return cachedFetch(path, () => get<DirectoryResponse>(path));
+}
+
+export type DirectoryContactsResponse = {
+  contacts: DirectoryContact[];
+  nextCursor: string | null;
+};
+
+export async function fetchDirectoryContacts(params?: {
+  companyId?: string;
+  limit?: number;
+  cursor?: string | null;
+}): Promise<DirectoryContactsResponse> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(params?.limit ?? 50));
+  if (params?.companyId) qs.set("companyId", params.companyId);
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  const data = await get<{ contacts: DirectoryContact[]; nextCursor?: string | null }>(
+    `/api/directory/contacts?${qs.toString()}`,
+  );
+  return { contacts: data.contacts, nextCursor: data.nextCursor ?? null };
 }
 
 // ─── Pins ─────────────────────────────────────────────────────────────────────
@@ -1508,8 +1622,38 @@ export async function submitDraftFeedback(outreachId: string, rating: "up" | "do
   await post("/api/outreach/feedback", { outreachId, rating, comment });
 }
 
-export async function fetchContacts(): Promise<ContactListItem[]> {
-  return get<ContactListItem[]>("/api/contacts");
+export type FetchContactsPage = {
+  contacts: ContactListItem[];
+  nextCursor: string | null;
+};
+
+export async function fetchContactsPage(params?: {
+  limit?: number;
+  cursor?: string | null;
+}): Promise<FetchContactsPage> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(params?.limit ?? 50));
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  const path = `/api/contacts?${qs.toString()}`;
+  const data = params?.cursor
+    ? await get<{ contacts?: ContactListItem[]; nextCursor?: string | null } | ContactListItem[]>(path)
+    : await cachedFetch(path, () =>
+        get<{ contacts?: ContactListItem[]; nextCursor?: string | null } | ContactListItem[]>(path),
+      );
+  // Backward compat: older servers returned a bare array
+  if (Array.isArray(data)) {
+    return { contacts: data, nextCursor: null };
+  }
+  return { contacts: data.contacts ?? [], nextCursor: data.nextCursor ?? null };
+}
+
+/** First page of contacts (default limit 50). Prefer `fetchContactsPage` for load-more. */
+export async function fetchContacts(params?: {
+  limit?: number;
+  cursor?: string | null;
+}): Promise<ContactListItem[]> {
+  const page = await fetchContactsPage(params);
+  return page.contacts;
 }
 
 export type NetworkGraph = import("./network/types").NetworkGraph;

@@ -2,11 +2,39 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, outreachSchedule, leads, contacts, accounts, leadOutreach } from "@/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { normalizeCadenceDays, type CadenceDays } from "@/lib/email/cadence";
 import { suggestReplyNextAction, type ReplyNextAction } from "@/lib/email/reply-next-action";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+import { parseListLimit } from "@/lib/api/cursor";
+
+export const preferredRegion = ["sin1"];
+
+const SCHEDULE_ROW_CAP = 800;
+
+type ScheduleGraphRow = {
+  scheduleId: string;
+  leadId: string;
+  sequenceDay: number;
+  scheduleStatus: string;
+  scheduledFor: Date;
+  sentAt: Date | null;
+  openedAt: Date | null;
+  bouncedAt: Date | null;
+  bounceReason: string | null;
+  recipientEmail: string | null;
+  emailKind: string | null;
+  draftLeadOutreachId: string | null;
+  leadStatus: string;
+  contactName: string;
+  contactEmail: string | null;
+  companyName: string;
+  industry: string | null;
+  city: string | null;
+  lastReplyContent: string | null;
+};
 
 export type ScheduledFollowUp = {
   sequenceDay: number;
@@ -266,119 +294,244 @@ function parseTabsParam(searchParams: URLSearchParams): QueueTabKey[] {
 }
 
 export async function GET(req: Request) {
+  const { marks, t0 } = startTiming();
   try {
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
+    mark(marks, "auth", authStart);
     const { searchParams } = new URL(req.url);
     const tabsToInclude = parseTabsParam(searchParams);
+    const countsOnly = searchParams.get("counts") === "1";
+    const needNeedsReview = tabsToInclude.includes("needs_review");
+    // Full schedule graph only when a tab needs sequence classification (not needs_review alone).
+    const needScheduleGraph = tabsToInclude.some((t) =>
+      t === "active" || t === "hot" || t === "replies" || t === "done",
+    );
+    const rowLimit = Math.min(parseListLimit(searchParams.get("limit"), 100), SCHEDULE_ROW_CAP);
 
+    if (countsOnly) {
+      const dbStart = performance.now();
+      const [emailConfig, draftReadyCount, pendingReviewCount, replyCount] = await Promise.all([
+        getResolvedEmailConfig(ctx.workspaceId),
+        db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(leads)
+          .where(and(eq(leads.workspaceId, ctx.workspaceId), eq(leads.status, "draft_ready")))
+          .then((r) => r[0]?.n ?? 0),
+        db
+          .select({ n: sql<number>`count(distinct ${outreachSchedule.leadId})::int` })
+          .from(outreachSchedule)
+          .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+          .where(
+            and(eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.status, "pending_review")),
+          )
+          .then((r) => r[0]?.n ?? 0),
+        db
+          .select({ n: sql<number>`count(distinct ${leads.id})::int` })
+          .from(leads)
+          .innerJoin(outreachSchedule, eq(outreachSchedule.leadId, leads.id))
+          .where(
+            and(
+              eq(leads.workspaceId, ctx.workspaceId),
+              eq(outreachSchedule.emailKind, "inbound_reply"),
+              eq(outreachSchedule.status, "sent"),
+            ),
+          )
+          .then((r) => r[0]?.n ?? 0),
+      ]);
+      mark(marks, "db", dbStart);
+      const needsReview = draftReadyCount + pendingReviewCount;
+      const empty: LeadEmailRow[] = [];
+      const tabCounts = {
+        needs_review: needsReview,
+        active: 0,
+        hot: 0,
+        replies: replyCount,
+        done: 0,
+      };
+      return withServerTiming(
+        NextResponse.json({
+          outreachPaused: emailConfig.outreachPaused ?? false,
+          sendMode: emailConfig.sendMode,
+          cadenceDays: normalizeCadenceDays(emailConfig.cadenceDays),
+          stats: {
+            totalSent: 0,
+            opened: 0,
+            replied: replyCount,
+            dueToday: 0,
+            total: needsReview + replyCount,
+            needsReview,
+            replies: replyCount,
+            tabCounts,
+          },
+          needsReview: empty,
+          replies: empty,
+          hot: empty,
+          active: empty,
+          done: empty,
+          draftReady: empty,
+          stopped: empty,
+        }),
+        marks,
+        t0,
+      );
+    }
+
+    const dbStart = performance.now();
     const [emailConfig, rows, replyDrafts, pendingFollowUps, needsReviewLeads] = await Promise.all([
       getResolvedEmailConfig(ctx.workspaceId),
-      db
-        .select({
-          scheduleId: outreachSchedule.id,
-          leadId: outreachSchedule.leadId,
-          sequenceDay: outreachSchedule.sequenceDay,
-          scheduleStatus: outreachSchedule.status,
-          scheduledFor: outreachSchedule.scheduledFor,
-          sentAt: outreachSchedule.sentAt,
-          openedAt: outreachSchedule.openedAt,
-          bouncedAt: outreachSchedule.bouncedAt,
-          bounceReason: outreachSchedule.bounceReason,
-          recipientEmail: outreachSchedule.recipientEmail,
-          emailKind: outreachSchedule.emailKind,
-          draftLeadOutreachId: outreachSchedule.draftLeadOutreachId,
-          leadStatus: leads.status,
-          contactName: contacts.name,
-          contactEmail: contacts.email,
-          companyName: accounts.name,
-          industry: accounts.industry,
-          city: accounts.city,
-          lastReplyContent: leads.lastReplyContent,
-        })
-        .from(outreachSchedule)
-        .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
-        .innerJoin(contacts, eq(leads.contactId, contacts.id))
-        .innerJoin(accounts, eq(leads.accountId, accounts.id))
-        .where(and(eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.channel, "email"))),
-      db
-        .select({ leadId: leadOutreach.leadId })
-        .from(leadOutreach)
-        .innerJoin(leads, eq(leadOutreach.leadId, leads.id))
-        .where(
-          and(
-            eq(leads.workspaceId, ctx.workspaceId),
-            eq(leadOutreach.templateVariant, "reply"),
-          ),
-        ),
-      db
-        .select({
-          leadId: leads.id,
-          scheduleId: outreachSchedule.id,
-          sequenceDay: outreachSchedule.sequenceDay,
-          leadStatus: leads.status,
-          contactName: contacts.name,
-          contactEmail: contacts.email,
-          companyName: accounts.name,
-          industry: accounts.industry,
-          city: accounts.city,
-          lastReplyContent: leads.lastReplyContent,
-          subjectA: leadOutreach.subjectA,
-          emailBody: leadOutreach.emailBody,
-          draftOutreachId: leadOutreach.id,
-          revisionTimeout: leadOutreach.revisionTimeout,
-          deliverabilityScore: leadOutreach.deliverabilityScore,
-          rubricTotal: leadOutreach.rubricTotal,
-        })
-        .from(outreachSchedule)
-        .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
-        .innerJoin(contacts, eq(leads.contactId, contacts.id))
-        .innerJoin(accounts, eq(leads.accountId, accounts.id))
-        .leftJoin(leadOutreach, eq(leadOutreach.id, outreachSchedule.draftLeadOutreachId))
-        .where(
-          and(
-            eq(leads.workspaceId, ctx.workspaceId),
-            eq(outreachSchedule.status, "pending_review"),
-          ),
-        ),
-      db
-        .select({
-          leadId: leads.id,
-          leadStatus: leads.status,
-          contactName: contacts.name,
-          contactEmail: contacts.email,
-          companyName: accounts.name,
-          industry: accounts.industry,
-          city: accounts.city,
-          lastReplyContent: leads.lastReplyContent,
-          subjectA: leadOutreach.subjectA,
-          emailBody: leadOutreach.emailBody,
-          draftOutreachId: leadOutreach.id,
-          revisionTimeout: leadOutreach.revisionTimeout,
-          deliverabilityScore: leadOutreach.deliverabilityScore,
-          rubricTotal: leadOutreach.rubricTotal,
-        })
-        .from(leads)
-        .innerJoin(contacts, eq(leads.contactId, contacts.id))
-        .innerJoin(accounts, eq(leads.accountId, accounts.id))
-        .innerJoin(
-          leadOutreach,
-          and(
-            eq(leadOutreach.leadId, leads.id),
-            eq(leadOutreach.sequencePosition, 1),
-          ),
-        )
-        .where(
-          and(
-            eq(leads.workspaceId, ctx.workspaceId),
-            eq(leads.status, "draft_ready"),
-          ),
-        ),
+      needScheduleGraph
+        ? db
+            .select({
+              scheduleId: outreachSchedule.id,
+              leadId: outreachSchedule.leadId,
+              sequenceDay: outreachSchedule.sequenceDay,
+              scheduleStatus: outreachSchedule.status,
+              scheduledFor: outreachSchedule.scheduledFor,
+              sentAt: outreachSchedule.sentAt,
+              openedAt: outreachSchedule.openedAt,
+              bouncedAt: outreachSchedule.bouncedAt,
+              bounceReason: outreachSchedule.bounceReason,
+              recipientEmail: outreachSchedule.recipientEmail,
+              emailKind: outreachSchedule.emailKind,
+              draftLeadOutreachId: outreachSchedule.draftLeadOutreachId,
+              leadStatus: leads.status,
+              contactName: contacts.name,
+              contactEmail: contacts.email,
+              companyName: accounts.name,
+              industry: accounts.industry,
+              city: accounts.city,
+              lastReplyContent: leads.lastReplyContent,
+            })
+            .from(outreachSchedule)
+            .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+            .innerJoin(contacts, eq(leads.contactId, contacts.id))
+            .innerJoin(accounts, eq(leads.accountId, accounts.id))
+            .where(and(eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.channel, "email")))
+            .orderBy(desc(outreachSchedule.scheduledFor))
+            .limit(SCHEDULE_ROW_CAP)
+        : Promise.resolve([] as ScheduleGraphRow[]),
+      needScheduleGraph || needNeedsReview
+        ? db
+            .select({ leadId: leadOutreach.leadId })
+            .from(leadOutreach)
+            .innerJoin(leads, eq(leadOutreach.leadId, leads.id))
+            .where(
+              and(
+                eq(leads.workspaceId, ctx.workspaceId),
+                eq(leadOutreach.templateVariant, "reply"),
+              ),
+            )
+            .limit(500)
+        : Promise.resolve([] as { leadId: string }[]),
+      needNeedsReview
+        ? db
+            .select({
+              leadId: leads.id,
+              scheduleId: outreachSchedule.id,
+              sequenceDay: outreachSchedule.sequenceDay,
+              leadStatus: leads.status,
+              contactName: contacts.name,
+              contactEmail: contacts.email,
+              companyName: accounts.name,
+              industry: accounts.industry,
+              city: accounts.city,
+              lastReplyContent: leads.lastReplyContent,
+              subjectA: leadOutreach.subjectA,
+              emailBody: leadOutreach.emailBody,
+              draftOutreachId: leadOutreach.id,
+              revisionTimeout: leadOutreach.revisionTimeout,
+              deliverabilityScore: leadOutreach.deliverabilityScore,
+              rubricTotal: leadOutreach.rubricTotal,
+            })
+            .from(outreachSchedule)
+            .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+            .innerJoin(contacts, eq(leads.contactId, contacts.id))
+            .innerJoin(accounts, eq(leads.accountId, accounts.id))
+            .leftJoin(leadOutreach, eq(leadOutreach.id, outreachSchedule.draftLeadOutreachId))
+            .where(
+              and(
+                eq(leads.workspaceId, ctx.workspaceId),
+                eq(outreachSchedule.status, "pending_review"),
+              ),
+            )
+            .limit(rowLimit)
+        : Promise.resolve([] as {
+            leadId: string;
+            scheduleId: string;
+            sequenceDay: number;
+            leadStatus: string;
+            contactName: string;
+            contactEmail: string | null;
+            companyName: string;
+            industry: string | null;
+            city: string | null;
+            lastReplyContent: string | null;
+            subjectA: string | null;
+            emailBody: string | null;
+            draftOutreachId: string | null;
+            revisionTimeout: boolean | null;
+            deliverabilityScore: number | null;
+            rubricTotal: number | null;
+          }[]),
+      needNeedsReview
+        ? db
+            .select({
+              leadId: leads.id,
+              leadStatus: leads.status,
+              contactName: contacts.name,
+              contactEmail: contacts.email,
+              companyName: accounts.name,
+              industry: accounts.industry,
+              city: accounts.city,
+              lastReplyContent: leads.lastReplyContent,
+              subjectA: leadOutreach.subjectA,
+              emailBody: leadOutreach.emailBody,
+              draftOutreachId: leadOutreach.id,
+              revisionTimeout: leadOutreach.revisionTimeout,
+              deliverabilityScore: leadOutreach.deliverabilityScore,
+              rubricTotal: leadOutreach.rubricTotal,
+            })
+            .from(leads)
+            .innerJoin(contacts, eq(leads.contactId, contacts.id))
+            .innerJoin(accounts, eq(leads.accountId, accounts.id))
+            .innerJoin(
+              leadOutreach,
+              and(
+                eq(leadOutreach.leadId, leads.id),
+                eq(leadOutreach.sequencePosition, 1),
+              ),
+            )
+            .where(
+              and(
+                eq(leads.workspaceId, ctx.workspaceId),
+                eq(leads.status, "draft_ready"),
+              ),
+            )
+            .limit(rowLimit)
+        : Promise.resolve([] as {
+            leadId: string;
+            leadStatus: string;
+            contactName: string;
+            contactEmail: string | null;
+            companyName: string;
+            industry: string | null;
+            city: string | null;
+            lastReplyContent: string | null;
+            subjectA: string | null;
+            emailBody: string | null;
+            draftOutreachId: string | null;
+            revisionTimeout: boolean | null;
+            deliverabilityScore: number | null;
+            rubricTotal: number | null;
+          }[]),
     ]);
+    mark(marks, "db", dbStart);
     const cadenceDays = normalizeCadenceDays(emailConfig.cadenceDays);
 
     const replyDraftLeadIds = new Set(replyDrafts.map((r) => r.leadId));
 
-    const byLead = new Map<string, typeof rows>();
+    const byLead = new Map<string, ScheduleGraphRow[]>();
     for (const row of rows) {
       if (!byLead.has(row.leadId)) byLead.set(row.leadId, []);
       byLead.get(row.leadId)!.push(row);
@@ -501,11 +654,13 @@ export async function GET(req: Request) {
       );
     }
 
-    const needsReview = result.filter((r) => r.queueStatus === "needs_review");
-    const replies = result.filter((r) => r.queueStatus === "replies");
-    const hot = result.filter((r) => r.queueStatus === "hot");
-    const active = result.filter((r) => r.queueStatus === "active" && r.sequenceState === "active");
-    const done = result.filter((r) => r.queueStatus === "done");
+    const needsReview = result.filter((r) => r.queueStatus === "needs_review").slice(0, rowLimit);
+    const replies = result.filter((r) => r.queueStatus === "replies").slice(0, rowLimit);
+    const hot = result.filter((r) => r.queueStatus === "hot").slice(0, rowLimit);
+    const active = result
+      .filter((r) => r.queueStatus === "active" && r.sequenceState === "active")
+      .slice(0, rowLimit);
+    const done = result.filter((r) => r.queueStatus === "done").slice(0, rowLimit);
 
     const tabCounts = {
       needs_review: needsReview.length,
@@ -532,7 +687,8 @@ export async function GET(req: Request) {
     const include = (tab: QueueTabKey) => tabsToInclude.includes(tab);
     const empty: LeadEmailRow[] = [];
 
-    return NextResponse.json({
+    return withServerTiming(
+      NextResponse.json({
       outreachPaused: emailConfig.outreachPaused ?? false,
       sendMode: emailConfig.sendMode,
       cadenceDays,
@@ -553,7 +709,10 @@ export async function GET(req: Request) {
       done: include("done") ? done : empty,
       draftReady: include("needs_review") ? draftReady : empty,
       stopped: include("done") ? stopped : empty,
-    });
+    }),
+      marks,
+      t0,
+    );
   } catch (e) {
     return handleApiError(e, "[api/email/overview]");
   }

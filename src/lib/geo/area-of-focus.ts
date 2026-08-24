@@ -81,6 +81,15 @@ export const LOCALITY_CATALOG: CatalogLocality[] = [
   { name: "T Nagar", aliases: ["Thyagaraya Nagar"], city: "Chennai", lat: 13.0418, lng: 80.2337 },
   { name: "Guindy", city: "Chennai", lat: 13.0067, lng: 80.2206 },
   { name: "Ambattur", city: "Chennai", lat: 13.1143, lng: 80.1548 },
+  // Hassan (Karnataka)
+  { name: "Hassan", city: "Hassan", lat: 13.0033, lng: 76.1004 },
+  { name: "BM Road Hassan", aliases: ["BM Road", "B M Road"], city: "Hassan", lat: 13.0075, lng: 76.098 },
+  { name: "Vidyanagar Hassan", aliases: ["Vidyanagar"], city: "Hassan", lat: 13.012, lng: 76.095 },
+  { name: "Kuvempunagar Hassan", aliases: ["Kuvempunagar", "Kuvempu Nagar"], city: "Hassan", lat: 13.001, lng: 76.092 },
+  { name: "Hemavathi Nagar", aliases: ["Hemavati Nagar"], city: "Hassan", lat: 12.997, lng: 76.105 },
+  { name: "Holenarasipura", aliases: ["Holenarsipur", "HN Pura"], city: "Hassan", lat: 12.786, lng: 76.243 },
+  { name: "Arsikere", city: "Hassan", lat: 13.314, lng: 76.257 },
+  { name: "Sakleshpur", aliases: ["Sakleshpura"], city: "Hassan", lat: 12.941, lng: 75.785 },
 ];
 
 const CITY_KEY_ALIASES: Record<string, string> = {
@@ -97,6 +106,7 @@ const CITY_KEY_ALIASES: Record<string, string> = {
   madras: "Chennai",
   mangaluru: "Mangaluru",
   mangalore: "Mangaluru",
+  hassan: "Hassan",
 };
 
 export function normalizeLocalityKey(value: string): string {
@@ -109,7 +119,18 @@ export function normalizeLocalityKey(value: string): string {
 
 export function catalogCityLabel(cityQuery: string): string | null {
   const key = normalizeLocalityKey(cityQuery);
-  return CITY_KEY_ALIASES[key] ?? (LOCALITY_CATALOG.some((row) => normalizeLocalityKey(row.city) === key) ? cityQuery.trim() : null);
+  if (!key) return null;
+  if (CITY_KEY_ALIASES[key]) return CITY_KEY_ALIASES[key];
+  const catalogHit = LOCALITY_CATALOG.find((row) => normalizeLocalityKey(row.city) === key);
+  return catalogHit ? catalogHit.city : null;
+}
+
+/** Localities for a city. Unknown cities return [] (never fall back to all metros). */
+export function localitiesForCity(city: string): CatalogLocality[] {
+  const cityLabel = catalogCityLabel(city);
+  if (!cityLabel) return [];
+  const key = normalizeLocalityKey(cityLabel);
+  return LOCALITY_CATALOG.filter((row) => normalizeLocalityKey(row.city) === key);
 }
 
 export function catalogCityLabels(): string[] {
@@ -139,10 +160,9 @@ function localityNames(row: CatalogLocality): string[] {
 }
 
 export function findCatalogLocality(city: string, query: string): CatalogLocality | null {
-  const cityLabel = catalogCityLabel(city);
   const q = normalizeLocalityKey(query);
   if (!q) return null;
-  const pool = LOCALITY_CATALOG.filter((row) => !cityLabel || normalizeLocalityKey(row.city) === normalizeLocalityKey(cityLabel));
+  const pool = localitiesForCity(city);
   const exact = pool.find((row) => localityNames(row).some((name) => normalizeLocalityKey(name) === q));
   if (exact) return exact;
   return (
@@ -152,9 +172,8 @@ export function findCatalogLocality(city: string, query: string): CatalogLocalit
 }
 
 export function suggestCatalogAreas(city: string, query: string, limit = 8): { name: string }[] {
-  const cityLabel = catalogCityLabel(city);
   const q = normalizeLocalityKey(query);
-  const pool = LOCALITY_CATALOG.filter((row) => !cityLabel || normalizeLocalityKey(row.city) === normalizeLocalityKey(cityLabel));
+  const pool = localitiesForCity(city);
   const ranked = pool
     .map((row) => {
       const names = localityNames(row).map(normalizeLocalityKey);
@@ -206,10 +225,9 @@ export function nearbyAreasFromPin(params: {
   lng: number;
   radiusKm: number;
 }): ScoutNearbyArea[] {
-  const cityLabel = catalogCityLabel(params.city);
   const pin = { lat: params.lat, lng: params.lng };
   const radiusKm = clampAreaOfFocusRadiusKm(params.radiusKm);
-  const pool = LOCALITY_CATALOG.filter((row) => !cityLabel || normalizeLocalityKey(row.city) === normalizeLocalityKey(cityLabel));
+  const pool = localitiesForCity(params.city);
   const nearby: ScoutNearbyArea[] = [];
   const seen = new Set<string>();
 

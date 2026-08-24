@@ -20,7 +20,7 @@ import { AppPageHeader, MobilePageLayout, SearchBar } from "@/design-system";
 import { FacetFilterBar } from "@/components/filters/facet-filter-bar";
 import { BusinessCardCapture } from "@/components/mobile/business-card-capture";
 import type { BusinessCardFields } from "@/lib/enrichment/business-card-ocr";
-import { fetchContacts, createLeadFromContact, type ContactListItem } from "@/lib/api-client";
+import { fetchContactsPage, createLeadFromContact, type ContactListItem } from "@/lib/api-client";
 import { subscribeCrmRecordsRefresh, notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import {
   applyContactsListView,
@@ -65,6 +65,8 @@ function writeLocal(key: string, value: string) {
 export function ContactsApp() {
   const [scannedCard, setScannedCard] = useState<BusinessCardFields | null>(null);
   const [contacts, setContacts] = useState<ContactListItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [quick, setQuick] = useState<ContactsQuickId | null>(null);
@@ -90,12 +92,27 @@ export function ContactsApp() {
   async function load() {
     setLoading(true);
     try {
-      const data = await fetchContacts();
-      setContacts(data);
+      const page = await fetchContactsPage({ limit: 50 });
+      setContacts(page.contacts);
+      setNextCursor(page.nextCursor);
     } catch {
       toast.error("Could not load contacts");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchContactsPage({ limit: 50, cursor: nextCursor });
+      setContacts((prev) => [...prev, ...page.contacts]);
+      setNextCursor(page.nextCursor);
+    } catch {
+      toast.error("Could not load more contacts");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -262,6 +279,18 @@ export function ContactsApp() {
                 </div>
               ))}
             </div>
+            {nextCursor ? (
+              <div className="flex justify-center py-4">
+                <button
+                  type="button"
+                  onClick={() => void loadMore()}
+                  disabled={loadingMore}
+                  className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading…" : "Load more contacts"}
+                </button>
+              </div>
+            ) : null}
             <table className="hidden w-full text-[12px] lg:table">
               <thead className="sticky top-0 z-10 bg-brand-canvas/95 backdrop-blur">
                 <tr className="border-b border-brand-border">

@@ -2,63 +2,92 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, leads, contacts, accounts, users } from "@/db";
-import { eq, desc, inArray, and } from "drizzle-orm";
+import { eq, desc, inArray, and, sql } from "drizzle-orm";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { createManualLead } from "@/lib/leads/crud";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
-import { MAX_IMPORT_ROWS } from "@/lib/leads/import/types";
+import {
+  decodeCursor,
+  keysetBefore,
+  nextCursorFromRows,
+  parseListLimit,
+} from "@/lib/api/cursor";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+
+export const preferredRegion = ["sin1"];
 
 export async function GET(req: Request) {
+  const { marks, t0 } = startTiming();
   try {
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
+    mark(marks, "auth", authStart);
+
     const { searchParams } = new URL(req.url);
     const statusFilter = searchParams.get("status");
     const statuses = statusFilter ? statusFilter.split(",").filter(Boolean) : null;
-    const limitParam = searchParams.get("limit");
-    const rowLimit = limitParam
-      ? Math.min(Math.max(parseInt(limitParam, 10) || MAX_IMPORT_ROWS, 1), MAX_IMPORT_ROWS)
-      : MAX_IMPORT_ROWS;
+    const limit = parseListLimit(searchParams.get("limit"));
+    const cursor = decodeCursor(searchParams.get("cursor"));
+    const includeTotal = searchParams.get("totals") === "1";
 
-    const rows = await db
-      .select({
-        id: leads.id,
-        status: leads.status,
-        score: leads.score,
-        createdAt: leads.createdAt,
-        researcherEligible: leads.researcherEligible,
-        leadSource: leads.leadSource,
-        isPinned: leads.isPinned,
-        createdByUserId: leads.createdByUserId,
-        createdByName: users.name,
-        name: contacts.name,
-        title: contacts.title,
-        emailStatus: contacts.emailStatus,
-        email: contacts.email,
-        phone: contacts.phone,
-        linkedIn: contacts.linkedIn,
-        company: accounts.name,
-        employees: accounts.employees,
-        city: accounts.city,
-      })
-      .from(leads)
-      .innerJoin(contacts, eq(contacts.id, leads.contactId))
-      .innerJoin(accounts, eq(accounts.id, leads.accountId))
-      .leftJoin(users, eq(users.id, leads.createdByUserId))
-      .where(
-        statuses?.length
-          ? and(eq(leads.tenantId, ctx.tenantId), inArray(leads.status, statuses))
-          : eq(leads.tenantId, ctx.tenantId),
-      )
-      .orderBy(desc(leads.createdAt))
-      .limit(rowLimit);
+    const whereParts = [eq(leads.tenantId, ctx.tenantId)];
+    if (statuses?.length) whereParts.push(inArray(leads.status, statuses));
+    const keyset = keysetBefore(leads.createdAt, leads.id, cursor);
+    if (keyset) whereParts.push(keyset);
+
+    const dbStart = performance.now();
+    const [rows, totalRow] = await Promise.all([
+      db
+        .select({
+          id: leads.id,
+          status: leads.status,
+          score: leads.score,
+          createdAt: leads.createdAt,
+          researcherEligible: leads.researcherEligible,
+          leadSource: leads.leadSource,
+          isPinned: leads.isPinned,
+          createdByUserId: leads.createdByUserId,
+          createdByName: users.name,
+          name: contacts.name,
+          title: contacts.title,
+          emailStatus: contacts.emailStatus,
+          email: contacts.email,
+          phone: contacts.phone,
+          linkedIn: contacts.linkedIn,
+          company: accounts.name,
+          companyDomain: accounts.domain,
+          employees: accounts.employees,
+          city: accounts.city,
+        })
+        .from(leads)
+        .innerJoin(contacts, eq(contacts.id, leads.contactId))
+        .innerJoin(accounts, eq(accounts.id, leads.accountId))
+        .leftJoin(users, eq(users.id, leads.createdByUserId))
+        .where(and(...whereParts))
+        .orderBy(desc(leads.createdAt), desc(leads.id))
+        .limit(limit),
+      includeTotal
+        ? db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(leads)
+            .where(
+              statuses?.length
+                ? and(eq(leads.tenantId, ctx.tenantId), inArray(leads.status, statuses))
+                : eq(leads.tenantId, ctx.tenantId),
+            )
+            .then((r) => r[0]?.n ?? 0)
+        : Promise.resolve(undefined),
+    ]);
+    mark(marks, "db", dbStart);
 
     const queue: LeadQueueItem[] = rows.map((r) => ({
       id: r.id,
       name: r.name,
       title: r.title ?? "—",
       company: r.company,
+      companyDomain: r.companyDomain ?? undefined,
       employees: r.employees ?? undefined,
       city: r.city ?? "—",
       score: r.score ?? 60,
@@ -76,7 +105,20 @@ export async function GET(req: Request) {
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt ?? undefined,
     }));
 
-    return NextResponse.json({ leads: queue });
+    const nextCursor = nextCursorFromRows(
+      rows.map((r) => ({
+        id: r.id,
+        createdAt: r.createdAt,
+      })),
+      limit,
+    );
+
+    const res = NextResponse.json({
+      leads: queue,
+      nextCursor,
+      ...(totalRow != null ? { totals: { leads: totalRow } } : {}),
+    });
+    return withServerTiming(res, marks, t0);
   } catch (e) {
     return handleApiError(e, "[api/leads]");
   }

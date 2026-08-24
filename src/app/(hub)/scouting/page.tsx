@@ -1,5 +1,12 @@
+"use client";
+
 import { Suspense } from "react";
-import { ScoutingApp } from "@/components/scouting/scouting-app";
+import dynamic from "next/dynamic";
+
+const ScoutingApp = dynamic(
+  () => import("@/components/scouting/scouting-app").then((m) => m.ScoutingApp),
+  { ssr: false, loading: () => null },
+);
 
 export default function ScoutingPage() {
   return (

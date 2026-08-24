@@ -70,7 +70,7 @@ function MessageBubble({
     >
       <div
         className={cn(
-          "max-w-[92%] rounded-[16px] border px-3.5 py-3 shadow-[var(--shadow-brand-sm)] transition-shadow sm:max-w-[78%]",
+          "max-w-[92%] rounded-[14px] border px-3 py-2.5 shadow-[var(--shadow-brand-sm)] transition-shadow sm:max-w-[78%]",
           side === "them"
             ? "border-brand-stratus-blue/15 bg-white"
             : "border-brand-stratus-blue/20 bg-brand-canvas/60",
@@ -149,11 +149,18 @@ type Props = {
   thread?: EmailThread;
   selectedEventId?: string;
   onSelect?: (eventId: string) => void;
+  /** Hide draft bubbles when the compose editor is showing the same content. */
+  hideDraftEvents?: boolean;
 };
 
-export function ConversationTimeline({ thread, selectedEventId, onSelect }: Props) {
+export function ConversationTimeline({ thread, selectedEventId, onSelect, hideDraftEvents }: Props) {
   const events = useMemo(() => {
-    const list = [...(thread?.events ?? [])];
+    const list = [...(thread?.events ?? [])].filter((e) => {
+      if (!hideDraftEvents) return true;
+      if (e.status === "draft") return false;
+      if (e.id === "reply-draft") return false;
+      return true;
+    });
     list.sort((a, b) => {
       const ta = a.at ? new Date(a.at).getTime() : Number.POSITIVE_INFINITY;
       const tb = b.at ? new Date(b.at).getTime() : Number.POSITIVE_INFINITY;
@@ -168,19 +175,19 @@ export function ConversationTimeline({ thread, selectedEventId, onSelect }: Prop
       return order(a) - order(b);
     });
     return list;
-  }, [thread?.events]);
+  }, [thread?.events, hideDraftEvents]);
 
   if (!thread || events.length === 0) return null;
 
   return (
-    <div className="space-y-3 rounded-[18px] border border-brand-stratus-blue/12 bg-gradient-to-b from-brand-canvas/50 to-white px-3 py-3 lg:px-4 lg:py-4">
+    <div className="space-y-2 rounded-[14px] border border-brand-stratus-blue/12 bg-gradient-to-b from-brand-canvas/50 to-white px-3 py-2.5 lg:px-3.5 lg:py-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-ink-faint">Conversation</p>
         {thread.threadRootSubject ? (
           <p className="truncate text-[11px] font-medium text-brand-ink-soft">{thread.threadRootSubject}</p>
         ) : null}
       </div>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-2.5">
         {events.map((event) => (
           <MessageBubble
             key={event.id}

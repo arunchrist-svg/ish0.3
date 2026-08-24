@@ -6,6 +6,7 @@ import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/
 import { listActiveMemberships } from "@/lib/tenant";
 import { normalizeTenantSlug } from "@/lib/auth/slug";
 import { resolvePostAuthDestination } from "@/lib/auth/post-auth-redirect";
+import { attachSealedSessionCookie } from "@/lib/auth/attach-sealed-session";
 
 export async function POST(req: Request) {
   try {
@@ -74,6 +75,12 @@ export async function POST(req: Request) {
     const token = await createSession(user.id, sessionTenantId);
     const res = NextResponse.json({ ok: true, redirect });
     res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions(token));
+    await attachSealedSessionCookie(res, {
+      userId: user.id,
+      tenantId: sessionTenantId,
+      platformRole: user.platformRole,
+      mustChangePassword: user.mustChangePassword,
+    });
     return res;
   } catch (e) {
     console.error("[auth/login]", e);

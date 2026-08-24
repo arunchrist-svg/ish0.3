@@ -22,13 +22,27 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { leadId, outreachTemplate, mode, sequencePosition, writerMode, occasionTheme } = await req.json();
+    const { leadId, outreachTemplate, mode, sequencePosition, writerMode, occasionTheme, async: asyncMode } =
+      await req.json();
     const resolvedWriterMode = resolveWriterMode(writerMode);
     if (!leadId) return NextResponse.json({ error: "leadId required" }, { status: 400 });
 
     const [lead] = await db.select().from(leads).where(eq(leads.id, leadId)).limit(1);
     if (!lead || lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    if (asyncMode === true) {
+      const { enqueueWriterRun } = await import("@/lib/jobs/enqueue");
+      const status = await enqueueWriterRun({
+        leadId,
+        tenantId: ctx.tenantId,
+        mode: mode === "single" ? "single" : "sequence",
+        outreachTemplate,
+        writerMode: resolvedWriterMode,
+        occasionTheme,
+      });
+      return NextResponse.json({ ok: true, queued: status === "queued", leadId });
     }
 
     const emailConfig = await getResolvedEmailConfig(lead.workspaceId);

@@ -34,6 +34,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await assertCredits(ctx.tenantId, "enrich.paid", 1);
     }
 
+    const asyncOk = body.async === true;
+    if (asyncOk) {
+      const { enqueueEnrichLead } = await import("@/lib/jobs/enqueue");
+      const status = await enqueueEnrichLead({
+        leadId: id,
+        tenantId: ctx.tenantId,
+        mode,
+        dataMode,
+        refetch,
+      });
+      return NextResponse.json({ ok: true, queued: status === "queued", leadId: id });
+    }
+
     const result = await enrichLeadById({ leadId: id, mode, dataMode, refetch });
 
     if (mode === "paid" && result.success) {

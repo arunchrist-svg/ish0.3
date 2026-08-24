@@ -23,7 +23,6 @@ export const replyOrchestratorFunction = inngest.createFunction(
   },
 );
 
-
 export const researchLeadFunction = inngest.createFunction(
   {
     id: "research-lead",
@@ -57,4 +56,62 @@ export const sequencerFunction = inngest.createFunction(
   },
 );
 
-export const inngestFunctions = [researchLeadFunction, researchBatchFunction, sequencerFunction, replyOrchestratorFunction];
+export const writerLeadFunction = inngest.createFunction(
+  {
+    id: "writer-lead",
+    retries: 2,
+    concurrency: [{ limit: 3, key: "event.data.tenantId" }],
+  },
+  { event: "writer/lead.requested" },
+  async ({ event, step }) => {
+    const { runWriter } = await import("@/lib/agents/writer");
+    const { runWriterSequence } = await import("@/lib/agents/writer-sequence");
+    const result = await step.run("write-outreach", async () => {
+      if (event.data.mode === "single") {
+        const outreachId = await runWriter(event.data.leadId, {
+          outreachTemplate: event.data.outreachTemplate,
+          writerMode: event.data.writerMode,
+          occasionTheme: event.data.occasionTheme,
+        });
+        return { outreachIds: [outreachId] };
+      }
+      const ids = await runWriterSequence(event.data.leadId, {
+        outreachTemplate: event.data.outreachTemplate,
+        writerMode: event.data.writerMode,
+        occasionTheme: event.data.occasionTheme,
+      });
+      return { outreachIds: ids };
+    });
+    return { leadId: event.data.leadId, ...result };
+  },
+);
+
+export const enrichLeadFunction = inngest.createFunction(
+  {
+    id: "enrich-lead",
+    retries: 2,
+    concurrency: [{ limit: 4, key: "event.data.tenantId" }],
+  },
+  { event: "enrich/lead.requested" },
+  async ({ event, step }) => {
+    const { enrichLeadById } = await import("@/lib/enrichment/enrich-lead");
+    const result = await step.run("enrich", async () =>
+      enrichLeadById({
+        leadId: event.data.leadId,
+        mode: event.data.mode,
+        dataMode: event.data.dataMode,
+        refetch: event.data.refetch,
+      }),
+    );
+    return { leadId: event.data.leadId, result };
+  },
+);
+
+export const inngestFunctions = [
+  researchLeadFunction,
+  researchBatchFunction,
+  sequencerFunction,
+  replyOrchestratorFunction,
+  writerLeadFunction,
+  enrichLeadFunction,
+];

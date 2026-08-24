@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueuePanel } from "@/components/sales-accelerator/queue-panel";
 import { LeadSwitcherRail } from "@/components/sales-accelerator/lead-switcher-rail";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
-import { createLead, deleteLead, fetchLeadAddedByUsers, fetchLeads, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
+import { createLead, deleteLead, fetchLeadAddedByUsers, fetchLeadsPage, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
 import type { LeadDetailRecord, LeadFormInput, LeadQueueItem } from "@/lib/api-client";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { deriveQueueAction } from "@/lib/pipeline-status";
@@ -103,6 +103,8 @@ export function SalesAcceleratorApp() {
   const [addedByUserId, setAddedByUserId] = useState<string | null>(null);
   const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const listScrollRef = useRef<HTMLDivElement>(null);
   const listScrollTop = useRef(0);
 
@@ -295,7 +297,9 @@ export function SalesAcceleratorApp() {
   const refreshLeadList = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setListLoading(true);
     try {
-      const data = await fetchLeads();
+      const page = await fetchLeadsPage({ limit: 50, force: true });
+      const data = page.leads;
+      setNextCursor(page.nextCursor);
       const current = activeLeadIdRef.current;
       if (current && !data.some((l) => l.id === current)) {
         const stillOpen = await fetchLead(current).catch(() => null);
@@ -325,6 +329,23 @@ export function SalesAcceleratorApp() {
     }
   }, [syncLeadToUrl, isMobileLayout, pathname, router]);
 
+  const loadMoreLeads = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchLeadsPage({ limit: 50, cursor: nextCursor });
+      setLeads((prev) => {
+        const seen = new Set(prev.map((l) => l.id));
+        return [...prev, ...page.leads.filter((l) => !seen.has(l.id))];
+      });
+      setNextCursor(page.nextCursor);
+    } catch {
+      showError("Couldn't load more leads", { id: "leads-load-more" });
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [nextCursor, loadingMore]);
+
   async function handleQueueRefresh() {
     if (queueRefreshing || mergingDuplicates) return;
     setQueueRefreshing(true);
@@ -340,15 +361,18 @@ export function SalesAcceleratorApp() {
 
     async function init() {
       setListLoading(true);
-      const listPromise = fetchLeads();
+      const listPromise = fetchLeadsPage({ limit: 50 });
 
       const detailPromise = leadFromUrl
         ? fetchLead(leadFromUrl).catch(() => null)
         : Promise.resolve(null);
 
       try {
-        const [list, detail] = await Promise.all([listPromise, detailPromise]);
+        const [page, detail] = await Promise.all([listPromise, detailPromise]);
         if (cancelled) return;
+
+        const list = page.leads;
+        setNextCursor(page.nextCursor);
 
         if (detail) {
           setPrefetchedLead(detail);
@@ -514,6 +538,9 @@ export function SalesAcceleratorApp() {
       addedByUsers={addedByUsers}
       onMergeDuplicates={canWritePipeline ? handleMergeDuplicates : undefined}
       mergingDuplicates={mergingDuplicates}
+      hasMore={Boolean(nextCursor)}
+      loadingMore={loadingMore}
+      onLoadMore={loadMoreLeads}
     />
   );
 

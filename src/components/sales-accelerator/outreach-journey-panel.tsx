@@ -115,8 +115,8 @@ export function OutreachJourneyPanel({
   const activeId = selectedNodeId ?? thread.selectedNodeId;
 
   return (
-    <div className="mb-2 min-w-0 lg:mb-3">
-      <div className="ish-email-toolbar flex min-w-0 flex-row flex-wrap items-center gap-1.5 rounded-[18px] border px-2 py-1.5 lg:flex-nowrap lg:gap-2.5 lg:px-2.5 lg:py-2">
+    <div className="mb-1 min-w-0 lg:mb-1.5">
+      <div className="ish-email-toolbar flex min-w-0 flex-row flex-wrap items-center gap-1.5 rounded-[14px] border px-2 py-1 lg:flex-nowrap lg:gap-2 lg:px-2.5 lg:py-1.5">
         {showBar ? (
           <div className="min-w-0 flex-1 overflow-x-auto scrollbar-none">
             <ProgressStrip

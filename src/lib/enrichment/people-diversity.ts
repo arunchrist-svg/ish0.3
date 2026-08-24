@@ -3,6 +3,10 @@ import { computeSeniorityScore, sortPeopleByScore } from "@/lib/enrichment/senio
 import type { ScoutPersonResult } from "@/lib/enrichment/types";
 import { MAX_SCOUT_LEADS_LIMIT } from "@/lib/enrichment/config";
 import { personMatchesRoles } from "@/lib/enrichment/people-role-filter";
+import {
+  personLocationMatchesSelection,
+  selectionLooksLikeNeighborhoods,
+} from "@/lib/enrichment/city-search";
 
 /** Matches Settings → Scout Volume "Leads per company" max. */
 export const MAX_PEOPLE_PER_COMPANY = MAX_SCOUT_LEADS_LIMIT;
@@ -72,14 +76,43 @@ export function rankPeopleSeniorFirst(people: ScoutPersonResult[]): ScoutPersonR
 
 const GIFTING_DEPTS = new Set(["HR", "Admin", "Procurement", "Facilities"]);
 
+export type LeadScoreOpts = {
+  seniority?: string[];
+  departments?: string[];
+  buyerPersonas?: string[];
+  /** Cities used for location fit (Focus chips + parent cities). */
+  preferredCities?: string[];
+  /** Prefer Head/Director/Manager titles harder (pack preferDmTitles). */
+  preferDmTitles?: boolean;
+};
+
+function locationFitBonus(person: ScoutPersonResult, preferredCities?: string[]): number {
+  if (!preferredCities?.length) return 0;
+  const loc = person.location ?? "";
+  if (!loc.trim()) return 2;
+  if (personLocationMatchesSelection(loc, preferredCities)) {
+    return selectionLooksLikeNeighborhoods(preferredCities) ? 16 : 12;
+  }
+  return 0;
+}
+
+function dataCompletenessBonus(person: ScoutPersonResult): number {
+  let bonus = 0;
+  if (person.linkedIn?.trim()) bonus += 6;
+  if ((person.title ?? "").trim()) bonus += 4;
+  if (person.isKeyDM) bonus += 4;
+  return bonus;
+}
+
 /** Rank the actual buyer for this offer, not only the most senior title. */
 export function rankPeopleForScout(
   people: ScoutPersonResult[],
-  opts?: { seniority?: string[]; departments?: string[]; buyerPersonas?: string[] },
+  opts?: LeadScoreOpts,
 ): ScoutPersonResult[] {
   const seniority = opts?.seniority ?? [];
   const departments = opts?.departments ?? [];
   const personas = opts?.buyerPersonas ?? [];
+  const preferDm = opts?.preferDmTitles !== false;
   if (!people.length) return people;
 
   return [...people]
@@ -90,11 +123,19 @@ export function rankPeopleForScout(
       if (departments.length && personMatchesRoles(person, [], departments)) bonus += 18;
       if (seniority.length && personMatchesRoles(person, seniority, [])) bonus += 8;
       if (
+        preferDm &&
         departments.some((d) => GIFTING_DEPTS.has(d)) &&
-        /\b(hr|people|chro|procurement|purchase|sourcing)\b/i.test(title) &&
-        /\b(director|head|vp|chro|chief)\b/i.test(title)
+        /\b(hr|people|chro|procurement|purchase|sourcing|admin|facilit)\b/i.test(title) &&
+        /\b(director|head|vp|chro|chief|manager)\b/i.test(title)
       ) {
         bonus += 14;
+      }
+      if (
+        preferDm &&
+        /\b(director|head|vp|chro|chief)\b/i.test(title) &&
+        !/\b(executive|officer|coordinator|assistant)\b/i.test(title)
+      ) {
+        bonus += 6;
       }
       if (
         personas.some((persona) => {
@@ -111,9 +152,30 @@ export function rankPeopleForScout(
       ) {
         bonus -= 40;
       }
+      bonus += locationFitBonus(person, opts?.preferredCities);
+      bonus += dataCompletenessBonus(person);
       return { ...person, matchScore: Math.max(0, Math.min(100, base + bonus)) };
     })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+}
+
+/**
+ * Over-fetch then keep the high-confidence gold slice for manual select.
+ * People below a soft floor are dropped only when enough stronger leads exist.
+ */
+export function trimPeopleToHighConfidence(
+  people: ScoutPersonResult[],
+  limit: number,
+  opts?: { minScore?: number },
+): ScoutPersonResult[] {
+  if (!people.length) return people;
+  const cap = Math.max(1, limit);
+  const minScore = opts?.minScore ?? 35;
+  const strong = people.filter((p) => (p.matchScore ?? 0) >= minScore);
+  if (strong.length >= Math.min(3, cap)) {
+    return strong.slice(0, cap);
+  }
+  return people.slice(0, cap);
 }
 
 export function scoutPeopleCoverage(params: {

@@ -8,4 +8,31 @@ export type ReplyLeadReceived = {
   data: { leadId: string; tenantId: string; workspaceId: string };
 };
 
-export type AppEvents = ResearchLeadRequested | ReplyLeadReceived;
+export type WriterLeadRequested = {
+  name: "writer/lead.requested";
+  data: {
+    leadId: string;
+    tenantId: string;
+    mode?: "single" | "sequence";
+    outreachTemplate?: string;
+    writerMode?: string;
+    occasionTheme?: string | null;
+  };
+};
+
+export type EnrichLeadRequested = {
+  name: "enrich/lead.requested";
+  data: {
+    leadId: string;
+    tenantId: string;
+    mode: "free" | "paid";
+    dataMode?: string;
+    refetch?: boolean;
+  };
+};
+
+export type AppEvents =
+  | ResearchLeadRequested
+  | ReplyLeadReceived
+  | WriterLeadRequested
+  | EnrichLeadRequested;

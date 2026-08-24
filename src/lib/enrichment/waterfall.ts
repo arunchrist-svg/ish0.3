@@ -22,7 +22,9 @@ import {
 import { placesLocationBiasFromFocuses } from "@/lib/geo/area-of-focus";
 import { companyDomainAliases } from "./company-domain-aliases";
 import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
-import { rankPeopleForScout } from "./people-diversity";
+import { rankPeopleForScout, trimPeopleToHighConfidence } from "./people-diversity";
+import { sortCompaniesByAccountScore } from "./account-score";
+import { scoutQualityProfileFor } from "./quality-profile";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -51,7 +53,6 @@ import {
 import {
   applyLeadability,
   probeCompanyLeadability,
-  sortCompaniesByLeadability,
 } from "./company-leadability";
 import {
   extractEmployeesFromText,
@@ -87,6 +88,7 @@ async function loadScoutBrandIcp(workspaceId: string): Promise<{
   productSummary?: string;
   buyerPersonas: string[];
   sweetsGifting: boolean;
+  verticalPackOrSlug?: string | null;
 } | null> {
   try {
     const [email, tenantRow] = await Promise.all([
@@ -118,6 +120,8 @@ async function loadScoutBrandIcp(workspaceId: string): Promise<{
       productSummary: email.brandConfig.productSummary,
       buyerPersonas: personas,
       sweetsGifting,
+      verticalPackOrSlug:
+        email.brandConfig.verticalPackId ?? email.brandConfig.brandSlug ?? tenantRow?.slug ?? null,
     };
   } catch {
     return null;
@@ -168,6 +172,20 @@ function hasGooglePlacesKey(): boolean {
 
 function normalizeName(name: string): string {
   return name.trim().toLowerCase();
+}
+
+/** Preferred cities for LeadScore / location fit (Focus chips + parent district). */
+function peoplePreferredCities(params: {
+  scoutCities: string[];
+  focusParentCities: string[];
+  locationScope?: "focus" | "interest";
+  peopleCities?: string[];
+}): string[] {
+  if (params.locationScope === "focus") {
+    return [...new Set([...params.scoutCities, ...params.focusParentCities])];
+  }
+  if (params.peopleCities?.length) return params.peopleCities;
+  return params.scoutCities;
 }
 
 
@@ -738,7 +756,28 @@ export async function discoverCompanies(params: {
 
   const selectedSeniority = params.seniority ?? [];
   const selectedDepartments = params.departments ?? [];
-  if ((selectedSeniority.length > 0 || selectedDepartments.length > 0) && companies.length > 0) {
+  const qualityProfile = scoutQualityProfileFor(
+    brandIcp?.platformIntent,
+    brandIcp?.verticalPackOrSlug,
+  );
+  // Corporate modes: probe reachability using scout roles or pack defaults so AccountScore
+  // can rank even when the UI left seniority empty (dept-first stacks).
+  const probeRoles = expandPeopleFiltersForOffer(
+    brandIcp?.platformIntent,
+    selectedSeniority,
+    selectedDepartments,
+    {
+      treatAsGifting: brandIcp?.sweetsGifting,
+      searchKind: params.searchKind,
+      businesses: params.searchKind === "business" ? params.industries : undefined,
+    },
+  );
+  const shouldProbeLeadability =
+    params.searchKind !== "business" &&
+    companies.length > 0 &&
+    (probeRoles.departments.length > 0 || probeRoles.seniority.length > 0);
+
+  if (shouldProbeLeadability) {
     const probeCount = Math.min(companies.length, Math.max(limit, Math.min(limit + 6, 16)));
     let quotaStop = false;
     const unknownLeadability = {
@@ -752,8 +791,8 @@ export async function discoverCompanies(params: {
       try {
         const leadability = await probeCompanyLeadability({
           company,
-          seniority: selectedSeniority,
-          departments: selectedDepartments,
+          seniority: probeRoles.seniority,
+          departments: probeRoles.departments,
           cities: selectionLabels,
           platformIntent: brandIcp?.platformIntent,
           treatAsGifting: brandIcp?.sweetsGifting,
@@ -768,7 +807,7 @@ export async function discoverCompanies(params: {
         return applyLeadability(company, unknownLeadability);
       }
     });
-    companies = sortCompaniesByLeadability([
+    companies = [
       ...probed,
       ...companies.slice(probeCount).map((company) =>
         applyLeadability(company, {
@@ -778,10 +817,17 @@ export async function discoverCompanies(params: {
           leadabilityMatchedInCity: 0,
         }),
       ),
-    ]).slice(0, limit);
-  } else {
-    companies = companies.slice(0, limit);
+    ];
   }
+
+  companies = sortCompaniesByAccountScore(companies, {
+    profile: qualityProfile,
+    selectedCities: selectionLabels,
+    employeeBands,
+    selectedIndustries: params.industries,
+    locationScope: params.locationScope,
+    searchKind: params.searchKind ?? "industry",
+  }).slice(0, limit);
 
   if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
     warnings.push(
@@ -899,9 +945,17 @@ export async function discoverPeople(params: {
   // which would otherwise return people from anywhere in "South India".
   const focusAreaIsNeighborhood = selectionLooksLikeNeighborhoods(scoutCities);
   const focusParentCities: string[] =
-    params.locationScope === "focus" && focusAreaIsNeighborhood && cfg.scoutAreasOfFocus?.length
-      ? [...new Set(cfg.scoutAreasOfFocus.map((f) => f.cityLabel).filter(Boolean))]
-      : [];
+    params.locationScope === "focus" && focusAreaIsNeighborhood
+      ? (cfg.scoutAreasOfFocus?.length
+          ? [...new Set(cfg.scoutAreasOfFocus.map((f) => f.cityLabel).filter(Boolean))]
+          : parentCitiesForNeighborhoods(scoutCities))
+      : focusAreaIsNeighborhood
+        ? parentCitiesForNeighborhoods(scoutCities)
+        : [];
+  const qualityProfile = scoutQualityProfileFor(
+    brandIcp?.platformIntent,
+    brandIcp?.verticalPackOrSlug,
+  );
   const roleOpts = { searchKind: params.searchKind, businesses: params.businesses };
   const expandedRoles = expandPeopleFiltersForOffer(
     brandIcp?.platformIntent,
@@ -963,12 +1017,20 @@ export async function discoverPeople(params: {
           "Few exact seniority + department matches. Showing closest decision-makers for this company.",
         );
       }
+      const ranked = rankPeopleForScout(localized, {
+        seniority: activeSeniority,
+        departments: activeDepartments,
+        buyerPersonas: brandIcp?.buyerPersonas,
+        preferredCities: peoplePreferredCities({
+          scoutCities,
+          focusParentCities,
+          locationScope: params.locationScope,
+          peopleCities: params.peopleCities,
+        }),
+        preferDmTitles: qualityProfile.preferDmTitles,
+      });
       return {
-        people: rankPeopleForScout(localized, {
-          seniority: activeSeniority,
-          departments: activeDepartments,
-          buyerPersonas: brandIcp?.buyerPersonas,
-        }).slice(0, limit),
+        people: trimPeopleToHighConfidence(ranked, limit),
         resolvedDomain,
         resolvedWebsite,
         warnings,
@@ -1101,11 +1163,11 @@ export async function discoverPeople(params: {
   // For sweets gifting: role filter must come FIRST so city relaxation only sees buyer-dept people.
   // A Finance Director in Bangalore is NOT a valid relaxation for a Hosur plant scout.
   const allPeople = [...companyContacts.map(contactToResult), ...external];
-  let finalPeople: ScoutPersonResult[];
+  let roleFilteredPeople: ScoutPersonResult[];
   if (localOperators || activeSeniority.length > 0 || activeDepartments.length > 0) {
     const filtered = filterPeopleByRoles(allPeople, activeSeniority, activeDepartments, roleOpts);
-    finalPeople = filtered.people;
-    if (finalPeople.length === 0 && allPeople.length > 0) {
+    roleFilteredPeople = filtered.people;
+    if (roleFilteredPeople.length === 0 && allPeople.length > 0) {
       if (localOperators) {
         warnings.push(
           `No branch or local senior people found at ${params.companyName}${scoutCities.length ? ` in ${scoutCities.join(", ")}` : ""}.`,
@@ -1123,15 +1185,37 @@ export async function discoverPeople(params: {
       );
     }
   } else {
-    finalPeople = allPeople;
+    roleFilteredPeople = allPeople;
   }
+
+  // Controlled broaden (pack): when seniority+dept returned nobody, retry departments only once.
+  if (
+    qualityProfile.broadenPeopleWhenEmpty &&
+    !localOperators &&
+    roleFilteredPeople.length === 0 &&
+    allPeople.length > 0 &&
+    activeSeniority.length > 0 &&
+    activeDepartments.length > 0
+  ) {
+    const deptOnly = filterPeopleByRoles(allPeople, [], activeDepartments, roleOpts);
+    if (deptOnly.people.length > 0) {
+      roleFilteredPeople = deptOnly.people;
+      warnings.push(
+        "No exact seniority matches. Showing department decision-makers for this company.",
+      );
+    }
+  }
+
+  let finalPeople = roleFilteredPeople;
 
   // Neighborhood Focus Area: keep parent-metro HQ (Bengaluru for Kasturi Nagar).
   // LinkedIn almost never lists the ward name. Do not widen to the whole state.
-  const peopleCityFilter =
-    params.locationScope === "focus"
-      ? [...new Set([...scoutCities, ...focusParentCities])]
-      : (params.peopleCities?.length ? params.peopleCities : scoutCities);
+  const peopleCityFilter = peoplePreferredCities({
+    scoutCities,
+    focusParentCities,
+    locationScope: params.locationScope,
+    peopleCities: params.peopleCities,
+  });
   const peopleIncludeHqCorridor = peopleFilterUsesHqCorridor({
     locationScope: params.locationScope,
     cities: scoutCities,
@@ -1149,25 +1233,57 @@ export async function discoverPeople(params: {
         `Including ${params.companyName} people at nearby HQ (not Delhi or NYC). HR and Procurement often sit in the regional HQ, not at the plant.`,
       );
     } else if (selected.people.length === 0 && finalPeople.length > 0) {
-      warnings.push(
-        localOperators || focusArea
-          ? `No people found in ${filterLabel} for ${params.companyName}. Leads stay inside ${focusArea ? "this Focus Area" : "this area"}.${focusArea && !peopleIncludeHqCorridor ? " Switch to Area of Interest to include nearby HQ." : ""}`
-          : sweetsGiftingPeople
-            ? `HR/Procurement people found at ${params.companyName} but all had cities outside ${filterLabel} or could not be verified. LinkedIn often omits plant location. If this keeps happening, try Area of Interest instead of Focus Area.`
-            : `No decision-makers found in ${filterLabel} for ${params.companyName}. Try another company or nearby city.`,
-      );
+      // Controlled broaden: parent-city-only location when chips+parent still empty.
+      if (
+        qualityProfile.broadenPeopleWhenEmpty &&
+        focusParentCities.length > 0 &&
+        params.locationScope === "focus"
+      ) {
+        const parentOnly = selectPeopleForLeadLocation(finalPeople, focusParentCities, {
+          includeHqCorridor: false,
+        });
+        if (parentOnly.people.length > 0) {
+          finalPeople = parentOnly.people;
+          warnings.push(
+            `No people matched the exact Focus Area pin. Showing decision-makers in ${focusParentCities.join(", ")}.`,
+          );
+        } else {
+          warnings.push(
+            localOperators || focusArea
+              ? `No people found in ${filterLabel} for ${params.companyName}. Leads stay inside ${focusArea ? "this Focus Area" : "this area"}.${focusArea && !peopleIncludeHqCorridor ? " Switch to Area of Interest to include nearby HQ." : ""}`
+              : sweetsGiftingPeople
+                ? `HR/Procurement people found at ${params.companyName} but all had cities outside ${filterLabel} or could not be verified. LinkedIn often omits plant location. If this keeps happening, try Area of Interest instead of Focus Area.`
+                : `No decision-makers found in ${filterLabel} for ${params.companyName}. Try another company or nearby city.`,
+          );
+          finalPeople = [];
+        }
+      } else {
+        warnings.push(
+          localOperators || focusArea
+            ? `No people found in ${filterLabel} for ${params.companyName}. Leads stay inside ${focusArea ? "this Focus Area" : "this area"}.${focusArea && !peopleIncludeHqCorridor ? " Switch to Area of Interest to include nearby HQ." : ""}`
+            : sweetsGiftingPeople
+              ? `HR/Procurement people found at ${params.companyName} but all had cities outside ${filterLabel} or could not be verified. LinkedIn often omits plant location. If this keeps happening, try Area of Interest instead of Focus Area.`
+              : `No decision-makers found in ${filterLabel} for ${params.companyName}. Try another company or nearby city.`,
+        );
+        finalPeople = [];
+      }
+    } else {
+      finalPeople = selected.people;
     }
-    finalPeople = selected.people;
   }
 
   finalPeople = finalPeople.filter((person) => !personLooksOpenToWork(person));
 
+  const ranked = rankPeopleForScout(finalPeople, {
+    seniority: activeSeniority,
+    departments: activeDepartments,
+    buyerPersonas: brandIcp?.buyerPersonas,
+    preferredCities: peopleCityFilter,
+    preferDmTitles: qualityProfile.preferDmTitles,
+  });
+
   return {
-    people: rankPeopleForScout(finalPeople, {
-      seniority: activeSeniority,
-      departments: activeDepartments,
-      buyerPersonas: brandIcp?.buyerPersonas,
-    }).slice(0, limit),
+    people: trimPeopleToHighConfidence(ranked, limit),
     resolvedDomain,
     resolvedWebsite,
     warnings: [...new Set(warnings)],

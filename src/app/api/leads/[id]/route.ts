@@ -17,12 +17,19 @@ import { getOutreachTemplatesForBrand } from "@/lib/email/outreach-templates";
 import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { updateLeadFields, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+
+export const preferredRegion = ["sin1"];
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { marks, t0 } = startTiming();
   try {
     const { id } = await params;
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
+    mark(marks, "auth", authStart);
 
+    const dbStart = performance.now();
     const rows = await db
       .select({
         lead: leads,
@@ -47,6 +54,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
+    // In-memory permutation refresh only (no DB write on every GET).
     const existingAlternates =
       (contact.alternateEmails as ContactEmailEntry[] | null) ?? [];
     const preservePrimary =
@@ -83,12 +91,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       db.query.leadOutreach.findMany({
         where: eq(leadOutreach.leadId, id),
         orderBy: [desc(leadOutreach.createdAt)],
+        limit: 20,
       }),
       db
         .select()
         .from(outreachSchedule)
         .where(eq(outreachSchedule.leadId, id))
-        .orderBy(outreachSchedule.scheduledFor),
+        .orderBy(outreachSchedule.scheduledFor)
+        .limit(40),
       getResolvedEmailConfig(lead.workspaceId),
       db.query.yieldFunnel.findFirst({
         where: and(eq(yieldFunnel.leadId, id), eq(yieldFunnel.stage, "replied")),
@@ -96,6 +106,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       }),
       getWhatsAppConnection(lead.workspaceId),
     ]);
+    mark(marks, "db", dbStart);
 
     const emailOutreachRows = outreachRows.filter(isEmailOutreachRow);
     const whatsappRow = outreachRows.find(isWhatsAppOutreach) ?? null;
@@ -252,7 +263,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       defaultOutreachCta: resolveDefaultOutreachCta(emailConfig.brandConfig),
     };
 
-    return NextResponse.json({ lead: record });
+    return withServerTiming(NextResponse.json({ lead: record }), marks, t0);
   } catch (e) {
     return handleApiError(e, "[api/leads/[id]]");
   }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeads } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeadsPage } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   groupLeadsByPipelineStage,
@@ -107,6 +107,8 @@ function sendBusyLabel(queue: SendQueueItem[]): string {
 
 export function LeadsBoardApp() {
   const [leads, setLeads] = useState<LeadQueueItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -181,13 +183,28 @@ export function LeadsBoardApp() {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const data = await fetchLeads();
-      setLeads(data);
+      const page = await fetchLeadsPage({ limit: 50 });
+      setLeads(page.leads);
+      setNextCursor(page.nextCursor);
     } catch {
       toast.error("Could not load leads");
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchLeadsPage({ limit: 50, cursor: nextCursor });
+      setLeads((prev) => [...prev, ...page.leads]);
+      setNextCursor(page.nextCursor);
+    } catch {
+      toast.error("Could not load more leads");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -454,6 +471,18 @@ export function LeadsBoardApp() {
             })}
           </div>
         )}
+        {nextCursor && !loading ? (
+          <div className="flex justify-center border-t border-brand-border/40 py-3">
+            <button
+              type="button"
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
+              className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+            >
+              {loadingMore ? "Loading…" : "Load more leads"}
+            </button>
+          </div>
+        ) : null}
       </div>
     </MobilePageLayout>
   );

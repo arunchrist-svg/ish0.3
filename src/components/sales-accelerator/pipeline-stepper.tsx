@@ -13,8 +13,8 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
         className={cn(
           "flex items-center gap-1.5 whitespace-nowrap rounded-[14px] text-[11px] font-semibold lg:gap-2 lg:rounded-[20px] lg:text-[12.5px]",
           active
-            ? "bg-brand-black px-2.5 py-1.5 text-white lg:px-[18px] lg:py-2.5"
-            : "bg-white/50 px-2 py-1.5 text-brand-ink-soft lg:px-3.5 lg:py-2.5",
+            ? "bg-brand-black px-2.5 py-1.5 text-white lg:px-3.5 lg:py-1.5"
+            : "bg-white/50 px-2 py-1.5 text-brand-ink-soft lg:px-3 lg:py-1.5",
         )}
       >
         {active ? (
@@ -33,7 +33,7 @@ function StageNode({ label, active, done, isLast }: { label: string; active: boo
 
 export function PipelineStepper({ stage }: Props) {
   return (
-    <div className="border-t border-black/[0.06] px-3 pb-2 pt-1.5 lg:px-[22px] lg:pb-[18px] lg:pt-3">
+    <div className="border-t border-black/[0.06] px-3 pb-1.5 pt-1 lg:px-[22px] lg:pb-2.5 lg:pt-2">
       <div className="flex min-w-0 items-center overflow-x-auto scrollbar-none">
         {STAGES.map((s, i) => (
           <StageNode

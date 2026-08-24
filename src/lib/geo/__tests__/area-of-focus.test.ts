@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveAreaOfFocusFromCatalog, setAllNearbyAreasSelected, areaOfFocusSearchLabels, normalizeScoutAreasOfFocus, upsertScoutAreaOfFocus, placesLocationBiasFromFocuses } from "@/lib/geo/area-of-focus";
+import { resolveAreaOfFocusFromCatalog, setAllNearbyAreasSelected, areaOfFocusSearchLabels, normalizeScoutAreasOfFocus, upsertScoutAreaOfFocus, placesLocationBiasFromFocuses, suggestCatalogAreas, localitiesForCity } from "@/lib/geo/area-of-focus";
 import { scoutLocationOptions, locationOptionsFromSelection, defaultLabelsFromLocationOptions } from "@/lib/geo/india";
 import { DEFAULT_SCOUT_GEO } from "@/lib/geo/india";
 import { companyMatchesScoutSelection, expandCitySearchTerms } from "@/lib/enrichment/city-search";
@@ -211,5 +211,34 @@ describe("placesLocationBiasFromFocuses", () => {
     const kasturiBias = placesLocationBiasFromFocuses([focus!], ["Kasturi Nagar"]);
     expect(kasturiBias?.lat).toBe(focus!.lat);
     expect(kasturiBias?.lng).toBe(focus!.lng);
+  });
+});
+
+describe("Hassan area suggestions", () => {
+  it("suggests Hassan localities for Hassan city, not Bengaluru Hebbal", () => {
+    const names = suggestCatalogAreas("Hassan", "h").map((row) => row.name);
+    expect(names.length).toBeGreaterThan(0);
+    expect(names).toEqual(expect.arrayContaining(["Hassan", "Hemavathi Nagar"]));
+    expect(names).not.toContain("Hebbal");
+    expect(names).not.toContain("Hennur");
+    expect(names).not.toContain("Horamavu");
+  });
+
+  it("returns empty catalog suggestions for unknown cities instead of all metros", () => {
+    expect(suggestCatalogAreas("Unknownville", "h")).toEqual([]);
+    expect(localitiesForCity("Unknownville")).toEqual([]);
+  });
+
+  it("resolves BM Road Hassan within Hassan only", () => {
+    const focus = resolveAreaOfFocusFromCatalog({
+      city: "Hassan",
+      query: "BM Road",
+      radiusKm: 5,
+    });
+    expect(focus).not.toBeNull();
+    expect(focus?.cityLabel).toBe("Hassan");
+    const names = (focus?.nearbyAreas ?? []).map((row) => row.name);
+    expect(names).toEqual(expect.arrayContaining(["BM Road Hassan"]));
+    expect(names).not.toContain("Hebbal");
   });
 });

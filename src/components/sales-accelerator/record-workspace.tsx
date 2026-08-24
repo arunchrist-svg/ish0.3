@@ -15,6 +15,7 @@ import { EmailTabPanel } from "@/components/sales-accelerator/email-tab-panel";
 import { WhatsAppTabPanel } from "@/components/sales-accelerator/whatsapp-tab-panel";
 import { enrichLead, fetchLead, fetchLeadNetworkSummary } from "@/lib/api-client";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
+import { invalidateCached } from "@/lib/client-fetch-cache";
 import { showError } from "@/lib/toast";
 import { toast } from "sonner";
 import { statusToPipelineIndex } from "@/lib/pipeline-status";
@@ -116,7 +117,6 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tabFromUrl = searchParams.get("tab");
 
   function syncTabToUrl(tab: string) {
     const params =
@@ -137,17 +137,32 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   const [lead, setLead] = useState<LeadDetailRecord | null>(initialLead ?? null);
   const [loading, setLoading] = useState(!initialLead);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>(
-    tabFromUrl === "email" ? "Email" : tabFromUrl === "whatsapp" ? "WhatsApp" : "Summary",
-  );
+  const [activeTab, setActiveTab] = useState<string>("Summary");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  async function load(opts?: { silent?: boolean; replaceOutreach?: boolean }) {
+  async function load(opts?: { silent?: boolean; replaceOutreach?: boolean; clearOutreach?: boolean }) {
     if (!opts?.silent) setLoading(true);
-    try {
-      const data = await fetchLead(leadId);
+    if (opts?.clearOutreach) {
       setLead((prev) => {
-        if (opts?.replaceOutreach) return data;
+        if (!prev) return prev;
+        return {
+          ...prev,
+          status: "researched",
+          outreach: undefined,
+          outreachSequence: [],
+          emailThread: undefined,
+        };
+      });
+    }
+    try {
+      if (opts?.replaceOutreach || opts?.clearOutreach) {
+        invalidateCached(`/api/leads/${leadId}`);
+      }
+      const data = await fetchLead(leadId, {
+        force: Boolean(opts?.replaceOutreach || opts?.clearOutreach),
+      });
+      setLead((prev) => {
+        if (opts?.replaceOutreach || opts?.clearOutreach) return data;
         return mergeLeadOutreachFromServer(prev, data);
       });
       setLoadError(null);
@@ -204,10 +219,20 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   }
 
 
+  // Always land on Summary when opening or switching leads. Ignore deep-link tab=email/whatsapp.
   useEffect(() => {
-    if (tabFromUrl === "email") setActiveTab("Email");
-    if (tabFromUrl === "whatsapp") setActiveTab("WhatsApp");
-  }, [tabFromUrl, leadId]);
+    setActiveTab("Summary");
+    const params =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : new URLSearchParams(searchParams.toString());
+    const tab = params.get("tab");
+    if (tab === "email" || tab === "whatsapp") {
+      syncTabToUrl("Summary");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadId]);
+
   useEffect(() => {
     if (initialLead?.id === leadId) {
       setLead((prev) => {
@@ -232,7 +257,6 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
     }
     setLead(null);
     setLoadError(null);
-    setActiveTab(tabFromUrl === "email" ? "Email" : tabFromUrl === "whatsapp" ? "WhatsApp" : "Summary");
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leadId, initialLead]);
@@ -312,13 +336,13 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
               }}
             />
         </div>
-        <div className="ish-scroll-tabs hidden overflow-x-auto px-4 pt-4 lg:block lg:px-[22px]">
-          <TabsList className="h-auto min-w-max gap-1.5 bg-transparent p-0">
+        <div className="ish-scroll-tabs hidden overflow-x-auto px-4 pt-2.5 lg:block lg:px-[22px]">
+          <TabsList className="h-auto min-w-max gap-1 bg-transparent p-0">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab}
                 value={tab}
-                className="h-auto flex-none rounded-[14px] border-0 px-[18px] py-2.5 text-[13px] font-semibold text-brand-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-brand-ink active:scale-[0.97] data-active:!bg-brand-black data-active:!text-white data-active:shadow-none after:hidden"
+                className="h-auto flex-none rounded-[12px] border-0 px-3.5 py-1.5 text-[13px] font-semibold text-brand-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-brand-ink active:scale-[0.97] data-active:!bg-brand-black data-active:!text-white data-active:shadow-none after:hidden"
               >
                 <span className="flex items-center gap-1.5">
                   {tab}

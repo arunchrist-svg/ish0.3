@@ -41,4 +41,33 @@ describe("enqueue", () => {
       data: { leadId: "lead-1" },
     });
   });
+
+  it("queues writer via Inngest or returns sync fallback", async () => {
+    const { enqueueWriterRun } = await import("@/lib/jobs/enqueue");
+    const sync = await enqueueWriterRun({ leadId: "w1", tenantId: "t1" });
+    expect(sync).toBe("sync");
+    expect(sendMock).not.toHaveBeenCalled();
+
+    process.env.INNGEST_EVENT_KEY = "test-key";
+    const queued = await enqueueWriterRun({ leadId: "w2", tenantId: "t1", mode: "single" });
+    expect(queued).toBe("queued");
+    expect(sendMock).toHaveBeenCalledWith({
+      name: "writer/lead.requested",
+      data: expect.objectContaining({ leadId: "w2", tenantId: "t1", mode: "single" }),
+    });
+  });
+
+  it("queues enrich via Inngest or returns sync fallback", async () => {
+    const { enqueueEnrichLead } = await import("@/lib/jobs/enqueue");
+    const sync = await enqueueEnrichLead({ leadId: "e1", tenantId: "t1", mode: "free" });
+    expect(sync).toBe("sync");
+
+    process.env.INNGEST_EVENT_KEY = "test-key";
+    const queued = await enqueueEnrichLead({ leadId: "e2", tenantId: "t1", mode: "paid" });
+    expect(queued).toBe("queued");
+    expect(sendMock).toHaveBeenCalledWith({
+      name: "enrich/lead.requested",
+      data: expect.objectContaining({ leadId: "e2", mode: "paid" }),
+    });
+  });
 });

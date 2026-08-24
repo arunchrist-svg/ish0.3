@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
+import { cookies } from "next/headers";
+import { requireTenantContext, UnauthorizedError, tenantContextToSealClaims } from "@/lib/tenant";
 import { getCreditBalance } from "@/lib/billing/credits";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { getWhatsAppConnection } from "@/lib/settings/whatsapp-settings";
@@ -13,11 +14,27 @@ import {
 } from "@/lib/brand/platform-intent";
 import { isSweetsGiftingSlug, isSweetsOnlyOperator } from "@/lib/brand/vertical-catalog";
 import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
+import {
+  SEALED_SESSION_COOKIE,
+  sealTenantClaims,
+  sealedSessionCookieOptions,
+  unsealTenantClaims,
+} from "@/lib/auth/sealed-session";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 
-export async function GET() {
+export const preferredRegion = ["sin1"];
+
+export async function GET(req: Request) {
+  const { marks, t0 } = startTiming();
   try {
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
+    mark(marks, "auth", authStart);
 
+    const { searchParams } = new URL(req.url);
+    const includeWhatsapp = searchParams.get("whatsapp") !== "0";
+
+    const dbStart = performance.now();
     const [user, tenant, credits, emailConfig, whatsapp] = await Promise.all([
       db
         .select({ id: users.id, email: users.email, name: users.name })
@@ -28,8 +45,9 @@ export async function GET() {
       db.select().from(tenants).where(eq(tenants.id, ctx.tenantId)).limit(1).then((rows) => rows[0]),
       getCreditBalance(ctx.tenantId),
       getResolvedEmailConfig(ctx.workspaceId),
-      getWhatsAppConnection(ctx.workspaceId),
+      includeWhatsapp ? getWhatsAppConnection(ctx.workspaceId) : Promise.resolve({ connected: false }),
     ]);
+    mark(marks, "db", dbStart);
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -70,7 +88,7 @@ export async function GET() {
     const emailConfigured =
       emailConfig.provider === "smtp" ? smtpStatus.configured : resendStatus.configured;
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       user: { id: user.id, email: user.email, name: user.name },
       tenant: {
         id: ctx.tenantId,
@@ -97,6 +115,14 @@ export async function GET() {
         "general",
       scoutBrandDefaults,
     });
+
+    const cookieStore = await cookies();
+    if (!unsealTenantClaims(cookieStore.get(SEALED_SESSION_COOKIE)?.value)) {
+      const sealed = sealTenantClaims(tenantContextToSealClaims(ctx));
+      res.cookies.set(SEALED_SESSION_COOKIE, sealed, sealedSessionCookieOptions(sealed));
+    }
+
+    return withServerTiming(res, marks, t0);
   } catch (e) {
     if (e instanceof UnauthorizedError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

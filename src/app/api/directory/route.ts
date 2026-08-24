@@ -1,41 +1,15 @@
 import { NextResponse } from "next/server";
-import { db, leads, contacts, accounts } from "@/db";
-import { eq, desc, or, like, and } from "drizzle-orm";
+import { db, accounts } from "@/db";
+import { eq, desc, and, sql, or, lt } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
+import {
+  decodeCursor,
+  nextCursorFromRows,
+  parseListLimit,
+} from "@/lib/api/cursor";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 
-const SCOUT_SOURCES = ["scout", "scout_wizard", "scout_agent"];
-
-type AccountRow = typeof accounts.$inferSelect;
-
-type DirectoryCompanyEntry = {
-  id: string;
-  name: string;
-  city: string;
-  industry: string;
-  employees: string;
-  fitScore: number;
-  domain?: string;
-  website?: string;
-  companyOverview?: AccountRow["companyOverview"];
-  overviewEnrichedAt?: string;
-  createdAt: string;
-  updatedAt: string;
-  contacts: {
-    leadId: string;
-    contactId: string;
-    name: string;
-    title: string;
-    email: string;
-    emailStatus: string;
-    phone?: string;
-    linkedIn?: string;
-    status: string;
-    leadSource: string;
-    score: number;
-    savedAt: string;
-    isKeyDM: boolean;
-  }[];
-};
+export const preferredRegion = ["sin1"];
 
 function blankLabel(value: string | null | undefined, fallback = "Unknown"): string {
   const t = value?.trim() ?? "";
@@ -43,131 +17,110 @@ function blankLabel(value: string | null | undefined, fallback = "Unknown"): str
   return t;
 }
 
-function accountToDirectoryCompany(account: AccountRow): DirectoryCompanyEntry {
-  return {
-    id: account.id,
-    name: account.name,
-    city: blankLabel(account.city),
-    industry: blankLabel(account.industry),
-    employees: blankLabel(account.employees, "Unknown"),
-    fitScore: account.fitScore ?? 60,
-    domain: account.domain ?? undefined,
-    website: account.website ?? undefined,
-    companyOverview: account.companyOverview ?? undefined,
-    overviewEnrichedAt: account.overviewEnrichedAt?.toISOString(),
-    createdAt: account.createdAt.toISOString(),
-    updatedAt: account.updatedAt.toISOString(),
-    contacts: [],
-  };
-}
-
 function isSampleAccount(dataSource: string | null | undefined): boolean {
   return (dataSource ?? "").toLowerCase() === "sample";
 }
 
-export async function GET() {
+/** Thin company directory page. Contacts load via /api/directory/contacts?companyId= */
+export async function GET(req: Request) {
+  const { marks, t0 } = startTiming();
   try {
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
-    const rows = await db
-      .select({
-        lead: leads,
-        contact: contacts,
-        account: accounts,
-      })
-      .from(leads)
-      .innerJoin(contacts, eq(contacts.id, leads.contactId))
-      .innerJoin(accounts, eq(accounts.id, leads.accountId))
-      .where(
-        and(
-          eq(leads.tenantId, ctx.tenantId),
-          eq(leads.workspaceId, ctx.workspaceId),
-          or(
-            ...SCOUT_SOURCES.map((s) => eq(leads.leadSource, s)),
-            like(leads.leadSource, "scout%"),
-          ),
-        ),
-      )
-      .orderBy(desc(leads.createdAt));
+    mark(marks, "auth", authStart);
 
-    const companyMap = new Map<string, DirectoryCompanyEntry>();
+    const { searchParams } = new URL(req.url);
+    const limit = parseListLimit(searchParams.get("limit"));
+    const cursor = decodeCursor(searchParams.get("cursor"));
+    const includeTotal = searchParams.get("totals") !== "0";
 
-    const allContacts: {
-      leadId: string;
-      contactId: string;
-      name: string;
-      title: string;
-      email: string;
-      emailStatus: string;
-      phone?: string;
-      linkedIn?: string;
-      status: string;
-      leadSource: string;
-      score: number;
-      savedAt: string;
-      companyId: string;
-      companyName: string;
-      companyCity: string;
-      companyIndustry: string;
-    }[] = [];
-
-    for (const row of rows) {
-      const accountId = row.account.id;
-      if (!companyMap.has(accountId)) {
-        companyMap.set(accountId, accountToDirectoryCompany(row.account));
-      }
-
-      const contactEntry = {
-        leadId: row.lead.id,
-        contactId: row.contact.id,
-        name: row.contact.name,
-        title: blankLabel(row.contact.title, "Unknown"),
-        email: blankLabel(row.contact.email, "Unknown"),
-        emailStatus: row.contact.emailStatus ?? "missing",
-        phone: row.contact.phone ?? undefined,
-        linkedIn: row.contact.linkedIn ?? undefined,
-        status: row.lead.status,
-        leadSource: row.lead.leadSource ?? "scout",
-        score: row.lead.score ?? 60,
-        savedAt: row.lead.createdAt.toISOString(),
-        isKeyDM: row.contact.isKeyDM ?? false,
-      };
-
-      companyMap.get(accountId)!.contacts.push(contactEntry);
-      allContacts.push({
-        ...contactEntry,
-        companyId: accountId,
-        companyName: row.account.name,
-        companyCity: blankLabel(row.account.city),
-        companyIndustry: blankLabel(row.account.industry),
-      });
+    const whereParts = [
+      eq(accounts.tenantId, ctx.tenantId),
+      eq(accounts.workspaceId, ctx.workspaceId),
+    ];
+    if (cursor) {
+      whereParts.push(
+        or(
+          lt(accounts.updatedAt, cursor.createdAt),
+          and(eq(accounts.updatedAt, cursor.createdAt), lt(accounts.id, cursor.id)),
+        )!,
+      );
     }
 
-    const savedAccounts = await db
-      .select()
-      .from(accounts)
-      .where(
-        and(eq(accounts.tenantId, ctx.tenantId), eq(accounts.workspaceId, ctx.workspaceId)),
-      )
-      .orderBy(desc(accounts.updatedAt));
+    const dbStart = performance.now();
+    const [rows, totalRow] = await Promise.all([
+      db
+        .select({
+          id: accounts.id,
+          name: accounts.name,
+          city: accounts.city,
+          industry: accounts.industry,
+          employees: accounts.employees,
+          fitScore: accounts.fitScore,
+          domain: accounts.domain,
+          website: accounts.website,
+          logo: accounts.logo,
+          dataSource: accounts.dataSource,
+          createdAt: accounts.createdAt,
+          updatedAt: accounts.updatedAt,
+        })
+        .from(accounts)
+        .where(and(...whereParts))
+        .orderBy(desc(accounts.updatedAt), desc(accounts.id))
+        .limit(limit * 2),
+      includeTotal
+        ? db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(accounts)
+            .where(
+              and(
+                eq(accounts.tenantId, ctx.tenantId),
+                eq(accounts.workspaceId, ctx.workspaceId),
+              ),
+            )
+            .then((r) => r[0]?.n ?? 0)
+        : Promise.resolve(undefined),
+    ]);
+    mark(marks, "db", dbStart);
 
-    for (const account of savedAccounts) {
+    const companies = [];
+    for (const account of rows) {
       if (isSampleAccount(account.dataSource)) continue;
-      if (companyMap.has(account.id)) continue;
-      companyMap.set(account.id, accountToDirectoryCompany(account));
+      companies.push({
+        id: account.id,
+        name: account.name,
+        city: blankLabel(account.city),
+        industry: blankLabel(account.industry),
+        employees: blankLabel(account.employees, "Unknown"),
+        fitScore: account.fitScore ?? 60,
+        domain: account.domain ?? undefined,
+        website: account.website ?? undefined,
+        logo: account.logo ?? undefined,
+        createdAt: account.createdAt.toISOString(),
+        updatedAt: account.updatedAt.toISOString(),
+        contacts: [] as never[],
+      });
+      if (companies.length >= limit) break;
     }
 
-    const companies = Array.from(companyMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
+    const nextCursor = nextCursorFromRows(
+      companies.slice(0, limit).map((c) => ({
+        id: c.id,
+        createdAt: c.updatedAt,
+      })),
+      limit,
     );
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       companies,
-      contacts: allContacts,
+      contacts: [],
+      nextCursor,
       totals: {
-        companies: companies.length,
-        contacts: allContacts.length,
+        companies: totalRow ?? companies.length,
+        contacts: 0,
       },
     });
+    return withServerTiming(res, marks, t0);
   } catch (e) {
     console.error("[api/directory]", e);
     return NextResponse.json({ error: "Failed to load directory" }, { status: 500 });

@@ -5,6 +5,7 @@ import { hashPassword } from "@/lib/auth/password";
 import { acceptInvite } from "@/lib/auth/invites";
 import { createSession, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth/session";
 import { getSessionTokenFromCookies, getSessionUser } from "@/lib/auth/session";
+import { attachSealedSessionCookie } from "@/lib/auth/attach-sealed-session";
 
 export async function POST(req: Request) {
   try {
@@ -44,6 +45,17 @@ export async function POST(req: Request) {
     const sessionToken = await createSession(userId, accepted.tenantId);
     const res = NextResponse.json({ ok: true, redirect: accepted.redirect });
     res.cookies.set(SESSION_COOKIE, sessionToken, sessionCookieOptions(sessionToken));
+    const [userRow] = await db
+      .select({ platformRole: users.platformRole, mustChangePassword: users.mustChangePassword })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    await attachSealedSessionCookie(res, {
+      userId,
+      tenantId: accepted.tenantId,
+      platformRole: userRow?.platformRole,
+      mustChangePassword: userRow?.mustChangePassword,
+    });
     return res;
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to accept invite";

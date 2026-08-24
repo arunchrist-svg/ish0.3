@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, leads, contacts, accounts } from "@/db";
-import { eq, desc } from "drizzle-orm";
-import { listSavedScoutCompanies } from "@/lib/scout/save-leads";
+import { eq, desc, and } from "drizzle-orm";
 import { getResolvedEnrichmentConfigForWorkspace } from "@/lib/settings/workspace-settings";
 import {
   defaultScoutLocationScope,
@@ -11,13 +10,20 @@ import {
   scoutLocationOptions,
 } from "@/lib/geo/india";
 import { normalizeScoutAreasOfFocus } from "@/lib/geo/area-of-focus";
+import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 
-/** Single round trip for scout page init: dedupe map, saved companies, settings, locations. */
+export const preferredRegion = ["sin1"];
+
+/** Compact scout mount: dedupe keys + thin saved companies + settings/locations. */
 export async function GET() {
+  const { marks, t0 } = startTiming();
   try {
+    const authStart = performance.now();
     const ctx = await requireTenantContext();
+    mark(marks, "auth", authStart);
 
-    const [dedupeRows, companies, config] = await Promise.all([
+    const dbStart = performance.now();
+    const [dedupeRows, savedCompanies, config] = await Promise.all([
       db
         .select({
           id: leads.id,
@@ -29,23 +35,51 @@ export async function GET() {
         .innerJoin(accounts, eq(accounts.id, leads.accountId))
         .where(eq(leads.tenantId, ctx.tenantId))
         .orderBy(desc(leads.createdAt))
-        .limit(500),
-      listSavedScoutCompanies({
-        tenantId: ctx.tenantId,
-        workspaceId: ctx.workspaceId,
-      }),
+        .limit(2000),
+      db
+        .select({
+          id: accounts.id,
+          name: accounts.name,
+          domain: accounts.domain,
+          city: accounts.city,
+          website: accounts.website,
+        })
+        .from(accounts)
+        .where(
+          and(
+            eq(accounts.tenantId, ctx.tenantId),
+            eq(accounts.workspaceId, ctx.workspaceId),
+          ),
+        )
+        .orderBy(desc(accounts.updatedAt))
+        .limit(200),
       getResolvedEnrichmentConfigForWorkspace(ctx.workspaceId),
     ]);
+    mark(marks, "db", dbStart);
+
+    const dedupeKeys = dedupeRows.map((r) => ({
+      id: r.id,
+      key: `${r.company.toLowerCase()}|${r.name.toLowerCase()}`,
+      name: r.name,
+      company: r.company,
+    }));
 
     const scoutGeo = normalizeScoutGeo(config.scoutGeo);
     const scoutAreasOfFocus = normalizeScoutAreasOfFocus(config.scoutAreasOfFocus, config.scoutAreaOfFocus);
     const scoutAreaOfFocus = scoutAreasOfFocus[0] ?? null;
     const scope = defaultScoutLocationScope(scoutAreasOfFocus);
 
-    return NextResponse.json(
+    const res = NextResponse.json(
       {
         leads: dedupeRows,
-        companies,
+        dedupeKeys,
+        companies: savedCompanies.map((c) => ({
+          id: c.id,
+          name: c.name,
+          domain: c.domain ?? undefined,
+          city: c.city ?? undefined,
+          website: c.website ?? undefined,
+        })),
         dataMode: config.dataMode,
         scoutCompaniesLimit: config.scoutCompaniesLimit,
         scoutLeadsLimit: config.scoutLeadsLimit,
@@ -60,6 +94,7 @@ export async function GET() {
       },
       { headers: { "Cache-Control": "private, max-age=30" } },
     );
+    return withServerTiming(res, marks, t0);
   } catch (e) {
     return handleApiError(e, "[api/scout/bootstrap]");
   }

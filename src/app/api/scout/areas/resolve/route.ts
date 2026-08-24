@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import {
-  catalogCityLabel,
   cityCenterForCatalog,
   resolveAreaOfFocus,
   suggestCatalogAreas,
@@ -44,7 +43,7 @@ export async function GET(req: Request) {
       name: row.name,
       source: "catalog",
     }));
-    if (query.length >= 3 && process.env.GOOGLE_PLACES_API_KEY && catalogCityLabel(city)) {
+    if (query.length >= 2 && process.env.GOOGLE_PLACES_API_KEY) {
       try {
         const center = cityCenterForCatalog(city);
         const places = await googlePlacesAutocompleteAreas({

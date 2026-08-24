@@ -66,3 +66,81 @@ async function runReplyOrchestratorSafe(params: {
     console.error("[enqueue] reply orchestrator failed for", params.leadId, e);
   }
 }
+
+export async function enqueueWriterRun(params: {
+  leadId: string;
+  tenantId: string;
+  mode?: "single" | "sequence";
+  outreachTemplate?: string;
+  writerMode?: string;
+  occasionTheme?: string | null;
+}): Promise<"queued" | "sync"> {
+  if (inngestJobsEnabled()) {
+    await inngest.send({ name: "writer/lead.requested", data: params });
+    return "queued";
+  }
+  void runWriterSafe(params);
+  return "sync";
+}
+
+async function runWriterSafe(params: {
+  leadId: string;
+  mode?: "single" | "sequence";
+  outreachTemplate?: string;
+  writerMode?: string;
+  occasionTheme?: string | null;
+}): Promise<void> {
+  try {
+    if (params.mode === "single") {
+      const { runWriter } = await import("@/lib/agents/writer");
+      await runWriter(params.leadId, {
+        outreachTemplate: params.outreachTemplate as never,
+        writerMode: params.writerMode as never,
+        occasionTheme: params.occasionTheme,
+      });
+      return;
+    }
+    const { runWriterSequence } = await import("@/lib/agents/writer-sequence");
+    await runWriterSequence(params.leadId, {
+      outreachTemplate: params.outreachTemplate as never,
+      writerMode: params.writerMode as never,
+      occasionTheme: params.occasionTheme,
+    });
+  } catch (e) {
+    console.error("[enqueue] writer failed for", params.leadId, e);
+  }
+}
+
+export async function enqueueEnrichLead(params: {
+  leadId: string;
+  tenantId: string;
+  mode: "free" | "paid";
+  dataMode?: string;
+  refetch?: boolean;
+}): Promise<"queued" | "sync"> {
+  if (inngestJobsEnabled()) {
+    await inngest.send({ name: "enrich/lead.requested", data: params });
+    return "queued";
+  }
+  void runEnrichSafe(params);
+  return "sync";
+}
+
+async function runEnrichSafe(params: {
+  leadId: string;
+  mode: "free" | "paid";
+  dataMode?: string;
+  refetch?: boolean;
+}): Promise<void> {
+  try {
+    const { enrichLeadById } = await import("@/lib/enrichment/enrich-lead");
+    await enrichLeadById({
+      leadId: params.leadId,
+      mode: params.mode,
+      dataMode: params.dataMode as never,
+      refetch: params.refetch,
+    });
+  } catch (e) {
+    console.error("[enqueue] enrich failed for", params.leadId, e);
+  }
+}

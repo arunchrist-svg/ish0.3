@@ -2,11 +2,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, FileText, Loader2, Mail, Plus, Save, Send, Sparkles } from "lucide-react";
+import { Check, ChevronDown, FileText, Loader2, Mail, Plus, Send, Sparkles } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { runWriterSequence, runReplyWriter, runWriterStream, updateLeadStatus, regenerateSequenceStep, updateOutreachDraft, type WriterMode } from "@/lib/api-client";
+import {
+  runWriterSequence,
+  runReplyWriter,
+  runWriterStream,
+  updateLeadStatus,
+  regenerateSequenceStep,
+  updateOutreachDraft,
+  createBlankOutreachSequence,
+  type WriterMode,
+} from "@/lib/api-client";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
@@ -49,7 +58,7 @@ type Props = {
   lead: LeadDetailRecord;
   draft?: WriterDraft;
   onDraftUpdated: (draft: WriterDraft, sequence?: WriterDraft[]) => void;
-  onSilentRefresh: (opts?: { replaceOutreach?: boolean }) => void;
+  onSilentRefresh: (opts?: { replaceOutreach?: boolean; clearOutreach?: boolean }) => void;
   onSent?: () => void;
 };
 
@@ -82,7 +91,6 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const defaultOccasion =
     taggedOccasion ?? (detectedOccasion?.type ? detectedOccasion.type : FESTIVE_OCCASION_SENTINEL);
   const [selectedOccasion, setSelectedOccasion] = useState<string>(defaultOccasion);
-  const [draftSaving, setDraftSaving] = useState(false);
   const [composeActions, setComposeActions] = useState<ComposeActionState | null>(null);
   const approvalRef = useRef<OutreachApprovalHandle>(null);
   const composeRef = useRef<HTMLDivElement>(null);
@@ -121,7 +129,14 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   useEffect(() => {
     setActiveDraft(draft);
-  }, [draft?.id, lead.id]);
+  }, [draft, lead.id]);
+
+  useEffect(() => {
+    if (!draft && !(lead.outreachSequence?.length)) {
+      setSelectedNodeId(undefined);
+      setComposeActions(null);
+    }
+  }, [draft, lead.outreachSequence?.length, lead.id]);
 
   useEffect(() => {
     if (draft?.templateVariant && draft.templateVariant !== "reply") {
@@ -244,12 +259,15 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const showRegenerate =
     canWrite &&
     !isReplyLead &&
+    hasDraft &&
     (phase === "compose" ||
       thread?.barMode === "drafts" ||
       thread?.barMode === "hidden" ||
       thread?.barMode === "sequence");
 
   const sequenceState = thread?.sequenceState ?? "not_started";
+  /** First-write empty: keep Pick inbox only; Start + template belong after drafts exist. */
+  const showSequenceControls = !isEmptyCompose;
   const showSyncReplies = lead.status === "outreached" || phase === "awaiting_reply";
 
   async function handleGenerate() {
@@ -315,6 +333,28 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       const message = e instanceof Error ? e.message : isReplyLead ? "Reply draft failed" : "Email draft failed";
       toast.error(message);
       if (!/quota/i.test(message)) console.error(e);
+    } finally {
+      setGenerating(false);
+      setGeneratingLabel(undefined);
+    }
+  }
+
+  async function handleWriteYourself() {
+    setGenerating(true);
+    setGeneratingLabel("Opening blank drafts");
+    try {
+      const { draft: first, drafts } = await createBlankOutreachSequence({
+        leadId: lead.id,
+        outreachTemplate: selectedTemplate,
+      });
+      setActiveDraft(first);
+      setSequenceSubjectKey(asVariantKey(first.chosenSubjectKey));
+      onDraftUpdated(first, drafts);
+      setSelectedNodeId("draft-1");
+      onSilentRefresh({ replaceOutreach: true });
+      toast.success("Blank drafts ready. Write Email 1 yourself.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not start blank drafts");
     } finally {
       setGenerating(false);
       setGeneratingLabel(undefined);
@@ -474,7 +514,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const isLaterSequenceDraft =
     resolvedDraft?.sequencePosition === 2 || resolvedDraft?.sequencePosition === 3;
   const needsInboxPick = sequenceRecipients.length === 0;
-  const showRecipientControl = showProcessBar && (!isLaterSequenceDraft || needsInboxPick);
+  const showRecipientControl =
+    showProcessBar &&
+    (isEmptyCompose ? needsInboxPick : !isLaterSequenceDraft || needsInboxPick);
   const recipientTriggerLabel = needsInboxPick
     ? "Pick inbox"
     : sequenceRecipients.length === 1
@@ -609,37 +651,43 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           className="ish-scout-ghost border-0 shadow-none"
         />
       ) : null}
-      <SequenceControlButtons
-        leadId={lead.id}
-        sequenceState={sequenceState}
-        disabled={generating}
-        sending={composeActions?.sending}
-        onUpdated={(meta) => {
-          if (meta?.action === "reset") {
-            setActiveDraft(undefined);
-            onSilentRefresh({ replaceOutreach: true });
-            return;
-          }
-          onSilentRefresh();
-        }}
-        onStartSequence={async () => {
-          composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-          if (approvalRef.current && composeActions && !composeActions.viewInEmailOnly) {
-            if (composeActions.sending) return;
-            if (!composeActions.canSend) {
-              if (!sequenceRecipients.length) {
-                toast.error(EMPTY_SEND_TO_HINT);
-              } else {
-                toast.error("Outreach sending is paused. Resume with Start sending on the Email queue or in Settings.");
-              }
+      {showSequenceControls ? (
+        <SequenceControlButtons
+          leadId={lead.id}
+          sequenceState={sequenceState}
+          disabled={generating}
+          sending={composeActions?.sending}
+          onUpdated={(meta) => {
+            if (meta?.action === "reset") {
+              setActiveDraft(undefined);
+              setSelectedNodeId(undefined);
+              setComposeActions(null);
+              setSequenceSubjectKey("A");
+              onSilentRefresh({ replaceOutreach: true, clearOutreach: true });
               return;
             }
-            await approvalRef.current.send();
-            return;
-          }
-          toast.message("Review the draft, then click Send to start the sequence");
-        }}
-      />
+            onSilentRefresh();
+          }}
+          hideStart={Boolean(composeActions && !composeActions.viewInEmailOnly)}
+          onStartSequence={async () => {
+            composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+            if (approvalRef.current && composeActions && !composeActions.viewInEmailOnly) {
+              if (composeActions.sending) return;
+              if (!composeActions.canSend) {
+                if (!sequenceRecipients.length) {
+                  toast.error(EMPTY_SEND_TO_HINT);
+                } else {
+                  toast.error("Outreach sending is paused. Resume with Start sending on the Email queue or in Settings.");
+                }
+                return;
+              }
+              await approvalRef.current.send();
+              return;
+            }
+            toast.message("Review the draft, then click Send to start the sequence");
+          }}
+        />
+      ) : null}
       {showProcessBar ? (
         <>
           {showWriterControl ? (
@@ -670,7 +718,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                         <span className="w-3 shrink-0">{writerMode === "standard" ? <Check className="size-3 text-brand-stratus-blue" /> : null}</span>
                         <div>
                           <div className="font-semibold">Standard</div>
-                          <div className="text-[11px] text-brand-ink-faint">Fills ISH templates with name and company</div>
+                          <div className="text-[11px] text-brand-ink-faint">Personalizes templates with name and company</div>
                         </div>
                       </DropdownMenuItem>
                       <DropdownMenuItem
@@ -803,42 +851,18 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   View in Email
                 </Link>
               ) : (
-                <>
-                  {composeActions.dirty ? (
-                    <span className="hidden px-1 text-[10px] font-medium text-amber-800 sm:inline">Unsaved</span>
-                  ) : null}
-                  {composeActions.showSave ? (
-                    <button
-                      type="button"
-                      onClick={() => approvalRef.current?.save()}
-                      disabled={!composeActions.canSave || draftSaving}
-                      className="ish-scout-ghost inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-50"
-                    >
-                      {composeActions.saving ? <Loader2 className="size-3 animate-spin" /> : <Save className="size-3" />}
-                      {composeActions.saving ? "Saving…" : "Save"}
-                    </button>
-                  ) : (
-                    <Link
-                      href="/email?tab=active"
-                      className="ish-scout-ghost inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold hover:opacity-95"
-                    >
-                      <Mail className="size-3" />
-                      Queue
-                    </Link>
+                <button
+                  type="button"
+                  onClick={() => approvalRef.current?.send()}
+                  disabled={!composeActions.canSend}
+                  className={cn(
+                    "inline-flex h-7 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-semibold transition-opacity",
+                    composeActions.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
                   )}
-                  <button
-                    type="button"
-                    onClick={() => approvalRef.current?.send()}
-                    disabled={!composeActions.canSend}
-                    className={cn(
-                      "inline-flex h-7 shrink-0 items-center gap-1 rounded-full px-3 text-[11px] font-semibold transition-opacity",
-                      composeActions.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
-                    )}
-                  >
-                    {composeActions.sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-                    {composeActions.sending ? "Sending…" : composeActions.sendLabel}
-                  </button>
-                </>
+                >
+                  {composeActions.sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                  {composeActions.sending ? "Sending…" : composeActions.sendLabel}
+                </button>
               )}
             </>
           ) : null}
@@ -867,7 +891,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   );
 
   return (
-    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-3 overflow-hidden px-0 py-1 lg:space-y-4 lg:px-[22px] lg:py-3">
+    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-2 overflow-hidden px-0 py-1 lg:space-y-2.5 lg:px-[22px] lg:py-2">
       <OutreachJourneyPanel
         thread={thread}
         processActions={processActions}
@@ -875,36 +899,21 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         onNodeSelect={handleNodeSelect}
       />
 
-      {thread?.nextStep && (thread.events?.length ?? 0) > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-brand-stratus-blue/12 bg-white/90 px-3 py-2.5 shadow-[var(--shadow-brand-sm)]">
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold text-brand-ink">{thread.nextStep.title}</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-brand-ink-soft">{thread.nextStep.description}</p>
-          </div>
-          {needsReplyDraft ? (
-            <button
-              type="button"
-              disabled={!canWrite || draftingReply}
-              onClick={() => void handleDraftReply()}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand-black px-3.5 py-2 text-[11px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              {draftingReply ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" />}
-              {draftingReply ? "Writing…" : "Generate AI reply"}
-            </button>
-          ) : thread.nextStep.primaryAction && phase === "drafting_reply" ? (
-            <button
-              type="button"
-              disabled={!composeActions?.canSend}
-              onClick={() => approvalRef.current?.send()}
-              className={cn(
-                "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[11px] font-semibold transition-opacity",
-                composeActions?.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
-              )}
-            >
-              <Send className="size-3.5" />
-              {composeActions?.sendLabel || "Send Reply"}
-            </button>
-          ) : null}
+      {/* Status only; actions stay in the toolbar. */}
+      {thread?.nextStep &&
+      (thread.events?.length ?? 0) > 0 &&
+      !needsReplyDraft &&
+      phase !== "drafting_reply" ? (
+        <div className="flex min-h-7 items-center rounded-[10px] border border-brand-stratus-blue/10 bg-white/80 px-2.5 py-1">
+          <p className="min-w-0 truncate text-[12px] leading-snug text-brand-ink">
+            <span className="font-semibold">{thread.nextStep.title}</span>
+            {thread.nextStep.description ? (
+              <span className="font-normal text-brand-ink-soft">
+                {" "}
+                · {thread.nextStep.description}
+              </span>
+            ) : null}
+          </p>
         </div>
       ) : null}
 
@@ -931,27 +940,196 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             thread={thread}
             selectedEventId={selectedNodeId}
             onSelect={handleNodeSelect}
+            hideDraftEvents={Boolean(
+              showComposeZone && isEditableNode && resolvedDraft && !needsReplyDraft,
+            )}
           />
 
-          {canWrite && !hasDraft && !isReplyLead && !generating ? (
-            <div className="border-y border-dashed border-brand-stratus-blue/30 bg-gradient-to-br from-brand-canvas/80 to-white px-4 py-8 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-10 lg:shadow-[var(--shadow-brand-sm)]">
-              <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-2xl bg-brand-yellow-soft">
-                <Sparkles className="size-5 text-brand-ink" />
+          {isEmptyCompose && !generating ? (
+            <div className="flex justify-center px-3 py-4 lg:px-0 lg:py-5">
+              <div className="w-full max-w-[22rem] overflow-hidden rounded-[14px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)]">
+                <div className="border-b border-black/[0.06] px-4 py-3 text-center">
+                  <p className="text-[15px] font-semibold tracking-tight text-brand-ink">
+                    Email 1 for {lead.firstName || lead.name || "this contact"}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+                    Write a 3-email sequence
+                  </p>
+                </div>
+
+                <div className="space-y-3 px-4 py-3">
+                  <div className="space-y-1.5">
+                    <p className="text-[12px] font-medium text-brand-ink">Template</p>
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger
+                        disabled={!canWrite || generating}
+                        className={cn(
+                          "flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border border-black/[0.08] bg-[#f5f5f7] px-3 text-left text-[13px] font-semibold text-brand-ink outline-none",
+                          "hover:bg-[#ebebed] focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/25 disabled:opacity-40",
+                        )}
+                      >
+                        <span className="min-w-0 truncate">{activeTemplate.label}</span>
+                        <ChevronDown className="size-3.5 shrink-0 text-brand-ink-faint" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent
+                        align="start"
+                        className="ish-email-write-menu w-[min(100vw-2rem,20rem)] rounded-[14px] p-1.5"
+                      >
+                        {templates.map((template) => (
+                          <DropdownMenuItem
+                            key={template.id}
+                            className="text-[12px]"
+                            onClick={() => setSelectedTemplate(template.id)}
+                          >
+                            <span className="w-3 shrink-0">
+                              {selectedTemplate === template.id ? (
+                                <Check className="size-3 text-brand-stratus-blue" />
+                              ) : null}
+                            </span>
+                            <div>
+                              <div className="font-semibold">{template.label}</div>
+                              <div className="text-[11px] text-brand-ink-faint">{template.description}</div>
+                            </div>
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <p className="text-[12px] font-medium text-brand-ink">Writer</p>
+                    <div
+                      role="radiogroup"
+                      aria-label="Writer"
+                      className="grid grid-cols-2 gap-1 rounded-[10px] bg-[#f5f5f7] p-1"
+                    >
+                      {(["standard", "ai"] as const).map((mode) => {
+                        const checked = writerMode === mode;
+                        return (
+                          <button
+                            key={mode}
+                            type="button"
+                            role="radio"
+                            aria-checked={checked}
+                            disabled={!canWrite || generating}
+                            onClick={() => setWriterMode(mode)}
+                            className={cn(
+                              "rounded-[8px] px-3 py-1.5 text-[13px] font-semibold transition-all disabled:opacity-40",
+                              checked
+                                ? "bg-white text-brand-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]"
+                                : "text-brand-ink-soft hover:text-brand-ink",
+                            )}
+                          >
+                            {mode === "standard" ? "Standard" : "AI"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] leading-snug text-brand-ink-faint">
+                      {writerMode === "ai"
+                        ? "Writes with research and brand context"
+                        : "Personalizes with name and company"}
+                    </p>
+                  </div>
+
+                  {selectedTemplate === "gift_sampling" ? (
+                    <div className="space-y-1.5">
+                      <p className="text-[12px] font-medium text-brand-ink">Occasion</p>
+                      <DropdownMenu modal={false}>
+                        <DropdownMenuTrigger
+                          disabled={!canWrite || generating}
+                          className={cn(
+                            "flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border border-black/[0.08] bg-[#f5f5f7] px-3 text-left text-[13px] font-semibold text-brand-ink outline-none",
+                            "hover:bg-[#ebebed] focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/25 disabled:opacity-40",
+                          )}
+                        >
+                          <span className="min-w-0 truncate">{selectedOccasionDef.label}</span>
+                          <ChevronDown className="size-3.5 shrink-0 text-brand-ink-faint" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="start"
+                          className="ish-email-write-menu w-[min(100vw-2rem,20rem)] rounded-[14px] p-1.5"
+                        >
+                          <DropdownMenuItem
+                            className="text-[12px]"
+                            onClick={() => setSelectedOccasion(FESTIVE_OCCASION_SENTINEL)}
+                          >
+                            <span className="w-3 shrink-0">
+                              {selectedOccasion === FESTIVE_OCCASION_SENTINEL ? (
+                                <Check className="size-3 text-brand-stratus-blue" />
+                              ) : null}
+                            </span>
+                            <div>
+                              <div className="font-semibold">Festive gifting</div>
+                              <div className="text-[11px] text-brand-ink-faint">Diwali and seasonal boxes</div>
+                            </div>
+                          </DropdownMenuItem>
+                          {detectedOccasion?.type ? (
+                            <DropdownMenuItem
+                              className="text-[12px]"
+                              onClick={() => setSelectedOccasion("account_event")}
+                            >
+                              <span className="w-3 shrink-0">
+                                {selectedOccasion === "account_event" ? (
+                                  <Check className="size-3 text-brand-stratus-blue" />
+                                ) : null}
+                              </span>
+                              <div>
+                                <div className="font-semibold">Account event</div>
+                                <div className="text-[11px] text-brand-ink-faint">
+                                  {detectedOccasion.timing === "upcoming" ? "Upcoming: " : ""}
+                                  {detectedOccasion.label ?? detectedOccasion.type}
+                                </div>
+                              </div>
+                            </DropdownMenuItem>
+                          ) : null}
+                          {WRITE_THEME_OCCASIONS.map((occasion) => (
+                            <DropdownMenuItem
+                              key={occasion.id}
+                              className="text-[12px]"
+                              onClick={() => setSelectedOccasion(occasion.id)}
+                            >
+                              <span className="w-3 shrink-0">
+                                {selectedOccasion === occasion.id ? (
+                                  <Check className="size-3 text-brand-stratus-blue" />
+                                ) : null}
+                              </span>
+                              <div>
+                                <div className="font-semibold">{occasion.label}</div>
+                                <div className="text-[11px] text-brand-ink-faint">{occasion.pitch}</div>
+                              </div>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="flex flex-col gap-1.5 border-t border-black/[0.06] px-4 py-3">
+                  <button
+                    type="button"
+                    disabled={!canWrite || generating}
+                    onClick={() => void handleGenerate()}
+                    className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-brand-black px-4 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    <Sparkles className="size-3.5 shrink-0" />
+                    Write smart emails
+                    {writeCredits > 0 ? (
+                      <span className="font-medium opacity-75">· {writeCredits} cr</span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canWrite || generating}
+                    onClick={() => void handleWriteYourself()}
+                    className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-[8px] text-[12px] font-semibold text-brand-ink-soft transition-colors hover:bg-black/[0.03] hover:text-brand-ink disabled:opacity-40"
+                  >
+                    <FileText className="size-3.5 shrink-0" />
+                    Write yourself
+                  </button>
+                </div>
               </div>
-              <p className="text-[15px] font-bold text-brand-ink">Start writing smart emails</p>
-              <p className="mx-auto mt-1.5 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-                AI will write 3 smart emails for {lead.name ?? "this contact"} using the{" "}
-                <span className="font-semibold text-brand-ink">{activeTemplate.shortLabel}</span> template.
-              </p>
-              <button
-                type="button"
-                disabled={!canWrite || generating}
-                onClick={() => void handleGenerate()}
-                className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white shadow-[var(--shadow-brand-sm)] transition-opacity hover:opacity-90 disabled:opacity-40"
-              >
-                <Sparkles className="size-4" />
-                Write smart emails
-              </button>
             </div>
           ) : null}
 
@@ -980,37 +1158,15 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   setActiveDraft(d);
                   onDraftUpdated(d);
                 }}
-                onSavingChange={setDraftSaving}
                 onComposeActionsChange={setComposeActions}
                 contentScore={contentQuality?.inboxScore ?? resolvedDraft.inboxScore ?? resolvedDraft.deliverabilityScore}
                 onSent={onSent ?? onSilentRefresh}
-                onGenerateReply={() => void handleDraftReply()}
-                generatingReply={draftingReply}
                 onSendFailed={onSilentRefresh}
                 startSequenceDraft={
                   sequence.find((d) => d.sequencePosition === 1) ??
                   (resolvedDraft.sequencePosition === 1 ? resolvedDraft : undefined)
                 }
               />
-            </div>
-          ) : isEmptyCompose ? (
-            <div className="border-y border-dashed border-brand-stratus-blue/25 bg-brand-canvas/30 px-4 py-10 text-center lg:rounded-[20px] lg:border lg:px-6 lg:py-14 lg:shadow-[var(--shadow-brand-sm)]">
-              <p className="text-[15px] font-bold text-brand-ink">Ready to write smart emails</p>
-              <p className="mx-auto mt-2 max-w-md text-[12px] leading-relaxed text-brand-ink-soft">
-                {writerMode === "ai"
-                  ? `AI Writer will draft a 3-email sequence for ${lead.name || "this contact"} using research and brand context. Pick a template above, then click Write smart emails.`
-                  : `Standard fills the ISH templates for ${lead.name || "this contact"}. Pick a template above, then click Write smart emails.`}
-              </p>
-              <Button
-                type="button"
-                size="sm"
-                disabled={!canWrite || generating}
-                className="mt-5 h-auto rounded-full bg-brand-black px-5 py-2.5 text-[12px] font-semibold text-white hover:bg-brand-black/90 disabled:opacity-40"
-                onClick={() => void handleGenerate()}
-              >
-                <FileText className="size-3.5" />
-                Write smart emails
-              </Button>
             </div>
           ) : (phase === "reply_sent" || phase === "complete") && isReplyLead ? (
             <div className="flex justify-end pt-1">
