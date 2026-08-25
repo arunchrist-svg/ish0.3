@@ -43,10 +43,12 @@ describe("draft copy variants", () => {
     expect(asVariantKey("B")).toBe("B");
   });
 
-  it("treats sequence positions after 1 as follow-up drafts", () => {
+  it("treats only Email 2 and 3 as follow-up drafts", () => {
     expect(isSequenceFollowUpDraft(1)).toBe(false);
     expect(isSequenceFollowUpDraft(2)).toBe(true);
     expect(isSequenceFollowUpDraft(3)).toBe(true);
+    expect(isSequenceFollowUpDraft(4)).toBe(false);
+    expect(isSequenceFollowUpDraft(5)).toBe(false);
     expect(isSequenceFollowUpDraft(null)).toBe(false);
   });
 

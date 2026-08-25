@@ -2,7 +2,6 @@ import { ArrowUpRight, MoreHorizontal, TrendingUp } from "lucide-react";
 import type { LeadRecord, QueueItem } from "@/lib/data";
 import { getScoreGrade } from "@/lib/data";
 import { CircleButton, PanelCard, ScoreGauge, SectionHeader, Separator } from "@/design-system";
-import { LeadAddedByLabel } from "@/components/leads/lead-added-by-button";
 
 type Props = {
   record: LeadRecord;
@@ -10,7 +9,7 @@ type Props = {
   createdByName?: string | null;
 };
 
-export function LeadScoreCard({ record, current, createdByName }: Props) {
+export function LeadScoreCard({ record, current }: Props) {
   const grade = getScoreGrade(current.score);
 
   return (
@@ -33,18 +32,11 @@ export function LeadScoreCard({ record, current, createdByName }: Props) {
       <Separator className="my-4 bg-brand-border" />
 
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-bold leading-none text-brand-ink">Grade {grade}</span>
-            <span className="rounded-lg bg-brand-green/20 px-2.5 py-0.5 text-[11.5px] font-semibold leading-none text-[#1f8050]">
-              → {record.score.trend}
-            </span>
-          </div>
-          <LeadAddedByLabel
-            name={createdByName}
-            leadSource={record.leadSource}
-            className="max-w-none shrink-0"
-          />
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-bold leading-none text-brand-ink">Grade {grade}</span>
+          <span className="rounded-lg bg-brand-green/20 px-2.5 py-0.5 text-[11.5px] font-semibold leading-none text-[#1f8050]">
+            → {record.score.trend}
+          </span>
         </div>
 
         <div className="flex flex-col gap-2.5">

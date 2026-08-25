@@ -28,12 +28,13 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SCOUT_INDUSTRIES } from "@/lib/scouting-data";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuTrigger,
+  FilterAllClear,
 } from "@/design-system";
+import { SCOUT_INDUSTRIES } from "@/lib/scouting-data";
 
 const INDUSTRY_ICONS: Record<string, LucideIcon> = {
   Manufacturing: Factory,
@@ -227,21 +228,17 @@ export function IndustrySelector({ industries, onIndustriesChange, className }: 
                   className="min-w-0 flex-1 bg-transparent text-[12px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
                 />
               </div>
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <button
-                  type="button"
-                  onClick={selectAllVisible}
-                  className="text-[11px] font-semibold text-brand-ink-soft hover:text-brand-ink"
-                >
-                  Select visible
-                </button>
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="text-[11px] font-semibold text-brand-ink-soft hover:text-brand-ink"
-                >
-                  Clear all
-                </button>
+              <div className="mt-2 flex items-center justify-end">
+                <FilterAllClear
+                  label="Industry selection"
+                  allSelected={
+                    filteredIndustries.length > 0 &&
+                    filteredIndustries.every((ind) => industries.includes(ind))
+                  }
+                  noneSelected={industries.length === 0}
+                  onAll={selectAllVisible}
+                  onClear={clearAll}
+                />
               </div>
             </div>
 

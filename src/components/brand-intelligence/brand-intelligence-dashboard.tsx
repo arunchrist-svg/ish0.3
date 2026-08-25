@@ -21,7 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ActionBar, BottomSheet, MobilePageLayout, PanelCard, AppPageHeader, text } from "@/design-system";
+import { ActionBar, BottomSheet, FilterAllClear, MobilePageLayout, PanelCard, AppPageHeader, text } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { toast } from "sonner";
 import {
@@ -269,6 +269,11 @@ export function BrandIntelligenceDashboard() {
     setSelectedCities([]);
   }
 
+  function selectAllCities() {
+    const labels = locationOptions.map((option) => option.label);
+    setSelectedCities([...new Set(labels)]);
+  }
+
   async function handleSweep() {
     if (sweepMode === "competitors" && !selectedCompetitors.length) {
       toast.error("Select at least one competitor brand");
@@ -429,8 +434,16 @@ export function BrandIntelligenceDashboard() {
                   <div className="flex items-center justify-between gap-2">
                     <span className={text.label}>Competitor brands</span>
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={selectAllCompetitors} className="text-[10.5px] font-semibold text-brand-stratus-blue hover:underline">All</button>
-                      <button type="button" onClick={clearCompetitors} className="text-[10.5px] font-semibold text-brand-ink-soft hover:underline">Clear</button>
+                      <FilterAllClear
+                        label="Competitor brands"
+                        allSelected={
+                          Boolean(giftIntelConfig?.competitorBrands.length) &&
+                          selectedCompetitors.length === giftIntelConfig?.competitorBrands.length
+                        }
+                        noneSelected={selectedCompetitors.length === 0}
+                        onAll={selectAllCompetitors}
+                        onClear={clearCompetitors}
+                      />
                       <Link href="/settings?tab=enrichment" className="text-[10.5px] font-semibold text-brand-stratus-blue hover:underline">Settings</Link>
                     </div>
                   </div>
@@ -480,9 +493,16 @@ export function BrandIntelligenceDashboard() {
                     <span className={text.label}>Gifting company city</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {selectedCities.length > 0 ? (
-                      <button type="button" onClick={clearCities} className="text-[11px] font-semibold text-brand-stratus-blue">Clear</button>
-                    ) : null}
+                    <FilterAllClear
+                      label="Gifting company cities"
+                      allSelected={
+                        locationOptions.length > 0 &&
+                        locationOptions.every((option) => selectedCities.includes(option.label))
+                      }
+                      noneSelected={selectedCities.length === 0}
+                      onAll={selectAllCities}
+                      onClear={clearCities}
+                    />
                     <Link href="/settings?tab=enrichment" className="text-[11px] font-semibold text-brand-stratus-blue hover:underline">Settings</Link>
                   </div>
                 </div>

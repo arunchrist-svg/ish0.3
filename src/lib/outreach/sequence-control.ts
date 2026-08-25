@@ -2,31 +2,14 @@ import { db, leads, outreachSchedule } from "@/db";
 import { eq, inArray } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
 import { resetLeadOutreach } from "@/lib/outreach/reset-lead-outreach";
+import {
+  deriveSequenceState,
+  type SequenceAction,
+  type SequenceControlState,
+} from "@/lib/outreach/sequence-control-shared";
 
-export type SequenceControlState = "not_started" | "active" | "paused" | "cancelled" | "complete";
-export type SequenceAction = "start" | "pause" | "cancel" | "reset";
-
-type ScheduleRow = { sequenceDay: number; status: string };
-
-const PENDING_FOLLOWUP = ["scheduled", "paused", "pending_review"] as const;
-
-export function deriveSequenceState(leadStatus: string, scheduleRows: ScheduleRow[]): SequenceControlState {
-  if (["replied", "meeting", "tasting_sent", "negotiate", "closed", "po_closed"].includes(leadStatus)) {
-    return "complete";
-  }
-
-  const initialSent = scheduleRows.some((r) => r.sequenceDay === 0 && r.status === "sent");
-  const followups = scheduleRows.filter((r) => r.sequenceDay > 0);
-
-  if (!initialSent) return "not_started";
-  if (followups.some((r) => r.status === "scheduled" || r.status === "pending_review")) return "active";
-  if (followups.some((r) => r.status === "paused")) return "paused";
-
-  const pending = followups.filter((r) => PENDING_FOLLOWUP.includes(r.status as (typeof PENDING_FOLLOWUP)[number]));
-  if (pending.length === 0 && followups.some((r) => r.status === "cancelled")) return "cancelled";
-
-  return "complete";
-}
+export type { SequenceAction, SequenceControlState };
+export { deriveSequenceState };
 
 export async function controlLeadSequence(params: {
   leadId: string;
@@ -56,7 +39,12 @@ export async function controlLeadSequence(params: {
   if (action === "reset") {
     await resetLeadOutreach(leadId);
     updated = rows.length;
-    nextState = "not_started";
+    const refreshed = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+    const remaining = await db
+      .select({ sequenceDay: outreachSchedule.sequenceDay, status: outreachSchedule.status })
+      .from(outreachSchedule)
+      .where(eq(outreachSchedule.leadId, leadId));
+    nextState = deriveSequenceState(refreshed?.status ?? "researched", remaining);
   } else if (action === "start") {
     if (state === "not_started") {
       return { ok: false, error: "Send Email 1 first to start the sequence" };

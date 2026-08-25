@@ -7,6 +7,16 @@ import {
   warmupCapWarning,
   type InboxWarmupStage,
 } from "@/lib/email/sender-warmup";
+import {
+  DEFAULT_SEND_DAYS,
+  DEFAULT_SEND_HOUR_END,
+  DEFAULT_SEND_HOUR_START,
+  DEFAULT_SEND_TIMEZONE,
+  normalizeSendDays,
+  normalizeSendHours,
+  normalizeSendTimezone,
+  type Weekday,
+} from "@/lib/email/send-window";
 
 export type EmailSendMode = "dry_run" | "test" | "live";
 export type EmailStyle = "primary" | "marketing";
@@ -96,10 +106,27 @@ export type EmailConfig = {
   fromPhone?: string;
   /** Optional branch/location under brand on Warmly (e.g. Kasturinagar). From Email settings. */
   fromLocation?: string;
+  /**
+   * Free-text signature from Email settings. When set, ISH drafts use it as the
+   * identity under Warmly / Thanks & Regards (replacing From name, brand, location).
+   * Also appended at send time if the draft body does not already include it.
+   */
+  signature?: string;
   replyToAddress: string;
   replyToName: string;
   testRecipient: string;
   cadenceDays: [number, number];
+  /**
+   * Weekdays when follow-ups may send (0 = Sunday … 6 = Saturday).
+   * Defaults to Mon–Fri. Snapped when scheduling Email 2/3.
+   */
+  sendDaysOfWeek?: Weekday[];
+  /** Inclusive local hour when the send window opens (0–23). Default 9. */
+  sendHourStart?: number;
+  /** Exclusive local hour when the send window closes (1–24). Default 17. */
+  sendHourEnd?: number;
+  /** IANA timezone for send-window snapping. Default Asia/Kolkata. */
+  sendTimezone?: string;
   appUrl: string;
   resendApiKey?: string;
   verifiedAt?: string;
@@ -220,7 +247,7 @@ export const EMAIL_STYLE_OPTIONS: {
   {
     value: "primary",
     label: "Primary inbox (1:1)",
-    desc: "Recommended for company cold outreach. No List-Unsubscribe, no marketing footer. Quiet open pixel only when App URL is public.",
+    desc: "Recommended for company cold outreach. No List-Unsubscribe, no marketing footer. Quiet open pixel only when App URL is public. Pixel hits can fire from scanners without a human open.",
     badge: "Recommended",
   },
   {
@@ -285,10 +312,15 @@ export function getDefaultEmailConfig(): EmailConfig {
     fromName: "",
     fromPhone: "",
     fromLocation: "",
+    signature: "",
     replyToAddress: "",
     replyToName: "",
     testRecipient: "",
     cadenceDays: [3, 7],
+    sendDaysOfWeek: [...DEFAULT_SEND_DAYS],
+    sendHourStart: DEFAULT_SEND_HOUR_START,
+    sendHourEnd: DEFAULT_SEND_HOUR_END,
+    sendTimezone: DEFAULT_SEND_TIMEZONE,
     appUrl,
     emailStyle: "primary",
     brandConfig: resolveBrandConfig({ brandSlug: "custom", verticalPackId: "general" }),
@@ -306,6 +338,7 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
   const cadence = overrides?.cadenceDays ?? merged.cadenceDays;
   const day1 = Math.max(1, Math.min(14, cadence[0] ?? 3));
   const day2 = Math.max(day1 + 1, Math.min(30, cadence[1] ?? 7));
+  const sendHours = normalizeSendHours(merged.sendHourStart, merged.sendHourEnd);
 
   const brandConfig = resolveBrandConfig(merged.brandConfig);
   const emailStyle = merged.emailStyle ?? "primary";
@@ -319,7 +352,15 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     smtpSecure: merged.smtpSecure ?? false,
     smtpUser: merged.smtpUser?.trim() ?? "",
     smtpPass: merged.smtpPass ?? "",
+    fromName: merged.fromName?.trim() ?? "",
+    fromPhone: merged.fromPhone?.trim() ?? "",
+    fromLocation: merged.fromLocation?.trim() ?? "",
+    signature: merged.signature?.trim() ?? "",
     cadenceDays: [day1, day2],
+    sendDaysOfWeek: normalizeSendDays(merged.sendDaysOfWeek),
+    sendHourStart: sendHours.hourStart,
+    sendHourEnd: sendHours.hourEnd,
+    sendTimezone: normalizeSendTimezone(merged.sendTimezone),
     sendMode: merged.sendMode ?? "dry_run",
     emailStyle,
     brandConfig,

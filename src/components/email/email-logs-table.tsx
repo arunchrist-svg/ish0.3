@@ -36,7 +36,10 @@ function StatusPill({ row }: { row: EmailLogRow }) {
   }
   if (row.status === "opened") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-600 ring-1 ring-orange-200/80">
+      <span
+        title="Tracking pixel loaded. Not the same as Gmail read/unread."
+        className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-bold text-orange-600 ring-1 ring-orange-200/80"
+      >
         <Eye className="size-3" />
         Opened
       </span>

@@ -11,6 +11,7 @@ import {
 } from "@/lib/geo/india";
 import { normalizeScoutAreasOfFocus } from "@/lib/geo/area-of-focus";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export const preferredRegion = ["sin1"];
 
@@ -33,7 +34,7 @@ export async function GET() {
         .from(leads)
         .innerJoin(contacts, eq(contacts.id, leads.contactId))
         .innerJoin(accounts, eq(accounts.id, leads.accountId))
-        .where(eq(leads.tenantId, ctx.tenantId))
+        .where(withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId)))
         .orderBy(desc(leads.createdAt))
         .limit(2000),
       db

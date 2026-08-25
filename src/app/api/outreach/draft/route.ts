@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db, leadOutreach, leads, yieldFunnel } from "@/db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
@@ -10,6 +10,8 @@ import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
 import { isContactReadyStage, isManualStage } from "@/lib/pipeline-status";
 import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { CATALOG_ON_OPEN_SEQUENCE_POSITION } from "@/lib/email/ish-festive-catalog";
+import { upsertCatalogOnOpenDraft } from "@/lib/email/promote-catalog-on-open";
 
 /** Create a blank 3-email sequence the user can write themselves. */
 export async function POST(req: Request) {
@@ -47,7 +49,10 @@ export async function POST(req: Request) {
     const company = companyNameForEmail(lead.account?.name ?? "your team");
 
     await deleteLeadOutreachWhere(
-      and(eq(leadOutreach.leadId, leadId), inArray(leadOutreach.sequencePosition, [1, 2, 3])),
+      and(
+        eq(leadOutreach.leadId, leadId),
+        inArray(leadOutreach.sequencePosition, [1, 2, 3, CATALOG_ON_OPEN_SEQUENCE_POSITION]),
+      ),
     );
 
     const rows = await db
@@ -119,10 +124,17 @@ export async function POST(req: Request) {
       ])
       .returning();
 
+    await upsertCatalogOnOpenDraft(leadId);
+
     await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
     await db.insert(yieldFunnel).values({ leadId, stage: "draft_ready", metadata: { source: "manual" } });
 
-    const drafts = rows
+    const allRows = await db.query.leadOutreach.findMany({
+      where: and(eq(leadOutreach.leadId, leadId), isNotNull(leadOutreach.sequencePosition)),
+      orderBy: (t, { asc }) => [asc(t.sequencePosition)],
+    });
+    const source = allRows.length ? allRows : rows;
+    const drafts = source
       .sort((a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0))
       .map((r) => toWriterDraft(r, { sequencePosition: r.sequencePosition ?? undefined }));
 

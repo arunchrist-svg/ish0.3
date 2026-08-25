@@ -6,9 +6,11 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { normalizeCadenceDays, type CadenceDays } from "@/lib/email/cadence";
 import { suggestReplyNextAction, type ReplyNextAction } from "@/lib/email/reply-next-action";
-import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control";
+import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control-shared";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { parseListLimit } from "@/lib/api/cursor";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
+import { getOutreachAttentionCounts } from "@/lib/email/outreach-attention-counts";
 
 export const preferredRegion = ["sin1"];
 
@@ -311,42 +313,17 @@ export async function GET(req: Request) {
 
     if (countsOnly) {
       const dbStart = performance.now();
-      const [emailConfig, draftReadyCount, pendingReviewCount, replyCount] = await Promise.all([
+      const [emailConfig, attention] = await Promise.all([
         getResolvedEmailConfig(ctx.workspaceId),
-        db
-          .select({ n: sql<number>`count(*)::int` })
-          .from(leads)
-          .where(and(eq(leads.workspaceId, ctx.workspaceId), eq(leads.status, "draft_ready")))
-          .then((r) => r[0]?.n ?? 0),
-        db
-          .select({ n: sql<number>`count(distinct ${outreachSchedule.leadId})::int` })
-          .from(outreachSchedule)
-          .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
-          .where(
-            and(eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.status, "pending_review")),
-          )
-          .then((r) => r[0]?.n ?? 0),
-        db
-          .select({ n: sql<number>`count(distinct ${leads.id})::int` })
-          .from(leads)
-          .innerJoin(outreachSchedule, eq(outreachSchedule.leadId, leads.id))
-          .where(
-            and(
-              eq(leads.workspaceId, ctx.workspaceId),
-              eq(outreachSchedule.emailKind, "inbound_reply"),
-              eq(outreachSchedule.status, "sent"),
-            ),
-          )
-          .then((r) => r[0]?.n ?? 0),
+        getOutreachAttentionCounts(ctx),
       ]);
       mark(marks, "db", dbStart);
-      const needsReview = draftReadyCount + pendingReviewCount;
       const empty: LeadEmailRow[] = [];
       const tabCounts = {
-        needs_review: needsReview,
+        needs_review: attention.needsReview,
         active: 0,
         hot: 0,
-        replies: replyCount,
+        replies: attention.replies,
         done: 0,
       };
       return withServerTiming(
@@ -357,11 +334,11 @@ export async function GET(req: Request) {
           stats: {
             totalSent: 0,
             opened: 0,
-            replied: replyCount,
+            replied: attention.replies,
             dueToday: 0,
-            total: needsReview + replyCount,
-            needsReview,
-            replies: replyCount,
+            total: attention.inboxCount,
+            needsReview: attention.needsReview,
+            replies: attention.replies,
             tabCounts,
           },
           needsReview: empty,
@@ -407,7 +384,7 @@ export async function GET(req: Request) {
             .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
             .innerJoin(contacts, eq(leads.contactId, contacts.id))
             .innerJoin(accounts, eq(leads.accountId, accounts.id))
-            .where(and(eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.channel, "email")))
+            .where(withLeadVisibility(ctx, eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.channel, "email")))
             .orderBy(desc(outreachSchedule.scheduledFor))
             .limit(SCHEDULE_ROW_CAP)
         : Promise.resolve([] as ScheduleGraphRow[]),
@@ -417,7 +394,8 @@ export async function GET(req: Request) {
             .from(leadOutreach)
             .innerJoin(leads, eq(leadOutreach.leadId, leads.id))
             .where(
-              and(
+              withLeadVisibility(
+                ctx,
                 eq(leads.workspaceId, ctx.workspaceId),
                 eq(leadOutreach.templateVariant, "reply"),
               ),
@@ -450,7 +428,8 @@ export async function GET(req: Request) {
             .innerJoin(accounts, eq(leads.accountId, accounts.id))
             .leftJoin(leadOutreach, eq(leadOutreach.id, outreachSchedule.draftLeadOutreachId))
             .where(
-              and(
+              withLeadVisibility(
+                ctx,
                 eq(leads.workspaceId, ctx.workspaceId),
                 eq(outreachSchedule.status, "pending_review"),
               ),
@@ -503,7 +482,8 @@ export async function GET(req: Request) {
               ),
             )
             .where(
-              and(
+              withLeadVisibility(
+                ctx,
                 eq(leads.workspaceId, ctx.workspaceId),
                 eq(leads.status, "draft_ready"),
               ),

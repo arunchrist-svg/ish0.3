@@ -1,9 +1,9 @@
-import { runReplyWriter } from "@/lib/agents/reply-writer";
 import { notifyReplyReceived } from "@/lib/agents/notify-reply";
 import { findRelatedLeads } from "@/lib/enrichment/related-leads";
 import { db, leads } from "@/db";
 import { eq } from "drizzle-orm";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { ensureBlankReplyDraft } from "@/lib/email/blank-reply-draft";
 
 export type ReplyOrchestratorResult = {
   outreachId?: string;
@@ -30,18 +30,16 @@ export async function runReplyOrchestrator(params: {
 
   let outreachId: string | undefined;
   let rubricTotal: number | undefined;
-  let intent: string | undefined;
+  let intent: string | undefined = "other";
   let draftFailed = false;
 
+  // Blank reply draft: user writes the body. Optional AI rewrite stays on "Write smart".
   try {
-    const result = await runReplyWriter(params.leadId);
+    const result = await ensureBlankReplyDraft(params.leadId);
     outreachId = result.outreachId;
-    rubricTotal = result.rubricTotal;
-    intent = result.intent;
   } catch (e) {
-    console.error("[reply-orchestrator] draft failed", e);
+    console.error("[reply-orchestrator] blank reply draft failed", e);
     draftFailed = true;
-    intent = "other";
   }
 
   let relatedCount = 0;

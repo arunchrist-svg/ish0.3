@@ -6,6 +6,7 @@ import {
 } from "@/lib/agents/writer-scoring";
 import { passesOutreachQuality } from "@/lib/outreach/outreach-quality";
 import { isIshFestiveCatalogBody } from "@/lib/email/ish-festive-catalog";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 
 export {
   DELIVERABILITY_PASS_THRESHOLD,
@@ -46,10 +47,19 @@ export async function evaluateOutreachDraft(params: {
     };
   }
 
+  const companyDisplayName = companyNameForEmail(params.account.name);
+
   const delivOpts: DeliverabilityOptions = {
     contactFirstName: params.contact.firstName ?? params.contact.name.split(" ")[0],
     sequencePosition: params.sequencePosition ?? 1,
     ...params.deliverabilityOptions,
+    account: {
+      name: companyDisplayName,
+      employees: params.account.employees,
+      industry: params.account.industry,
+      city: params.account.city,
+      ...params.deliverabilityOptions?.account,
+    },
   };
 
   const spamResult = scoreSpamMeter(params.emailBody, params.subject, delivOpts);
@@ -64,7 +74,7 @@ export async function evaluateOutreachDraft(params: {
       title: params.contact.title ?? undefined,
     },
     account: {
-      name: params.account.name,
+      name: companyDisplayName,
       industry: params.account.industry ?? undefined,
       city: params.account.city ?? undefined,
       employees: params.account.employees ?? undefined,

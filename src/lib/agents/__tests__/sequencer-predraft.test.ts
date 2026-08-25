@@ -1,8 +1,10 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { zonedLocalToUtc } from "@/lib/email/send-window";
 
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
-  update: vi.fn(),
+  updateWhere: vi.fn(),
+  updateSet: vi.fn(),
   select: vi.fn(),
   runWriter: vi.fn(),
   assertCredits: vi.fn(),
@@ -14,7 +16,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/db", () => ({
   db: {
     select: mocks.select,
-    update: () => ({ set: () => ({ where: mocks.update }) }),
+    update: () => ({
+      set: (values: unknown) => {
+        mocks.updateSet(values);
+        return { where: mocks.updateWhere };
+      },
+    }),
     query: {
       leads: { findFirst: mocks.findFirst },
       leadOutreach: { findFirst: mocks.findFirst },
@@ -49,10 +56,16 @@ vi.mock("@/lib/settings/email-settings", () => ({
     emailStyle: "plain",
     appUrl: "http://localhost",
     followUpPolicy: "auto_send",
+    // Always-open window so clock time does not flake send-path tests.
+    sendDaysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+    sendHourStart: 0,
+    sendHourEnd: 24,
+    sendTimezone: "UTC",
   }),
 }));
 vi.mock("@/lib/email/sender-preflight", () => ({ assertSenderPreflight: vi.fn(), SenderPreflightError: class extends Error {} }));
 vi.mock("@/lib/audit", () => ({ logAudit: vi.fn() }));
+vi.mock("@/lib/push/notify-workspace", () => ({ notifyLeadEvent: vi.fn() }));
 vi.mock("@/lib/agents/quality-gate", () => ({
   evaluateOutreachDraft: mocks.evaluateOutreachDraft,
 }));
@@ -62,6 +75,8 @@ vi.mock("@/lib/outreach/send-scheduled-followup", () => ({
 }));
 
 import { runSequencer } from "@/lib/agents/sequencer";
+
+const IST = "Asia/Kolkata";
 
 describe("runSequencer pre-linked drafts", () => {
   beforeEach(() => {
@@ -113,6 +128,10 @@ describe("runSequencer pre-linked drafts", () => {
     });
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("sends linked draft without calling runWriter", async () => {
     const result = await runSequencer();
     expect(result.processed).toBe(1);
@@ -133,11 +152,44 @@ describe("runSequencer pre-linked drafts", () => {
       emailStyle: "plain",
       appUrl: "http://localhost",
       followUpPolicy: "review_all_followups",
+      sendDaysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+      sendHourStart: 0,
+      sendHourEnd: 24,
+      sendTimezone: "UTC",
     } as never);
 
     const result = await runSequencer();
     expect(result.pendingReview).toBe(1);
     expect(result.processed).toBe(0);
     expect(mocks.sendScheduledFollowUp).not.toHaveBeenCalled();
+  });
+
+  it("defers due rows outside Shoot-to window without sending", async () => {
+    // Friday 2026-08-21 18:30 IST (after 17:00 Mon–Fri window)
+    const outside = zonedLocalToUtc({ year: 2026, month: 8, day: 21, hour: 18, minute: 30 }, IST);
+    vi.useFakeTimers();
+    vi.setSystemTime(outside);
+
+    const { getResolvedEmailConfig } = await import("@/lib/settings/email-settings");
+    vi.mocked(getResolvedEmailConfig).mockResolvedValue({
+      sendMode: "dry_run",
+      fromAddress: "test@ish.local",
+      cadenceDays: [3, 7],
+      emailStyle: "plain",
+      appUrl: "http://localhost",
+      followUpPolicy: "auto_send",
+      sendDaysOfWeek: [1, 2, 3, 4, 5],
+      sendHourStart: 9,
+      sendHourEnd: 17,
+      sendTimezone: IST,
+    } as never);
+
+    const result = await runSequencer();
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(mocks.sendScheduledFollowUp).not.toHaveBeenCalled();
+    expect(mocks.updateSet).toHaveBeenCalledWith({
+      scheduledFor: zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 9, minute: 0 }, IST),
+    });
   });
 });

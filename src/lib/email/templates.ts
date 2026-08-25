@@ -19,14 +19,28 @@ function trackingPixelHtml(trackingToken: string | undefined, appUrl: string): s
   return buildTrackingPixel(trackingToken, appUrl);
 }
 
+/** Append Settings signature to plain-text body if set and not already present. */
+export function appendEmailSignature(body: string, signature?: string | null): string {
+  const sig = signature?.trim() ?? "";
+  if (!sig) return body;
+  const normalizedBody = body.replace(/\r\n/g, "\n").trimEnd();
+  if (!normalizedBody) return sig;
+  const collapsedBody = normalizedBody.replace(/\s+/g, " ").toLowerCase();
+  const collapsedSig = sig.replace(/\s+/g, " ").toLowerCase();
+  if (collapsedBody.includes(collapsedSig)) return normalizedBody;
+  return `${normalizedBody}\n\n${sig}`;
+}
+
 export function buildEmailHtml(params: {
   body: string;
   senderName?: string;
   trackingToken?: string;
   appUrl?: string;
   emailStyle?: EmailStyle;
+  /** Free-text signature from Email settings; appended before HTML conversion. */
+  signature?: string | null;
 }): string {
-  const body = normalizeEmailBody(params.body);
+  const body = normalizeEmailBody(appendEmailSignature(params.body, params.signature));
   const emailStyle = params.emailStyle ?? getDefaultEmailConfig().emailStyle ?? "primary";
   const appUrl = params.appUrl ?? getDefaultEmailConfig().appUrl;
   const pixel = trackingPixelHtml(params.trackingToken, appUrl);

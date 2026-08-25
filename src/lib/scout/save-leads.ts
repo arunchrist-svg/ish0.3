@@ -3,6 +3,7 @@ import { verifyEmail } from "@/lib/enrichment/verify";
 import type { EmailVerifyResult } from "@/lib/enrichment/types";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
+import { logScoutQualityEvent, matchScoreBand, SCOUT_QUALITY_EVENT } from "@/lib/scout/quality-events";
 import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
 import { eq, and, desc, or, ilike } from "drizzle-orm";
@@ -31,6 +32,9 @@ import {
   isOpenToWorkProfile,
   personLooksOpenToWork,
   personTitleConflictsWithCompany,
+  personFieldsShowCurrentEmployment,
+  entityTokens,
+  isWeakCompanyPrefix,
 } from "@/lib/enrichment/person-company-match";
 import { isFestivalBuyerRole } from "@/lib/enrichment/people-role-filter";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
@@ -64,6 +68,12 @@ const BUYING_TITLE_KEYWORDS = [
   "operations",
 ];
 
+function companyNeedsEmployerVerify(companyName: string, matchScore?: number): boolean {
+  if (matchScore != null && matchScore < 35) return true;
+  const tokens = entityTokens(companyName);
+  return tokens.length >= 2 && tokens.some((token) => isWeakCompanyPrefix(token));
+}
+
 function looksLikeDecisionMaker(person: ScoutPersonResult): boolean {
   if (person.isKeyDM) return true;
   const title = (person.title ?? "").toLowerCase();
@@ -83,6 +93,12 @@ export function scoutPersonSaveGate(
   }
   if (hasFormerCompanyAffiliation(blob, company.name)) {
     return { pass: false, reason: "does not work at this company" };
+  }
+
+  if (companyNeedsEmployerVerify(company.name, person.matchScore)) {
+    if (!personFieldsShowCurrentEmployment(person, company.name)) {
+      return { pass: false, reason: "employer verify failed" };
+    }
   }
 
   if (opts?.leadSource === "scout_wizard") {
@@ -480,6 +496,31 @@ export async function saveScoutLeads(params: {
   for (const outcome of outcomes) {
     if (outcome.kind === "saved") savedLeads.push(outcome.item);
     else if (outcome.kind === "skipped") skipped.push(outcome.item);
+  }
+
+  for (const item of skipped) {
+    void logScoutQualityEvent({
+      tenantId,
+      workspaceId,
+      userId: createdByUserId,
+      eventType: SCOUT_QUALITY_EVENT.leadSkipped,
+      metadata: { name: item.name, reason: item.reason, company: company.name, leadSource },
+    });
+  }
+  for (const item of savedLeads) {
+    const person = people.find((p) => p.name === item.name);
+    void logScoutQualityEvent({
+      tenantId,
+      workspaceId,
+      userId: createdByUserId,
+      eventType: SCOUT_QUALITY_EVENT.leadSaved,
+      metadata: {
+        name: item.name,
+        company: company.name,
+        leadSource,
+        matchScoreBand: matchScoreBand(person?.matchScore),
+      },
+    });
   }
 
   if (savedLeads.length > 0) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { deriveSequenceState } from "@/lib/outreach/sequence-control";
+import { deriveSequenceState } from "@/lib/outreach/sequence-control-shared";
 
 describe("deriveSequenceState", () => {
   it("returns not_started before email 1 is sent", () => {
@@ -145,11 +145,26 @@ describe("controlLeadSequence", () => {
     expect(result).toEqual({ ok: true, state: "cancelled", updated: 2 });
   });
 
-  it("resets outreach and returns not_started", async () => {
-    mocks.selectWhere.mockResolvedValue([
-      { id: "s0", sequenceDay: 0, status: "sent" },
-      { id: "s1", sequenceDay: 3, status: "scheduled" },
-    ]);
+  it("resets outreach and returns not_started when no reply remains", async () => {
+    mocks.selectWhere
+      .mockResolvedValueOnce([
+        { id: "s0", sequenceDay: 0, status: "sent" },
+        { id: "s1", sequenceDay: 3, status: "scheduled" },
+      ])
+      .mockResolvedValueOnce([]);
+    mocks.findFirst
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        tenantId: "t1",
+        workspaceId: "w1",
+        status: "outreached",
+      })
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        tenantId: "t1",
+        workspaceId: "w1",
+        status: "researched",
+      });
 
     const result = await controlLeadSequence({
       leadId: "lead-1",
@@ -163,5 +178,36 @@ describe("controlLeadSequence", () => {
     expect(mocks.logAudit).toHaveBeenCalledWith(
       expect.objectContaining({ action: "sequence.reset", entityId: "lead-1" }),
     );
+  });
+
+  it("reset keeps complete when a reply was preserved", async () => {
+    mocks.selectWhere
+      .mockResolvedValueOnce([
+        { id: "s0", sequenceDay: 0, status: "sent" },
+        { id: "s1", sequenceDay: -2, status: "sent" },
+      ])
+      .mockResolvedValueOnce([{ sequenceDay: -2, status: "sent" }]);
+    mocks.findFirst
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        tenantId: "t1",
+        workspaceId: "w1",
+        status: "replied",
+      })
+      .mockResolvedValueOnce({
+        id: "lead-1",
+        tenantId: "t1",
+        workspaceId: "w1",
+        status: "replied",
+      });
+
+    const result = await controlLeadSequence({
+      leadId: "lead-1",
+      action: "reset",
+      tenantId: "t1",
+      workspaceId: "w1",
+    });
+
+    expect(result).toEqual({ ok: true, state: "complete", updated: 2 });
   });
 });

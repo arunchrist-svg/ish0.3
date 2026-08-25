@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeAccountScore, sortCompaniesByAccountScore } from "@/lib/enrichment/account-score";
+import { computeAccountScore, sortCompaniesByAccountScore, applyGoldDensityEarlyStop } from "@/lib/enrichment/account-score";
 import { scoutQualityProfileFor } from "@/lib/enrichment/quality-profile";
 import {
   rankPeopleForScout,
@@ -177,5 +177,51 @@ describe("wrong-employer regressions still hold", () => {
         "Aron Universal",
       ),
     ).toBe(false);
+  });
+});
+
+describe("sellerPollution behavior", () => {
+  it("soft_demote keeps the seller but ranks it below a buyer", () => {
+    const general = scoutQualityProfileFor("general_b2b");
+    const seller = company({
+      name: "Acme SaaS Reseller",
+      industry: "software reseller",
+      intelNotes: "competing software vendor",
+      domain: "reseller.io",
+      city: "Bengaluru",
+      leadabilityBand: "high",
+    });
+    const buyer = company({
+      name: "Hosur Auto Plant",
+      domain: "hosurauto.com",
+      city: "Bengaluru",
+      industry: "Manufacturing",
+      leadabilityBand: "high",
+    });
+    const ranked = sortCompaniesByAccountScore([seller, buyer], {
+      profile: general,
+      selectedCities: ["Bengaluru"],
+    });
+    expect(ranked.map((c) => c.name)).toContain("Acme SaaS Reseller");
+    expect(ranked[0]?.name).toBe("Hosur Auto Plant");
+  });
+});
+
+describe("gold density early stop", () => {
+  it("cuts a low-score tail before the requested limit", () => {
+    const gold = company({
+      name: "Gold Co",
+      leadabilityBand: "high",
+      fitScore: 80,
+      domain: "gold.co",
+      city: "Hosur",
+    });
+    const filler = (n: number) =>
+      company({ name: `Low ${n}`, leadabilityBand: "unknown", fitScore: 10, city: "Chennai" });
+    const ranked = [gold, gold, gold, filler(1), filler(2), filler(3), filler(4), filler(5), filler(6)];
+    const cut = applyGoldDensityEarlyStop(ranked, { limit: 9, enabled: true });
+    expect(cut.earlyStop).toBe(true);
+    expect(cut.companies.length).toBeLessThan(9);
+    expect(cut.companies.filter((c) => c.name.startsWith("Low")).length).toBeLessThan(5);
   });
 });

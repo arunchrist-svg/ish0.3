@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const ctx = await requireTenantContext();
     if (!canManageEmailSettings(ctx.role, ctx.platformRole)) throw new ForbiddenError("Admin access required");
-    const config = await getEmailConfigForApi();
+    const config = await getEmailConfigForApi(ctx.userId);
     return NextResponse.json(config);
   } catch (e) {
     const err = handleApiError(e, '[settings]');
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     const ctx = await requireTenantContext();
     if (!canManageEmailSettings(ctx.role, ctx.platformRole)) throw new ForbiddenError("Admin access required");
     const body = (await req.json()) as Partial<EmailConfig>;
-    const config = await saveWorkspaceEmailOverrides(body);
+    const config = await saveWorkspaceEmailOverrides(body, ctx.workspaceId, ctx.userId);
     return NextResponse.json({ ok: true, config });
   } catch (e) {
     if (e instanceof EmailSettingsValidationError) {

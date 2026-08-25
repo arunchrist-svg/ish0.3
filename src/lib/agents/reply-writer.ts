@@ -10,6 +10,7 @@ import {
   scoreRubricTotal,
   getCombinedRevisionIssues,
 } from "@/lib/agents/writer-scoring";
+import { companyNameForEmail, scrubLegalEntityCopy } from "@/lib/email/company-display-name";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { normalizeReplySubject, stripReplyPrefix } from "@/lib/email/threading";
@@ -42,11 +43,12 @@ export async function runReplyWriter(leadId: string): Promise<ReplyWriterResult>
 
   if (!lead) throw new Error(`Lead ${leadId} not found`);
 
-  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
   const senderFirstName = emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
+  const companyDisplayName = companyNameForEmail(account.name);
 
   const research = await db.query.leadResearch.findFirst({
     where: eq(leadResearch.leadId, leadId),
@@ -94,7 +96,7 @@ export async function runReplyWriter(leadId: string): Promise<ReplyWriterResult>
 
   const replyPlan = await generateReplyPlan({
     contactFirstName,
-    companyName: account.name,
+    companyName: companyDisplayName,
     originalEmail: originalContext.emailBody,
     replyContent,
     intent: replyIntent,
@@ -119,7 +121,7 @@ Output ONLY valid JSON:
 
   const userPrompt = `Draft a reply to a prospect who responded to our outreach.
 
-Prospect: ${contactFirstName}, ${contact.title ?? "HR/Admin"} at ${account.name}
+Prospect: ${contactFirstName}, ${contact.title ?? "HR/Admin"} at ${companyDisplayName}
 Industry: ${account.industry ?? "Corporate"}, City: ${account.city ?? "India"}
 Outreach hook: ${research?.outreachHook ?? "Corporate outreach"}
 
@@ -143,6 +145,8 @@ Instructions:
 - Keep it friendly but professional, short, and human. Not salesy, no fluff
 - Never use em dashes. One question CTA only.
 - Never cite employee counts or numeric company stats.
+- Use company name "${companyDisplayName}" only. Never append Pvt Ltd, Private Limited, Ltd, or other legal suffixes.
+- Never invent a different company or parent-group name.
 - Sign off with sender first name only
 - Max 120 words`;
 
@@ -155,7 +159,7 @@ Instructions:
     replyIntent: replyIntent.intent,
     priorCta,
     account: {
-      name: account.name,
+      name: companyDisplayName,
       employees: account.employees,
       industry: account.industry,
       city: account.city,
@@ -168,7 +172,7 @@ Instructions:
   const rubricParams = {
     contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
     account: {
-      name: account.name,
+      name: companyDisplayName,
       industry: account.industry,
       city: account.city,
       employees: account.employees,
@@ -180,7 +184,9 @@ Instructions:
 
   const threadRoot =
     (lead as typeof leads.$inferSelect & { threadRootSubject?: string | null }).threadRootSubject ??
-    (originalContext.subjectA ? stripReplyPrefix(originalContext.subjectA) : `Outreach for ${account.name}`);
+    (originalContext.subjectA
+      ? stripReplyPrefix(originalContext.subjectA)
+      : `Outreach for ${companyDisplayName}`);
 
   let emailBody = "";
   let subjectA = normalizeReplySubject(threadRoot);
@@ -210,9 +216,19 @@ Instructions:
       throw new Error("Reply writer returned incomplete JSON instead of an email. Try again.");
     }
 
-    emailBody = parsed.emailBody;
-    subjectA = normalizeReplySubject(parsed.subjectA ? stripReplyPrefix(parsed.subjectA) : threadRoot);
-    subjectB = normalizeReplySubject(parsed.subjectB ? stripReplyPrefix(parsed.subjectB) : threadRoot);
+    emailBody = scrubLegalEntityCopy(parsed.emailBody, companyDisplayName);
+    subjectA = normalizeReplySubject(
+      scrubLegalEntityCopy(
+        parsed.subjectA ? stripReplyPrefix(parsed.subjectA) : threadRoot,
+        companyDisplayName,
+      ),
+    );
+    subjectB = normalizeReplySubject(
+      scrubLegalEntityCopy(
+        parsed.subjectB ? stripReplyPrefix(parsed.subjectB) : threadRoot,
+        companyDisplayName,
+      ),
+    );
     outreachGoal = parsed.outreachGoal ?? outreachGoal;
 
     const spamResult = scoreSpamMeter(emailBody, subjectA, delivOpts);

@@ -2,10 +2,12 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRight,
   Bookmark,
@@ -34,6 +36,7 @@ import {
   Megaphone,
   Package,
   Pill,
+  Plus,
   RefreshCw,
   Rocket,
   Search,
@@ -52,7 +55,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { BottomSheet } from "@/design-system";
+import { BottomSheet, FilterAllClear } from "@/design-system";
 import { peopleAndFilterWarning } from "@/lib/enrichment/people-role-filter";
 import {
   districtGroupsForScoutOptions,
@@ -311,6 +314,7 @@ function PillSegment({
   active,
   hasSelection,
   onClick,
+  buttonRef,
 }: {
   icon: ReactNode;
   label: string;
@@ -318,26 +322,29 @@ function PillSegment({
   active: boolean;
   hasSelection: boolean;
   onClick: () => void;
+  buttonRef?: React.RefObject<HTMLButtonElement | null>;
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
       onClick={onClick}
+      title={`${label}: ${value}`}
       className={cn(
-        "group flex h-8 items-center gap-2 rounded-full px-3.5 text-left transition-all duration-150",
+        "group flex h-8 max-w-[9.5rem] items-center gap-1.5 rounded-full px-2.5 text-left transition-all duration-150 sm:max-w-[11rem] sm:gap-2 sm:px-3",
         active ? "ish-scout-pill-active" : "hover:bg-white/70",
       )}
     >
-      <span className={cn("transition-colors", active || hasSelection ? "text-brand-ink" : "text-brand-ink-faint")}>
+      <span className={cn("shrink-0 transition-colors", active || hasSelection ? "text-brand-ink" : "text-brand-ink-faint")}>
         {icon}
       </span>
-      <span className="flex flex-col">
-        <span className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
+      <span className="min-w-0 flex flex-col">
+        <span className="text-[9px] font-bold uppercase tracking-widest text-brand-ink-faint">
           {label}
         </span>
         <span
           className={cn(
-            "text-[13px] font-semibold leading-tight",
+            "truncate text-[12.5px] font-semibold leading-tight",
             hasSelection ? "text-brand-ink" : "text-brand-ink-soft",
           )}
         >
@@ -355,35 +362,67 @@ function PillSegment({
 }
 
 /* ─────────────────────────────────────────────
-   Popover wrapper (opens below its trigger)
+   Popover wrapper (portaled so toolbar overflow cannot clip it)
 ───────────────────────────────────────────── */
 
 function Popover({
   open,
-  onClose,
   width,
   className,
+  anchorRef,
   children,
 }: {
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   width?: string;
   className?: string;
+  anchorRef?: React.RefObject<HTMLElement | null>;
   children: ReactNode;
 }) {
-  return (
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    function place() {
+      const el = anchorRef?.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const pad = 8;
+      const panelWidth = Math.min(440, window.innerWidth - pad * 2);
+      const maxLeft = Math.max(pad, window.innerWidth - pad - panelWidth);
+      setCoords({
+        top: rect.bottom + 8,
+        left: Math.min(Math.max(pad, rect.left), maxLeft),
+      });
+    }
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, anchorRef]);
+
+  if (!open || !coords || typeof document === "undefined") return null;
+
+  return createPortal(
     <div
+      data-scout-popover=""
       className={cn(
-        "ish-scout-popover absolute top-full left-0 z-50 mt-2 transition-all duration-200 origin-top",
-        open
-          ? "pointer-events-auto scale-100 opacity-100 translate-y-0"
-          : "pointer-events-none scale-95 opacity-0 -translate-y-1",
+        "ish-scout-popover fixed z-[80]",
         width ?? "w-[min(360px,calc(100vw-2rem))]",
         className,
       )}
+      style={{ top: coords.top, left: coords.left }}
+      role="dialog"
     >
       <div className="relative z-10 bg-transparent">{children}</div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -614,22 +653,13 @@ function LocationAreaPicker({
           {groups.length > 1 ? `${groups.length} focus areas` : (groups[0]?.name ?? "Area of focus")}
         </p>
         <div className="ish-scout-filter-actions">
-          <button
-            type="button"
-            onClick={() => onCitiesChange(labels)}
-            disabled={allSelected}
-            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => onCitiesChange([])}
-            disabled={noneSelected}
-            className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
-          >
-            Clear
-          </button>
+          <FilterAllClear
+            label="Focus area selection"
+            allSelected={allSelected}
+            noneSelected={noneSelected}
+            onAll={() => onCitiesChange(labels)}
+            onClear={() => onCitiesChange([])}
+          />
         </div>
       </div>
       <p className="px-4 pb-3 text-[11px] leading-relaxed text-brand-ink-faint">
@@ -743,71 +773,57 @@ function LocationDistrictPicker({
 
   return (
     <div className="flex flex-col">
-      <div className={cn("border-b border-brand-border/60", compact ? "px-3 py-2.5" : "px-3.5 py-3")}>
-        <div className="ish-scout-search flex items-center gap-2 rounded-2xl px-3.5 py-2.5">
-          <Search className="size-3.5 shrink-0 text-brand-stratus-blue/80" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search districts or states"
-            className="min-w-0 flex-1 bg-transparent text-[13px] font-medium tracking-tight text-brand-ink outline-none placeholder:font-normal placeholder:text-brand-ink-faint"
-          />
-          {query ? (
-            <button
-              type="button"
-              onClick={() => {
-                setQuery("");
-                inputRef.current?.focus();
-              }}
-              className="flex size-5 items-center justify-center rounded-full bg-brand-ink-faint/15 text-brand-ink-soft hover:bg-brand-ink-faint/25"
-              aria-label="Clear search"
-            >
-              <X className="size-3" />
-            </button>
-          ) : null}
-        </div>
-        <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
-          <p className="text-[11px] font-medium text-brand-ink-faint">
-            {cities.length === 0
-              ? "Nothing selected"
-              : `${cities.length} location${cities.length === 1 ? "" : "s"} selected`}
-          </p>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => {
-                let next = cities;
-                for (const group of groups) {
-                  next = setScoutStateDistricts(
-                    next,
-                    group.state.id,
-                    true,
-                    group.districts.map((d) => d.id),
-                  );
-                }
-                onCitiesChange(next);
-              }}
-              disabled={groups.every(
-                (g) => g.districts.length > 0 && g.districts.every((d) => isScoutDistrictPicked(cities, d)),
-              )}
-              className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
-            >
-              All
-            </button>
-            <span className="text-[10px] text-brand-ink-faint/50" aria-hidden>
-              ·
-            </span>
-            <button
-              type="button"
-              onClick={() => onCitiesChange([])}
-              disabled={cities.length === 0}
-              className="rounded-full px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/10 disabled:text-brand-ink-faint disabled:hover:bg-transparent"
-            >
-              Clear
-            </button>
+      <div className={cn("border-b border-brand-border/60", compact ? "px-3 py-2" : "px-3.5 py-2.5")}>
+        <div className="flex items-center gap-2">
+          <div className="ish-scout-search flex min-w-0 flex-1 items-center gap-2 rounded-full px-3 py-2">
+            <Search className="size-3.5 shrink-0 text-brand-stratus-blue/80" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search districts or states"
+              className="min-w-0 flex-1 bg-transparent text-[12.5px] font-medium tracking-tight text-brand-ink outline-none placeholder:font-normal placeholder:text-brand-ink-faint"
+            />
+            {query ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  inputRef.current?.focus();
+                }}
+                className="flex size-5 items-center justify-center rounded-full bg-brand-ink-faint/15 text-brand-ink-soft hover:bg-brand-ink-faint/25"
+                aria-label="Clear search"
+              >
+                <X className="size-3" />
+              </button>
+            ) : null}
           </div>
+          <p className="hidden shrink-0 whitespace-nowrap text-[11px] font-medium text-brand-ink-faint sm:block">
+            {cities.length === 0
+              ? "None"
+              : `${cities.length} selected`}
+          </p>
+          <FilterAllClear
+            label="All districts selection"
+            allSelected={groups.every(
+              (g) => g.districts.length > 0 && g.districts.every((d) => isScoutDistrictPicked(cities, d)),
+            )}
+            noneSelected={cities.length === 0}
+            onAll={() => {
+              let next = cities;
+              for (const group of groups) {
+                next = setScoutStateDistricts(
+                  next,
+                  group.state.id,
+                  true,
+                  group.districts.map((d) => d.id),
+                );
+              }
+              onCitiesChange(next);
+            }}
+            onClear={() => onCitiesChange([])}
+          />
         </div>
       </div>
 
@@ -859,42 +875,17 @@ function LocationDistrictPicker({
                       {selectedCount}/{group.districts.length}
                     </span>
                   </button>
-                  <div
-                    className="flex shrink-0 items-center rounded-full bg-brand-canvas/90 p-0.5 shadow-[inset_0_0_0_1px_rgba(var(--brand-stratus-blue-rgb),0.10)]"
-                    role="group"
-                    aria-label={`${group.state.name} selection`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onCitiesChange(setScoutStateDistricts(cities, group.state.id, true, allowedIds))
-                      }
-                      disabled={allOn}
-                      className={cn(
-                        "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                        allOn
-                          ? "bg-white text-brand-ink shadow-[var(--shadow-brand-sm)]"
-                          : "text-brand-stratus-blue hover:text-brand-ink disabled:text-brand-ink-faint",
-                      )}
-                    >
-                      All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onCitiesChange(setScoutStateDistricts(cities, group.state.id, false, allowedIds))
-                      }
-                      disabled={noneOn}
-                      className={cn(
-                        "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                        noneOn
-                          ? "bg-white text-brand-ink shadow-[var(--shadow-brand-sm)]"
-                          : "text-brand-stratus-blue hover:text-brand-ink disabled:text-brand-ink-faint",
-                      )}
-                    >
-                      Clear
-                    </button>
-                  </div>
+                  <FilterAllClear
+                    label={`${group.state.name} selection`}
+                    allSelected={allOn}
+                    noneSelected={noneOn}
+                    onAll={() =>
+                      onCitiesChange(setScoutStateDistricts(cities, group.state.id, true, allowedIds))
+                    }
+                    onClear={() =>
+                      onCitiesChange(setScoutStateDistricts(cities, group.state.id, false, allowedIds))
+                    }
+                  />
                 </div>
 
                 {!expanded ? (
@@ -1008,22 +999,13 @@ function MobileIndustrySheetContent({
             {verticalScope === "businesses" ? "Businesses" : "Industries"}
           </p>
           <div className="ish-scout-filter-actions">
-            <button
-              type="button"
-              onClick={selectAllVertical}
-              disabled={allSelected}
-              className="text-[12px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-            >
-              Select all
-            </button>
-            <button
-              type="button"
-              onClick={clearAllVertical}
-              disabled={noneSelected}
-              className="text-[12px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-            >
-              Clear all
-            </button>
+            <FilterAllClear
+              label={verticalScope === "businesses" ? "Businesses selection" : "Industries selection"}
+              allSelected={allSelected}
+              noneSelected={noneSelected}
+              onAll={selectAllVertical}
+              onClear={clearAllVertical}
+            />
           </div>
         </div>
         <ScoutChipGrid className="px-3">
@@ -1082,24 +1064,30 @@ function MobilePeopleSheetContent({
   onSeniorityToggle: (s: string) => void;
   onDepartmentToggle: (d: string) => void;
 }) {
-  const hasAny = seniority.length + departments.length > 0;
-
   return (
     <div className="flex flex-col px-1 py-2">
       <div className="ish-scout-filter-section-head px-3">
         <p className="ish-scout-filter-section-label">People filters</p>
-        {hasAny ? (
-          <button
-            type="button"
-            onClick={() => {
-              [...seniority].forEach((s) => onSeniorityToggle(s));
-              [...departments].forEach((d) => onDepartmentToggle(d));
-            }}
-            className="text-[12px] font-semibold text-brand-stratus-blue"
-          >
-            Clear all
-          </button>
-        ) : null}
+        <FilterAllClear
+          label="People filters selection"
+          allSelected={
+            seniority.length === SCOUT_SENIORITY.length &&
+            departments.length === SCOUT_DEPARTMENTS.length
+          }
+          noneSelected={seniority.length === 0 && departments.length === 0}
+          onAll={() => {
+            for (const s of SCOUT_SENIORITY) {
+              if (!seniority.includes(s)) onSeniorityToggle(s);
+            }
+            for (const d of SCOUT_DEPARTMENTS) {
+              if (!departments.includes(d)) onDepartmentToggle(d);
+            }
+          }}
+          onClear={() => {
+            [...seniority].forEach((s) => onSeniorityToggle(s));
+            [...departments].forEach((d) => onDepartmentToggle(d));
+          }}
+        />
       </div>
 
       <p className="ish-scout-filter-section-label mb-2.5 px-3 pt-1">Seniority</p>
@@ -1252,22 +1240,13 @@ function IndustryPopoverContent({
             {isBusiness ? "Business" : "Industry"}
           </p>
           <div className="ish-scout-filter-actions">
-            <button
-              type="button"
-              onClick={selectAllVertical}
-              disabled={allSelected}
-              className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-            >
-              Select all
-            </button>
-            <button
-              type="button"
-              onClick={clearAllVertical}
-              disabled={noneSelected}
-              className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-            >
-              Clear all
-            </button>
+            <FilterAllClear
+              label={isBusiness ? "Business selection" : "Industry selection"}
+              allSelected={allSelected}
+              noneSelected={noneSelected}
+              onAll={selectAllVertical}
+              onClear={clearAllVertical}
+            />
           </div>
         </div>
         {filtered.length === 0 ? (
@@ -1338,25 +1317,31 @@ function PeoplePopoverContent({
   onSeniorityToggle: (s: string) => void;
   onDepartmentToggle: (d: string) => void;
 }) {
-  const hasAny = seniority.length + departments.length > 0;
-
   return (
     <div className="flex flex-col">
       <div className="p-4">
         <div className="ish-scout-filter-section-head">
           <p className="ish-scout-filter-section-label">People Filters</p>
-          {hasAny ? (
-            <button
-              type="button"
-              onClick={() => {
-                [...seniority].forEach((s) => onSeniorityToggle(s));
-                [...departments].forEach((d) => onDepartmentToggle(d));
-              }}
-              className="text-[11px] font-semibold text-brand-stratus-blue"
-            >
-              Clear all
-            </button>
-          ) : null}
+          <FilterAllClear
+            label="People filters selection"
+            allSelected={
+              seniority.length === SCOUT_SENIORITY.length &&
+              departments.length === SCOUT_DEPARTMENTS.length
+            }
+            noneSelected={seniority.length === 0 && departments.length === 0}
+            onAll={() => {
+              for (const s of SCOUT_SENIORITY) {
+                if (!seniority.includes(s)) onSeniorityToggle(s);
+              }
+              for (const d of SCOUT_DEPARTMENTS) {
+                if (!departments.includes(d)) onDepartmentToggle(d);
+              }
+            }}
+            onClear={() => {
+              [...seniority].forEach((s) => onSeniorityToggle(s));
+              [...departments].forEach((d) => onDepartmentToggle(d));
+            }}
+          />
         </div>
 
         <div className="mb-4">
@@ -1511,7 +1496,7 @@ function AutopilotCluster({
   return (
     <div
       ref={rootRef}
-      className="ish-scout-cluster relative flex flex-wrap items-center"
+      className="ish-scout-cluster relative flex shrink-0 items-center"
     >
       <button
         type="button"
@@ -1529,7 +1514,7 @@ function AutopilotCluster({
           if (onLocationScopeChange) setOpen((v) => !v);
         }}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-bold transition-all duration-150",
+          "flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-bold transition-all duration-150 sm:gap-1.5 sm:px-3 sm:text-[11.5px]",
           autopilot ? "ish-scout-mode-yellow" : "text-brand-ink-soft hover:text-brand-ink",
         )}
       >
@@ -1548,7 +1533,7 @@ function AutopilotCluster({
           onModeChange?.("search");
         }}
         className={cn(
-          "flex h-7 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-bold transition-all duration-150",
+          "flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-bold transition-all duration-150 sm:gap-1.5 sm:px-3 sm:text-[11.5px]",
           mode === "search" ? "ish-scout-mode-blue" : "text-brand-ink-soft hover:text-brand-ink",
         )}
       >
@@ -1608,15 +1593,15 @@ function CompanySearchInput({
   loading?: boolean;
 }) {
   return (
-    <div className="ish-scout-search flex min-w-[220px] flex-1 items-center gap-2 rounded-full px-3.5 py-2">
+    <div className="ish-scout-search flex min-w-0 max-w-[14rem] flex-1 items-center gap-2 rounded-full px-3 py-1.5 sm:max-w-[18rem]">
       <Building2 className="size-3.5 shrink-0 text-brand-ink-faint" />
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter" && value.trim()) onSearch(); }}
-        placeholder="e.g. Chandra Sekar Hospital"
-        className="min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-brand-ink outline-none placeholder:text-brand-ink-faint"
+        placeholder="Company name"
+        className="min-w-0 flex-1 bg-transparent text-[12px] font-medium text-brand-ink outline-none placeholder:text-brand-ink-faint sm:text-[12.5px]"
         disabled={loading}
       />
       {value && (
@@ -1642,23 +1627,31 @@ function SecondaryBtn({
   icon,
   label,
   active,
+  /** Icon-only control; label stays as accessible name / tooltip. */
+  iconOnly = false,
 }: {
   onClick: () => void;
   disabled?: boolean;
   icon?: ReactNode;
   label: string;
   active?: boolean;
+  iconOnly?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
+      title={label}
+      aria-label={label}
       data-active={active ? "true" : undefined}
-      className="ish-scout-ghost flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+      className={cn(
+        "ish-scout-ghost flex h-7 shrink-0 items-center rounded-full text-[12px] font-semibold transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50",
+        iconOnly ? "justify-center px-2" : "gap-1.5 px-2.5",
+      )}
     >
       {icon}
-      {label}
+      {!iconOnly ? <span className="whitespace-nowrap">{label}</span> : null}
     </button>
   );
 }
@@ -1683,15 +1676,15 @@ function PrimaryBtn({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title={title}
+      title={title ?? label}
       className={cn(
-        "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-4 text-[13px] font-bold transition-all duration-150 active:scale-[0.97]",
+        "flex h-8 max-w-[12rem] shrink-0 items-center gap-1 rounded-full px-3 text-[12px] font-bold transition-all duration-150 active:scale-[0.97] sm:max-w-none sm:gap-1.5 sm:px-3.5 sm:text-[12.5px]",
         !disabled && color === "yellow" && "ish-scout-cta-yellow hover:opacity-95",
         !disabled && color === "green" && "ish-scout-cta-blue hover:opacity-95",
         disabled && "ish-scout-cta-muted",
       )}
     >
-      {label}
+      <span className="truncate">{label}</span>
       {icon}
     </button>
   );
@@ -1787,6 +1780,8 @@ export function ScoutingToolbar({
   const resolvedLocationOptions = locationOptions ?? defaultLocationOptions();
   const [active, setActive] = useState<ActivePanel>(null);
   const barRef = useRef<HTMLDivElement>(null);
+  const cityPillRef = useRef<HTMLButtonElement>(null);
+  const industryPillRef = useRef<HTMLButtonElement>(null);
 
   const isSearchMode = scoutMode === "search";
   const searching = Boolean(loadingCompanies || loadingMore || loadingPeople);
@@ -1804,13 +1799,15 @@ export function ScoutingToolbar({
   }, [active, mobileSheet, onFilterPanelChange]);
 
 
-  // Close on outside click
+  // Close on outside click (popover is portaled to body, so exclude it)
   useEffect(() => {
     if (!active) return;
     function handle(e: MouseEvent) {
-      if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        setActive(null);
-      }
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (barRef.current?.contains(target)) return;
+      if (target instanceof Element && target.closest("[data-scout-popover]")) return;
+      setActive(null);
     }
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
@@ -1951,7 +1948,7 @@ export function ScoutingToolbar({
       <div
         ref={barRef}
         className={cn(
-          "ish-scout-toolbar relative flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5",
+          "ish-scout-toolbar relative flex flex-nowrap items-center gap-x-1.5 overflow-visible px-3 py-2 sm:gap-x-2 sm:px-4 sm:py-2",
           active ? "z-50" : "z-30",
         )}
       >
@@ -1963,12 +1960,12 @@ export function ScoutingToolbar({
         />
 
         {/* Thin separator */}
-        <div className="ish-scout-rule hidden sm:block" aria-hidden />
+        <div className="ish-scout-rule hidden shrink-0 sm:block" aria-hidden />
 
         {/* Left cluster: filter pills inside a rounded container */}
-        <div className="ish-scout-cluster">
+        <div className="ish-scout-cluster min-w-0 shrink overflow-visible">
           {/* City pill */}
-          <div className="relative">
+          <div className="relative min-w-0 overflow-visible">
             <PillSegment
               icon={<MapPin className="size-3.5" />}
               label={locationScope === "focus" ? "Area" : "City"}
@@ -1976,8 +1973,14 @@ export function ScoutingToolbar({
               active={active === "city"}
               hasSelection={cities.length > 0}
               onClick={() => toggle("city")}
+              buttonRef={cityPillRef}
             />
-            <Popover open={active === "city"} onClose={() => setActive(null)} width="w-[min(420px,calc(100vw-2rem))]">
+            <Popover
+              open={active === "city"}
+              onClose={() => setActive(null)}
+              anchorRef={cityPillRef}
+              width="w-[min(420px,calc(100vw-2rem))]"
+            >
               <CityPopoverContent
                 cities={cities}
                 onCitiesChange={onCitiesChange}
@@ -1991,7 +1994,7 @@ export function ScoutingToolbar({
           <div className="ish-scout-rule mx-0.5" aria-hidden />
 
           {/* Industry / business pill */}
-          <div className="relative">
+          <div className="relative min-w-0 overflow-visible">
             <PillSegment
               icon={<Building2 className="size-3.5" />}
               label={verticalScope === "businesses" ? "Business" : "Industry"}
@@ -1999,8 +2002,14 @@ export function ScoutingToolbar({
               active={active === "industry"}
               hasSelection={verticalHasSelection}
               onClick={() => toggle("industry")}
+              buttonRef={industryPillRef}
             />
-            <Popover open={active === "industry"} onClose={() => setActive(null)} width="w-[min(440px,calc(100vw-2rem))]">
+            <Popover
+              open={active === "industry"}
+              onClose={() => setActive(null)}
+              anchorRef={industryPillRef}
+              width="w-[min(440px,calc(100vw-2rem))]"
+            >
               <IndustryPopoverContent
                 industries={industries}
                 onIndustryToggle={onIndustryToggle}
@@ -2028,7 +2037,7 @@ export function ScoutingToolbar({
         {/* Autopilot: volume hint */}
         {!isSearchMode && (
           <span
-            className="ish-scout-hint hidden sm:inline"
+            className="ish-scout-hint hidden shrink-0 xl:inline"
             title="Scout volume from Settings. Lower saves Tavily/Gemini tokens"
           >
             {volumeHint}
@@ -2042,7 +2051,7 @@ export function ScoutingToolbar({
             onClick={() => { setActive(null); onSearchByName?.(); }}
             disabled={!canSearch}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-4 text-[12.5px] font-bold transition-all duration-150",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold transition-all duration-150 sm:px-3.5 sm:text-[12.5px]",
               canSearch ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
             )}
           >
@@ -2055,7 +2064,7 @@ export function ScoutingToolbar({
             onClick={() => { setActive(null); onFetchNewCompanies(); }}
             disabled={!canScout}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-4 text-[12.5px] font-bold transition-all duration-150",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold transition-all duration-150 sm:px-3.5 sm:text-[12.5px]",
               canScout ? "ish-scout-cta-yellow hover:opacity-95" : "ish-scout-cta-muted",
             )}
           >
@@ -2065,11 +2074,11 @@ export function ScoutingToolbar({
         )}
 
         {/* Thin separator */}
-        <div className="ish-scout-rule hidden sm:block" aria-hidden />
+        <div className="ish-scout-rule hidden shrink-0 lg:block" aria-hidden />
 
         {/* Right cluster: context-aware action buttons */}
         {!hideActions ? (
-        <div className="ml-auto flex flex-wrap items-center gap-2">
+        <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-1 sm:gap-1.5">
           {view === "companies" ? (
             <>
               {/* Refresh & Load More only in Autopilot mode */}
@@ -2080,11 +2089,14 @@ export function ScoutingToolbar({
                     disabled={loadingCompanies || cities.length === 0}
                     icon={<RefreshCw className="size-3.5" />}
                     label="Refresh"
+                    iconOnly
                   />
                   <SecondaryBtn
                     onClick={onLoadMore}
                     disabled={loadingMore || cities.length === 0 || showingSaved}
+                    icon={<Plus className="size-3.5" />}
                     label={loadingMore ? "Loading…" : "Load More"}
+                    iconOnly
                   />
                 </>
               )}
@@ -2095,6 +2107,7 @@ export function ScoutingToolbar({
                   icon={<Bookmark className="size-3.5" />}
                   label="Saved"
                   active={showingSaved}
+                  iconOnly
                 />
               ) : null}
               {onShowHistory ? (
@@ -2103,12 +2116,13 @@ export function ScoutingToolbar({
                   disabled={loadingCompanies}
                   icon={<History className="size-3.5" />}
                   label="History"
+                  iconOnly
                 />
               ) : null}
               {activeSessionTitle && !showingSaved ? (
                 <span
                   title={activeSessionTitle}
-                  className="hidden max-w-[160px] truncate rounded-full bg-brand-stratus-blue/10 px-2.5 py-1 text-[11px] font-semibold text-brand-stratus-blue lg:inline-block"
+                  className="hidden max-w-[120px] truncate rounded-full bg-brand-stratus-blue/10 px-2 py-1 text-[10.5px] font-semibold text-brand-stratus-blue 2xl:inline-block"
                 >
                   {activeSessionTitle}
                 </span>
@@ -2118,7 +2132,7 @@ export function ScoutingToolbar({
                   onClick={onSaveCompanies}
                   disabled={savingCompanies}
                   icon={<BookmarkPlus className="size-3.5" />}
-                  label={savingCompanies ? "Saving…" : "Save companies"}
+                  label={savingCompanies ? "Saving…" : "Save"}
                 />
               ) : null}
               <PrimaryBtn
@@ -2127,13 +2141,22 @@ export function ScoutingToolbar({
                 label={
                   selectedCount > 0
                     ? showingSaved
+                      ? `Extract · ${selectedCount}`
+                      : `Fetch · ${selectedCount}`
+                    : showingSaved
+                      ? "Select companies"
+                      : "Select companies"
+                }
+                title={
+                  selectedCount > 0
+                    ? showingSaved
                       ? `Extract leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
                       : `Fetch Leads · ${selectedCount} ${selectedCount === 1 ? "co." : "cos."}`
                     : showingSaved
                       ? "Select companies to extract"
                       : "Select companies first"
                 }
-                icon={<ArrowRight className="size-3.5" />}
+                icon={<ArrowRight className="size-3.5 shrink-0" />}
                 color="green"
               />
             </>
@@ -2144,12 +2167,14 @@ export function ScoutingToolbar({
                 disabled={loadingMore}
                 icon={<Compass className="size-3.5" />}
                 label={loadingMore ? "Scouting…" : "Scout More"}
+                iconOnly
               />
               <PrimaryBtn
                 onClick={onAddLeads}
                 disabled={selectedCount === 0 || saving}
-                label={saving ? "Saving…" : `Add ${selectedCount > 0 ? selectedCount : "—"} as Leads`}
-                icon={<ArrowRight className="size-3.5" />}
+                label={saving ? "Saving…" : `Add ${selectedCount > 0 ? selectedCount : "—"}`}
+                title={saving ? "Saving…" : `Add ${selectedCount > 0 ? selectedCount : "—"} as Leads`}
+                icon={<ArrowRight className="size-3.5 shrink-0" />}
                 color="green"
               />
             </>

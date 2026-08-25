@@ -1,4 +1,5 @@
 import type { CompanyOverview } from "@/lib/company-overview";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { resolveRolePlaybook } from "@/lib/email/role-playbook";
 import { latestDetectedOccasion, occasionDynamicsLine, resolveWriteOccasion } from "@/lib/occasions/resolve";
 import { FESTIVE_OCCASION_SENTINEL } from "@/lib/occasions/catalog";
@@ -82,7 +83,7 @@ export function buildPersonalizationContext(input: PersonalizationContextInput):
     );
   }
 
-  const profile: string[] = [`${input.accountName}`];
+  const profile: string[] = [companyNameForEmail(input.accountName)];
   if (input.companyWebsite?.trim()) profile.push(`website: ${input.companyWebsite.trim()}`);
   if (input.overview?.sector?.trim()) profile.push(input.overview.sector.trim());
   if (input.intelNotes?.trim()) profile.push(input.intelNotes.trim().slice(0, 220));

@@ -38,6 +38,9 @@ vi.mock("imapflow", () => ({
 vi.mock("@/lib/settings/email-settings", () => ({
   getResolvedEmailConfig: (...args: unknown[]) => mocks.getResolvedEmailConfig(...args),
   persistEmailConfig: (...args: unknown[]) => mocks.persistEmailConfig(...args),
+  persistWorkspaceEmailConfig: (...args: unknown[]) => mocks.persistEmailConfig(...args),
+  persistUserEmailConfig: (...args: unknown[]) => mocks.persistEmailConfig(...args),
+  listWorkspaceUserEmailSettings: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("@/lib/email/resend-receiving", () => ({

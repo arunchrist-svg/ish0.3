@@ -239,6 +239,27 @@ describe("EMAIL-UNIT-001 additional config cases", () => {
     expect(resolved.cadenceDays[0]).toBe(1);
   });
 
+  it("defaults send window to weekdays 9–5 Asia/Kolkata", () => {
+    const resolved = resolveEmailConfig({});
+    expect(resolved.sendDaysOfWeek).toEqual([1, 2, 3, 4, 5]);
+    expect(resolved.sendHourStart).toBe(9);
+    expect(resolved.sendHourEnd).toBe(17);
+    expect(resolved.sendTimezone).toBe("Asia/Kolkata");
+  });
+
+  it("normalizes invalid send window overrides", () => {
+    const resolved = resolveEmailConfig({
+      sendDaysOfWeek: [],
+      sendHourStart: 18,
+      sendHourEnd: 10,
+      sendTimezone: "Nope/Zone",
+    });
+    expect(resolved.sendDaysOfWeek).toEqual([1, 2, 3, 4, 5]);
+    expect(resolved.sendHourStart).toBe(18);
+    expect(resolved.sendHourEnd).toBe(19);
+    expect(resolved.sendTimezone).toBe("Asia/Kolkata");
+  });
+
   it("ignores env test recipient defaults", () => {
     delete process.env.EMAIL_TEST_RECIPIENT;
     process.env.RESEND_TEST_RECIPIENT = "resend-test@example.com";

@@ -7,7 +7,7 @@ import { listDuplicateGroups, mergeDuplicateLeads } from "@/lib/leads/merge-dupl
 export async function GET() {
   try {
     const ctx = await requireTenantContext();
-    const result = await listDuplicateGroups(ctx.tenantId);
+    const result = await listDuplicateGroups(ctx.tenantId, ctx);
     return NextResponse.json(result);
   } catch (e) {
     return handleApiError(e, "[api/leads/duplicates GET]");
@@ -29,6 +29,7 @@ export async function POST(req: Request) {
       actorId: ctx.userId,
       keepId: body.keepId,
       dropIds: body.dropIds,
+      visibilityCtx: ctx,
     });
 
     return NextResponse.json(result);

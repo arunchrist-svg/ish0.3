@@ -53,6 +53,8 @@ export type PeopleRoleSearchKind = "industry" | "business";
 export type PeopleRoleFilterOpts = {
   searchKind?: PeopleRoleSearchKind;
   businesses?: string[];
+  /** Honor user seniority/department chips; no waterfall or soft broaden. */
+  strict?: boolean;
 };
 
 export function isBusinessPeopleSearch(opts?: PeopleRoleFilterOpts | null): boolean {
@@ -147,6 +149,7 @@ export function usesBuyerDmWaterfall(
   departments: string[],
   opts?: PeopleRoleFilterOpts,
 ): boolean {
+  if (opts?.strict) return false;
   if (isBusinessPeopleSearch(opts)) return false;
   if (seniority.includes("Manager") && !seniority.includes("Director")) return false;
   return (
@@ -165,6 +168,16 @@ export function buildRoleTitleHints(
 ): string[] {
   if (isBusinessPeopleSearch(opts)) {
     return buildBusinessRoleTitleHints(opts?.businesses);
+  }
+  if (opts?.strict) {
+    const stacks: string[][] = [];
+    for (const d of departments) {
+      stacks.push((DEPARTMENT_TITLES[d] ?? [d]).slice(0, 4));
+    }
+    if (seniority.length) {
+      stacks.push(seniority.flatMap((s) => SENIORITY_TITLES[s] ?? [s]).slice(0, 4));
+    }
+    return roundRobinTitleStacks(stacks);
   }
   const stacks: string[][] = [];
   for (const d of departments) {
@@ -326,6 +339,7 @@ export function peopleAndFilterWarning(
   opts?: PeopleRoleFilterOpts,
   locationScope?: "focus" | "interest",
 ): string | null {
+  if (opts?.strict) return null;
   if (isBusinessPeopleSearch(opts)) return null;
   if (!seniority.length || !departments.length) return null;
   if (isPlantCityLikelyZeroRisk(cities, seniority, departments, locationScope)) {
@@ -343,15 +357,32 @@ export function assessPeopleFetchRisk(input: {
   searchKind?: PeopleRoleSearchKind;
   businesses?: string[];
   locationScope?: "focus" | "interest";
+  strict?: boolean;
 }): PeopleFetchRisk {
   const { companyCount, cities = [], seniority, departments, locationScope } = input;
-  const roleOpts: PeopleRoleFilterOpts = { searchKind: input.searchKind, businesses: input.businesses };
+  const roleOpts: PeopleRoleFilterOpts = {
+    searchKind: input.searchKind,
+    businesses: input.businesses,
+    strict: input.strict,
+  };
   const both = seniority.length > 0 && departments.length > 0;
   const stacked = both && seniority.length + departments.length >= 4;
   const costLine =
     companyCount === 1
       ? "This uses 1 people search credit."
       : `This uses ${companyCount} people search credits, one per company. Credits are spent even if nobody matches.`;
+
+  if (input.strict) {
+    return {
+      needsConfirm: false,
+      stacked: false,
+      headline: "",
+      costLine,
+      emptyRiskLine: null,
+      suggestionLine: null,
+      suggestedFilters: null,
+    };
+  }
 
   if (isBusinessPeopleSearch(roleOpts)) {
     return {
@@ -479,6 +510,13 @@ export function filterPeopleByRoles(
   people = people.filter((p) => !isDroppedScoutPerson(p));
   if (isBusinessPeopleSearch(opts)) {
     return selectPeopleByBusinessWaterfall(people, opts?.businesses);
+  }
+  if (opts?.strict) {
+    if (!seniority.length && !departments.length) return { people, relaxed: false };
+    return {
+      people: people.filter((p) => personMatchesRoles(p, seniority, departments)),
+      relaxed: false,
+    };
   }
   if (usesBuyerDmWaterfall(seniority, departments, opts)) {
     return selectPeopleByDmWaterfall(people);

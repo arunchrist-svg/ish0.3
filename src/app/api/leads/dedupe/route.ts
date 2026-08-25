@@ -3,6 +3,7 @@ import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, leads, contacts, accounts } from "@/db";
 import { eq, desc } from "drizzle-orm";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 /** Lightweight lead list for scouting dedupe — id, name, company only. */
 export async function GET() {
@@ -17,7 +18,7 @@ export async function GET() {
       .from(leads)
       .innerJoin(contacts, eq(contacts.id, leads.contactId))
       .innerJoin(accounts, eq(accounts.id, leads.accountId))
-      .where(eq(leads.tenantId, ctx.tenantId))
+      .where(withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId)))
       .orderBy(desc(leads.createdAt))
       .limit(500);
 

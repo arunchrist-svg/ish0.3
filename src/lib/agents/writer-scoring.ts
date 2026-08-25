@@ -7,6 +7,8 @@ import type { ContentRuleContext } from "@/lib/email/content-rules";
 import type { EmailStyle } from "@/lib/email/config";
 import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { isNearParaphrase, BASELINE_PARAPHRASE_THRESHOLD } from "@/lib/email/email-similarity";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
+import { REPLY_SEQUENCE_POSITION } from "@/lib/email/outreach-templates";
 
 export const RUBRIC_DIMENSIONS = [
   "spam_signal_risk",
@@ -107,7 +109,7 @@ export async function scoreRubric(params: {
       ...params.deliverabilityOptions,
       contactFirstName: contact.firstName ?? contact.name.split(" ")[0],
       account: {
-        name: account.name,
+        name: companyNameForEmail(account.name),
         industry: account.industry,
         city: account.city,
         employees: account.employees,
@@ -123,8 +125,9 @@ export async function scoreRubric(params: {
 
   let personalization_depth = 0;
   const firstName = contact.firstName ?? contact.name.split(" ")[0];
+  const companyDisplay = companyNameForEmail(account.name);
   if (firstName && lower.includes(firstName.toLowerCase())) personalization_depth += 3;
-  if (lower.includes(account.name.toLowerCase())) personalization_depth += 2;
+  if (lower.includes(companyDisplay.toLowerCase())) personalization_depth += 2;
 
   const hook = params.outreachHook ?? params.deliverabilityOptions?.outreachHook;
   const intel = params.intelNotes?.trim();
@@ -210,7 +213,7 @@ export async function scoreRubric(params: {
     cta_quality += 4;
   }
 
-  const isReplyDraft = params.deliverabilityOptions?.isReplyDraft || sequencePosition >= 4;
+  const isReplyDraft = params.deliverabilityOptions?.isReplyDraft || sequencePosition === REPLY_SEQUENCE_POSITION;
   const replyIntent = params.deliverabilityOptions?.replyIntent;
   const priorCta = params.deliverabilityOptions?.priorCta?.toLowerCase() ?? "";
 
@@ -260,7 +263,7 @@ export function getRubricIssues(rubric: RubricScores, sequencePosition = 1): str
     issues.push("clarify value in under 10 seconds (specific offer, credibility, concise pitch; max 4 sentences for emails 1-2)");
   }
   if (rubric.cta_quality < RUBRIC_ISSUE_THRESHOLD) {
-    if (sequencePosition >= 4) {
+    if (sequencePosition === REPLY_SEQUENCE_POSITION) {
       issues.push("advance the conversation: do not re-ask a question they answered; ask for address, phone, or scheduling as appropriate");
     } else if (sequencePosition === 1) {
       issues.push("use one low-friction soft CTA (no hard meeting ask in email 1)");

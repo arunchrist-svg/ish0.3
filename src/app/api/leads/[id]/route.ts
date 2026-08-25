@@ -17,7 +17,13 @@ import { getOutreachTemplatesForBrand } from "@/lib/email/outreach-templates";
 import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { updateLeadFields, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
+import { canAccessLeadRecord } from "@/lib/leads/lead-visibility";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+import { ensureCatalogOnOpenDraft } from "@/lib/email/promote-catalog-on-open";
+import {
+  CATALOG_ON_OPEN_SEQUENCE_POSITION,
+  isCatalogOnOpenDraft,
+} from "@/lib/email/ish-festive-catalog";
 
 export const preferredRegion = ["sin1"];
 
@@ -51,6 +57,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const { lead, contact, account, createdByName } = rows[0];
 
     if (lead.tenantId !== ctx.tenantId) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
+    if (!canAccessLeadRecord(ctx, lead)) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
@@ -99,7 +109,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .where(eq(outreachSchedule.leadId, id))
         .orderBy(outreachSchedule.scheduledFor)
         .limit(40),
-      getResolvedEmailConfig(lead.workspaceId),
+      getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined),
       db.query.yieldFunnel.findFirst({
         where: and(eq(yieldFunnel.leadId, id), eq(yieldFunnel.stage, "replied")),
         orderBy: [desc(yieldFunnel.enteredAt)],
@@ -110,10 +120,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const emailOutreachRows = outreachRows.filter(isEmailOutreachRow);
     const whatsappRow = outreachRows.find(isWhatsAppOutreach) ?? null;
-    const outreach = emailOutreachRows[0] ?? null;
-    const sequenceDraftRows = [...emailOutreachRows]
+    let outreach = emailOutreachRows[0] ?? null;
+    let sequenceDraftRows = [...emailOutreachRows]
       .filter((row) => row.sequencePosition != null)
       .sort((a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0));
+
+    const hasMainSequence = sequenceDraftRows.some((d) => d.sequencePosition === 1);
+    const hasCatalog = sequenceDraftRows.some((d) => isCatalogOnOpenDraft(d));
+    if (hasMainSequence && !hasCatalog) {
+      await ensureCatalogOnOpenDraft(id);
+      const catalogRow = await db.query.leadOutreach.findFirst({
+        where: and(
+          eq(leadOutreach.leadId, id),
+          eq(leadOutreach.sequencePosition, CATALOG_ON_OPEN_SEQUENCE_POSITION),
+        ),
+      });
+      if (catalogRow) {
+        sequenceDraftRows = [...sequenceDraftRows, catalogRow].sort(
+          (a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0),
+        );
+        if (!outreach) outreach = catalogRow;
+      }
+    }
+
     const replyDraftRow = outreach?.templateVariant === "reply" ? outreach : null;
     const activeOutreach = replyDraftRow ?? (sequenceDraftRows[0] ?? outreach ?? null);
 
@@ -363,6 +392,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
+
+    const existing = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+    if (!existing || !canAccessLeadRecord(ctx, existing)) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
+
     const body = await req.json();
     const {
       status: nextStatus,
@@ -448,6 +483,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!lead || lead.tenantId !== ctx.tenantId) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
+    if (!canAccessLeadRecord(ctx, lead)) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
 
     if (!canManuallyAdvance(lead.status, nextStatus)) {
       return NextResponse.json(
@@ -508,6 +546,10 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
+    const lead = await db.query.leads.findFirst({ where: eq(leads.id, id) });
+    if (!lead || !canAccessLeadRecord(ctx, lead)) {
+      return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+    }
     await deleteLeadById({
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,

@@ -354,6 +354,7 @@ export async function indiaDirectoriesSearchPeople(params: {
   indiaOnly?: boolean;
   localOperators?: boolean;
   locationScope?: "focus" | "interest";
+  strictPeopleFilters?: boolean;
 }): Promise<ScoutPersonResult[]> {
   return searchPeopleViaTavily({
     companyName: params.companyName,
@@ -365,6 +366,7 @@ export async function indiaDirectoriesSearchPeople(params: {
     indiaOnly: params.indiaOnly,
     localOperators: params.localOperators,
     locationScope: params.locationScope,
+    strictPeopleFilters: params.strictPeopleFilters,
   });
 }
 

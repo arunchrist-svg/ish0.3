@@ -49,7 +49,8 @@ export const researchBatchFunction = inngest.createFunction(
 
 export const sequencerFunction = inngest.createFunction(
   { id: "sequencer-run", retries: 2 },
-  { cron: "0 9 * * *" },
+  // Hourly so Shoot-to windows in non-UTC timezones are reachable (was once daily at 09:00 UTC).
+  { cron: "0 * * * *" },
   async ({ step }) => {
     const result = await step.run("run-sequencer", async () => runSequencer());
     return result;
@@ -107,6 +108,26 @@ export const enrichLeadFunction = inngest.createFunction(
   },
 );
 
+export const scoutQualityLearnFunction = inngest.createFunction(
+  { id: "scout-quality-learn", retries: 1 },
+  { cron: "0 4 * * 1" },
+  async ({ step }) => {
+    const { db, workspaces } = await import("@/db");
+    const rows = await step.run("list-workspaces", async () =>
+      db.select({ id: workspaces.id, tenantId: workspaces.tenantId }).from(workspaces),
+    );
+    let refreshed = 0;
+    for (const row of rows) {
+      const result = await step.run(`learn-${row.id}`, async () => {
+        const { refreshScoutQualityLearning } = await import("@/lib/enrichment/quality-learning");
+        return refreshScoutQualityLearning({ tenantId: row.tenantId, workspaceId: row.id });
+      });
+      if (result) refreshed += 1;
+    }
+    return { workspaces: rows.length, refreshed };
+  },
+);
+
 export const inngestFunctions = [
   researchLeadFunction,
   researchBatchFunction,
@@ -114,4 +135,5 @@ export const inngestFunctions = [
   replyOrchestratorFunction,
   writerLeadFunction,
   enrichLeadFunction,
+  scoutQualityLearnFunction,
 ];

@@ -1,5 +1,5 @@
 import {
-  pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum, uniqueIndex, index,
+  pgTable, text, integer, timestamp, boolean, jsonb, serial, uuid, pgEnum, uniqueIndex, index, primaryKey,
 } from "drizzle-orm/pg-core";
 import type { CompanyOverview } from "@/lib/company-overview";
 
@@ -56,6 +56,21 @@ export const users = pgTable("users", {
   mustChangePassword:   boolean("must_change_password").notNull().default(false),
   createdAt:            timestamp("created_at").defaultNow().notNull(),
 });
+
+/** Per-user sender identity + SMTP. Merged over workspace email_config when resolving. */
+export const userEmailSettings = pgTable(
+  "user_email_settings",
+  {
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    userId:      uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    emailConfig: jsonb("email_config").notNull().default({}),
+    updatedAt:   timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.workspaceId, table.userId], name: "user_email_settings_pk" }),
+    userIdx: index("user_email_settings_user_idx").on(table.userId),
+  }),
+);
 
 export const sessions = pgTable("sessions", {
   id:        uuid("id").defaultRandom().primaryKey(),
@@ -532,6 +547,16 @@ export type ScoutSessionFilters = {
   scoutLeadsLimit?: number;
 };
 
+export type ScoutQualityMetrics = {
+  empty?: boolean;
+  returned?: number;
+  requested?: number;
+  goldKept?: number;
+  goldShown?: number;
+  earlyStop?: string | null;
+  broadenStages?: string[];
+};
+
 export type ScoutSessionUiState = {
   selectedCompanyIds: string[];
   selectedPersonIds: string[];
@@ -541,6 +566,7 @@ export type ScoutSessionUiState = {
   fetchSeed: number;
   hasMore?: boolean;
   companySearchQuery?: string;
+  qualityMetrics?: ScoutQualityMetrics;
 };
 
 export type ScoutSessionPerson = import("@/lib/enrichment/types").ScoutPersonResult & {
@@ -581,6 +607,20 @@ export const scoutSessions = pgTable("scout_sessions", {
 }, (table) => ({
   workspaceUpdatedIdx: index("scout_sessions_workspace_updated_idx").on(table.workspaceId, table.updatedAt),
   tenantWorkspaceIdx: index("scout_sessions_tenant_workspace_idx").on(table.tenantId, table.workspaceId),
+}));
+
+export const scoutQualityEvents = pgTable("scout_quality_events", {
+  id:          uuid("id").defaultRandom().primaryKey(),
+  tenantId:    uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId:      uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  sessionId:   uuid("session_id").references(() => scoutSessions.id, { onDelete: "set null" }),
+  eventType:   text("event_type").notNull(),
+  metadata:    jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt:   timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  workspaceCreatedIdx: index("scout_quality_events_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  tenantTypeIdx: index("scout_quality_events_tenant_type_idx").on(table.tenantId, table.eventType),
 }));
 
 // ─── Agent Runs (LLM observability) ───────────────────────────────────────────

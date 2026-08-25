@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Check, MapPin, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FilterAllClear } from "@/design-system";
 import type { IndiaDistrict } from "@/lib/geo/india";
 
 type Props = {
@@ -63,13 +64,13 @@ export function DistrictPicker({
           {" of "}
           {districts.length} selected
         </p>
-        <button
-          type="button"
-          onClick={allSelected ? onClear : onSelectAll}
-          className="text-[12px] font-semibold text-brand-stratus-blue"
-        >
-          {allSelected ? "Clear all" : "Select all"}
-        </button>
+        <FilterAllClear
+          label={`${stateName} districts`}
+          allSelected={allSelected}
+          noneSelected={selectedIds.length === 0}
+          onAll={onSelectAll}
+          onClear={onClear}
+        />
       </div>
 
       <div className="mt-2 max-h-[min(48vh,320px)] overflow-y-auto pr-0.5">

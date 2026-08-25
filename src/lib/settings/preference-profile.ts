@@ -17,6 +17,7 @@ import {
 import { requireTenantContext } from "@/lib/tenant";
 import { SCOUT_DEPARTMENTS, SCOUT_INDUSTRIES, SCOUT_SENIORITY } from "@/lib/scouting-data";
 import { getVerticalPack, resolveVerticalPackId } from "@/vertical-packs";
+import type { ScoutQualityLearning } from "@/lib/enrichment/quality-profile";
 
 export type PreferenceTopic = "scout" | "leads" | "email" | "close";
 
@@ -46,6 +47,7 @@ export type UserPreferenceProfile = {
   };
   messages: PreferenceChatMessage[];
   topicsCovered: PreferenceTopic[];
+  scoutQualityLearning?: ScoutQualityLearning;
 };
 
 export type PreferenceExtract = {
@@ -213,6 +215,23 @@ export function parseUserPreferenceProfile(raw: unknown): UserPreferenceProfile 
       : undefined,
     messages: parseMessages(o.messages),
     topicsCovered: parseTopics(o.topicsCovered),
+    scoutQualityLearning: parseLearning(o.scoutQualityLearning),
+  };
+}
+
+function parseLearning(raw: unknown): ScoutQualityLearning | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.updatedAt !== "string") return undefined;
+  return {
+    updatedAt: o.updatedAt,
+    sampleCount: typeof o.sampleCount === "number" ? o.sampleCount : 0,
+    outreachedCount: typeof o.outreachedCount === "number" ? o.outreachedCount : 0,
+    repliedCount: typeof o.repliedCount === "number" ? o.repliedCount : 0,
+    deltasByIntent:
+      o.deltasByIntent && typeof o.deltasByIntent === "object"
+        ? (o.deltasByIntent as ScoutQualityLearning["deltasByIntent"])
+        : {},
   };
 }
 

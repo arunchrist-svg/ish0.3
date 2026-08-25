@@ -251,13 +251,13 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
 
   return (
     <>
-      <div className="border-t border-brand-border p-4">
-        <div className="flex items-center justify-between gap-2">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wide text-brand-ink-faint">
+      <div className="border-t border-brand-border/70 px-4 py-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-ink-soft">
               Find people
             </p>
-            <p className="mt-0.5 text-[12px] text-brand-ink-soft">
+            <p className="mt-1 text-[12.5px] leading-snug text-brand-ink-soft">
               Same people filters as Scouting. Uses {company.city?.trim() || "any city"}
               {!company.domain?.trim() && !company.website?.trim()
                 ? ". No website saved yet, so search is slower."
@@ -272,7 +272,7 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
               "inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12px] font-bold transition-all",
               loading
                 ? "bg-brand-canvas text-brand-ink-faint"
-                : "bg-brand-green text-white shadow-[var(--shadow-brand)] hover:opacity-95",
+                : "bg-brand-black text-white shadow-[var(--shadow-brand)] hover:opacity-95",
             )}
           >
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Users className="size-3.5" />}
@@ -281,22 +281,22 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
         </div>
 
         {notice ? (
-          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950">
+          <p className="ish-role-picker-warn mt-4 px-3.5 py-3 text-[12.5px] leading-relaxed text-brand-ink">
             {notice}
           </p>
         ) : null}
 
         {people.length > 0 ? (
-          <div className="mt-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-[11px] font-bold uppercase tracking-wide text-brand-ink-faint">
+          <div className="mt-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand-ink-soft">
                 Discovered ({people.length})
               </p>
               <button
                 type="button"
                 onClick={() => void handleAddLeads()}
                 disabled={saving || selectedIds.size === 0}
-                className="inline-flex items-center gap-1 rounded-full bg-brand-black px-3 py-1.5 text-[11px] font-bold text-white disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-full bg-brand-black px-3 py-1.5 text-[11px] font-bold text-white shadow-[var(--shadow-brand-sm)] disabled:opacity-40"
               >
                 {saving ? "Saving…" : `Add ${selectedIds.size} as Leads`}
                 <ArrowRight className="size-3" />
@@ -309,6 +309,7 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
               onToggleSelect={togglePerson}
               onSetPrimary={() => {}}
               selectable
+              compact
             />
           </div>
         ) : null}
@@ -326,6 +327,7 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
             setShowRolePicker(false);
             void runFetch([], []);
           }}
+          onClose={() => setShowRolePicker(false)}
         />
       ) : null}
 

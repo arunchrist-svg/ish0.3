@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { BottomSheet, IshAvatar, SearchBar } from "@/design-system";
 import { getScoreTone, scoreToneClasses } from "@/design-system/tokens";
 import type { LeadQueueItem } from "@/lib/api-client";
-import { LeadAddedByLabel } from "@/components/leads/lead-added-by-button";
 import { hapticLight } from "@/lib/capacitor/platform";
 
 const CHIP_LIMIT = 5;
@@ -204,7 +203,6 @@ export function LeadSwitcherRail({ leads, activeId, onSelect, onBack }: LeadSwit
                     >
                       {lead.score}
                     </span>
-                    <LeadAddedByLabel name={lead.createdByName} leadSource={lead.leadSource} />
                   </div>
                 </button>
               );

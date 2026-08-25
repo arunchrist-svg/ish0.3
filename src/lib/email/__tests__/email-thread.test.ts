@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildEmailThread } from "@/lib/email/email-thread";
+import { buildEmailThread, buildDraftsEmailThread } from "@/lib/email/email-thread";
 import {
   conversationSide,
   conversationStatusChip,
+  shouldShowConversationTimeline,
 } from "@/lib/email/conversation-view";
 
 const baseLead = {
@@ -39,9 +40,132 @@ describe("buildEmailThread", () => {
     expect(thread.barMode).toBe("drafts");
     expect(thread.barNodes).toHaveLength(3);
     expect(thread.barNodes[0].label).toBe("Email 1");
+    expect(thread.barNodes[1].label).toBe("Email 2 (+3d)");
+    expect(thread.barNodes[2].label).toBe("Email 3 (+7d)");
     expect(thread.barNodes[0].state).toBe("current");
     expect(thread.events.map((e) => e.label)).toEqual(["Email 1", "Email 2", "Email 3"]);
     expect(thread.events.every((e) => e.status === "draft")).toBe(true);
+  });
+
+  it("adds If Opened to the draft rail without treating it as Email 4", () => {
+    const thread = buildEmailThread({
+      lead: { ...baseLead, status: "draft_ready" } as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [],
+      sequenceDrafts: [
+        { id: "d1", sequencePosition: 1, subjectA: "Hi", emailBody: "Body 1" },
+        { id: "d2", sequencePosition: 2, subjectA: "Re: Hi", emailBody: "Body 2" },
+        { id: "d3", sequencePosition: 3, subjectA: "Re: Hi", emailBody: "Body 3" },
+        {
+          id: "d5",
+          sequencePosition: 5,
+          templateVariant: "catalog_on_open",
+          subjectA: "festive gifting for Acme",
+          emailBody: "2026 gemstone collection",
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["sequenceDrafts"],
+    });
+
+    expect(thread.barNodes.map((n) => n.label)).toEqual([
+      "Email 1",
+      "Email 2 (+3d)",
+      "Email 3 (+7d)",
+      "If Opened",
+    ]);
+    expect(thread.barNodes[3].id).toBe("if-opened");
+    expect(thread.barNodes[3].outreachId).toBe("d5");
+    expect(thread.events.map((e) => e.label)).toEqual(["Email 1", "Email 2", "Email 3"]);
+  });
+
+  it("buildDraftsEmailThread rebuilds the compose rail for optimistic client updates", () => {
+    const thread = buildDraftsEmailThread(
+      [
+        { id: "d1", sequencePosition: 1, subjectA: "Hi", emailBody: "Body 1" },
+        { id: "d2", sequencePosition: 2, subjectA: "Re: Hi", emailBody: "Body 2" },
+        { id: "d3", sequencePosition: 3, subjectA: "Re: Hi", emailBody: "Body 3" },
+        {
+          id: "d5",
+          sequencePosition: 5,
+          templateVariant: "catalog_on_open",
+          subjectA: "festive",
+          emailBody: "2026 gemstone collection",
+        },
+      ],
+      {
+        previous: {
+          phase: "compose",
+          nextAction: "compose",
+          barMode: "hidden",
+          barNodes: [],
+          events: [],
+          showComposeZone: true,
+        },
+      },
+    );
+
+    expect(thread?.barMode).toBe("drafts");
+    expect(thread?.barNodes.map((n) => n.label)).toEqual([
+      "Email 1",
+      "Email 2 (+3d)",
+      "Email 3 (+7d)",
+      "If Opened",
+    ]);
+    expect(thread?.selectedNodeId).toBe("draft-1");
+  });
+
+  it("shows If Opened as scheduled on the sequence bar", () => {
+    const scheduledFor = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const thread = buildEmailThread({
+      lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s1",
+          leadId: "lead-1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          scheduledFor: new Date("2026-06-25T10:00:00Z"),
+          sentAt: new Date("2026-06-25T10:00:00Z"),
+          openedAt: new Date("2026-06-25T12:00:00Z"),
+          subjectSent: "Hi",
+          bodySnippet: "Hi there",
+        },
+        {
+          id: "s2",
+          leadId: "lead-1",
+          sequenceDay: 3,
+          emailKind: "followup",
+          status: "scheduled",
+          scheduledFor: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+          bodySnippet: "Short sample",
+        },
+        {
+          id: "s5",
+          leadId: "lead-1",
+          sequenceDay: 5,
+          emailKind: "catalog_on_open",
+          status: "scheduled",
+          scheduledFor,
+          draftLeadOutreachId: "d5",
+        },
+      ] as unknown as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      sequenceDrafts: [
+        {
+          id: "d5",
+          sequencePosition: 5,
+          templateVariant: "catalog_on_open",
+          subjectA: "festive gifting for Acme",
+          emailBody: "2026 gemstone collection",
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["sequenceDrafts"],
+      cadenceDays: [3, 7],
+    });
+
+    expect(thread.barNodes[1].label).toBe("Email 2");
+    expect(thread.barNodes[1].state).toBe("scheduled");
+    expect(thread.barNodes[3].id).toBe("if-opened");
+    expect(thread.barNodes[3].label).toBe("If Opened");
+    expect(thread.barNodes[3].state).toBe("scheduled");
+    expect(thread.events.some((e) => e.label === "If Opened" && e.status === "scheduled")).toBe(true);
   });
 
   it("uses Email 1 chosen subject as the thread root before send", () => {
@@ -109,6 +233,8 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes[1].state).toBe("scheduled");
     expect(thread.events[0].label).toBe("Email 1");
     expect(thread.events[1].label).toBe("Email 2");
+    // Sequence events exist for the rail/preview, but conversation UI stays hidden until a reply.
+    expect(shouldShowConversationTimeline(thread)).toBe(false);
   });
 
   it("marks opened emails on bar nodes and thread events", () => {
@@ -182,7 +308,7 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes[0].bouncedAt).toBe(bouncedAt.toISOString());
     expect(thread.barNodes[0].recipientEmail).toBe("priya.sharma@acme.com");
     expect(thread.events[0].status).toBe("bounced");
-    expect(thread.nextStep.title).toBe("Email bounced");
+    expect(thread.nextStep?.title).toBe("Email bounced");
   });
 
   it("keeps Email 1-2-3 progress after they reply and puts inbound in events", () => {
@@ -219,12 +345,15 @@ describe("buildEmailThread", () => {
     expect(thread.barMode).toBe("reply");
     expect(thread.barNodes).toHaveLength(3);
     expect(thread.barNodes.map((n) => n.label)).toEqual(["Email 1", "Email 2", "Email 3"]);
+    expect(thread.barNodes[1].state).toBe("skipped");
+    expect(thread.barNodes[2].state).toBe("skipped");
     const inbound = thread.events.find((e) => e.kind === "inbound_reply");
     expect(inbound?.label).toBe("They replied");
     expect(inbound?.body).toMatch(/sample please/);
     expect(conversationSide(inbound!)).toBe("them");
     expect(conversationStatusChip(inbound!).label).toBe("They replied");
     expect(thread.phase).toBe("they_replied");
+    expect(shouldShowConversationTimeline(thread)).toBe(true);
   });
 
   it("sets drafting_reply when reply draft exists and adds Your reply event", () => {
@@ -256,7 +385,7 @@ describe("buildEmailThread", () => {
 
     expect(thread.phase).toBe("drafting_reply");
     expect(thread.showComposeZone).toBe(true);
-    expect(thread.selectedNodeId).toBe("reply-draft");
+    expect(thread.selectedNodeId).toBe("if-replied");
     const replyDraft = thread.events.find((e) => e.id === "reply-draft");
     expect(replyDraft?.label).toBe("Your reply");
     expect(replyDraft?.status).toBe("draft");
@@ -283,7 +412,7 @@ describe("buildEmailThread", () => {
 
     expect(thread.phase).toBe("reply_sent");
     expect(thread.showComposeZone).toBe(false);
-    expect(thread.nextStep.primaryAction).toBe("Mark tasting sent");
+    expect(thread.nextStep?.primaryAction).toBe("Mark tasting sent");
     const outbound = thread.events.find((e) => e.kind === "outbound_reply");
     expect(outbound?.label).toBe("Your reply");
     expect(conversationStatusChip(outbound!).label).toBe("You replied");

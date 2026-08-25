@@ -7,6 +7,7 @@ import { isWhatsAppConnected } from "@/lib/settings/whatsapp-settings";
 import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { WHATSAPP_CHANNEL, WHATSAPP_TEMPLATE_VARIANT } from "@/lib/whatsapp/outreach";
 import { recordWhatsAppOpen } from "@/lib/whatsapp/record-open";
+import { CATALOG_ON_OPEN_EMAIL_KIND } from "@/lib/email/ish-festive-catalog";
 
 export type WhatsAppAutoOpenPayload = {
   url: string;
@@ -27,7 +28,11 @@ function hasSecondEmailSent(
       row.emailKind === "initial" ||
       (row.sequenceDay === 0 && row.emailKind !== "outbound_reply"),
   );
-  const hasFollowUp = emailSent.some((row) => row.emailKind === "followup" || row.sequenceDay > 0);
+  const hasFollowUp = emailSent.some(
+    (row) =>
+      (row.emailKind === "followup" || row.sequenceDay > 0) &&
+      row.emailKind !== CATALOG_ON_OPEN_EMAIL_KIND,
+  );
   return hasInitial && hasFollowUp;
 }
 

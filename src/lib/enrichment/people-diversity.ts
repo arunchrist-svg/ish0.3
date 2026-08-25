@@ -117,11 +117,18 @@ export function rankPeopleForScout(
 
   return [...people]
     .map((person) => {
+      const reasons: string[] = [];
       const base = computeSeniorityScore(person).total;
       let bonus = 0;
       const title = `${person.title ?? ""} ${person.department ?? ""}`.toLowerCase();
-      if (departments.length && personMatchesRoles(person, [], departments)) bonus += 18;
-      if (seniority.length && personMatchesRoles(person, seniority, [])) bonus += 8;
+      if (departments.length && personMatchesRoles(person, [], departments)) {
+        bonus += 18;
+        reasons.push("buyer dept");
+      }
+      if (seniority.length && personMatchesRoles(person, seniority, [])) {
+        bonus += 8;
+        reasons.push("seniority");
+      }
       if (
         preferDm &&
         departments.some((d) => GIFTING_DEPTS.has(d)) &&
@@ -129,6 +136,7 @@ export function rankPeopleForScout(
         /\b(director|head|vp|chro|chief|manager)\b/i.test(title)
       ) {
         bonus += 14;
+        reasons.push("HR/Procurement DM");
       }
       if (
         preferDm &&
@@ -136,6 +144,7 @@ export function rankPeopleForScout(
         !/\b(executive|officer|coordinator|assistant)\b/i.test(title)
       ) {
         bonus += 6;
+        if (!reasons.includes("HR/Procurement DM")) reasons.push("decision-maker");
       }
       if (
         personas.some((persona) => {
@@ -144,6 +153,7 @@ export function rankPeopleForScout(
         })
       ) {
         bonus += 10;
+        reasons.push("persona");
       }
       if (
         departments.some((d) => GIFTING_DEPTS.has(d)) &&
@@ -151,10 +161,18 @@ export function rankPeopleForScout(
         !/\b(hr|people|chro|admin|procurement|purchase)\b/i.test(title)
       ) {
         bonus -= 40;
+        reasons.push("non-buyer title");
       }
-      bonus += locationFitBonus(person, opts?.preferredCities);
+      const locBonus = locationFitBonus(person, opts?.preferredCities);
+      bonus += locBonus;
+      if (locBonus >= 12) reasons.push("local");
       bonus += dataCompletenessBonus(person);
-      return { ...person, matchScore: Math.max(0, Math.min(100, base + bonus)) };
+      if (person.linkedIn?.trim()) reasons.push("LinkedIn");
+      return {
+        ...person,
+        matchScore: Math.max(0, Math.min(100, base + bonus)),
+        matchScoreReason: reasons.slice(0, 3).join(" · ") || "Title match",
+      };
     })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 }

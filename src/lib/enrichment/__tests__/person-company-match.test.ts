@@ -311,6 +311,27 @@ describe("current employer matching", () => {
     expect(results).toHaveLength(0);
   });
 
+  it("rejects Sai Lifescience HR when scouting Sai Chemicals (shared weak prefix)", () => {
+    const title = "Mehar Babu | Human Resources Manager at Sai Lifescience | LinkedIn";
+    const content =
+      "Human Resources Manager\nSai Lifescience · Full-time\nAndhra Pradesh, India";
+
+    expect(entitiesReferToSameCompany("Sai Lifescience", "Sai Chemicals")).toBe(false);
+    expect(entitiesReferToSameCompany("Sai", "Sai Chemicals")).toBe(false);
+    expect(entitiesReferToSameCompany("Sai Chemicals", "Sai Chemicals Pvt Ltd")).toBe(true);
+    expect(personTitleConflictsWithCompany(title, "Sai Chemicals")).toBe(true);
+    expect(hitShowsCurrentEmployment({ title, content }, "Sai Chemicals")).toBe(false);
+    expect(hitShowsCurrentEmployment({ title, content }, "Sai Lifescience")).toBe(true);
+
+    const results = parsePeopleFromSearchResults(
+      [{ title, url: "https://www.linkedin.com/in/mehar-babu", content }],
+      5,
+      "web_heuristic",
+      "Sai Chemicals",
+    );
+    expect(results).toHaveLength(0);
+  });
+
   it("does not treat department words as rival employers", () => {
     expect(personTitleConflictsWithCompany("Head of Procurement", "Bosch")).toBe(false);
     expect(personTitleConflictsWithCompany("Director - People & Culture", "Wipro")).toBe(false);

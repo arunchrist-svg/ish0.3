@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FilterAllClear } from "@/design-system";
 import { assessPeopleFetchRisk, peopleAndFilterWarning } from "@/lib/enrichment/people-role-filter";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, type ScoutVerticalScope } from "@/lib/scouting-data";
 import type { ScoutLocationScope } from "@/lib/geo/india";
@@ -20,6 +21,7 @@ export function RolePickerModal({
   verticalScope,
   onConfirm,
   onSkip,
+  onClose,
 }: {
   initialSeniority?: string[];
   initialDepartments?: string[];
@@ -28,12 +30,23 @@ export function RolePickerModal({
   verticalScope?: ScoutVerticalScope;
   onConfirm: (seniority: string[], departments: string[], peopleCities: string[]) => void;
   onSkip: () => void;
+  /** Dismiss without fetching (Cancel / X). Falls back to onSkip behavior only if omitted. */
+  onClose?: () => void;
 }) {
   const [chosenSeniority, setChosenSeniority] = useState<string[]>(initialSeniority);
   const [chosenDepts, setChosenDepts] = useState<string[]>(initialDepartments);
 
   const isBusiness = verticalScope === "businesses";
   const sweetsGuidance = festiveSweetsBuyerGuidance(platformIntent, isBusiness ? "business" : "industry");
+  const dismiss = onClose ?? onSkip;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") dismiss();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dismiss]);
 
   function toggleSeniority(s: string) {
     setChosenSeniority((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
@@ -49,13 +62,34 @@ export function RolePickerModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(20,24,36,0.42)] backdrop-blur-[3px]">
-      <div className="ish-role-picker mx-4 w-full max-w-lg">
-        <div className="ish-role-picker-head px-6 py-4">
-          <p className="text-[16px] font-bold tracking-tight text-brand-ink">Who are you looking for?</p>
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Close"
+        onClick={dismiss}
+      />
+      <div
+        className="ish-role-picker relative mx-4 w-full max-w-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="role-picker-title"
+      >
+        <div className="ish-role-picker-head relative px-6 py-4 pr-14">
+          <p id="role-picker-title" className="text-[16px] font-bold tracking-tight text-brand-ink">
+            Who are you looking for?
+          </p>
           <p className="mt-1 text-[12.5px] leading-relaxed text-brand-ink-soft">
             {sweetsGuidance ??
               "Pick seniority or department. Matching both is stricter and often returns nobody."}
           </p>
+          <button
+            type="button"
+            onClick={dismiss}
+            className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-full text-brand-ink-soft transition hover:bg-black/[0.05] hover:text-brand-ink"
+            aria-label="Cancel"
+          >
+            <X className="size-4" strokeWidth={2.25} />
+          </button>
         </div>
 
         <div className="flex flex-col gap-5 px-6 py-5">
@@ -66,24 +100,13 @@ export function RolePickerModal({
                   <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
                     Seniority
                   </p>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setChosenSeniority([...SCOUT_SENIORITY])}
-                      disabled={chosenSeniority.length === SCOUT_SENIORITY.length}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChosenSeniority([])}
-                      disabled={chosenSeniority.length === 0}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Clear all
-                    </button>
-                  </div>
+                  <FilterAllClear
+                    label="Seniority selection"
+                    allSelected={chosenSeniority.length === SCOUT_SENIORITY.length}
+                    noneSelected={chosenSeniority.length === 0}
+                    onAll={() => setChosenSeniority([...SCOUT_SENIORITY])}
+                    onClear={() => setChosenSeniority([])}
+                  />
                 </div>
                 <div className="ish-scout-chip-grid">
                   {SCOUT_SENIORITY.map((s) => {
@@ -110,24 +133,13 @@ export function RolePickerModal({
                   <p className="text-[9.5px] font-bold uppercase tracking-widest text-brand-ink-faint">
                     Department
                   </p>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setChosenDepts([...SCOUT_DEPARTMENTS])}
-                      disabled={chosenDepts.length === SCOUT_DEPARTMENTS.length}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChosenDepts([])}
-                      disabled={chosenDepts.length === 0}
-                      className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                    >
-                      Clear all
-                    </button>
-                  </div>
+                  <FilterAllClear
+                    label="Department selection"
+                    allSelected={chosenDepts.length === SCOUT_DEPARTMENTS.length}
+                    noneSelected={chosenDepts.length === 0}
+                    onAll={() => setChosenDepts([...SCOUT_DEPARTMENTS])}
+                    onClear={() => setChosenDepts([])}
+                  />
                 </div>
                 <div className="ish-scout-chip-grid">
                   {SCOUT_DEPARTMENTS.map((d) => {

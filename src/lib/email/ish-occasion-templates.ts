@@ -14,14 +14,33 @@ const TASTING_CTA =
 const TASTING_CTA_ADDRESS =
   "Since tasting is believing, I would love to send a sample box to your office as our treat. What is the best delivery address to ship it to?";
 
-function signOff(sender: string, brand: string, style: "thanks" | "best" = "thanks"): string {
+function signOff(
+  sender: string,
+  brand: string,
+  style: "thanks" | "best" = "thanks",
+  signature?: string | null,
+): string {
   const name = sender.trim() || "Team";
+  const sig = signature?.trim() ?? "";
+  // Settings signature is the full identity under the closing (no From name / brand duplicate).
+  if (sig) {
+    if (/^(warmly|thanks|best|regards)[,.\s]/i.test(sig)) return sig;
+    if (style === "best") return `Best,\n${sig}`;
+    return `Thanks & Regards\n${sig}`;
+  }
   if (style === "best") return `Best,\n${name}\n${brand}`;
   return `Thanks & Regards\n${name}\n${brand}`;
 }
 
-function wrap(first: string, sender: string, brand: string, paragraphs: string, closing: "thanks" | "best"): string {
-  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing)}`;
+function wrap(
+  first: string,
+  sender: string,
+  brand: string,
+  paragraphs: string,
+  closing: "thanks" | "best",
+  signature?: string | null,
+): string {
+  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing, signature)}`;
 }
 
 function applyCta(paragraphs: string, templateId?: string | null): string {
@@ -409,6 +428,7 @@ export function getIshOccasionEmails(params: {
   templateId?: string | null;
   occasionId: WriteOccasionId;
   occasionTiming?: "upcoming" | "recent";
+  signature?: string | null;
 }): IshEmail[] {
   if (isFestiveWriteOccasion(params.occasionId)) {
     return [];
@@ -434,7 +454,7 @@ export function getIshOccasionEmails(params: {
     const closing = step === 1 && i === 0 ? "best" : "thanks";
     return {
       subject: email.subject,
-      body: wrap(first, sender, brand, applyCta(email.paragraphs, cta), closing),
+      body: wrap(first, sender, brand, applyCta(email.paragraphs, cta), closing, params.signature),
     };
   });
 }

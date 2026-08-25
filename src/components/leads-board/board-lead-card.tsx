@@ -5,7 +5,6 @@ import { Check, Clock, Loader2, MapPin, X } from "lucide-react";
 import { IshAvatar, ScoreBadge } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
-import { LeadAddedByLabel } from "@/components/leads/lead-added-by-button";
 import { statusToDisplayLabel, type PipelineStageAccent } from "@/lib/pipeline-status";
 import type { SendQueueItem } from "./board-bulk-actions";
 
@@ -79,10 +78,7 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus }: Props)
             <div className="truncate text-[13.5px] font-bold leading-tight text-brand-ink">{lead.name}</div>
             <div className="mt-0.5 truncate text-[11.5px] text-brand-ink-soft">{lead.company}</div>
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <ScoreBadge score={lead.score ?? 0} />
-            <LeadAddedByLabel name={lead.createdByName} leadSource={lead.leadSource} />
-          </div>
+          <ScoreBadge score={lead.score ?? 0} />
         </div>
 
         {lead.employees && lead.employees !== "—" ? (

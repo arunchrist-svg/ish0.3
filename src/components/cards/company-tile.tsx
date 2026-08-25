@@ -100,6 +100,7 @@ export function CompanyTile({
             <div
               className="flex items-baseline gap-0.5 rounded-full px-2 py-0.5"
               style={{ backgroundColor: `${scoreColor}18` }}
+              title={company.fitScoreReason}
             >
               <span className="text-[12px] font-extrabold leading-none" style={{ color: scoreColor }}>
                 {company.fitScore}
@@ -194,6 +195,7 @@ export function CompanyTile({
         <div
           className="flex items-baseline gap-0.5 rounded-full px-2.5 py-1"
           style={{ backgroundColor: `${scoreColor}18` }}
+          title={company.fitScoreReason}
         >
           <span className="text-[14px] font-extrabold leading-none" style={{ color: scoreColor }}>
             {company.fitScore}

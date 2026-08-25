@@ -92,4 +92,34 @@ describe("scoutPersonSaveGate sweets", () => {
       }),
     ).toEqual({ pass: true, reason: "user-selected from scout wizard" });
   });
+
+  it("skips borderline Sai Lifescience on a Sai Chemicals scout", () => {
+    expect(
+      scoutPersonSaveGate(
+        person({
+          name: "Mehar Babu",
+          title: "HR at Sai Lifescience",
+          bio: "Sai Lifescience · Present",
+          matchScore: 20,
+        }),
+        company("Sai Chemicals"),
+        { sweetsGifting: true },
+      ),
+    ).toEqual({ pass: false, reason: "employer verify failed" });
+  });
+
+  it("keeps a TVS Motor HR lead with a strong match", () => {
+    expect(
+      scoutPersonSaveGate(
+        person({
+          name: "Priya",
+          title: "HR Head at TVS",
+          bio: "TVS Motor · Present",
+          matchScore: 72,
+        }),
+        company("TVS Motor"),
+        { sweetsGifting: true },
+      ).pass,
+    ).toBe(true);
+  });
 });

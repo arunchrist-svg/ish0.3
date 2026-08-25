@@ -1,0 +1,26 @@
+[
+  {
+    "id": "reachable-local-first",
+    "expected": "accept",
+    "reason": "account_rank",
+    "selectedCities": ["Hosur"],
+    "companies": [
+      {
+        "name": "Mystery Works",
+        "city": "Chennai",
+        "leadabilityBand": "unknown",
+        "fitScore": 70
+      },
+      {
+        "name": "Acme Auto Pvt Ltd",
+        "domain": "acmeauto.com",
+        "city": "Hosur",
+        "employees": "120",
+        "industry": "Manufacturing",
+        "leadabilityBand": "high",
+        "leadabilityScore": 90,
+        "fitScore": 60
+      }
+    ]
+  }
+]

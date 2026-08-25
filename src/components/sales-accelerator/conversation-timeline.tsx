@@ -7,9 +7,14 @@ import type { EmailThread, ThreadEvent } from "@/lib/api-client";
 import {
   conversationSide,
   conversationStatusChip,
+  shouldShowConversationTimeline,
 } from "@/lib/email/conversation-view";
 
-export { conversationSide, conversationStatusChip } from "@/lib/email/conversation-view";
+export {
+  conversationSide,
+  conversationStatusChip,
+  shouldShowConversationTimeline,
+} from "@/lib/email/conversation-view";
 
 const LONG_BODY_CHARS = 420;
 
@@ -151,11 +156,24 @@ type Props = {
   onSelect?: (eventId: string) => void;
   /** Hide draft bubbles when the compose editor is showing the same content. */
   hideDraftEvents?: boolean;
+  /**
+   * Show sent/opened/bounced outbound even when there is no inbound yet.
+   * Default keeps the two-sided conversation stack only.
+   */
+  showOutboundHistory?: boolean;
 };
 
-export function ConversationTimeline({ thread, selectedEventId, onSelect, hideDraftEvents }: Props) {
+export function ConversationTimeline({
+  thread,
+  selectedEventId,
+  onSelect,
+  hideDraftEvents,
+  showOutboundHistory,
+}: Props) {
   const events = useMemo(() => {
-    const list = [...(thread?.events ?? [])].filter((e) => {
+    if (!thread) return [];
+    if (!showOutboundHistory && !shouldShowConversationTimeline(thread)) return [];
+    const list = [...(thread.events ?? [])].filter((e) => {
       if (!hideDraftEvents) return true;
       if (e.status === "draft") return false;
       if (e.id === "reply-draft") return false;
@@ -175,7 +193,7 @@ export function ConversationTimeline({ thread, selectedEventId, onSelect, hideDr
       return order(a) - order(b);
     });
     return list;
-  }, [thread?.events, hideDraftEvents]);
+  }, [thread, hideDraftEvents, showOutboundHistory]);
 
   if (!thread || events.length === 0) return null;
 

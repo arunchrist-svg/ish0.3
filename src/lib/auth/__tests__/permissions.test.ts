@@ -10,6 +10,7 @@ import {
   isReadOnly,
   canChangeMemberRole,
 } from "@/lib/auth/permissions";
+import { leadVisibilityForRole } from "@/lib/leads/lead-visibility";
 import type { TenantRole } from "@/lib/tenant";
 
 const ROLES: TenantRole[] = ["owner", "admin", "member", "viewer"];
@@ -109,5 +110,14 @@ describe("AUTH-UNIT-001 permissions matrix", () => {
 
   it("member cannot change roles", () => {
     expect(canChangeMemberRole("member", "viewer")).toBe(false);
+  });
+});
+
+describe("lead visibility roles", () => {
+  it("keeps scouted leads private per user in a slug", () => {
+    expect(leadVisibilityForRole("owner", "user")).toBe("own_plus_unassigned");
+    expect(leadVisibilityForRole("admin", "user")).toBe("own");
+    expect(leadVisibilityForRole("member", "user")).toBe("own");
+    expect(leadVisibilityForRole("viewer", SUPER)).toBe("all");
   });
 });

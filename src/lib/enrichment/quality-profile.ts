@@ -38,6 +38,14 @@ export type ScoutQualityProfile = {
   industryBoostTerms: string[];
 };
 
+export type ScoutQualityLearning = {
+  updatedAt: string;
+  sampleCount: number;
+  outreachedCount: number;
+  repliedCount: number;
+  deltasByIntent: Partial<Record<PlatformIntent, Partial<ScoutQualityWeights>>>;
+};
+
 const SWEETS_WEIGHTS: ScoutQualityWeights = {
   reachability: 0.32,
   officialWebsite: 0.22,
@@ -145,4 +153,23 @@ export function scoutQualityProfileFor(
 ): ScoutQualityProfile {
   const intent = resolvePlatformIntent(platformIntent, verticalPackOrSlug);
   return profileForIntent(intent);
+}
+
+/** Sweets Focus Area chips use corridor broaden; otherwise pack default. */
+export function effectiveGeoPolicy(
+  profile: ScoutQualityProfile,
+  locationScope?: "focus" | "interest",
+): ScoutGeoPolicy {
+  if (locationScope === "focus" && profile.intent === "corporate_gifting") {
+    return "focus_then_corridor";
+  }
+  return profile.geoPolicy;
+}
+
+export function allowsSoftCityRecover(geoPolicy: ScoutGeoPolicy): boolean {
+  return geoPolicy === "region_ok" || geoPolicy === "national_ok";
+}
+
+export function allowsHqCorridor(geoPolicy: ScoutGeoPolicy): boolean {
+  return geoPolicy !== "focus_strict";
 }

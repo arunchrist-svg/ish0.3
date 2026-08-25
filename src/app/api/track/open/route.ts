@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { db, outreachSchedule } from "@/db";
 import { eq } from "drizzle-orm";
 import { logAudit } from "@/lib/audit";
-import { promoteFollowUpToFestiveCatalog } from "@/lib/email/promote-catalog-on-open";
+import { scheduleCatalogOnOpenAfterOpen } from "@/lib/email/promote-catalog-on-open";
+import {
+  openTrackingPixelCacheHeaders,
+  shouldRecordEmailOpen,
+  type OpenTrackingDecision,
+} from "@/lib/email/open-tracking";
+import { getDefaultEmailConfig } from "@/lib/email/config";
 
 // 43-byte 1x1 transparent GIF
 const TRANSPARENT_GIF = Buffer.from(
@@ -14,6 +20,10 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const token = searchParams.get("t");
 
+  let decision: OpenTrackingDecision | null = null;
+  let sentAt: Date | null = null;
+  const now = new Date();
+
   if (token) {
     try {
       const row = await db.query.outreachSchedule.findFirst({
@@ -21,27 +31,59 @@ export async function GET(req: Request) {
       });
 
       if (row && !row.openedAt) {
-        await db
-          .update(outreachSchedule)
-          .set({ openedAt: new Date() })
-          .where(eq(outreachSchedule.id, row.id));
-
-        await logAudit({
-          action: "email.opened",
-          entityType: "lead",
-          entityId: row.leadId,
-          metadata: { scheduleId: row.id, sequenceDay: row.sequenceDay },
+        sentAt = row.sentAt ?? null;
+        decision = shouldRecordEmailOpen({
+          sentAt: row.sentAt,
+          status: row.status,
+          now,
+          userAgent: req.headers.get("user-agent"),
+          referer: req.headers.get("referer"),
+          appUrl: getDefaultEmailConfig().appUrl,
         });
 
-        // Opened = likely not sitting unread in spam. Swap the next pending
-        // follow-up to the full festive catalogue while it is still unsent.
-        try {
-          await promoteFollowUpToFestiveCatalog({
-            leadId: row.leadId,
-            openedSequenceDay: row.sequenceDay,
+        if (!decision.accept) {
+          await logAudit({
+            action: "email.open_ignored",
+            entityType: "lead",
+            entityId: row.leadId,
+            metadata: {
+              scheduleId: row.id,
+              sequenceDay: row.sequenceDay,
+              reason: decision.reason,
+            },
           });
-        } catch (promoteErr) {
-          console.error("[track/open] catalog promote", promoteErr);
+        } else {
+          const openedAt = new Date();
+          await db
+            .update(outreachSchedule)
+            .set({ openedAt })
+            .where(eq(outreachSchedule.id, row.id));
+
+          await logAudit({
+            action: "email.opened",
+            entityType: "lead",
+            entityId: row.leadId,
+            metadata: { scheduleId: row.id, sequenceDay: row.sequenceDay },
+          });
+
+          // Opened = prior sequence email was seen. Send If Opened instead of the next email.
+          try {
+            await scheduleCatalogOnOpenAfterOpen({
+              leadId: row.leadId,
+              openedAt,
+              openedSchedule: {
+                id: row.id,
+                leadId: row.leadId,
+                sequenceDay: row.sequenceDay,
+                emailKind: row.emailKind,
+                approvalId: row.approvalId,
+                sendMode: row.sendMode,
+                draftLeadOutreachId: row.draftLeadOutreachId,
+              },
+            });
+          } catch (scheduleErr) {
+            console.error("[track/open] if-opened schedule", scheduleErr);
+          }
         }
       }
     } catch (e) {
@@ -53,8 +95,7 @@ export async function GET(req: Request) {
     status: 200,
     headers: {
       "Content-Type": "image/gif",
-      "Cache-Control": "no-store, no-cache, must-revalidate, private",
-      "Pragma": "no-cache",
+      ...openTrackingPixelCacheHeaders({ decision, sentAt, now }),
     },
   });
 }

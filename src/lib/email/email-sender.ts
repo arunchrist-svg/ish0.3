@@ -21,18 +21,26 @@ export function invalidateEmailConfigCache() {
 }
 const CACHE_TTL_MS = 60_000;
 
-async function loadEmailConfigCached(workspaceId?: string): Promise<EmailConfig> {
+function cacheKey(workspaceId: string, userId?: string | null): string {
+  return `${workspaceId}::${userId ?? "_session"}`;
+}
+
+async function loadEmailConfigCached(
+  workspaceId?: string,
+  userId?: string | null,
+): Promise<EmailConfig> {
   try {
     const resolvedWorkspaceId = workspaceId ?? (await requireTenantContext()).workspaceId;
-    const cached = configCache.get(resolvedWorkspaceId);
+    const key = cacheKey(resolvedWorkspaceId, userId);
+    const cached = configCache.get(key);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.config;
     }
-    const config = await getResolvedEmailConfig(resolvedWorkspaceId);
-    configCache.set(resolvedWorkspaceId, { config, expiresAt: Date.now() + CACHE_TTL_MS });
+    const config = await getResolvedEmailConfig(resolvedWorkspaceId, userId);
+    configCache.set(key, { config, expiresAt: Date.now() + CACHE_TTL_MS });
     return config;
   } catch {
-    return getResolvedEmailConfig();
+    return getResolvedEmailConfig(undefined, userId);
   }
 }
 
@@ -46,8 +54,10 @@ function resolveRecipient(config: EmailConfig, leadAddress: string): string {
   return leadAddress;
 }
 
-export async function sendEmail(params: SendParams & { workspaceId?: string }): Promise<SendResult> {
-  const config = await loadEmailConfigCached(params.workspaceId);
+export async function sendEmail(
+  params: SendParams & { workspaceId?: string; userId?: string | null },
+): Promise<SendResult> {
+  const config = await loadEmailConfigCached(params.workspaceId, params.userId);
   const mode = config.sendMode;
   const from = formatFromAddress(config);
   const timestamp = new Date().toISOString();

@@ -50,7 +50,7 @@ export function resolveDraftBody(draft: DraftCopyFields, key?: string | null): s
 
 /** Follow-ups (Email 2/3) stay on Email 1's subject / thread, with no A/B picker. */
 export function isSequenceFollowUpDraft(sequencePosition?: number | null): boolean {
-  return sequencePosition != null && sequencePosition > 1;
+  return sequencePosition === 2 || sequencePosition === 3;
 }
 
 export function followUpThreadSubject(params: {

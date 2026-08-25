@@ -67,6 +67,8 @@ export function emailKindLabel(kind: EmailKind | string | null | undefined, sequ
       return "Email 1 sent";
     case "followup":
       return sequenceDay === 7 ? "Email 3 sent" : sequenceDay === 3 ? "Email 2 sent" : `Follow-up (day ${sequenceDay}) sent`;
+    case "catalog_on_open":
+      return "If Opened sent";
     case "outbound_reply":
       return "Your reply sent";
     case "inbound_reply":

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import { fillIshCatalogDraftVariants, fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
 
 const names = {
   contactFirstName: "Vijetha",
@@ -71,6 +71,38 @@ describe("ISH cold email templates", () => {
     expect(withPhone.emailBodyB).toMatch(/\+91 98765 43210 \| srilaksha@indiasweethouse\.in/);
   });
 
+  it("uses Settings signature under Warmly when set", () => {
+    const withSig = fillIshDraftVariants({
+      contactFirstName: "Arun",
+      companyName: "Moneyview",
+      senderFirstName: "Kasturinagar",
+      brandName: "India Sweet House",
+      sequencePosition: 1,
+      fromLocation: "Kasturinagar",
+      signature: "Anuj\nManager\nIndia Sweet House",
+    });
+    expect(withSig.emailBody).toMatch(/Warmly,\nAnuj\nManager\nIndia Sweet House$/);
+    expect(withSig.emailBody).not.toMatch(/Kasturinagar/);
+    expect(withSig.emailBodyB).toMatch(/Warmly,\nAnuj\nManager\nIndia Sweet House$/);
+  });
+
+  it("uses Settings signature under Warmly for catalog If Opened drafts", () => {
+    const catalog = fillIshCatalogDraftVariants({
+      contactFirstName: "Arun",
+      companyName: "Moneyview",
+      senderFirstName: "Kasturinagar",
+      brandName: "India Sweet House",
+      sequencePosition: 5,
+      fromLocation: "Kasturinagar",
+      senderPhone: "+91 98765 43210",
+      fromAddress: "srilaksha@indiasweethouse.in",
+      signature: "Anuj\nManager\nIndia Sweet House",
+    });
+    expect(catalog.emailBody).toMatch(/Warmly,\nAnuj\nManager\nIndia Sweet House$/);
+    expect(catalog.emailBodyB).toMatch(/Warmly,\nAnuj\nManager\nIndia Sweet House$/);
+    expect(catalog.emailBody).not.toMatch(/Kasturinagar|\+91 98765/);
+  });
+
   it("names the company in every Email 1, 2, and 3 option", () => {
     for (const body of [e1.emailBody, e1.emailBodyB, e2.emailBody, e2.emailBodyB, e3.emailBody, e3.emailBodyB]) {
       expect(body).toContain("Acme Auto");
@@ -104,26 +136,37 @@ describe("ISH cold email templates", () => {
     expect(e2.emailBodyC).toBe("");
   });
 
-  it("uses the full festive catalogue for Email 2/3 when prior email was opened", () => {
+  it("keeps Email 2/3 as the short drafts even if a prior email was opened", () => {
     const openedE2 = fillIshDraftVariants({ ...names, sequencePosition: 2, inboxOpened: true });
-    expect(openedE2.emailBody).toMatch(/Every festive gift carries a message/);
-    expect(openedE2.emailBody).toMatch(/nine gifting ranges/);
-    expect(openedE2.emailBody).toMatch(/Karma Farm/);
-    expect(openedE2.emailBody).toMatch(/Manikya & Neelam/);
-    expect(openedE2.emailBody).toMatch(/e-gift coupons/);
-    expect(openedE2.emailBody).toMatch(/flat minimum 10%/);
-    expect(openedE2.emailBody).toMatch(/2026 catalogue/);
-    expect(openedE2.emailBody).toMatch(/Warmly,/);
-    expect(openedE2.emailBody).not.toMatch(/—/);
-    expect(openedE2.emailBodyB).toMatch(/nine gifting ranges/);
+    expect(openedE2.emailBody).toMatch(/sample box/);
+    expect(openedE2.emailBody).not.toMatch(/2026 Gemstone Collection/);
+    expect(openedE2.emailBody).not.toMatch(/I won't email further/);
 
     const openedE3 = fillIshDraftVariants({ ...names, sequencePosition: 3, inboxOpened: true });
-    expect(openedE3.emailBody).toMatch(/nine gifting ranges/);
-    expect(openedE3.emailBody).not.toMatch(/I won't email further/);
+    expect(openedE3.emailBody).toMatch(/I won't email further|won't email further|closing this thread/i);
+    expect(openedE3.emailBody).not.toMatch(/2026 Gemstone Collection/);
+  });
+
+  it("uses Email settings for If Opened signature on both options", () => {
+    const catalog = fillIshCatalogDraftVariants({
+      ...names,
+      sequencePosition: 5,
+      fromLocation: "Kasturinagar",
+      senderPhone: "+91 98765 43210",
+      fromAddress: "srilaksha@indiasweethouse.in",
+    });
+    const signOff =
+      /Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar\n\n\+91 98765 43210 \| srilaksha@indiasweethouse\.in/;
+    expect(catalog.subjectA).toBe("festive gifting for Acme Auto");
+    expect(catalog.subjectB).toBe("festive gifting for Acme Auto");
+    expect(catalog.emailBody).toMatch(signOff);
+    expect(catalog.emailBodyB).toMatch(signOff);
+    expect(catalog.emailBody).not.toMatch(/XXXXX|Website\/LinkedIn/);
+    expect(catalog.emailBodyB).not.toMatch(/XXXXX|Website\/LinkedIn/);
   });
 
   it("keeps short Email 2 when not opened", () => {
-    expect(e2.emailBody).not.toMatch(/nine gifting ranges/);
+    expect(e2.emailBody).not.toMatch(/2026 Gemstone Collection/);
   });
 
   it("fills E3 breakup with a short ISH authenticity line", () => {

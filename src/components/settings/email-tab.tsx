@@ -35,6 +35,14 @@ import { useSession } from "@/components/providers/session-provider";
 import { isSmtpServerId } from "@/lib/email/inbox-setup-guide";
 import { emailKeywordsToInput, normalizeEmailKeywords } from "@/lib/brand/email-keywords";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
+import {
+  SEND_TIMEZONE_OPTIONS,
+  SEND_WINDOW_PRESETS,
+  WEEKDAY_OPTIONS,
+  formatHourLabel,
+  sendWindowSummary,
+  type Weekday,
+} from "@/lib/email/send-window";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleHelp, Loader2, XCircle } from "lucide-react";
@@ -176,6 +184,206 @@ function StatusBadge({ ok, okLabel, failLabel }: { ok: boolean; okLabel: string;
     <span className="inline-flex items-center gap-1 rounded-full bg-brand-pink-soft px-2 py-0.5 text-[10px] font-semibold text-brand-stratus-salmon">
       <XCircle className="size-3" /> {failLabel}
     </span>
+  );
+}
+
+function SequenceScheduleSettings({
+  config,
+  onUpdate,
+  showInboxStyle = true,
+}: {
+  config: EmailConfigResponse;
+  onUpdate: Props["onUpdate"];
+  showInboxStyle?: boolean;
+}) {
+  const sendDays = (config.sendDaysOfWeek ?? [1, 2, 3, 4, 5]) as Weekday[];
+  const sendHourStart = config.sendHourStart ?? 9;
+  const sendHourEnd = config.sendHourEnd ?? 17;
+  const sendTimezone = config.sendTimezone ?? "Asia/Kolkata";
+  const sendHoursPreset =
+    SEND_WINDOW_PRESETS.find((p) => p.hourStart === sendHourStart && p.hourEnd === sendHourEnd)?.id ??
+    "custom";
+
+  return (
+    <SettingsGroup title="Sequence" className="mb-4">
+      <SettingsRow className="justify-between py-2.5">
+        <span className="text-[13px] font-semibold text-brand-ink">Follow-ups</span>
+        <SettingsSegmented
+          value={(config.followUpPolicy ?? "auto_send") as FollowUpPolicy}
+          onChange={(next) => onUpdate("followUpPolicy", next)}
+          options={FOLLOW_UP_POLICY_OPTIONS.map((option) => ({
+            value: option.value,
+            label: option.value === "auto_send" ? "Auto-send" : "Review first",
+          }))}
+        />
+      </SettingsRow>
+      <SettingsGroupDivider />
+      <SettingsRow className="justify-between py-2.5">
+        <span className="text-[13px] font-semibold text-brand-ink">Cadence</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <Stepper
+            label="Email 2"
+            value={config.cadenceDays[0]}
+            min={1}
+            max={14}
+            onChange={(v) => onUpdate("cadenceDays", [v, Math.max(v + 1, config.cadenceDays[1])])}
+          />
+          <Stepper
+            label="Email 3"
+            value={config.cadenceDays[1]}
+            min={Math.max(2, config.cadenceDays[0] + 1)}
+            max={30}
+            onChange={(v) => onUpdate("cadenceDays", [config.cadenceDays[0], v])}
+          />
+          <span className="text-[11px] text-brand-ink-faint">days after Email 1</span>
+        </div>
+      </SettingsRow>
+      <SettingsGroupDivider />
+      <div className="px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <span className="text-[13px] font-semibold text-brand-ink">Shoot to</span>
+            <p className="mt-0.5 text-[11px] text-brand-ink-faint">
+              Follow-ups only send on these days and hours. Outside the window, they roll to the next slot.
+            </p>
+          </div>
+          <span className="max-w-[14rem] text-right text-[10px] leading-snug text-brand-ink-faint">
+            {sendWindowSummary({
+              daysOfWeek: sendDays,
+              hourStart: sendHourStart,
+              hourEnd: sendHourEnd,
+              timezone: sendTimezone,
+            })}
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {WEEKDAY_OPTIONS.map((day) => {
+            const selected = sendDays.includes(day.value);
+            return (
+              <button
+                key={day.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  const next = selected
+                    ? sendDays.filter((d) => d !== day.value)
+                    : [...sendDays, day.value].sort((a, b) => a - b);
+                  if (next.length === 0) return;
+                  onUpdate("sendDaysOfWeek", next);
+                }}
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                  selected
+                    ? "bg-brand-stratus-blue text-white"
+                    : "border border-brand-stratus-blue/20 bg-white/80 text-brand-ink-soft hover:text-brand-ink",
+                )}
+              >
+                {day.short}
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium text-brand-ink-soft">Hours</span>
+          <SettingsSegmented
+            value={sendHoursPreset}
+            onChange={(next) => {
+              const preset = SEND_WINDOW_PRESETS.find((p) => p.id === next);
+              if (!preset) return;
+              onUpdate("sendHourStart", preset.hourStart);
+              onUpdate("sendHourEnd", preset.hourEnd);
+            }}
+            options={[
+              ...SEND_WINDOW_PRESETS.map((p) => ({ value: p.id, label: p.label })),
+              { value: "custom", label: "Custom" },
+            ]}
+          />
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <label className="block min-w-0">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+              From
+            </span>
+            <select
+              value={sendHourStart}
+              onChange={(e) => {
+                const start = Number(e.target.value);
+                const end = Math.max(start + 1, sendHourEnd);
+                onUpdate("sendHourStart", start);
+                onUpdate("sendHourEnd", end);
+              }}
+              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+            >
+              {Array.from({ length: 23 }, (_, h) => (
+                <option key={h} value={h}>
+                  {formatHourLabel(h)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+              Until
+            </span>
+            <select
+              value={sendHourEnd}
+              onChange={(e) => {
+                const end = Number(e.target.value);
+                const start = Math.min(sendHourStart, end - 1);
+                onUpdate("sendHourStart", Math.max(0, start));
+                onUpdate("sendHourEnd", end);
+              }}
+              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+            >
+              {Array.from({ length: 23 }, (_, i) => i + 1)
+                .filter((h) => h > sendHourStart)
+                .map((h) => (
+                  <option key={h} value={h}>
+                    {formatHourLabel(h)}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+              Timezone
+            </span>
+            <select
+              value={sendTimezone}
+              onChange={(e) => onUpdate("sendTimezone", e.target.value)}
+              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
+            >
+              {SEND_TIMEZONE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+      {showInboxStyle ? (
+        <>
+          <SettingsGroupDivider />
+          <SettingsRow className="justify-between py-2.5">
+            <div className="min-w-0 pr-3">
+              <span className="text-[13px] font-semibold text-brand-ink">Inbox</span>
+              <p className="mt-0.5 text-[11px] text-brand-ink-faint">
+                Primary for company cold outreach. Marketing adds unsubscribe headers that push Promotions.
+              </p>
+            </div>
+            <SettingsSegmented
+              value={config.emailStyle}
+              onChange={(next) => onUpdate("emailStyle", next)}
+              options={EMAIL_STYLE_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.value === "primary" ? "Primary" : option.label,
+              }))}
+            />
+          </SettingsRow>
+        </>
+      ) : null}
+    </SettingsGroup>
   );
 }
 
@@ -453,7 +661,28 @@ export function EmailTab({
               />
             ) : null}
           </div>
+          <SettingsGroupDivider />
+          <div className="px-4 py-3">
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                Signature
+              </span>
+              <textarea
+                value={config.signature ?? ""}
+                onChange={(e) => onUpdate("signature", e.target.value)}
+                placeholder={"Arun Murugesan\nSales · India Sweet House\n+91 98XXX XXXXX"}
+                rows={3}
+                className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12"
+              />
+              <p className="mt-1.5 text-[11px] leading-relaxed text-brand-ink-faint">
+                Used as the sign-off identity on generated drafts (under Warmly / Thanks & Regards). Also
+                appended on send if the body does not already include it.
+              </p>
+            </label>
+          </div>
         </SettingsGroup>
+
+        <SequenceScheduleSettings config={config} onUpdate={onUpdate} showInboxStyle={false} />
 
         <MailboxWarmupSettings config={config} onUpdate={onUpdate} />
       </div>
@@ -538,6 +767,25 @@ export function EmailTab({
               type="email"
             />
           )}
+        </div>
+        <SettingsGroupDivider />
+        <div className="px-4 py-3">
+          <label className="block min-w-0">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+              Signature
+            </span>
+            <textarea
+              value={config.signature ?? ""}
+              onChange={(e) => onUpdate("signature", e.target.value)}
+              placeholder={"Arun Murugesan\nSales · India Sweet House\n+91 98XXX XXXXX"}
+              rows={3}
+              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:border-brand-stratus-blue/45 focus:ring-2 focus:ring-brand-stratus-blue/12"
+            />
+            <p className="mt-1.5 text-[11px] leading-relaxed text-brand-ink-faint">
+              Used as the sign-off identity on generated drafts (under Warmly / Thanks & Regards). Also
+              appended on send if the body does not already include it.
+            </p>
+          </label>
         </div>
       </SettingsGroup>
 
@@ -629,57 +877,7 @@ export function EmailTab({
         ) : null}
       </SettingsGroup>
 
-      <SettingsGroup title="Sequence" className="mb-4">
-        <SettingsRow className="justify-between py-2.5">
-          <span className="text-[13px] font-semibold text-brand-ink">Follow-ups</span>
-          <SettingsSegmented
-            value={(config.followUpPolicy ?? "auto_send") as FollowUpPolicy}
-            onChange={(next) => onUpdate("followUpPolicy", next)}
-            options={FOLLOW_UP_POLICY_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.value === "auto_send" ? "Auto-send" : "Review first",
-            }))}
-          />
-        </SettingsRow>
-        <SettingsGroupDivider />
-        <SettingsRow className="justify-between py-2.5">
-          <span className="text-[13px] font-semibold text-brand-ink">Cadence</span>
-          <div className="flex flex-wrap items-center gap-3">
-            <Stepper
-              label="Email 2"
-              value={config.cadenceDays[0]}
-              min={1}
-              max={14}
-              onChange={(v) => onUpdate("cadenceDays", [v, Math.max(v + 1, config.cadenceDays[1])])}
-            />
-            <Stepper
-              label="Email 3"
-              value={config.cadenceDays[1]}
-              min={Math.max(2, config.cadenceDays[0] + 1)}
-              max={30}
-              onChange={(v) => onUpdate("cadenceDays", [config.cadenceDays[0], v])}
-            />
-            <span className="text-[11px] text-brand-ink-faint">days after Email 1</span>
-          </div>
-        </SettingsRow>
-        <SettingsGroupDivider />
-        <SettingsRow className="justify-between py-2.5">
-          <div className="min-w-0 pr-3">
-            <span className="text-[13px] font-semibold text-brand-ink">Inbox</span>
-            <p className="mt-0.5 text-[11px] text-brand-ink-faint">
-              Primary for company cold outreach. Marketing adds unsubscribe headers that push Promotions.
-            </p>
-          </div>
-          <SettingsSegmented
-            value={config.emailStyle}
-            onChange={(next) => onUpdate("emailStyle", next)}
-            options={EMAIL_STYLE_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.value === "primary" ? "Primary" : option.label,
-            }))}
-          />
-        </SettingsRow>
-      </SettingsGroup>
+      <SequenceScheduleSettings config={config} onUpdate={onUpdate} />
 
       <SettingsGroup title="Writer" className="mb-4">
         <div className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-end">

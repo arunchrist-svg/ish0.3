@@ -1,6 +1,16 @@
-import type { ThreadEvent } from "@/lib/email/email-thread";
+import type { EmailThread, ThreadEvent } from "@/lib/email/email-thread";
 
 export type ConversationSide = "them" | "us";
+
+/**
+ * Conversation stack is for two-sided history only.
+ * While awaiting a reply, sequence progress lives on the rail chips, not this list.
+ */
+export function shouldShowConversationTimeline(
+  thread: Pick<EmailThread, "events"> | null | undefined,
+): boolean {
+  return (thread?.events ?? []).some((e) => e.kind === "inbound_reply");
+}
 
 export function conversationSide(event: ThreadEvent): ConversationSide {
   return event.kind === "inbound_reply" ? "them" : "us";
@@ -19,6 +29,7 @@ export function conversationStatusChip(event: ThreadEvent): {
   if (event.status === "bounced" || event.bouncedAt) {
     return { label: "Bounced", tone: "bounced" };
   }
+  // Pixel-based; not the same as Gmail read/unread.
   if (event.status === "opened" || event.openedAt) {
     return { label: "Opened", tone: "opened" };
   }

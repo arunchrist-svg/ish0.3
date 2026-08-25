@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { buildEmailHtml } from "@/lib/email/templates";
+import { appendEmailSignature, buildEmailHtml } from "@/lib/email/templates";
+
+describe("appendEmailSignature", () => {
+  it("appends signature after body", () => {
+    expect(appendEmailSignature("Hi there", "Arun\nISH")).toBe("Hi there\n\nArun\nISH");
+  });
+
+  it("skips empty signature", () => {
+    expect(appendEmailSignature("Hi there", "  ")).toBe("Hi there");
+  });
+
+  it("does not double-append when signature already present", () => {
+    const body = "Hi there\n\nArun\nISH";
+    expect(appendEmailSignature(body, "Arun\nISH")).toBe(body);
+  });
+});
 
 describe("buildEmailHtml open tracking", () => {
   it("embeds tracking pixel for primary style when App URL is public", () => {
@@ -44,5 +59,15 @@ describe("buildEmailHtml open tracking", () => {
     });
     expect(html).not.toContain("unsubscribe");
     expect(html).not.toContain("You received this email because");
+  });
+
+  it("includes Settings signature in the sent HTML body", () => {
+    const html = buildEmailHtml({
+      body: "Hello there",
+      appUrl: "https://app.example.com",
+      emailStyle: "primary",
+      signature: "Arun\nIndia Sweet House",
+    });
+    expect(html).toContain("Arun<br/>India Sweet House");
   });
 });

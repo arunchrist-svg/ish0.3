@@ -61,6 +61,7 @@ export async function POST(req: Request) {
       searchKind: searchKind === "business" || searchKind === "industry" ? searchKind : undefined,
       businesses: Array.isArray(businesses) ? businesses.map(String) : [],
       locationScope: locationScope === "focus" || locationScope === "interest" ? locationScope : undefined,
+      qualityContext: { userId: ctx.userId, sessionId: typeof body.sessionId === "string" ? body.sessionId : null },
     });
 
     if (people.length > 0) {

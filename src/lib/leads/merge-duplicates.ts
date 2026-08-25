@@ -18,6 +18,7 @@ import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 import { deleteLeadById } from "@/lib/leads/crud";
 import { groupDuplicateLeads, type DedupeLeadInput } from "@/lib/leads/duplicates";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export type DuplicateGroupSummary = {
   key: string;
@@ -56,7 +57,10 @@ const EMAIL_RANK: Record<string, number> = {
   missing: 0,
 };
 
-async function loadTenantLeads(tenantId: string): Promise<LoadedLead[]> {
+async function loadTenantLeads(
+  tenantId: string,
+  visibilityCtx?: Pick<import("@/lib/tenant").TenantContext, "userId" | "role" | "platformRole">,
+): Promise<LoadedLead[]> {
   const rows = await db
     .select({
       id: leads.id,
@@ -83,7 +87,11 @@ async function loadTenantLeads(tenantId: string): Promise<LoadedLead[]> {
     .from(leads)
     .innerJoin(contacts, eq(contacts.id, leads.contactId))
     .innerJoin(accounts, eq(accounts.id, leads.accountId))
-    .where(eq(leads.tenantId, tenantId));
+    .where(
+      visibilityCtx
+        ? withLeadVisibility(visibilityCtx, eq(leads.tenantId, tenantId))
+        : eq(leads.tenantId, tenantId),
+    );
 
   return rows.map((row) => ({
     ...row,
@@ -93,11 +101,14 @@ async function loadTenantLeads(tenantId: string): Promise<LoadedLead[]> {
   }));
 }
 
-export async function listDuplicateGroups(tenantId: string): Promise<{
+export async function listDuplicateGroups(
+  tenantId: string,
+  visibilityCtx?: Pick<import("@/lib/tenant").TenantContext, "userId" | "role" | "platformRole">,
+): Promise<{
   groups: DuplicateGroupSummary[];
   extraCount: number;
 }> {
-  const groups = groupDuplicateLeads(await loadTenantLeads(tenantId)).map((group) => ({
+  const groups = groupDuplicateLeads(await loadTenantLeads(tenantId, visibilityCtx)).map((group) => ({
     key: group.key,
     name: group.name,
     company: group.company,
@@ -310,8 +321,9 @@ export async function mergeDuplicateLeads(params: {
   actorId?: string;
   keepId?: string;
   dropIds?: string[];
+  visibilityCtx?: Pick<import("@/lib/tenant").TenantContext, "userId" | "role" | "platformRole">;
 }): Promise<MergeDuplicatesResult> {
-  const all = await loadTenantLeads(params.tenantId);
+  const all = await loadTenantLeads(params.tenantId, params.visibilityCtx);
   const detected = groupDuplicateLeads(all);
   const results: { keepId: string; deletedIds: string[] }[] = [];
 

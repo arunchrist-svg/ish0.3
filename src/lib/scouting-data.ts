@@ -23,6 +23,7 @@ export type Company = {
   leadabilityMatchedPeople?: number;
   leadabilityMatchedInCity?: number;
   leadabilityProbeSource?: string;
+  fitScoreReason?: string;
 };
 
 export type Person = {
@@ -34,6 +35,7 @@ export type Person = {
   seniority: string;
   isKeyDecisionMaker: boolean;
   matchScore: number;
+  matchScoreReason?: string;
   engagementSignals: string[];
   linkedIn: string;
   email: string;

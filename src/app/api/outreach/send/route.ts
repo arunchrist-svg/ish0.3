@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
 import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE, resolveOutreachEmailStyle } from "@/lib/email/config";
+import { computeFollowUpScheduledFor } from "@/lib/email/send-window";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { assertResourceTenant, requireTenantContext } from "@/lib/tenant";
@@ -136,7 +137,7 @@ export async function POST(req: Request) {
       contact.alternateEmails = merged.alternateEmails;
     }
 
-    const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+    const emailConfig = await getResolvedEmailConfig(ctx.workspaceId, ctx.userId);
     if (emailConfig.sendMode === "live" && draftFailsQualityGate(outreach) && !overrideQualityGate) {
       return NextResponse.json(
         {
@@ -257,6 +258,7 @@ export async function POST(req: Request) {
 
         const result = await sendEmail({
           workspaceId: ctx.workspaceId,
+          userId: ctx.userId,
           to,
           subject,
           html: buildEmailHtml({
@@ -264,6 +266,7 @@ export async function POST(req: Request) {
             trackingToken,
             appUrl: emailConfig.appUrl,
             emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
+            signature: emailConfig.signature,
           }),
           replyTo: emailConfig.replyToAddress?.trim() || emailConfig.fromAddress,
           messageId,
@@ -424,11 +427,17 @@ export async function POST(req: Request) {
       }
 
       const cadence = emailConfig.cadenceDays;
-      const now = Date.now();
+      const now = new Date();
+      const sendWindow = {
+        daysOfWeek: emailConfig.sendDaysOfWeek,
+        hourStart: emailConfig.sendHourStart,
+        hourEnd: emailConfig.sendHourEnd,
+        timezone: emailConfig.sendTimezone,
+      };
       const sequenceDrafts = await loadSequenceDrafts(approval.leadId);
       for (let i = 0; i < cadence.length; i++) {
         const day = cadence[i];
-        const scheduledFor = new Date(now + day * 24 * 60 * 60 * 1000);
+        const scheduledFor = computeFollowUpScheduledFor(now, day, sendWindow);
         const linkedDraft = sequenceDrafts.find((d) => d.sequencePosition === i + 2);
         await db.insert(outreachSchedule).values({
           leadId: approval.leadId,

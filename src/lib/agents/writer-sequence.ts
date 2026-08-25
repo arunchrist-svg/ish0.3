@@ -4,6 +4,8 @@ import { runWriter, resolveWriterMode, type WriterMode } from "@/lib/agents/writ
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { isNearParaphrase, SEQUENCE_CLONE_THRESHOLD } from "@/lib/email/email-similarity";
+import { CATALOG_ON_OPEN_SEQUENCE_POSITION } from "@/lib/email/ish-festive-catalog";
+import { upsertCatalogOnOpenDraft } from "@/lib/email/promote-catalog-on-open";
 
 export type WriterSequenceOptions = {
   outreachTemplate?: OutreachTemplateId;
@@ -22,7 +24,7 @@ export async function runWriterSequence(
   await deleteLeadOutreachWhere(
     and(
       eq(leadOutreach.leadId, leadId),
-      inArray(leadOutreach.sequencePosition, [1, 2, 3]),
+      inArray(leadOutreach.sequencePosition, [1, 2, 3, CATALOG_ON_OPEN_SEQUENCE_POSITION]),
     ),
   );
 
@@ -55,6 +57,8 @@ export async function runWriterSequence(
   ]);
   id2 = await ensureDistinctSequenceStep(leadId, 2, e1Body, id2, options);
   id3 = await ensureDistinctSequenceStep(leadId, 3, e1Body, id3, options);
+
+  await upsertCatalogOnOpenDraft(leadId);
 
   await db.update(leads).set({ status: "draft_ready" }).where(eq(leads.id, leadId));
   await db.insert(yieldFunnel).values({ leadId, stage: "draft_ready", metadata: { sequence: true } });

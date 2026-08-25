@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
-import { ScrollableTabs, Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/design-system";
 import { RecordHeader } from "@/components/sales-accelerator/record-header";
 import { PipelineStepper } from "@/components/sales-accelerator/pipeline-stepper";
 import { ContactCard } from "@/components/sales-accelerator/contact-card";
@@ -108,10 +108,6 @@ const TAB_SHORT: Record<(typeof TABS)[number], string> = {
   WhatsApp: "WhatsApp",
   "Relationship Analytics": "Network",
 };
-
-const TAB_FROM_SHORT = Object.fromEntries(
-  (Object.entries(TAB_SHORT) as [typeof TABS[number], string][]).map(([k, v]) => [v, k]),
-) as Record<string, (typeof TABS)[number]>;
 
 export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead, onDeleteLead }: Props) {
   const router = useRouter();
@@ -320,32 +316,17 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
           <PipelineStepper stage={statusToPipelineIndex(lead.status)} />
         </div>
         <Tabs value={activeTab} onValueChange={(tab) => { setActiveTab(tab); syncTabToUrl(tab); }} className="bg-white">
-        <div className="border-b border-brand-border/40 px-2 py-1 lg:hidden">
-            <ScrollableTabs
-              compact
-              tabs={TABS.map((tab) => TAB_SHORT[tab])}
-              value={TAB_SHORT[activeTab as (typeof TABS)[number]] ?? "Summary"}
-              onChange={(label) => {
-                const tab = TAB_FROM_SHORT[label] ?? "Summary";
-                setActiveTab(tab);
-                syncTabToUrl(tab);
-              }}
-              badges={{
-                ...(hasDraft && lead.outreach?.approvalStatus === "pending" ? { Email: true } : {}),
-                ...(lead.whatsappDraft?.whatsapp ? { WhatsApp: true } : {}),
-              }}
-            />
-        </div>
-        <div className="ish-scroll-tabs hidden overflow-x-auto px-4 pt-2.5 lg:block lg:px-[22px]">
+        <div className="ish-scroll-tabs overflow-x-auto border-b border-brand-border/40 px-2 py-1 lg:border-0 lg:px-4 lg:pt-2.5 lg:px-[22px]">
           <TabsList className="h-auto min-w-max gap-1 bg-transparent p-0">
             {TABS.map((tab) => (
               <TabsTrigger
                 key={tab}
                 value={tab}
-                className="h-auto flex-none rounded-[12px] border-0 px-3.5 py-1.5 text-[13px] font-semibold text-brand-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-brand-ink active:scale-[0.97] data-active:!bg-brand-black data-active:!text-white data-active:shadow-none after:hidden"
+                className="h-auto flex-none rounded-[12px] border-0 px-3 py-1.5 text-[12px] font-semibold text-brand-ink-soft shadow-none transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-brand-ink active:scale-[0.97] data-active:!bg-brand-black data-active:!text-white data-active:shadow-none after:hidden lg:px-3.5 lg:text-[13px]"
               >
                 <span className="flex items-center gap-1.5">
-                  {tab}
+                  <span className="lg:hidden">{TAB_SHORT[tab]}</span>
+                  <span className="hidden lg:inline">{tab}</span>
                   {tab === "Email" && hasDraft && lead.outreach?.approvalStatus === "pending" && (
                     <span className="size-1.5 rounded-full bg-[#e8a000]" aria-label="Draft pending" />
                   )}

@@ -1,6 +1,10 @@
 import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { getIshOccasionEmails } from "@/lib/email/ish-occasion-templates";
-import { buildIshFestiveCatalogParagraphs } from "@/lib/email/ish-festive-catalog";
+import {
+  buildIshFestiveCatalogParagraphs,
+  buildIshFestiveCatalogParagraphsB,
+  buildIshFestiveCatalogSubject,
+} from "@/lib/email/ish-festive-catalog";
 import { isFestiveWriteOccasion, type WriteOccasionId } from "@/lib/occasions/catalog";
 
 /** India Sweet House sequences from ISH_Cold_Email_Templates.md. Fill name/company only. */
@@ -20,10 +24,9 @@ export type IshFillParams = {
   fromAddress?: string | null;
   /** Optional branch/location from Email settings (e.g. Kasturinagar). */
   fromLocation?: string | null;
-  /**
-   * When prior Email 1 (or Email 2) was opened via tracking pixel,
-   * use the full festive catalogue for this follow-up instead of the short sample nudge.
-   */
+  /** Free-text signature from Email settings; appended under the closing. */
+  signature?: string | null;
+  /** Unused for Email 2/3. Catalogue copy lives on the If Opened (position 5) draft. */
   inboxOpened?: boolean;
 };
 
@@ -36,8 +39,20 @@ function signOff(
   phone?: string | null,
   fromAddress?: string | null,
   fromLocation?: string | null,
+  signature?: string | null,
 ): string {
   const name = sender.trim() || "Team";
+  const sig = signature?.trim() ?? "";
+
+  // Settings signature replaces From name / brand / location under the closing.
+  // Multi-line blocks (name, title, company) are the full identity; do not prepend From name.
+  if (sig) {
+    if (/^(warmly|thanks|best|regards)[,.\s]/i.test(sig)) return sig;
+    if (style === "warmly") return `Warmly,\n${sig}`;
+    if (style === "best") return `Best,\n${sig}`;
+    return `Thanks & Regards\n${sig}`;
+  }
+
   const location = fromLocation?.trim();
   const brandLine = location ? `${brand}, ${location}` : brand;
   let closing: string;
@@ -95,8 +110,24 @@ function wrap(
   phone?: string | null,
   fromAddress?: string | null,
   fromLocation?: string | null,
+  greeting: "hi" | "namaste" = "hi",
+  signature?: string | null,
 ): string {
-  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing, phone, fromAddress, fromLocation)}`;
+  const hello = greeting === "namaste" ? `Namaste ${first},` : `Hi ${first},`;
+  return `${hello}\n\n${paragraphs}\n\n${signOff(sender, brand, closing, phone, fromAddress, fromLocation, signature)}`;
+}
+
+function catalogNames(params: IshFillParams) {
+  return {
+    first: params.contactFirstName || "there",
+    company: companyNameForEmail(params.companyName),
+    sender: params.senderFirstName?.trim() || "Team",
+    brand: params.brandName?.trim() || "India Sweet House",
+    phone: params.senderPhone,
+    fromAddress: params.fromAddress,
+    fromLocation: params.fromLocation,
+    signature: params.signature,
+  };
 }
 
 function catalogFollowUp(params: {
@@ -104,16 +135,13 @@ function catalogFollowUp(params: {
   sender: string;
   brand: string;
   company: string;
-  subjectBase: string;
   phone?: string | null;
   fromAddress?: string | null;
   fromLocation?: string | null;
+  signature?: string | null;
 }): IshEmail {
-  const subject = params.subjectBase.startsWith("Re:")
-    ? params.subjectBase
-    : `Re: ${params.subjectBase}`;
   return {
-    subject,
+    subject: buildIshFestiveCatalogSubject(params.company),
     body: wrap(
       params.first,
       params.sender,
@@ -123,8 +151,43 @@ function catalogFollowUp(params: {
       params.phone,
       params.fromAddress,
       params.fromLocation,
+      "namaste",
+      params.signature,
     ),
   };
+}
+
+function catalogFollowUpB(params: {
+  first: string;
+  sender: string;
+  brand: string;
+  company: string;
+  phone?: string | null;
+  fromAddress?: string | null;
+  fromLocation?: string | null;
+  signature?: string | null;
+}): IshEmail {
+  return {
+    subject: buildIshFestiveCatalogSubject(params.company),
+    body: wrap(
+      params.first,
+      params.sender,
+      params.brand,
+      buildIshFestiveCatalogParagraphsB(params.brand),
+      "warmly",
+      params.phone,
+      params.fromAddress,
+      params.fromLocation,
+      "namaste",
+      params.signature,
+    ),
+  };
+}
+
+/** If Opened draft: two distinct catalogue options the user can edit. */
+export function fillIshCatalogDraftVariants(params: IshFillParams) {
+  const names = catalogNames(params);
+  return toDraftCopy(catalogFollowUp(names), catalogFollowUpB(names));
 }
 
 /** Sequences 1, 2, 3 from the ISH cold-email file. */
@@ -138,7 +201,7 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
   const phone = params.senderPhone;
   const fromAddress = params.fromAddress;
   const fromLocation = params.fromLocation;
-  const useCatalog = Boolean(params.inboxOpened) && step >= 2;
+  const signature = params.signature;
 
   const sequences: Array<Array<{ subject: string; paragraphs: string }>> = [
     [
@@ -173,18 +236,6 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
 
   return sequences.map((seq) => {
     const email = seq[step - 1];
-    if (useCatalog) {
-      return catalogFollowUp({
-        first,
-        sender,
-        brand,
-        company,
-        subjectBase: email.subject,
-        phone,
-        fromAddress,
-        fromLocation,
-      });
-    }
     const closing = step === 1 ? "warmly" : "thanks";
     return {
       subject: email.subject,
@@ -197,6 +248,8 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
         closing === "warmly" ? phone : undefined,
         closing === "warmly" ? fromAddress : undefined,
         closing === "warmly" ? fromLocation : undefined,
+        "hi",
+        signature,
       ),
     };
   });

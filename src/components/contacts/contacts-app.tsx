@@ -150,6 +150,21 @@ export function ContactsApp() {
       largeTitle
       contentClassName="!pb-0"
       className="lg:bg-brand-canvas"
+      rightSlot={
+        <div className="flex items-center gap-1.5">
+          <BusinessCardCapture onExtracted={setScannedCard} />
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = `/api/contacts/export?${exportParams().toString()}`;
+            }}
+            className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft active:scale-95"
+            aria-label={`Export ${filtered.length} contacts`}
+          >
+            <Download className="size-3.5" />
+          </button>
+        </div>
+      }
     >
       <div className="flex items-center gap-2 px-4 pb-2 lg:hidden">
         <div className="min-w-0 flex-1">
@@ -257,27 +272,15 @@ export function ContactsApp() {
           </div>
         ) : (
           <>
-            <div className="space-y-3 p-4 lg:hidden">
-              {filtered.map((contact) => (
-                <div
-                  key={contact.id}
-                  className="rounded-[20px] bg-white p-4 shadow-[var(--shadow-brand-sm)] ring-1 ring-black/[0.04]"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-brand-avatar-1 text-sm font-bold text-[#5a4838]">
-                      {contact.name.charAt(0)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-bold text-brand-ink">{contact.name}</div>
-                      <div className="text-xs text-brand-ink-soft">{contact.title}</div>
-                      <div className="mt-1 text-[13px] text-brand-ink">{contact.company}</div>
-                      <div className="mt-1 truncate text-xs text-brand-ink-soft">
-                        {contact.email || "No email"}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="ish-page-padding space-y-0 py-3 lg:hidden">
+              <div className="ish-list-group">
+                {filtered.map((contact) => (
+                  <ContactMobileRow key={contact.id} contact={contact} />
+                ))}
+              </div>
+              <p className="px-1 pt-3 text-[11px] text-brand-ink-faint">
+                Showing {filtered.length} of {contacts.length} · {leadsCount} with leads
+              </p>
             </div>
             {nextCursor ? (
               <div className="flex justify-center py-4">
@@ -316,6 +319,63 @@ export function ContactsApp() {
         </p>
       ) : null}
     </MobilePageLayout>
+  );
+}
+
+function ContactMobileRow({ contact }: { contact: ContactListItem }) {
+  return (
+    <div className="ish-list-row">
+      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-avatar-1 text-[12px] font-bold text-[#5a4838]">
+        {contact.name.charAt(0)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[13px] font-semibold text-brand-ink">{contact.name}</span>
+          {contact.isKeyDM ? (
+            <Star className="size-3 shrink-0 fill-brand-yellow text-brand-yellow" />
+          ) : null}
+          {contact.hasLead ? (
+            <span className="rounded-full bg-brand-green/15 px-1.5 py-0.5 text-[9px] font-bold text-brand-green">
+              Lead
+            </span>
+          ) : null}
+        </div>
+        <div className="truncate text-[11px] text-brand-ink-soft">
+          {[contact.title, contact.company].filter(Boolean).join(" · ") || "—"}
+        </div>
+        <div className="truncate text-[11px] text-brand-ink-faint">
+          {contact.email && contact.email !== "—" ? contact.email : "No email"}
+        </div>
+      </div>
+      {contact.hasLead && contact.leadId ? (
+        <Link
+          href={`/?lead=${contact.leadId}`}
+          className="shrink-0 rounded-lg bg-brand-black px-2.5 py-1.5 text-[10px] font-bold text-white"
+        >
+          Open
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              const { id } = await createLeadFromContact({
+                ...contact,
+                phone: contact.phone ?? undefined,
+              });
+              toast.success("Lead created");
+              notifyCrmRecordsChanged({ source: "contact_add_lead", savedLeads: 1 });
+              window.location.href = `/?lead=${id}`;
+            } catch {
+              toast.error("Could not create lead");
+            }
+          }}
+          className="shrink-0 rounded-lg bg-brand-yellow px-2.5 py-1.5 text-[10px] font-bold text-brand-ink"
+        >
+          Add
+        </button>
+      )}
+    </div>
   );
 }
 

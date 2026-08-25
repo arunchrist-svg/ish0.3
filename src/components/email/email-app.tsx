@@ -29,6 +29,10 @@ import {
 } from "@/lib/api-client";
 import { SyncRepliesButton } from "@/components/sales-accelerator/sync-replies-button";
 import { EmailLogsTable } from "@/components/email/email-logs-table";
+import {
+  OutreachComposeModal,
+  type OutreachComposeTab,
+} from "@/components/email/outreach-compose-modal";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
 import {
   type CadenceDays,
@@ -37,6 +41,7 @@ import {
   isEmailSentForStep,
   normalizeCadenceDays,
 } from "@/lib/email/cadence";
+import { useInboxBadge } from "@/hooks/use-inbox-badge";
 
 type QueueTab = "needs_review" | "active" | "hot" | "replies" | "done";
 type PageTab = QueueTab | "logs";
@@ -67,7 +72,7 @@ const EMPTY_BY_TAB: Record<QueueTab, { title: string; body: string }> = {
   },
   hot: {
     title: "No hot leads",
-    body: "Prospects who open without replying show up here so you can prioritize.",
+    body: "Prospects with a tracking-pixel open and no reply show up here. Pixel hits are not the same as Gmail read state.",
   },
   replies: {
     title: "Inbox quiet",
@@ -198,111 +203,58 @@ function KpiTile({
   );
 }
 
-// ─── Sequence rail ────────────────────────────────────────────────────────────
+// ─── Sequence progress (light) ────────────────────────────────────────────────
 
-function daysUntilSend(scheduledFor?: string | null): number | null {
-  if (!scheduledFor) return null;
-  const diff = new Date(scheduledFor).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
-}
-
-function sequenceStepDisplay(
-  step: {
-    short: string;
-    status: string;
-    day: number;
-    scheduledFor?: string | null;
-  },
-  nextEmailDay: number | null,
-  nextEmailDue: string | null,
-): string {
-  if (step.status === "paused") return `${step.short} (paused)`;
-  if (step.status === "sent") return step.short;
-
-  const due =
-    step.scheduledFor ?? (step.day === nextEmailDay ? nextEmailDue : null);
-  const days = daysUntilSend(due);
-  if (days !== null && step.day > 0) return `${step.short} (${days}D)`;
-  return step.short;
-}
-
-function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDays }) {
-  const [, setTick] = useState(0);
+function SequenceProgress({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDays }) {
   const normalized = normalizeCadenceDays(cadence);
   const [d0, d1, d2] = sequenceStepDays(normalized);
 
-  useEffect(() => {
-    const hasCountdown =
-      Boolean(row.nextEmailDue) ||
-      row.sequenceEmails?.some(
-        (e) => e.sequenceDay > 0 && e.status !== "sent" && e.scheduledFor,
-      );
-    if (!hasCountdown) return;
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, [row.nextEmailDue, row.sequenceEmails]);
-
   const fallbackSteps = [
-    { day: d0, short: "Email 1" },
-    { day: d1, short: "Email 2" },
-    { day: d2, short: "Email 3" },
+    { day: d0, short: "E1" },
+    { day: d1, short: "E2" },
+    { day: d2, short: "E3" },
   ];
   const sequenceSteps =
     row.sequenceEmails?.length > 0
-      ? row.sequenceEmails.map((e) => ({
+      ? row.sequenceEmails.slice(0, 3).map((e) => ({
           day: e.sequenceDay,
-          short: e.label,
+          short: e.label.replace(/^Email\s+/i, "E"),
           status: e.status,
           openedAt: e.openedAt,
           bouncedAt: e.bouncedAt,
-          scheduledFor: e.scheduledFor,
         }))
       : fallbackSteps.map((s) => ({
           ...s,
           status: isEmailSentForStep(row.lastEmailDay, s.day) ? ("sent" as const) : ("upcoming" as const),
           openedAt: null as string | null,
           bouncedAt: null as string | null,
-          scheduledFor: s.day === row.nextEmailDay ? row.nextEmailDue : null,
         }));
 
-  const replySteps: { id: string; label: string; done: boolean; active: boolean }[] = [];
-  if (row.hasInboundReply || row.threadStage !== "sequence") {
-    const replied = row.hasInboundReply || row.leadStatus === "replied";
-    const draft = row.hasReplyDraft || row.threadStage === "reply_draft";
-    const sentReply = row.hasOutboundReply || row.threadStage === "reply_sent";
-    replySteps.push(
-      { id: "rep", label: "They replied", done: replied, active: row.threadStage === "they_replied" },
-      { id: "draft", label: "Draft", done: draft || sentReply, active: row.threadStage === "reply_draft" },
-      { id: "sent", label: "You replied", done: sentReply, active: false },
-    );
-  }
+  if (sequenceSteps.length === 0) return null;
+
+  const title = sequenceSteps
+    .map((step) => {
+      const label = emailStepLabel(step.day, normalized);
+      if (step.bouncedAt) return `${label}: Bounced`;
+      if (step.openedAt) return `${label}: Opened`;
+      if (step.status === "sent") return `${label}: Sent`;
+      return label;
+    })
+    .join(" · ");
 
   return (
     <div
       className="ish-email-seq inline-flex max-w-full items-center gap-1 truncate text-[10px] font-medium text-brand-ink-faint"
-      title={sequenceSteps
-        .map((step) => {
-          const done = step.status === "sent";
-          const opened = Boolean(step.openedAt);
-          const bounced = Boolean(step.bouncedAt);
-          const label = emailStepLabel(step.day, normalized);
-          if (bounced) return `${label}: Bounced`;
-          if (opened) return `${label}: Opened`;
-          if (done) return `${label}: Sent`;
-          return label;
-        })
-        .concat(replySteps.filter((s) => s.active || s.done).map((s) => s.label))
-        .join(" · ")}
+      title={title}
     >
       {sequenceSteps.map((step, i) => {
         const done = step.status === "sent";
         const opened = Boolean(step.openedAt);
         const bounced = Boolean(step.bouncedAt);
         const active = row.nextEmailDay === step.day && !done;
-        const display = sequenceStepDisplay(step, row.nextEmailDay, row.nextEmailDue);
         return (
-          <span key={step.day} className="inline-flex items-center gap-0.5">
-            {i > 0 && <span className="text-brand-border">·</span>}
+          <span key={`${step.day}-${step.short}`} className="inline-flex items-center gap-0.5">
+            {i > 0 ? <span className="text-brand-border">·</span> : null}
             <span
               className={cn(
                 "whitespace-nowrap",
@@ -317,90 +269,53 @@ function SequenceRail({ row, cadence }: { row: LeadEmailRow; cadence: CadenceDay
                         : "text-brand-ink-faint",
               )}
             >
-              {bounced ? `${display} bounced` : opened ? `${display} opened` : display}
+              {bounced ? `${step.short} bounced` : opened ? `${step.short} opened` : step.short}
             </span>
           </span>
         );
       })}
-      {replySteps
-        .filter((s) => s.active || s.done)
-        .map((step) => (
-          <span key={step.id} className="inline-flex items-center gap-0.5">
-            <span className="text-brand-border">·</span>
-            <span
-              className={cn(
-                "whitespace-nowrap",
-                step.active ? "font-semibold text-brand-stratus-blue" : "text-brand-stratus-blue",
-              )}
-            >
-              {step.label}
-            </span>
-          </span>
-        ))}
     </div>
   );
 }
 
-function inboxPreview(row: LeadEmailRow, tab: QueueTab): { subject: string; snippet: string } {
+/** One status signal for the row (right side). Avoids duplicating next-date / opened copy. */
+function inboxStatus(row: LeadEmailRow, tab: QueueTab): { label: string; accent?: boolean } {
+  if (tab === "needs_review") return { label: "Review", accent: true };
+  const bouncedStep = row.sequenceEmails?.find((step) => step.bouncedAt);
+  if (bouncedStep) return { label: "Bounced", accent: true };
+  if (tab === "replies" || row.hasInboundReply || row.leadStatus === "replied") {
+    if (row.hasOutboundReply) return { label: "You replied" };
+    if (row.hasReplyDraft) return { label: "Draft", accent: true };
+    return { label: "They replied", accent: true };
+  }
+  if (row.openedAt) return { label: `Opened ${timeAgo(row.openedAt)}`, accent: true };
+  if (row.sequenceState === "paused") return { label: "Paused" };
+  if (row.nextEmailDue) {
+    return { label: isDueToday(row.nextEmailDue) ? "Due today" : formatDate(row.nextEmailDue) };
+  }
+  if (tab === "done") return { label: "Done" };
+  if (row.emailsSent > 0) return { label: "Waiting" };
+  return { label: "" };
+}
+
+/** Optional secondary line under name + company (preview only when it adds signal). */
+function inboxSecondary(row: LeadEmailRow, tab: QueueTab): string | null {
   if (tab === "replies") {
     const snippet = (row.inboundSnippet ?? row.nextAction?.description ?? "")
       .replace(/\s+/g, " ")
       .trim();
-    return {
-      subject: row.nextAction?.title ?? "They replied",
-      snippet,
-    };
+    return snippet || null;
   }
   if (tab === "needs_review") {
-    return {
-      subject: row.draftSubject ?? (row.isFollowUpReview ? "Follow-up draft" : "Email 1 draft"),
-      snippet: (row.draftPreview ?? "").replace(/\s+/g, " ").trim(),
-    };
+    const subject = row.draftSubject ?? (row.isFollowUpReview ? "Follow-up draft" : "Email 1 draft");
+    const preview = (row.draftPreview ?? "").replace(/\s+/g, " ").trim();
+    if (preview) return `${subject}: ${preview}`;
+    return subject;
   }
-  if (row.openedAt) {
-    return {
-      subject: `Opened ${timeAgo(row.openedAt)}`,
-      snippet: row.contactEmail ?? row.companyName,
-    };
-  }
-  if (row.nextEmailDue) {
-    return {
-      subject: isDueToday(row.nextEmailDue)
-        ? "Follow-up due today"
-        : `Next email ${formatDate(row.nextEmailDue)}`,
-      snippet: row.contactEmail ?? "",
-    };
-  }
-  if (row.emailsSent > 0) {
-    return {
-      subject: `${row.emailsSent} email${row.emailsSent === 1 ? "" : "s"} sent`,
-      snippet: row.contactEmail ?? "",
-    };
-  }
-  return {
-    subject: "In sequence",
-    snippet: row.contactEmail ?? "",
-  };
+  return null;
 }
 
-function inboxMeta(row: LeadEmailRow, tab: QueueTab): string {
-  if (tab === "needs_review") return "Review";
-  const bouncedStep = row.sequenceEmails?.find((step) => step.bouncedAt);
-  if (bouncedStep) return "Bounced";
-  if (tab === "replies") {
-    if (row.hasOutboundReply) return "You replied";
-    if (row.hasReplyDraft) return "Draft";
-    return row.nextAction?.cta ?? "They replied";
-  }
-  if (row.openedAt) return timeAgo(row.openedAt);
-  if (row.nextEmailDue) return isDueToday(row.nextEmailDue) ? "Today" : formatDate(row.nextEmailDue);
-  if (row.sequenceState === "paused") return "Paused";
-  if (tab === "done") return "Done";
-  if (row.emailsSent > 0) return "Waiting";
-  return "";
-}
-
-// ─── Lead card (Gmail-style inbox row) ────────────────────────────────────────
+// ─── Lead card (scan-friendly inbox row) ──────────────────────────────────────
 
 function LeadCard({
   row,
@@ -411,22 +326,22 @@ function LeadCard({
   row: LeadEmailRow;
   cadence: CadenceDays;
   tab: QueueTab;
-  onNavigate: (id: string) => void;
+  onNavigate: (row: LeadEmailRow) => void;
 }) {
-  const { subject, snippet } = inboxPreview(row, tab);
-  const meta = inboxMeta(row, tab);
+  const status = inboxStatus(row, tab);
+  const secondary = inboxSecondary(row, tab);
   const unread = tab === "replies" && !row.hasOutboundReply;
-  const metaAccent = tab === "replies" && !row.hasOutboundReply;
+  const showSequence = tab !== "needs_review" && tab !== "replies";
 
   return (
     <div
       role="button"
       tabIndex={0}
-      onClick={() => onNavigate(row.leadId)}
+      onClick={() => onNavigate(row)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onNavigate(row.leadId);
+          onNavigate(row);
         }
       }}
       className="ish-email-card group w-full cursor-pointer px-3 py-2.5 text-left transition-colors duration-150 sm:px-4"
@@ -442,77 +357,40 @@ function LeadCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          {/* Desktop: sender | subject – snippet | meta */}
-          <div className="hidden items-center gap-3 md:flex">
-            <span
-              className={cn(
-                "w-[148px] shrink-0 truncate text-[13px] text-brand-ink",
-                unread ? "font-bold" : "font-semibold",
-              )}
-            >
-              {row.contactName}
-            </span>
-            <p className="min-w-0 flex-1 truncate text-[13px] leading-snug">
-              <span className={cn("text-brand-ink", unread ? "font-semibold" : "font-medium")}>
-                {subject}
-              </span>
-              {snippet ? (
-                <>
-                  <span className="text-brand-ink-faint"> – </span>
-                  <span className="text-brand-ink-soft">{snippet}</span>
-                </>
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
+                <span
+                  className={cn(
+                    "truncate text-[13px] text-brand-ink",
+                    unread ? "font-bold" : "font-semibold",
+                  )}
+                >
+                  {row.contactName}
+                </span>
+                {row.companyName ? (
+                  <span className="truncate text-[12px] text-brand-ink-soft">{row.companyName}</span>
+                ) : null}
+              </div>
+              {secondary ? (
+                <p className="mt-0.5 truncate text-[12px] leading-snug text-brand-ink-soft">{secondary}</p>
               ) : null}
-            </p>
-            {meta ? (
+              {showSequence ? (
+                <div className="mt-0.5">
+                  <SequenceProgress row={row} cadence={cadence} />
+                </div>
+              ) : null}
+            </div>
+            {status.label ? (
               <span
                 className={cn(
                   "shrink-0 text-[11px] tabular-nums",
-                  metaAccent ? "font-semibold text-brand-stratus-blue" : "text-brand-ink-faint",
+                  status.accent ? "font-semibold text-brand-stratus-blue" : "text-brand-ink-faint",
                 )}
               >
-                {meta}
+                {status.label}
               </span>
             ) : null}
-          </div>
-
-          {/* Mobile: stacked */}
-          <div className="md:hidden">
-            <div className="flex items-baseline justify-between gap-2">
-              <span
-                className={cn(
-                  "min-w-0 truncate text-[13px] text-brand-ink",
-                  unread ? "font-bold" : "font-semibold",
-                )}
-              >
-                {row.contactName}
-              </span>
-              {meta ? (
-                <span
-                  className={cn(
-                    "shrink-0 text-[11px] tabular-nums",
-                    metaAccent ? "font-semibold text-brand-stratus-blue" : "text-brand-ink-faint",
-                  )}
-                >
-                  {meta}
-                </span>
-              ) : null}
-            </div>
-            <p className="mt-0.5 truncate text-[12px] leading-snug">
-              <span className={cn("text-brand-ink", unread ? "font-semibold" : "font-medium")}>
-                {subject}
-              </span>
-              {snippet ? (
-                <>
-                  <span className="text-brand-ink-faint"> – </span>
-                  <span className="text-brand-ink-soft">{snippet}</span>
-                </>
-              ) : null}
-            </p>
-          </div>
-
-          <div className="mt-1 flex min-w-0 items-center gap-2">
-            <span className="truncate text-[11px] text-brand-ink-faint">{row.companyName}</span>
-            <SequenceRail row={row} cadence={cadence} />
           </div>
         </div>
 
@@ -570,15 +448,22 @@ function LoadingSkeleton() {
 export function EmailApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { refresh: refreshOutreachBadge } = useInboxBadge();
   const [data, setData] = useState<EmailOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [togglingSend, setTogglingSend] = useState(false);
-  const [loadedTabs, setLoadedTabs] = useState<Set<QueueTab>>(() => new Set());
   const [logs, setLogs] = useState<EmailLogsData | null>(null);
   const [logsLoading, setLogsLoading] = useState(false);
   const [logSearch, setLogSearch] = useState("");
   const [logStatus, setLogStatus] = useState<"all" | EmailLogStatus>("all");
+  const [composeTarget, setComposeTarget] = useState<{
+    leadId: string;
+    tab: OutreachComposeTab;
+    draftOutreachId?: string | null;
+    pendingFollowUpScheduleId?: string | null;
+    isFollowUpReview?: boolean;
+  } | null>(null);
 
   const activeTab = useMemo(
     () => parsePageTab(searchParams.get("tab")),
@@ -586,35 +471,18 @@ export function EmailApp() {
   );
   const isLogsTab = activeTab === "logs";
 
-  const mergeOverview = useCallback((tab: QueueTab, overview: EmailOverviewData) => {
-    setData((prev) => ({
-      ...overview,
-      needsReview: tab === "needs_review" ? overview.needsReview : (prev?.needsReview ?? []),
-      active: tab === "active" ? overview.active : (prev?.active ?? []),
-      hot: tab === "hot" ? overview.hot : (prev?.hot ?? []),
-      replies: tab === "replies" ? overview.replies : (prev?.replies ?? []),
-      done: tab === "done" ? overview.done : (prev?.done ?? []),
-      draftReady: tab === "needs_review" ? overview.draftReady : (prev?.draftReady ?? []),
-      stopped: tab === "done" ? overview.stopped : (prev?.stopped ?? []),
-    }));
-    setLoadedTabs((prev) => new Set(prev).add(tab));
-  }, []);
-
-  const loadTab = useCallback(
-    async (tab: QueueTab, options?: { silent?: boolean }) => {
-      if (!options?.silent) setLoading(true);
-      try {
-        const overview = await fetchEmailOverview(tab);
-        mergeOverview(tab, overview);
-      } catch {
-        setData(null);
-        setLoadedTabs(new Set());
-      } finally {
-        if (!options?.silent) setLoading(false);
-      }
-    },
-    [mergeOverview],
-  );
+  const loadOverview = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true);
+    try {
+      const overview = await fetchEmailOverview();
+      setData(overview);
+      refreshOutreachBadge();
+    } catch {
+      setData(null);
+    } finally {
+      if (!options?.silent) setLoading(false);
+    }
+  }, [refreshOutreachBadge]);
 
   const loadLogs = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -636,22 +504,16 @@ export function EmailApp() {
   );
 
   const load = useCallback(async () => {
-    setLoadedTabs(new Set());
     if (activeTab === "logs") {
-      await Promise.all([loadTab("active"), loadLogs()]);
+      await Promise.all([loadOverview(), loadLogs()]);
       return;
     }
-    await loadTab(activeTab);
-  }, [activeTab, loadLogs, loadTab]);
+    await loadOverview();
+  }, [activeTab, loadLogs, loadOverview]);
 
   useEffect(() => {
-    if (activeTab === "logs") {
-      if (!data) void loadTab("active");
-      return;
-    }
-    if (loadedTabs.has(activeTab) && data) return;
-    void loadTab(activeTab);
-  }, [activeTab, data, loadedTabs, loadTab]);
+    void loadOverview();
+  }, [loadOverview]);
 
   useEffect(() => {
     if (!isLogsTab) return;
@@ -667,12 +529,31 @@ export function EmailApp() {
     [router, searchParams],
   );
 
-  const handleNavigate = useCallback(
-    (leadId: string) => {
-      router.push(`/leads?lead=${leadId}&tab=email`);
+  const handleOpenCompose = useCallback(
+    (leadIdOrRow: string | LeadEmailRow) => {
+      if (typeof leadIdOrRow === "string") {
+        setComposeTarget({
+          leadId: leadIdOrRow,
+          tab: activeTab === "logs" ? "logs" : activeTab,
+        });
+        return;
+      }
+      const row = leadIdOrRow;
+      setComposeTarget({
+        leadId: row.leadId,
+        tab: activeTab === "logs" ? "logs" : activeTab,
+        draftOutreachId: row.draftOutreachId,
+        pendingFollowUpScheduleId: row.pendingFollowUpScheduleId,
+        isFollowUpReview: row.isFollowUpReview,
+      });
     },
-    [router],
+    [activeTab],
   );
+
+  const handleComposeChanged = useCallback(() => {
+    void loadOverview({ silent: true });
+    void refreshOutreachBadge();
+  }, [loadOverview, refreshOutreachBadge]);
 
   const cadence = useMemo(
     () => normalizeCadenceDays(data?.cadenceDays),
@@ -778,15 +659,34 @@ export function EmailApp() {
       className="ish-email-page"
       contentClassName="flex flex-col !overflow-hidden"
       rightSlot={
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading || (isLogsTab && logsLoading)}
-          className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95 disabled:opacity-60"
-          aria-label="Refresh"
-        >
-          <RefreshCw className={cn("size-3.5", (loading || (isLogsTab && logsLoading)) && "animate-spin")} />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <SyncRepliesButton compact onSynced={load} />
+          {data ? (
+            <button
+              type="button"
+              onClick={() => void handleToggleSending()}
+              disabled={togglingSend}
+              className={cn(
+                "inline-flex h-9 items-center gap-1 rounded-full border px-2.5 text-[11px] font-semibold transition-all disabled:opacity-60",
+                data.outreachPaused
+                  ? "border-brand-stratus-blue/35 bg-white/80 text-brand-stratus-blue"
+                  : "border-brand-stratus-salmon/40 bg-white/80 text-brand-stratus-salmon",
+              )}
+              aria-label={data.outreachPaused ? "Start sending" : "Pause sending"}
+            >
+              {data.outreachPaused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading || (isLogsTab && logsLoading)}
+            className="flex size-9 items-center justify-center rounded-full border border-brand-border/70 bg-white/70 text-brand-ink-soft transition-all hover:border-brand-ink/20 hover:text-brand-ink active:scale-95 disabled:opacity-60"
+            aria-label="Refresh"
+          >
+            <RefreshCw className={cn("size-3.5", (loading || (isLogsTab && logsLoading)) && "animate-spin")} />
+          </button>
+        </div>
       }
     >
       <AppPageHeader
@@ -833,7 +733,7 @@ export function EmailApp() {
         }
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+      <div className="ish-page-padding min-h-0 flex-1 overflow-y-auto py-4 lg:px-6 lg:py-5">
         {data?.outreachPaused && (
           <div className="mb-4 rounded-[16px] border border-brand-stratus-salmon/30 bg-white/70 px-4 py-2.5 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm">
             <p className="text-[12px] font-semibold text-brand-ink">Outreach sending is paused</p>
@@ -885,7 +785,7 @@ export function EmailApp() {
                 status={logStatus}
                 onSearchChange={setLogSearch}
                 onStatusChange={setLogStatus}
-                onRowClick={handleNavigate}
+                onRowClick={handleOpenCompose}
               />
             ) : (
             <div className="ish-email-inbox overflow-hidden rounded-[12px] border border-brand-stratus-blue/14 bg-white/90 pb-0 shadow-[var(--shadow-brand-sm)]">
@@ -906,7 +806,7 @@ export function EmailApp() {
                     row={row}
                     cadence={cadence}
                     tab={activeTab}
-                    onNavigate={handleNavigate}
+                    onNavigate={handleOpenCompose}
                   />
                 ))
               )}
@@ -926,6 +826,18 @@ export function EmailApp() {
           </PanelCard>
         )}
       </div>
+
+      {composeTarget ? (
+        <OutreachComposeModal
+          leadId={composeTarget.leadId}
+          tab={composeTarget.tab}
+          draftOutreachId={composeTarget.draftOutreachId}
+          pendingFollowUpScheduleId={composeTarget.pendingFollowUpScheduleId}
+          isFollowUpReview={composeTarget.isFollowUpReview}
+          onClose={() => setComposeTarget(null)}
+          onChanged={handleComposeChanged}
+        />
+      ) : null}
     </MobilePageLayout>
   );
 }

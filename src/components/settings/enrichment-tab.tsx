@@ -216,6 +216,13 @@ export function EnrichmentTab({
 
       <SettingsGroup title="Behaviour" className="mb-4">
         <SettingsToggleRow
+          label="Strict people filters"
+          desc="When on, Fetch Leads uses only your seniority and department chips. No plant Manager bias, no pack expand, no empty-result broaden."
+          value={Boolean(config.strictPeopleFilters)}
+          onChange={(v) => onUpdate("strictPeopleFilters", v)}
+        />
+        <SettingsGroupDivider />
+        <SettingsToggleRow
           label="Fallback to AI"
           value={config.fallbackToAI}
           onChange={(v) => onUpdate("fallbackToAI", v)}

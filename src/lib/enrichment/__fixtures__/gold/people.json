@@ -1,0 +1,46 @@
+[
+  {
+    "id": "nissan-trading-reject",
+    "expected": "reject",
+    "reason": "wrong_employer",
+    "companyName": "Nissan Motor",
+    "person": {
+      "name": "Amit Kumar Patnaik",
+      "title": "HR Manager at Nissan Trading India",
+      "bio": "Nissan Trading India · Present"
+    }
+  },
+  {
+    "id": "sai-lifescience-reject",
+    "expected": "reject",
+    "reason": "wrong_employer",
+    "companyName": "Sai Chemicals",
+    "person": {
+      "name": "Mehar Babu",
+      "title": "HR at Sai Lifescience",
+      "bio": "Sai Lifescience · Present"
+    }
+  },
+  {
+    "id": "tvs-motor-accept",
+    "expected": "accept",
+    "reason": "wrong_employer",
+    "companyName": "TVS Motor",
+    "person": {
+      "name": "Priya",
+      "title": "HR Head at TVS",
+      "bio": "TVS Motor · Present"
+    }
+  },
+  {
+    "id": "aron-stale-reject",
+    "expected": "reject",
+    "reason": "wrong_employer",
+    "companyName": "Aron Universal",
+    "person": {
+      "name": "Anusha",
+      "title": "HR Executive",
+      "bio": "3M · May 2024 - Present\nAron Universal · Jun 2014 - Jan 2016"
+    }
+  }
+]

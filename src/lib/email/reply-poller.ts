@@ -20,7 +20,7 @@ import { processLeadReply } from "@/lib/email/process-reply";
 import { getReceivedEmail, listReceivedEmails } from "@/lib/email/resend-receiving";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
 import { REPLY_WATCH_STATUSES } from "@/lib/pipeline-status";
-import { getResolvedEmailConfig, persistEmailConfig } from "@/lib/settings/email-settings";
+import { getResolvedEmailConfig, listWorkspaceUserEmailSettings, persistUserEmailConfig, persistWorkspaceEmailConfig } from "@/lib/settings/email-settings";
 
 const MAX_PROCESSED_IDS = 200;
 const LOOKBACK_DAYS = 14;
@@ -83,18 +83,25 @@ function getPollSince(): Date {
   return new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
 }
 
-async function persistPollState(workspaceId: string, config: EmailConfig, processedIds: string[]) {
+async function persistPollState(
+  workspaceId: string,
+  config: EmailConfig,
+  processedIds: string[],
+  userId?: string | null,
+) {
   const merged = [...new Set([...(config.processedReplyMessageIds ?? []), ...processedIds])].slice(
     -MAX_PROCESSED_IDS,
   );
-  await persistEmailConfig(
-    {
-      ...config,
-      lastReplyPollAt: new Date().toISOString(),
-      processedReplyMessageIds: merged,
-    },
-    workspaceId,
-  );
+  const next = {
+    ...config,
+    lastReplyPollAt: new Date().toISOString(),
+    processedReplyMessageIds: merged,
+  };
+  if (userId) {
+    await persistUserEmailConfig(next, workspaceId, userId);
+  } else {
+    await persistWorkspaceEmailConfig(next, workspaceId);
+  }
 }
 
 function forgetLead(emailToLead: Map<string, ReplyWatchLead>, lead: ReplyWatchLead) {
@@ -124,6 +131,7 @@ async function pollImapReplies(
   workspaceId: string,
   config: EmailConfig,
   result: ReplyPollResult,
+  userId?: string | null,
 ): Promise<ReplyPollResult> {
   const creds = resolveSmtpCredentials(config);
   if (!creds.user || !creds.pass) {
@@ -157,7 +165,7 @@ async function pollImapReplies(
       const uidList = await searchRecentInboxUids(client, since);
       if (uidList.length === 0) {
         await client.logout();
-        await persistPollState(workspaceId, config, newlyProcessedIds);
+        await persistPollState(workspaceId, config, newlyProcessedIds, userId);
         return result;
       }
 
@@ -219,7 +227,7 @@ async function pollImapReplies(
     console.error("[reply-poller]", workspaceId, e);
   }
 
-  await persistPollState(workspaceId, config, newlyProcessedIds);
+  await persistPollState(workspaceId, config, newlyProcessedIds, userId);
   return result;
 }
 
@@ -312,12 +320,43 @@ async function pollResendReplies(
     console.error("[reply-poller] resend", workspaceId, e);
   }
 
-  await persistPollState(workspaceId, config, newlyProcessedIds);
+  await persistPollState(workspaceId, config, newlyProcessedIds, null);
   return result;
 }
 
+function mergePollResults(workspaceId: string, parts: ReplyPollResult[]): ReplyPollResult {
+  const merged = emptyResult(workspaceId, parts[0]?.provider);
+  for (const part of parts) {
+    merged.provider = merged.provider ?? part.provider;
+    merged.checked += part.checked;
+    merged.matched += part.matched;
+    merged.processed += part.processed;
+    merged.skipped += part.skipped;
+    merged.errors.push(...part.errors);
+  }
+  return merged;
+}
+
 export async function pollRepliesForWorkspace(workspaceId: string): Promise<ReplyPollResult> {
-  const config = await getResolvedEmailConfig(workspaceId);
+  const userRows = await listWorkspaceUserEmailSettings(workspaceId);
+  const smtpUsers = userRows.filter((row) => {
+    const cfg = row.overrides;
+    return (cfg.provider ?? "smtp") === "smtp" && Boolean(cfg.smtpUser?.trim() && cfg.smtpPass?.trim());
+  });
+
+  if (smtpUsers.length > 0) {
+    const parts: ReplyPollResult[] = [];
+    for (const row of smtpUsers) {
+      const config = await getResolvedEmailConfig(workspaceId, row.userId);
+      const part = emptyResult(workspaceId, config.provider);
+      if (config.provider === "smtp") {
+        parts.push(await pollImapReplies(workspaceId, config, part, row.userId));
+      }
+    }
+    if (parts.length > 0) return mergePollResults(workspaceId, parts);
+  }
+
+  const config = await getResolvedEmailConfig(workspaceId, null);
   const result = emptyResult(workspaceId, config.provider);
 
   if (config.provider === "resend") {
@@ -328,7 +367,7 @@ export async function pollRepliesForWorkspace(workspaceId: string): Promise<Repl
     return result;
   }
 
-  return pollImapReplies(workspaceId, config, result);
+  return pollImapReplies(workspaceId, config, result, null);
 }
 
 export async function pollRepliesForAllWorkspaces(): Promise<ReplyPollResult[]> {

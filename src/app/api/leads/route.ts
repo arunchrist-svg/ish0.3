@@ -15,6 +15,7 @@ import {
   parseListLimit,
 } from "@/lib/api/cursor";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export const preferredRegion = ["sin1"];
 
@@ -36,6 +37,12 @@ export async function GET(req: Request) {
     if (statuses?.length) whereParts.push(inArray(leads.status, statuses));
     const keyset = keysetBefore(leads.createdAt, leads.id, cursor);
     if (keyset) whereParts.push(keyset);
+    const listWhere = withLeadVisibility(ctx, ...whereParts);
+    const totalWhere = withLeadVisibility(
+      ctx,
+      eq(leads.tenantId, ctx.tenantId),
+      statuses?.length ? inArray(leads.status, statuses) : undefined,
+    );
 
     const dbStart = performance.now();
     const [rows, totalRow] = await Promise.all([
@@ -65,18 +72,14 @@ export async function GET(req: Request) {
         .innerJoin(contacts, eq(contacts.id, leads.contactId))
         .innerJoin(accounts, eq(accounts.id, leads.accountId))
         .leftJoin(users, eq(users.id, leads.createdByUserId))
-        .where(and(...whereParts))
+        .where(listWhere)
         .orderBy(desc(leads.createdAt), desc(leads.id))
         .limit(limit),
       includeTotal
         ? db
             .select({ n: sql<number>`count(*)::int` })
             .from(leads)
-            .where(
-              statuses?.length
-                ? and(eq(leads.tenantId, ctx.tenantId), inArray(leads.status, statuses))
-                : eq(leads.tenantId, ctx.tenantId),
-            )
+            .where(totalWhere)
             .then((r) => r[0]?.n ?? 0)
         : Promise.resolve(undefined),
     ]);

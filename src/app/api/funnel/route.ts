@@ -4,6 +4,7 @@ import { count, eq, or, and } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { parseDealAmount } from "@/lib/pipeline-status";
 import { handleApiError } from "@/lib/api-errors";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export async function GET() {
   try {
@@ -23,7 +24,7 @@ export async function GET() {
         .select({ stage: yieldFunnel.stage, count: count() })
         .from(yieldFunnel)
         .innerJoin(leads, eq(leads.id, yieldFunnel.leadId))
-        .where(eq(leads.tenantId, ctx.tenantId))
+        .where(withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId)))
         .groupBy(yieldFunnel.stage),
       db
         .select({ total: count() })
@@ -43,17 +44,24 @@ export async function GET() {
       db
         .select({ status: leads.status, count: count() })
         .from(leads)
-        .where(eq(leads.tenantId, ctx.tenantId))
+        .where(withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId)))
         .groupBy(leads.status),
       db
         .select({ total: count() })
         .from(leads)
-        .where(and(eq(leads.tenantId, ctx.tenantId), or(eq(leads.status, "closed"), eq(leads.status, "po_closed")))),
+        .where(
+          withLeadVisibility(
+            ctx,
+            eq(leads.tenantId, ctx.tenantId),
+            or(eq(leads.status, "closed"), eq(leads.status, "po_closed")),
+          ),
+        ),
       db
         .select({ closedDealAmount: leads.closedDealAmount })
         .from(leads)
         .where(
-          and(
+          withLeadVisibility(
+            ctx,
             eq(leads.tenantId, ctx.tenantId),
             or(eq(leads.status, "closed"), eq(leads.status, "po_closed")),
           ),

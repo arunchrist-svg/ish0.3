@@ -158,7 +158,9 @@ export function includeHqCorridorForScoutPeople(params: {
   cities?: string[];
   locationScope?: "focus" | "interest";
   localOperators?: boolean;
+  allowHqCorridor?: boolean;
 }): boolean {
+  if (params.allowHqCorridor === false) return false;
   return !params.localOperators;
 }
 
@@ -181,7 +183,9 @@ export function peopleFilterUsesHqCorridor(params: {
   cities?: string[];
   peopleCities?: string[];
   localOperators?: boolean;
+  allowHqCorridor?: boolean;
 }): boolean {
+  if (params.allowHqCorridor === false) return false;
   if (params.localOperators) return false;
   if (params.locationScope === "focus") {
     return selectionLooksLikeNeighborhoods(params.cities ?? []);

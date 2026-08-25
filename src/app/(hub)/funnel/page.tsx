@@ -22,6 +22,21 @@ const STAGE_LABELS: Record<string, string> = {
   po_closed: "PO Closed",
 };
 
+type ScoutQualityData = {
+  emptyCompanyRate: number;
+  emptyCompanyRuns: number;
+  companyRuns: number;
+  emptyPeopleRuns: number;
+  peopleRuns: number;
+  goldDensity: number;
+  savePrecisionProxy: number;
+  saved: number;
+  employerSkipped: number;
+  skipReasons: { reason: string; count: number }[];
+  learningActive: boolean;
+  learningSamples: number;
+};
+
 type FunnelData = {
   stages: { stage: string; count: number }[];
   emailAccuracy: {
@@ -36,12 +51,18 @@ type FunnelData = {
 
 export default function FunnelPage() {
   const [data, setData] = useState<FunnelData | null>(null);
+  const [quality, setQuality] = useState<ScoutQualityData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/funnel")
-      .then((r) => r.json())
-      .then(setData)
+    Promise.all([
+      fetch("/api/funnel").then((r) => r.json()),
+      fetch("/api/scout/quality?days=7").then((r) => r.json()).catch(() => null),
+    ])
+      .then(([funnel, scoutQuality]) => {
+        setData(funnel);
+        if (scoutQuality && !scoutQuality.error) setQuality(scoutQuality);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -106,8 +127,49 @@ export default function FunnelPage() {
                 </div>
               </div>
 
+              <div className="mb-8 rounded-[24px] bg-white p-6 shadow-[var(--shadow-brand-sm)]">
+                <h2 className="mb-5 text-[15px] font-bold text-brand-ink">Scout quality (7 days)</h2>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 lg:gap-4">
+                  {[
+                    { label: "Empty company scouts", value: `${quality?.emptyCompanyRate ?? 0}%` },
+                    { label: "Company runs", value: quality?.companyRuns ?? 0 },
+                    { label: "Empty people runs", value: quality?.emptyPeopleRuns ?? 0 },
+                    { label: "Gold density", value: `${quality?.goldDensity ?? 0}%` },
+                    { label: "Save precision proxy", value: `${quality?.savePrecisionProxy ?? 0}%` },
+                  ].map((kpi) => (
+                    <div key={kpi.label} className="rounded-[16px] bg-brand-app p-4 text-center">
+                      <div className="text-[24px] font-bold text-brand-ink">{kpi.value}</div>
+                      <div className="mt-1 text-[11px] text-brand-ink-faint">{kpi.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-[12px] text-brand-ink-faint">
+                  Learning {quality?.learningActive ? "active" : "idle"}
+                  {quality?.learningSamples ? ` · ${quality.learningSamples} outreached samples` : ""}.
+                  Precision proxy is saved / (saved + employer skips).
+                </p>
+                {(quality?.skipReasons ?? []).length > 0 && (
+                  <table className="mt-4 w-full text-[13px]">
+                    <thead>
+                      <tr className="border-b border-brand-border">
+                        <th className="pb-2 text-left font-semibold text-brand-ink-soft">Skip reason</th>
+                        <th className="pb-2 text-right font-semibold text-brand-ink-soft">Count</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quality!.skipReasons.map((row) => (
+                        <tr key={row.reason} className="border-b border-brand-border/60">
+                          <td className="py-2 text-brand-ink">{row.reason}</td>
+                          <td className="py-2 text-right font-semibold text-brand-ink">{row.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
               {/* Lead Status Table */}
-              <div className="rounded-[24px] bg-white p-6 shadow-[var(--shadow-brand-sm)]">
+              <div className="mb-8 rounded-[24px] bg-white p-6 shadow-[var(--shadow-brand-sm)]">
                 <h2 className="mb-4 text-[15px] font-bold text-brand-ink">Lead Status Breakdown</h2>
                 <table className="w-full text-[13px]">
                   <thead>

@@ -8,7 +8,10 @@ export async function GET() {
   try {
     const ctx = await requireTenantContext();
     const config = await getEmailConfigForApi();
-    return NextResponse.json({ outreachPaused: config.outreachPaused ?? false });
+    return NextResponse.json({
+      outreachPaused: config.outreachPaused ?? false,
+      signature: config.signature ?? "",
+    });
   } catch (e) {
     return handleApiError(e, "[api/settings/email/sending]");
   }

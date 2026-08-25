@@ -108,6 +108,7 @@ export async function POST(req: Request) {
       departments: Array.isArray(departments) ? departments.map(String) : [],
       locationScope: locationScope === "interest" || locationScope === "focus" ? locationScope : undefined,
       searchKind: searchKind === "business" || searchKind === "industry" ? searchKind : undefined,
+      qualityContext: { userId: ctx.userId, sessionId: typeof body.sessionId === "string" ? body.sessionId : null },
     };
 
     if (stream) {

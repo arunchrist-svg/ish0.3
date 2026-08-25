@@ -1,5 +1,6 @@
 import rulesConfig from "@/lib/email/content-rules.config.json";
 import type { EmailStyle } from "@/lib/email/config";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 
 export type ContentRuleSeverity = "info" | "warn" | "critical";
 
@@ -34,6 +35,17 @@ export type ContentRuleContext = {
 const INFO_ASK = rulesConfig.infoAskPhrases.map((p) => p.toLowerCase());
 const SOFT_EXIT = rulesConfig.softExitPhrases.map((p) => p.toLowerCase());
 const COMMERCIAL = rulesConfig.commercialSignals.map((p) => p.toLowerCase());
+
+/** Detect legal-entity phrasing that should not appear in cold outreach copy. */
+const LEGAL_IN_COPY =
+  /\b(private\s+limited|pvt\.?\s*ltd\.?|india\s+pvt|llp|incorporated|corporation|gmbh)\b|\b(pvt|ltd|llc|plc|inc)\.?(?:\s|$|[.,;:!?)])/i;
+
+function displayCompanyName(account?: ContentRuleContext["account"]): string | null {
+  const raw = account?.name?.trim();
+  if (!raw) return null;
+  const display = companyNameForEmail(raw);
+  return display === "your team" && !raw ? null : display;
+}
 
 function normalizeSkeleton(subject: string, companyName?: string | null): string {
   let s = subject.trim().toLowerCase();
@@ -83,7 +95,7 @@ function hasPersonalizationBeyondNameCompany(
   }
 
   const name = contactFirstName?.trim().toLowerCase();
-  const company = account?.name?.trim().toLowerCase();
+  const company = displayCompanyName(account)?.toLowerCase();
   let stripped = opener;
   if (name) stripped = stripped.replace(new RegExp(`\\bhi\\s+${name}\\b`, "i"), "");
   if (company) stripped = stripped.replace(new RegExp(company.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "");
@@ -187,9 +199,10 @@ export function applyContentRules(
   }
 
   const recent = ctx.recentSubjects ?? [];
-  if (recent.length >= 2 && account?.name) {
-    const skeleton = normalizeSkeleton(subject, account.name);
-    const matches = recent.filter((s) => normalizeSkeleton(s, account.name) === skeleton);
+  const companyDisplay = displayCompanyName(account);
+  if (recent.length >= 2 && companyDisplay) {
+    const skeleton = normalizeSkeleton(subject, companyDisplay);
+    const matches = recent.filter((s) => normalizeSkeleton(s, companyDisplay) === skeleton);
     if (matches.length >= 2) {
       hits.push({
         id: "F",
@@ -198,6 +211,15 @@ export function applyContentRules(
         severity: "warn",
       });
     }
+  }
+
+  if (LEGAL_IN_COPY.test(`${subject}\n${body}`)) {
+    hits.push({
+      id: "L",
+      label: "Use the short company name only; remove Pvt Ltd, Private Limited, Ltd, and similar legal suffixes",
+      delta: -12,
+      severity: "warn",
+    });
   }
 
   const fromFirst = ctx.fromName?.split(" ")[0]?.trim();

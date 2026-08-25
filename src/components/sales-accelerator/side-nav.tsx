@@ -9,13 +9,13 @@ import {
   Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CircleButton } from "@/design-system";
 import { SlidingHighlight } from "@/design-system/primitives/sliding-highlight";
 import { useSlidingHighlight } from "@/design-system/hooks/use-sliding-highlight";
 import { text } from "@/design-system/tokens";
 import { PRODUCT_NAME } from "@/lib/brand";
 import { CreditBalanceChip } from "@/components/sales-accelerator/credit-balance-chip";
 import { NotificationBell } from "@/components/sales-accelerator/notification-bell";
+import { useInboxBadge } from "@/hooks/use-inbox-badge";
 
 type NavItemEntry = {
   icon: React.ElementType;
@@ -160,17 +160,15 @@ export function SideNav() {
   const pathname = usePathname();
   const { session } = useSession();
   const isSuperadmin = session?.isSuperadmin ?? false;
-  const [outreachBadge, setOutreachBadge] = useState(0);
+  // Same polled attention count as mobile inbox: Needs Review + unreplied Replies.
+  const { count: outreachBadge, refresh: refreshOutreachBadge } = useInboxBadge();
 
   useEffect(() => {
-    fetch("/api/email/stats")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!data) return;
-        setOutreachBadge((data.needsReview ?? 0) + (data.replies ?? 0));
-      })
-      .catch(() => {});
-  }, []);
+    if (pathname === "/email" || pathname.startsWith("/email/")) {
+      refreshOutreachBadge();
+    }
+  }, [pathname, refreshOutreachBadge]);
+
   const activeKey = getActiveKey(pathname);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -199,29 +197,29 @@ export function SideNav() {
   return (
     <div
       className={cn(
-        "ish-glass-sidebar hidden h-full shrink-0 flex-col lg:flex overflow-hidden border-r border-white/50 transition-[width,padding] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-        collapsed ? "w-[68px] px-2 py-[22px]" : "w-[200px] p-[22px_16px]",
+        "ish-glass-sidebar hidden h-full shrink-0 flex-col lg:flex overflow-hidden border-r border-white/50 transition-[width] duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
+        collapsed ? "w-[68px]" : "w-[200px]",
       )}
     >
       <div
         className={cn(
-          "mb-5 flex shrink-0 items-center",
-          collapsed ? "flex-col gap-2.5" : "justify-between gap-2",
+          "flex shrink-0 items-center bg-brand-black text-white",
+          collapsed ? "flex-col gap-2.5 px-2 py-4" : "justify-between gap-2 px-4 py-4",
         )}
       >
         <span
           className={cn(
-            "shrink-0 font-extrabold tracking-tight text-brand-ink",
+            "shrink-0 font-extrabold tracking-tight text-white",
             collapsed ? "text-[15px]" : "text-[18px]",
           )}
         >
           {PRODUCT_NAME}
         </span>
-        <CircleButton
-          size={28}
+        <button
+          type="button"
           onClick={toggleCollapsed}
           aria-label={collapsed ? "Expand menu" : "Collapse menu"}
-          className="transition-transform duration-[420ms] ease-[cubic-bezier(0.22,1,0.36,1)]"
+          className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/12 text-white transition hover:bg-white/20 active:scale-95"
         >
           <ChevronLeft
             className={cn(
@@ -229,10 +227,16 @@ export function SideNav() {
               collapsed && "rotate-180",
             )}
           />
-        </CircleButton>
+        </button>
       </div>
 
-      <nav ref={containerRef} className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <nav
+        ref={containerRef}
+        className={cn(
+          "relative flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden",
+          collapsed ? "px-2 py-3" : "px-4 py-4",
+        )}
+      >
         <div className="flex-1">
           <SlidingHighlight rect={rect} ready={ready} />
 

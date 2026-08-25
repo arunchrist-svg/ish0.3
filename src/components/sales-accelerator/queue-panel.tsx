@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Check, Loader2, Mail, RefreshCw } from "lucide-react";
 import { IshAvatar, ScoreBadge, SearchBar } from "@/design-system";
 import { LeadAddMenu } from "@/components/leads/lead-add-menu";
 import { cn } from "@/lib/utils";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { useLoadMoreOnScroll } from "@/hooks/use-load-more-on-scroll";
 import { statusToDisplayLabel } from "@/lib/pipeline-status";
 import { getScoreTone, scoreToneClasses, text } from "@/design-system/tokens";
 import type { LeadQueueItem } from "@/lib/api-client";
@@ -13,7 +14,6 @@ import { countDuplicateExtras } from "@/lib/leads/duplicates";
 import { scoutCardSurface } from "@/components/cards/scout-card-surface";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
-import { LeadAddedByLabel } from "@/components/leads/lead-added-by-button";
 import {
   applyLeadListView,
   emptyLeadFilterState,
@@ -141,17 +141,14 @@ function CompactLeadCard({
     >
       <div className="flex items-start justify-between gap-2">
         <IshAvatar name={item.name} index={index} size={36} className="ring-2 ring-white" />
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span
-            className={cn(
-              "flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold tabular-nums",
-              scoreToneClasses[scoreTone],
-            )}
-          >
-            {item.score}
-          </span>
-          <LeadAddedByLabel name={item.createdByName} leadSource={item.leadSource} />
-        </div>
+        <span
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-full text-[11px] font-extrabold tabular-nums",
+            scoreToneClasses[scoreTone],
+          )}
+        >
+          {item.score}
+        </span>
       </div>
       <div className="mt-2.5 min-w-0 flex-1">
         <div className="line-clamp-2 min-w-0 text-[14px] font-semibold leading-snug text-brand-ink">{item.name}</div>
@@ -220,10 +217,7 @@ function QueueCard({
         <span className="shrink-0 rounded-md bg-white/55 px-2 py-0.5 text-[10.5px] font-bold text-brand-ink-soft">
           {statusToDisplayLabel(item.status)}
         </span>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <ScoreBadge score={item.score} />
-          <LeadAddedByLabel name={item.createdByName} leadSource={item.leadSource} />
-        </div>
+        <ScoreBadge score={item.score} />
       </div>
     </button>
   );
@@ -306,6 +300,28 @@ export function QueuePanel({
       : isMobile
         ? "No leads yet"
         : "No leads";
+
+  const desktopScrollRef = useRef<HTMLDivElement>(null);
+  const scrollRoot = isMobile ? listScrollRef : desktopScrollRef;
+  const canLazyLoad = Boolean(hasMore && onLoadMore);
+  const loadMoreSentinelRef = useLoadMoreOnScroll({
+    enabled: canLazyLoad,
+    loading: Boolean(loadingMore),
+    onLoadMore,
+    root: scrollRoot,
+  });
+
+  const lazyLoadFooter = canLazyLoad ? (
+    <div
+      ref={loadMoreSentinelRef}
+      className="flex h-10 items-center justify-center py-3"
+      aria-hidden={!loadingMore}
+    >
+      {loadingMore ? (
+        <Loader2 className="size-4 animate-spin text-brand-ink-faint" aria-label="Loading more leads" />
+      ) : null}
+    </div>
+  ) : null;
 
   async function handleRefresh() {
     if (!onRefresh || refreshing || mergingDuplicates) return;
@@ -416,18 +432,7 @@ export function QueuePanel({
                 ))}
               </div>
             )}
-            {hasMore && onLoadMore ? (
-              <div className="flex justify-center py-4">
-                <button
-                  type="button"
-                  onClick={() => void onLoadMore()}
-                  disabled={loadingMore}
-                  className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
-                >
-                  {loadingMore ? "Loading…" : "Load more leads"}
-                </button>
-              </div>
-            ) : null}
+            {lazyLoadFooter}
           </div>
           {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
         </div>
@@ -448,7 +453,7 @@ export function QueuePanel({
       ) : null}
 
       <div className="relative min-h-0 flex-1">
-        <div className="h-full overflow-y-auto scrollbar-none px-3 py-1">
+        <div ref={desktopScrollRef} className="h-full overflow-y-auto scrollbar-none px-3 py-1">
           {filteredLeads.length === 0 ? (
             <div className="mt-8 px-2 text-center text-[12px] text-brand-ink-faint">
               {emptyMessage}
@@ -476,18 +481,7 @@ export function QueuePanel({
               />
             ))
           )}
-          {hasMore && onLoadMore ? (
-            <div className="flex justify-center py-3">
-              <button
-                type="button"
-                onClick={() => void onLoadMore()}
-                disabled={loadingMore}
-                className="rounded-full border border-brand-border/70 bg-white px-3 py-1.5 text-[11px] font-semibold text-brand-ink disabled:opacity-50"
-              >
-                {loadingMore ? "Loading…" : "Load more"}
-              </button>
-            </div>
-          ) : null}
+          {lazyLoadFooter}
         </div>
         {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
       </div>

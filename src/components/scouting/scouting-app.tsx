@@ -34,7 +34,7 @@ import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { mapWithConcurrency } from "@/lib/async";
 import { isLogoUrl } from "@/lib/company-logo";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
-import type { ScoutSessionFilters, ScoutSessionPerson, ScoutSessionUiState } from "@/db";
+import type { ScoutSessionFilters, ScoutSessionPerson, ScoutSessionUiState } from "@/db/schema";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, personFieldOrEmpty, cn } from "@/lib/utils";
 import {
@@ -235,6 +235,7 @@ function toCompanyShape(c: ScoutCompanyResult, index = 0) {
     leadabilityMatchedPeople: c.leadabilityMatchedPeople,
     leadabilityMatchedInCity: c.leadabilityMatchedInCity,
     leadabilityProbeSource: c.leadabilityProbeSource,
+    fitScoreReason: c.fitScoreReason,
     _raw: c,
   };
 }
@@ -255,6 +256,7 @@ function toPersonShape(p: ScoutPersonResult, companyId: string, idx: number) {
     seniority: personFieldOrEmpty(p.seniority) || inferred.seniority || "",
     isKeyDecisionMaker: p.isKeyDM ?? false,
     matchScore: p.matchScore ?? 55,
+    matchScoreReason: p.matchScoreReason,
     engagementSignals: p.engagementSignals ?? [],
     linkedIn: normalizeLinkedInUrl(p.linkedIn) ?? "",
     email: p.email ? maskEmail(p.email) : "—",
@@ -2444,6 +2446,7 @@ export function ScoutingApp() {
       verticalScope={verticalScope}
       onConfirm={handleRolePickerConfirm}
       onSkip={() => { setPeopleCities([]); beginFetchLeads(companiesForPendingFetch(), [], []); }}
+      onClose={() => setShowRolePicker(false)}
     />
   ) : null;
 
@@ -2714,7 +2717,9 @@ export function ScoutingApp() {
         />
         <ScoutingToolbar {...toolbarProps} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="min-w-0 flex-1 overflow-y-auto bg-white/40">{companiesResults}</div>
+          <div className="ish-page-padding min-w-0 flex-1 overflow-y-auto bg-white/40 py-4 lg:px-6">
+            {companiesResults}
+          </div>
           <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-brand-border bg-white lg:block">
             {view === "companies" && primaryCompany ? (
               <CompanyDetailPanel

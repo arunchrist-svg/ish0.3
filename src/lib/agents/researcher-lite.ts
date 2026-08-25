@@ -5,6 +5,7 @@ import { assertCredits, deductCredits } from "@/lib/billing/credits";
 import { parseResearcherOutput } from "@/lib/agents/schemas/researcher-output";
 import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 
 export async function runResearcherLite(leadId: string): Promise<void> {
   const lead = await db.query.leads.findFirst({
@@ -25,7 +26,8 @@ export async function runResearcherLite(leadId: string): Promise<void> {
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
-  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const companyDisplayName = companyNameForEmail(account.name);
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
   const brand = emailConfig.brandConfig;
 
   const confidenceScore = lead.score ?? 55;
@@ -49,7 +51,7 @@ Buyer personas: ${brand.websiteInsights.buyerPersonas.join(", ")}
 Seller brand: ${brand.brandName} (${brand.vertical})
 Seller product: ${brand.productSummary || productHint}
 ${websiteBlock}
-Company: ${account.name}
+Company: ${companyDisplayName}
 City: ${account.city ?? "India"}
 Industry: ${account.industry ?? "Corporate"}
 Employees: ${account.employees ?? "Unknown"}
@@ -63,6 +65,7 @@ Rules:
 - Outreach hooks must match the seller brand/product above.
 - Prefer email keywords and writeup themes when they fit this buyer.
 - Never invent products, categories, or seasonal angles the seller does not sell.
+- Use company name "${companyDisplayName}" only. Never append Pvt Ltd, Private Limited, Ltd, or other legal suffixes.
 
 Output ONLY valid JSON with this shape:
 {
@@ -94,7 +97,7 @@ Output ONLY valid JSON with this shape:
 
   const { data: validated, valid } = parseResearcherOutput(raw);
   const parsed = validated ?? {
-    outreachHook: `${account.name} corporate opportunity for ${contact.title ?? "HR/Admin"} team with ${brand.brandName}`,
+    outreachHook: `${companyDisplayName} corporate opportunity for ${contact.title ?? "HR/Admin"} team with ${brand.brandName}`,
     estimatedOrderValue: "₹2–8 lakhs",
     decisionChain: [contact.name],
     outreachHooks: fallbackHooks,

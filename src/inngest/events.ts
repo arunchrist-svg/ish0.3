@@ -31,8 +31,14 @@ export type EnrichLeadRequested = {
   };
 };
 
+export type ScoutQualityLearnRequested = {
+  name: "scout/quality.learn";
+  data: { tenantId: string; workspaceId: string };
+};
+
 export type AppEvents =
   | ResearchLeadRequested
   | ReplyLeadReceived
   | WriterLeadRequested
-  | EnrichLeadRequested;
+  | EnrichLeadRequested
+  | ScoutQualityLearnRequested;

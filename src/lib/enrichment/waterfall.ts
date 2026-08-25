@@ -11,6 +11,7 @@ import {
   expandCitySearchTerms,
   isNationwideSelection,
   includeHqCorridorForScoutPeople,
+  mentionsSelectedLocality,
   peopleFilterUsesHqCorridor,
   shouldApplyPlacesFocusBias,
   nearbyLabelsForScoutCities,
@@ -23,8 +24,16 @@ import { placesLocationBiasFromFocuses } from "@/lib/geo/area-of-focus";
 import { companyDomainAliases } from "./company-domain-aliases";
 import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
 import { rankPeopleForScout, trimPeopleToHighConfidence } from "./people-diversity";
-import { sortCompaniesByAccountScore } from "./account-score";
-import { scoutQualityProfileFor } from "./quality-profile";
+import { applyGoldDensityEarlyStop, sortCompaniesByAccountScore } from "./account-score";
+import {
+  allowsHqCorridor,
+  allowsSoftCityRecover,
+  effectiveGeoPolicy,
+  scoutQualityProfileFor,
+  type ScoutGeoPolicy,
+} from "./quality-profile";
+import { applySellerPollutionFilter } from "./seller-pollution";
+import { loadScoutQualityLearning } from "./quality-learning";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
@@ -46,6 +55,7 @@ import {
   scoutCompanyMatchesSaved,
 } from "@/lib/scout/account-match";
 import { listTenantAccountShapes } from "@/lib/scout/save-leads";
+import { logScoutQualityEvent, SCOUT_QUALITY_EVENT } from "@/lib/scout/quality-events";
 import {
   officialWebsiteForScoutCompany,
   rankCompaniesWithOfficialSitesFirst,
@@ -80,6 +90,18 @@ export type DiscoveryResult = {
   companies: ScoutCompanyResult[];
   warnings: string[];
   errors: string[];
+  qualityMetrics?: {
+    empty: boolean;
+    returned: number;
+    requested: number;
+    earlyStop: string | null;
+    softCityRecover: boolean;
+  };
+};
+
+export type ScoutQualityContext = {
+  userId?: string | null;
+  sessionId?: string | null;
 };
 
 async function loadScoutBrandIcp(workspaceId: string): Promise<{
@@ -194,12 +216,24 @@ function filterBySelectedCities(
   results: ScoutCompanyResult[],
   cities: string[],
   searchKind?: "industry" | "business",
+  geoPolicy?: ScoutGeoPolicy,
 ): ScoutCompanyResult[] {
   if (cities.length === 0) return results;
-  // For neighborhood/Focus Area searches, the Tavily/directory query already included the
-  // neighborhood name as a search term — strict post-filter city matching would drop every
-  // company whose stored city is "Bengaluru" rather than "Kasturi Nagar". Just rank instead.
   if (selectionLooksLikeNeighborhoods(cities)) {
+    if (geoPolicy === "focus_strict") {
+      const kept = results.filter(
+        (c) =>
+          mentionsSelectedLocality(
+            `${c.city ?? ""} ${c.intelNotes ?? ""} ${c.industry ?? ""}`.toLowerCase(),
+            cities,
+          ) ||
+          companyMatchesScoutSelection(c, cities, {
+            searchKind,
+            geoVerified: c.scoutGeoVerified,
+          }),
+      );
+      return rankCompaniesByLocalityMention(kept, cities);
+    }
     return rankCompaniesByLocalityMention(results, cities);
   }
   return rankCompaniesByLocalityMention(
@@ -258,6 +292,7 @@ export async function discoverCompanies(params: {
   searchKind?: "industry" | "business";
   /** Emit usable companies as soon as a provider step yields them (streaming Scout). */
   onPartial?: (companies: ScoutCompanyResult[]) => void | Promise<void>;
+  qualityContext?: ScoutQualityContext;
 }): Promise<DiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = params.limit ?? parseInt(process.env.PROSPECTING_MAX_RESULTS ?? "25", 10);
@@ -283,6 +318,13 @@ export async function discoverCompanies(params: {
   }
   const searchMeta = { warnings };
   const brandIcp = await loadScoutBrandIcp(params.workspaceId);
+  const qualityProfile = scoutQualityProfileFor(
+    brandIcp?.platformIntent,
+    brandIcp?.verticalPackOrSlug,
+  );
+  const geoPolicy = effectiveGeoPolicy(qualityProfile, params.locationScope);
+  const learning = await loadScoutQualityLearning(params.workspaceId).catch(() => undefined);
+  const weightDeltas = learning?.deltasByIntent?.[qualityProfile.intent] ?? null;
   const selectionLabels = params.cities;
   const nationwide = isNationwideSelection(selectionLabels);
   const matchCities = expandCityMatchTerms(selectionLabels);
@@ -386,10 +428,31 @@ export async function discoverCompanies(params: {
       warnings.push(`No company matching "${nameQuery}"${where}.`);
     }
 
+    const companies = finalizeScoutCompanies(matched).slice(0, limit);
+    void logScoutQualityEvent({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      userId: params.qualityContext?.userId,
+      sessionId: params.qualityContext?.sessionId,
+      eventType: SCOUT_QUALITY_EVENT.companiesCompleted,
+      metadata: {
+        mode: "search",
+        requested: limit,
+        returned: companies.length,
+        empty: companies.length === 0,
+      },
+    });
     return {
-      companies: finalizeScoutCompanies(matched).slice(0, limit),
+      companies,
       warnings: [...new Set(warnings)],
       errors: [...new Set(errors)],
+      qualityMetrics: {
+        empty: companies.length === 0,
+        returned: companies.length,
+        requested: limit,
+        earlyStop: null,
+        softCityRecover: false,
+      },
     };
   }
 
@@ -454,7 +517,7 @@ export async function discoverCompanies(params: {
   const fillFloor = Math.min(limit, Math.max(DIRECTORY_FALLBACK_FLOOR, Math.ceil(limit * 0.5)));
   const discardedByCity: ScoutCompanyResult[] = [];
   const cityUsable = (rows: ScoutCompanyResult[]) => {
-    const cityed = filterBySelectedCities(rows, selectionLabels, searchKind);
+    const cityed = filterBySelectedCities(rows, selectionLabels, searchKind, geoPolicy);
     return searchKind === "business"
       ? filterBySelectedBusinesses(cityed, params.industries)
       : filterBySelectedIndustries(cityed, params.industries);
@@ -643,9 +706,10 @@ export async function discoverCompanies(params: {
     .map(withCleanedCompanyName)
     .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
     .map(hydrateEmployees);
-  let cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry");
+  let cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry", geoPolicy);
   let softCityFail = false;
   if (
+    allowsSoftCityRecover(geoPolicy) &&
     cityFiltered.length === 0 &&
     selectionLabels.length > 0 &&
     !nationwide &&
@@ -715,6 +779,7 @@ export async function discoverCompanies(params: {
           .map(hydrateEmployees),
         selectionLabels,
         params.searchKind ?? "industry",
+        geoPolicy,
       ),
       employeeBands,
     );
@@ -754,24 +819,28 @@ export async function discoverCompanies(params: {
     companies = companies.slice(0, overfetchTarget);
   }
 
+  companies = applySellerPollutionFilter(companies, qualityProfile, params.searchKind);
+
   const selectedSeniority = params.seniority ?? [];
   const selectedDepartments = params.departments ?? [];
-  const qualityProfile = scoutQualityProfileFor(
-    brandIcp?.platformIntent,
-    brandIcp?.verticalPackOrSlug,
-  );
   // Corporate modes: probe reachability using scout roles or pack defaults so AccountScore
   // can rank even when the UI left seniority empty (dept-first stacks).
-  const probeRoles = expandPeopleFiltersForOffer(
-    brandIcp?.platformIntent,
-    selectedSeniority,
-    selectedDepartments,
-    {
-      treatAsGifting: brandIcp?.sweetsGifting,
-      searchKind: params.searchKind,
-      businesses: params.searchKind === "business" ? params.industries : undefined,
-    },
-  );
+  const probeRoles = cfg.strictPeopleFilters
+    ? {
+        seniority: selectedSeniority,
+        departments: selectedDepartments,
+        expanded: false as const,
+      }
+    : expandPeopleFiltersForOffer(
+        brandIcp?.platformIntent,
+        selectedSeniority,
+        selectedDepartments,
+        {
+          treatAsGifting: brandIcp?.sweetsGifting,
+          searchKind: params.searchKind,
+          businesses: params.searchKind === "business" ? params.industries : undefined,
+        },
+      );
   const shouldProbeLeadability =
     params.searchKind !== "business" &&
     companies.length > 0 &&
@@ -820,14 +889,24 @@ export async function discoverCompanies(params: {
     ];
   }
 
-  companies = sortCompaniesByAccountScore(companies, {
+  const rankedAccounts = sortCompaniesByAccountScore(companies, {
     profile: qualityProfile,
     selectedCities: selectionLabels,
     employeeBands,
     selectedIndustries: params.industries,
     locationScope: params.locationScope,
     searchKind: params.searchKind ?? "industry",
-  }).slice(0, limit);
+    geoPolicy,
+    weightDeltas,
+  });
+  const goldCut = applyGoldDensityEarlyStop(rankedAccounts, {
+    limit,
+    enabled: !isNameSearch,
+  });
+  companies = goldCut.companies;
+  if (goldCut.earlyStop) {
+    warnings.push("Stopped adding lower-fit companies once gold density flattened.");
+  }
 
   if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
     warnings.push(
@@ -856,10 +935,32 @@ export async function discoverCompanies(params: {
     );
   }
 
+  const qualityMetrics = {
+    empty: companies.length === 0,
+    returned: companies.length,
+    requested: limit,
+    earlyStop: goldCut.earlyStop ? "gold_density" : null,
+    softCityRecover: softCityFail,
+  };
+  void logScoutQualityEvent({
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    userId: params.qualityContext?.userId,
+    sessionId: params.qualityContext?.sessionId,
+    eventType: SCOUT_QUALITY_EVENT.companiesCompleted,
+    metadata: {
+      mode: "autopilot",
+      ...qualityMetrics,
+      geoPolicy,
+      sellerPollution: qualityProfile.sellerPollution,
+    },
+  });
+
   return {
     companies,
     warnings: [...new Set(warnings)],
     errors: [...new Set(errors)],
+    qualityMetrics,
   };
 }
 
@@ -869,7 +970,55 @@ export type PeopleDiscoveryResult = {
   resolvedWebsite?: string;
   warnings: string[];
   errors: string[];
+  qualityMetrics?: {
+    empty: boolean;
+    returned: number;
+    requested: number;
+    goldKept: number;
+    goldShown: number;
+    broadenStages: string[];
+  };
 };
+
+function finishPeopleDiscovery(params: {
+  tenantId: string;
+  workspaceId: string;
+  qualityContext?: ScoutQualityContext;
+  ranked: ScoutPersonResult[];
+  limit: number;
+  resolvedDomain?: string;
+  resolvedWebsite?: string;
+  warnings: string[];
+  errors: string[];
+  broadenStages: string[];
+}): PeopleDiscoveryResult {
+  const goldKept = params.ranked.filter((p) => (p.matchScore ?? 0) >= 35).length;
+  const people = trimPeopleToHighConfidence(params.ranked, params.limit);
+  const qualityMetrics = {
+    empty: people.length === 0,
+    returned: people.length,
+    requested: params.limit,
+    goldKept,
+    goldShown: people.length,
+    broadenStages: params.broadenStages,
+  };
+  void logScoutQualityEvent({
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    userId: params.qualityContext?.userId,
+    sessionId: params.qualityContext?.sessionId,
+    eventType: SCOUT_QUALITY_EVENT.peopleCompleted,
+    metadata: qualityMetrics,
+  });
+  return {
+    people,
+    resolvedDomain: params.resolvedDomain,
+    resolvedWebsite: params.resolvedWebsite,
+    warnings: [...new Set(params.warnings)],
+    errors: [...new Set(params.errors)],
+    qualityMetrics,
+  };
+}
 
 function accountNameMatches(stored: string, target: string): boolean {
   const clean = (s: string) =>
@@ -903,6 +1052,7 @@ export async function discoverPeople(params: {
   /** Optional explicit people-area filter (e.g. ["South India"]). When set, people must be
    *  located in this area regardless of company city. Defaults to the company scout cities. */
   peopleCities?: string[];
+  qualityContext?: ScoutQualityContext;
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
@@ -931,10 +1081,16 @@ export async function discoverPeople(params: {
     warnings.push(`No website domain for ${params.companyName}. People search may be less accurate.`);
   }
   const localOperators = params.searchKind === "business";
+  const qualityProfile = scoutQualityProfileFor(
+    brandIcp?.platformIntent,
+    brandIcp?.verticalPackOrSlug,
+  );
+  const geoPolicy = effectiveGeoPolicy(qualityProfile, params.locationScope);
   const includeHqCorridor = includeHqCorridorForScoutPeople({
     cities: scoutCities,
     locationScope: params.locationScope,
     localOperators,
+    allowHqCorridor: allowsHqCorridor(geoPolicy),
   });
   const focusArea =
     params.locationScope === "focus" || selectionLooksLikeNeighborhoods(scoutCities);
@@ -952,20 +1108,30 @@ export async function discoverPeople(params: {
       : focusAreaIsNeighborhood
         ? parentCitiesForNeighborhoods(scoutCities)
         : [];
-  const qualityProfile = scoutQualityProfileFor(
-    brandIcp?.platformIntent,
-    brandIcp?.verticalPackOrSlug,
-  );
-  const roleOpts = { searchKind: params.searchKind, businesses: params.businesses };
-  const expandedRoles = expandPeopleFiltersForOffer(
-    brandIcp?.platformIntent,
-    params.seniority ?? [],
-    params.departments ?? [],
-    { treatAsGifting: brandIcp?.sweetsGifting, searchKind: params.searchKind, businesses: params.businesses },
-  );
+  const roleOpts = {
+    searchKind: params.searchKind,
+    businesses: params.businesses,
+    strict: Boolean(cfg.strictPeopleFilters),
+  };
+  const expandedRoles = cfg.strictPeopleFilters
+    ? {
+        seniority: params.seniority ?? [],
+        departments: params.departments ?? [],
+        expanded: false as const,
+        note: "Strict people filters: using your seniority and department chips only.",
+      }
+    : expandPeopleFiltersForOffer(
+        brandIcp?.platformIntent,
+        params.seniority ?? [],
+        params.departments ?? [],
+        { treatAsGifting: brandIcp?.sweetsGifting, searchKind: params.searchKind, businesses: params.businesses },
+      );
   const activeSeniority = expandedRoles.seniority;
   const activeDepartments = expandedRoles.departments;
-  const sweetsGiftingPeople = Boolean(brandIcp?.sweetsGifting) && !localOperators;
+  const sweetsGiftingPeople =
+    Boolean(brandIcp?.sweetsGifting) && !localOperators && !cfg.strictPeopleFilters;
+  const broadenStages: string[] = [];
+  const allowPeopleBroaden = qualityProfile.broadenPeopleWhenEmpty && !cfg.strictPeopleFilters;
   // For Focus Area neighborhood scouts, also include the parent city in the Tavily query
   // so "Hosur"-location profiles are found when the chip is "SIPCOT Hosur".
   const peopleSearchCities = includeHqCorridor
@@ -1029,13 +1195,18 @@ export async function discoverPeople(params: {
         }),
         preferDmTitles: qualityProfile.preferDmTitles,
       });
-      return {
-        people: trimPeopleToHighConfidence(ranked, limit),
+      return finishPeopleDiscovery({
+        tenantId: params.tenantId,
+        workspaceId: params.workspaceId,
+        qualityContext: params.qualityContext,
+        ranked,
+        limit,
         resolvedDomain,
         resolvedWebsite,
         warnings,
         errors,
-      };
+        broadenStages,
+      });
     }
   }
 
@@ -1096,6 +1267,7 @@ export async function discoverPeople(params: {
           cities: peopleSearchCities.length ? peopleSearchCities : params.cities,
           localOperators,
           locationScope: params.locationScope,
+          strictPeopleFilters: cfg.strictPeopleFilters,
         }),
       external,
       remaining,
@@ -1190,7 +1362,7 @@ export async function discoverPeople(params: {
 
   // Controlled broaden (pack): when seniority+dept returned nobody, retry departments only once.
   if (
-    qualityProfile.broadenPeopleWhenEmpty &&
+    allowPeopleBroaden &&
     !localOperators &&
     roleFilteredPeople.length === 0 &&
     allPeople.length > 0 &&
@@ -1200,6 +1372,7 @@ export async function discoverPeople(params: {
     const deptOnly = filterPeopleByRoles(allPeople, [], activeDepartments, roleOpts);
     if (deptOnly.people.length > 0) {
       roleFilteredPeople = deptOnly.people;
+      broadenStages.push("dept_only");
       warnings.push(
         "No exact seniority matches. Showing department decision-makers for this company.",
       );
@@ -1221,6 +1394,7 @@ export async function discoverPeople(params: {
     cities: scoutCities,
     peopleCities: params.peopleCities,
     localOperators,
+    allowHqCorridor: allowsHqCorridor(geoPolicy),
   });
 
   if (peopleCityFilter.length) {
@@ -1235,7 +1409,7 @@ export async function discoverPeople(params: {
     } else if (selected.people.length === 0 && finalPeople.length > 0) {
       // Controlled broaden: parent-city-only location when chips+parent still empty.
       if (
-        qualityProfile.broadenPeopleWhenEmpty &&
+        allowPeopleBroaden &&
         focusParentCities.length > 0 &&
         params.locationScope === "focus"
       ) {
@@ -1244,6 +1418,7 @@ export async function discoverPeople(params: {
         });
         if (parentOnly.people.length > 0) {
           finalPeople = parentOnly.people;
+          broadenStages.push("parent_city");
           warnings.push(
             `No people matched the exact Focus Area pin. Showing decision-makers in ${focusParentCities.join(", ")}.`,
           );
@@ -1282,13 +1457,18 @@ export async function discoverPeople(params: {
     preferDmTitles: qualityProfile.preferDmTitles,
   });
 
-  return {
-    people: trimPeopleToHighConfidence(ranked, limit),
+  return finishPeopleDiscovery({
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    qualityContext: params.qualityContext,
+    ranked,
+    limit,
     resolvedDomain,
     resolvedWebsite,
-    warnings: [...new Set(warnings)],
-    errors: [...new Set(errors)],
-  };
+    warnings,
+    errors,
+    broadenStages,
+  });
 }
 
 

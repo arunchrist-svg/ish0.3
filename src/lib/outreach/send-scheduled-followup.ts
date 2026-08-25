@@ -15,8 +15,11 @@ import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { followUpThreadSubject, resolveDraftBody, resolveDraftSubject } from "@/lib/email/draft-variants";
 import { cleanEmailAddress } from "@/lib/email/list-cleaner";
 import { maybeAutoOpenWhatsAppAfterSecondEmail, type WhatsAppAutoOpenPayload } from "@/lib/whatsapp/auto-after-second-email";
-import { ensureCatalogFollowUpBeforeSend } from "@/lib/email/promote-catalog-on-open";
-import { isIshFestiveCatalogBody } from "@/lib/email/ish-festive-catalog";
+import {
+  CATALOG_ON_OPEN_EMAIL_KIND,
+  isCatalogOnOpenDraft,
+  isIshFestiveCatalogBody,
+} from "@/lib/email/ish-festive-catalog";
 
 export class FollowUpQualityError extends Error {
   code = "FOLLOWUP_QUALITY_FAILED" as const;
@@ -70,7 +73,8 @@ export async function sendScheduledFollowUp(params: {
   const account = lead.account as typeof accounts.$inferSelect;
   const research = lead.research as typeof leadResearch.$inferSelect | null;
 
-  const emailConfig = await getResolvedEmailConfig(params.workspaceId);
+  const senderUserId = lead.createdByUserId ?? params.actorId ?? null;
+  const emailConfig = await getResolvedEmailConfig(params.workspaceId, senderUserId);
   if (isOutreachSendingPaused(emailConfig)) throw new Error("Outreach sending is paused");
   if (emailConfig.sendMode === "live") {
     await assertPlanEntitlement(params.tenantId, "live_send");
@@ -89,23 +93,13 @@ export async function sendScheduledFollowUp(params: {
         });
 
   const seqPos = generatedOutreach.sequencePosition ?? 2;
-  const catalogSwap = await ensureCatalogFollowUpBeforeSend({
-    leadId: sched.leadId,
-    followUpOutreachId: generatedOutreach.id,
-    sequencePosition: seqPos,
-  });
-  if (catalogSwap) {
-    generatedOutreach = {
-      ...generatedOutreach,
-      emailBody: catalogSwap.emailBody,
-      subjectA: catalogSwap.subjectA || generatedOutreach.subjectA,
-    };
-  }
-
   const followUpDraftSubject = resolveDraftSubject(generatedOutreach);
   const email1Subject = email1Outreach ? resolveDraftSubject(email1Outreach) : "";
   const body = resolveDraftBody(generatedOutreach);
-  const isCatalog = isIshFestiveCatalogBody(body);
+  const isCatalog =
+    sched.emailKind === CATALOG_ON_OPEN_EMAIL_KIND ||
+    isCatalogOnOpenDraft(generatedOutreach) ||
+    isIshFestiveCatalogBody(body);
 
   const quality = await evaluateOutreachDraft({
     subject: followUpDraftSubject || email1Subject || `Re: Outreach for ${account.name}`,
@@ -136,19 +130,22 @@ export async function sendScheduledFollowUp(params: {
   }
 
   const thread = await loadThreadContext(sched.leadId, lead);
-  const threadedSubject = resolveOutboundSubject({
-    isReplySend: false,
-    isFollowUp: true,
-    rootSubject: thread.rootSubject,
-    fallbackSubject:
-      followUpThreadSubject({
-        threadRootSubject: thread.rootSubject,
-        email1Draft: email1Outreach,
-      }) ||
-      email1Subject ||
-      followUpDraftSubject ||
-      `Re: Outreach for ${account.name}`,
-  });
+  // If Opened uses its own selected A/B subject, not Re: Email 1.
+  const threadedSubject = isCatalog
+    ? followUpDraftSubject || `festive gifting for ${account.name}`
+    : resolveOutboundSubject({
+        isReplySend: false,
+        isFollowUp: true,
+        rootSubject: thread.rootSubject,
+        fallbackSubject:
+          followUpThreadSubject({
+            threadRootSubject: thread.rootSubject,
+            email1Draft: email1Outreach,
+          }) ||
+          email1Subject ||
+          followUpDraftSubject ||
+          `Re: Outreach for ${account.name}`,
+      });
 
   const threadHeaders = resolveThreadHeaders({
     isReplySend: false,
@@ -175,6 +172,7 @@ export async function sendScheduledFollowUp(params: {
 
   const result = await sendEmail({
     workspaceId: params.workspaceId,
+    userId: senderUserId,
     to,
     subject: threadedSubject,
     html: buildEmailHtml({
@@ -182,6 +180,7 @@ export async function sendScheduledFollowUp(params: {
       trackingToken: sched.trackingToken ?? undefined,
       appUrl: emailConfig.appUrl,
       emailStyle: resolveOutreachEmailStyle(emailConfig.emailStyle),
+      signature: emailConfig.signature,
     }),
     replyTo: emailConfig.replyToAddress?.trim() || emailConfig.fromAddress,
     messageId: rfcMessageId,
@@ -201,7 +200,7 @@ export async function sendScheduledFollowUp(params: {
       referencesChain: threadHeaders.references ?? null,
       subjectSent: threadedSubject,
       bodySnippet: body.slice(0, 500) || null,
-      emailKind: "followup",
+      emailKind: sched.emailKind === CATALOG_ON_OPEN_EMAIL_KIND ? CATALOG_ON_OPEN_EMAIL_KIND : "followup",
       draftLeadOutreachId: generatedOutreach.id,
     })
     .where(eq(outreachSchedule.id, sched.id));

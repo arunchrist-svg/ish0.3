@@ -60,6 +60,9 @@ describe("nearbyLabelsForScoutCities", () => {
     expect(
       includeHqCorridorForScoutPeople({ cities: ["Kasturi Nagar"], localOperators: true }),
     ).toBe(false);
+    expect(
+      includeHqCorridorForScoutPeople({ cities: ["Hosur"], locationScope: "focus", allowHqCorridor: false }),
+    ).toBe(false);
   });
 });
 

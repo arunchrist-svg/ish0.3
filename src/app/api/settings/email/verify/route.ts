@@ -11,7 +11,7 @@ export async function POST(req: Request) {
       throw new ForbiddenError("Admin access required");
     }
     const body = (await req.json()) as Partial<EmailConfig>;
-    const config = await verifyEmailConnection(body);
+    const config = await verifyEmailConnection(body, ctx.userId);
     return NextResponse.json({ ok: true, config });
   } catch (e) {
     console.error("[api/settings/email/verify] POST failed:", e);

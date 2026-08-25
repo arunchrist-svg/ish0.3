@@ -15,6 +15,11 @@ export type EnrichmentConfig = {
   dataMode: DataMode;
   scoutCompaniesLimit: number;
   scoutLeadsLimit: number;
+  /**
+   * When true, people search honors the user's seniority/department chips exactly:
+   * no pack expand, no plant Manager query bias, no role waterfall / empty broaden.
+   */
+  strictPeopleFilters: boolean;
   apolloApiKey?: string;
   hunterApiKey?: string;
   prospeoApiKey?: string;
@@ -183,6 +188,7 @@ export function getEnrichmentConfig(): EnrichmentConfig {
     dataMode: (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free",
     scoutCompaniesLimit: getScoutCompaniesLimit(),
     scoutLeadsLimit: getScoutLeadsLimit(),
+    strictPeopleFilters: false,
     scoutGeo: { ...DEFAULT_SCOUT_GEO },
     scoutAreaOfFocus: null,
     scoutAreasOfFocus: [],
@@ -215,5 +221,6 @@ export function resolveEnrichmentConfig(
     scoutAreaOfFocus: scoutAreasOfFocus[0] ?? null,
     scoutCompaniesLimit: clampScoutCompaniesLimit(base.scoutCompaniesLimit),
     scoutLeadsLimit: clampScoutLeadsLimit(base.scoutLeadsLimit),
+    strictPeopleFilters: Boolean(base.strictPeopleFilters),
   };
 }

@@ -50,6 +50,7 @@ export function MissingWebsitePrompt({
   const [values, setValues] = useState<Record<string, string>>({});
   const [collapsed, setCollapsed] = useState(false);
   const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const [hideDone, setHideDone] = useState(true);
 
   const companyIds = companies.map((c) => c.id).join("|");
   useEffect(() => {
@@ -83,6 +84,17 @@ export function MissingWebsitePrompt({
     return entries;
   }, [companies, values]);
 
+  const doneCount = useMemo(
+    () => companies.filter((c) => (rowStatus?.[c.id] ?? "idle") === "done").length,
+    [companies, rowStatus],
+  );
+
+  const visibleCompanies = useMemo(() => {
+    if (!hideDone) return companies;
+    const pending = companies.filter((c) => (rowStatus?.[c.id] ?? "idle") !== "done");
+    return pending.length ? pending : companies;
+  }, [companies, hideDone, rowStatus]);
+
   if (!companies.length) return null;
 
   function handleFetch() {
@@ -103,27 +115,50 @@ export function MissingWebsitePrompt({
     void onFetch(entries);
   }
 
+  function setWebsite(companyId: string, next: string) {
+    setValues((prev) => ({ ...prev, [companyId]: next }));
+    if (localErrors[companyId]) {
+      setLocalErrors((prev) => {
+        const copy = { ...prev };
+        delete copy[companyId];
+        return copy;
+      });
+    }
+  }
+
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[18px] border border-brand-stratus-yellow/35 bg-white/90 shadow-[var(--shadow-brand-sm)]",
+        "overflow-hidden rounded-[16px] border border-brand-stratus-yellow/35 bg-white/90 shadow-[var(--shadow-brand-sm)]",
         "backdrop-blur-sm",
         className,
       )}
     >
-      <div className="relative border-b border-brand-border/50 px-3.5 py-2.5">
+      <div className="relative border-b border-brand-border/50 px-3 py-2">
         <div className="ish-board-hero-stripe pointer-events-none absolute inset-x-0 top-0" aria-hidden />
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-[13px] font-bold tracking-tight text-brand-ink">Need websites</p>
-            <p className="text-[11px] text-brand-ink-faint">
-              {companies.length} compan{companies.length === 1 ? "y" : "ies"} · paste official sites, then fetch
-            </p>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <p className="text-[13px] font-bold tracking-tight text-brand-ink">Need websites</p>
+              <p className="text-[11px] text-brand-ink-faint">
+                {filledEntries.length}/{companies.length} ready
+                {doneCount > 0 ? ` · ${doneCount} done` : ""}
+              </p>
+            </div>
           </div>
+          {doneCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => setHideDone((v) => !v)}
+              className="shrink-0 rounded-full px-2 py-1 text-[10.5px] font-semibold text-brand-stratus-blue hover:bg-brand-stratus-blue/10"
+            >
+              {hideDone ? "Show done" : "Hide done"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-brand-ink-soft hover:bg-brand-canvas hover:text-brand-ink"
+            className="flex size-7 shrink-0 items-center justify-center rounded-full text-brand-ink-soft hover:bg-brand-canvas hover:text-brand-ink"
             aria-label={collapsed ? "Expand website panel" : "Collapse website panel"}
           >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
@@ -133,89 +168,99 @@ export function MissingWebsitePrompt({
 
       {!collapsed ? (
         <>
-          <div className={cn("space-y-2 overflow-y-auto px-3.5 py-3", compact ? "max-h-[220px]" : "max-h-[320px]")}>
-            {companies.map((company) => {
+          <div
+            className={cn(
+              "divide-y divide-brand-border/50 overflow-y-auto",
+              compact ? "max-h-[min(28vh,200px)]" : "max-h-[min(36vh,260px)]",
+            )}
+          >
+            {visibleCompanies.map((company) => {
               const status = applyingSet.has(company.id)
                 ? "fetching"
                 : (rowStatus?.[company.id] ?? "idle");
               const label = statusLabel(status);
+              const error = localErrors[company.id];
               return (
-                <div key={company.id} className="rounded-[14px] border border-brand-border/60 bg-white/80 px-3 py-2.5">
-                  <div className="mb-1.5 flex items-start justify-between gap-2">
+                <div key={company.id} className="px-3 py-1.5 hover:bg-brand-canvas/40">
+                  <div className="flex items-center gap-2">
                     <label
                       htmlFor={`website-${company.id}`}
-                      className="min-w-0 text-[12px] font-semibold leading-snug text-brand-ink"
+                      className="w-[7.5rem] shrink-0 truncate text-[11.5px] font-semibold text-brand-ink sm:w-[9.5rem]"
+                      title={company.name}
                     >
                       {company.name}
                     </label>
+                    <div className="relative min-w-0 flex-1">
+                      <Globe className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-brand-ink-faint" />
+                      <input
+                        id={`website-${company.id}`}
+                        value={values[company.id] ?? ""}
+                        onChange={(event) => setWebsite(company.id, event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" && filledEntries.length > 0 && !applying) {
+                            event.preventDefault();
+                            handleFetch();
+                          }
+                        }}
+                        placeholder="company.com"
+                        autoComplete="url"
+                        inputMode="url"
+                        disabled={applying || status === "done"}
+                        className={cn(
+                          "h-8 w-full rounded-lg border bg-white pl-7 pr-2 text-[11.5px] text-brand-ink outline-none placeholder:text-brand-ink-faint",
+                          error
+                            ? "border-red-400/70"
+                            : "border-brand-border/60 focus:border-brand-stratus-blue/50",
+                          status === "done" && "bg-brand-canvas/60 text-brand-ink-soft",
+                        )}
+                      />
+                    </div>
                     {label ? (
                       <span
                         className={cn(
-                          "shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                          "hidden w-14 shrink-0 truncate text-center text-[9px] font-bold uppercase tracking-wide sm:inline",
                           status === "fetching" || status === "queued"
-                            ? "bg-brand-stratus-blue/15 text-brand-stratus-blue"
+                            ? "text-brand-stratus-blue"
                             : status === "done"
-                              ? "bg-brand-stratus-blue/10 text-brand-ink"
+                              ? "text-brand-ink-soft"
                               : status === "error" || status === "no_match"
-                                ? "bg-brand-stratus-salmon/15 text-brand-ink-soft"
-                                : "bg-brand-canvas text-brand-ink-faint",
+                                ? "text-red-600"
+                                : "text-brand-ink-faint",
                         )}
                       >
                         {label}
                       </span>
-                    ) : null}
+                    ) : (
+                      <span className="hidden w-14 shrink-0 sm:block" aria-hidden />
+                    )}
                   </div>
-                  <div className="relative">
-                    <Globe className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-brand-ink-faint" />
-                    <input
-                      id={`website-${company.id}`}
-                      value={values[company.id] ?? ""}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setValues((prev) => ({ ...prev, [company.id]: next }));
-                        if (localErrors[company.id]) {
-                          setLocalErrors((prev) => {
-                            const copy = { ...prev };
-                            delete copy[company.id];
-                            return copy;
-                          });
-                        }
-                      }}
-                      placeholder="https://company.com"
-                      autoComplete="url"
-                      inputMode="url"
-                      disabled={applying}
-                      className="ish-modal-field h-9 w-full rounded-[12px] border border-brand-border/70 bg-white pl-8 pr-2.5 text-[12px] text-brand-ink outline-none placeholder:text-brand-ink-faint"
-                    />
-                  </div>
-                  {localErrors[company.id] ? (
-                    <p className="mt-1 text-[11px] font-medium text-red-600">{localErrors[company.id]}</p>
+                  {error ? (
+                    <p className="mt-0.5 pl-[7.5rem] text-[10px] font-medium text-red-600 sm:pl-[9.5rem]">
+                      {error}
+                    </p>
                   ) : null}
                 </div>
               );
             })}
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-brand-border/60 bg-white/95 px-3.5 py-2.5">
-            <button
-              type="button"
-              onClick={() => setCollapsed(true)}
-              disabled={applying}
-              className="ish-modal-cancel h-9 rounded-[12px] border border-brand-border px-3.5 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
-            >
-              Collapse
-            </button>
+          <div className="flex items-center justify-between gap-2 border-t border-brand-border/60 bg-white/95 px-3 py-2">
+            <p className="min-w-0 truncate text-[10.5px] text-brand-ink-faint">
+              Paste official domains · Enter to fetch
+            </p>
             <button
               type="button"
               onClick={handleFetch}
               disabled={applying || filledEntries.length === 0}
-              className="ish-scout-cta-blue h-9 rounded-[12px] px-3.5 text-[12px] font-semibold text-white disabled:opacity-40"
+              className="ish-scout-cta-blue h-8 shrink-0 rounded-[10px] px-3 text-[12px] font-semibold text-white disabled:opacity-40"
             >
               {applying
                 ? "Fetching…"
-                : filledEntries.length === 1
-                  ? "Fetch from 1 site"
-                  : `Fetch from ${filledEntries.length || "—"} sites`}
+                : filledEntries.length === 0
+                  ? "Fetch sites"
+                  : filledEntries.length === 1
+                    ? "Fetch 1 site"
+                    : `Fetch ${filledEntries.length} sites`}
             </button>
           </div>
         </>

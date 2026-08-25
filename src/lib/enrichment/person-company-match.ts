@@ -172,6 +172,46 @@ const ENTITY_SUFFIX_TOKENS = new Set([
   "part",
 ]);
 
+/**
+ * Common first tokens shared by many unrelated India companies.
+ * Alone they must never prove employment (Sai Chemicals ≠ Sai Lifescience).
+ * True short brands (TVS, HCL, IBM) are NOT in this set.
+ */
+const WEAK_COMPANY_PREFIXES = new Set([
+  "sai",
+  "sri",
+  "shri",
+  "shree",
+  "the",
+  "new",
+  "old",
+  "for",
+  "and",
+  "my",
+  "our",
+  "best",
+  "top",
+  "india",
+  "indian",
+  "bharat",
+  "national",
+  "united",
+  "general",
+  "global",
+  "royal",
+  "modern",
+  "premier",
+  "prime",
+  "super",
+  "mega",
+  "om",
+  "jai",
+]);
+
+export function isWeakCompanyPrefix(token: string): boolean {
+  return WEAK_COMPANY_PREFIXES.has(token.toLowerCase().trim());
+}
+
 /** Tokens that identify the operating entity, keeping subsidiary markers like trading/motor/india. */
 export function entityTokens(name: string): string[] {
   return normalizeCompanyName(name)
@@ -204,10 +244,21 @@ export function entitiesReferToSameCompany(personEntity: string, scoutCompany: s
   const pExtra = pTokens.filter((token) => !sTokens.includes(token));
   const sExtra = sTokens.filter((token) => !pTokens.includes(token));
 
-  // Profile names a more specific unit (Nissan Trading India vs Nissan).
+  // Profile names a more specific or sibling unit (Nissan Trading vs Nissan, Sai Lifescience vs Sai Chemicals).
   if (pExtra.length > 0) return false;
 
+  // Weak prefix-only person brand ("Sai") must not match multi-token scouts ("Sai Chemicals").
+  // Short true brands (TVS, HCL) still match a longer scout name.
+  if (
+    pTokens.length === 1 &&
+    sTokens.length >= 2 &&
+    (WEAK_COMPANY_PREFIXES.has(pTokens[0]!) || (pTokens[0]?.length ?? 0) < 3)
+  ) {
+    return false;
+  }
+
   // Person is the same or less specific than the scout (TVS headline, TVS Motor scout).
+  void sExtra;
   return true;
 }
 
@@ -254,13 +305,26 @@ function companyNeedles(companyName: string): string[] {
   if (trimmed) needles.add(trimmed.toLowerCase());
   const normalized = normalizeCompanyName(companyName);
   if (normalized) needles.add(normalized);
-  const first = normalized.split(" ")[0];
-  if (first && first.length >= 5) needles.add(first);
+  const tokens = entityTokens(companyName);
+  const first = tokens[0] ?? normalized.split(" ")[0];
+  // Only use the first token alone when it is a real brand, not a shared prefix.
+  if (first && first.length >= 5 && !WEAK_COMPANY_PREFIXES.has(first) && tokens.length === 1) {
+    needles.add(first);
+  }
   // Short brands (TVS, HCL, IBM) otherwise fail "HR at TVS" vs "TVS Motor Company".
   for (const token of distinctiveBrandTokens(companyName)) {
+    if (WEAK_COMPANY_PREFIXES.has(token) && tokens.length >= 2) continue;
     if (token.length >= 5) needles.add(token);
     if (token.length >= 3 && token.length < 5 && !WEAK_SHORT_BRAND_TOKENS.has(token)) {
       needles.add(token);
+    }
+  }
+  // Employment matching must keep distinguishing unit words even when domain-quality
+  // treats them as generic (chemicals, trading, steel).
+  if (tokens.length >= 2) {
+    for (const token of tokens) {
+      if (WEAK_COMPANY_PREFIXES.has(token)) continue;
+      if (token.length >= 4) needles.add(token);
     }
   }
   const compact = compactCompanyName(companyName);
@@ -271,6 +335,20 @@ function companyNeedles(companyName: string): string[] {
 export function textMentionsCompany(text: string, companyName: string): boolean {
   const hay = text.toLowerCase();
   if (!hay.trim() || !companyName.trim()) return false;
+
+  const tokens = entityTokens(companyName);
+  if (tokens.length >= 2) {
+    const normalized = normalizeCompanyName(companyName);
+    if (normalized && new RegExp(`\\b${escapeRegExp(normalized)}\\b`, "i").test(hay)) return true;
+    const compact = compactCompanyName(companyName);
+    if (compact.length >= 6 && hay.replace(/[^a-z0-9]/g, "").includes(compact)) return true;
+
+    // Require distinguishing tokens (chemicals / lifescience), not only a shared prefix (sai).
+    const required = tokens.filter((token) => !WEAK_COMPANY_PREFIXES.has(token));
+    const need = required.length > 0 ? required : tokens;
+    return need.every((token) => new RegExp(`\\b${escapeRegExp(token)}\\b`, "i").test(hay));
+  }
+
   return companyNeedles(companyName).some((needle) =>
     new RegExp(`\\b${escapeRegExp(needle)}\\b`, "i").test(hay),
   );
@@ -436,13 +514,16 @@ export function hitShowsCurrentEmployment(
   const operatingEntity = specificOperatingEntityFromProfile(hit.title, hit.content);
   if (operatingEntity) {
     if (!entitiesReferToSameCompany(operatingEntity, companyName)) return false;
-    // Parenthetical operating unit matched (e.g. Nissan Trading India). LinkedIn may still
-    // show the group legal name on the Present line (Nissan Motor Corporation).
-    return textMentionsCompany(blob, companyName);
+    // Operating unit already validated (e.g. TVS on a TVS Motor scout, or Nissan Trading
+    // rejected on Nissan). Do not re-require every scout token in the blob.
+    return true;
   }
 
   const headlineEmployer = currentEmployerFromHeadline(hit.title);
-  if (headlineEmployer && !entitiesReferToSameCompany(headlineEmployer, companyName)) return false;
+  if (headlineEmployer) {
+    if (!entitiesReferToSameCompany(headlineEmployer, companyName)) return false;
+    return true;
+  }
 
   // If the content explicitly shows "- Present" for a DIFFERENT company, this person
   // has moved on from the scouted company. Catch stale Tavily snapshots like Anusha at Aron Universal.

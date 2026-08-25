@@ -5,6 +5,7 @@ import { Loader2, MapPin, Plus, X } from "lucide-react";
 import { SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
 import { SettingsSegmented } from "@/components/settings/settings-segmented";
 import { cn } from "@/lib/utils";
+import { FilterAllClear } from "@/design-system";
 import {
   AREA_OF_FOCUS_RADIUS_KM,
   DEFAULT_AREA_OF_FOCUS_RADIUS_KM,
@@ -145,23 +146,14 @@ export function AreaOfFocusSettings({ scoutGeo, value, onChange }: Props) {
                     Remove
                   </button>
                 </div>
-                <div className="mb-2 flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => patchSaved(setAllNearbyAreasSelected(focus, true))}
-                    disabled={focus.nearbyAreas.every(isNearbyAreaSelected)}
-                    className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                  >
-                    Select all
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => patchSaved(setAllNearbyAreasSelected(focus, false))}
-                    disabled={focus.nearbyAreas.every((area) => !isNearbyAreaSelected(area))}
-                    className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                  >
-                    Clear all
-                  </button>
+                <div className="mb-2 flex items-center justify-end">
+                  <FilterAllClear
+                    label={`${focus.areaName} nearby areas`}
+                    allSelected={focus.nearbyAreas.every(isNearbyAreaSelected)}
+                    noneSelected={focus.nearbyAreas.every((area) => !isNearbyAreaSelected(area))}
+                    onAll={() => patchSaved(setAllNearbyAreasSelected(focus, true))}
+                    onClear={() => patchSaved(setAllNearbyAreasSelected(focus, false))}
+                  />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {focus.nearbyAreas.map((area) => {
@@ -296,23 +288,14 @@ export function AreaOfFocusSettings({ scoutGeo, value, onChange }: Props) {
                 <p className="mb-2 text-[12px] font-semibold text-brand-ink">
                   {preview.areaName} + {preview.radiusKm} km
                 </p>
-                <div className="mb-2 flex items-center justify-end gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setPreview(setAllNearbyAreasSelected(preview, true))}
-                    disabled={preview.nearbyAreas.every(isNearbyAreaSelected)}
-                    className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                  >
-                    Select all
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreview(setAllNearbyAreasSelected(preview, false))}
-                    disabled={preview.nearbyAreas.every((area) => !isNearbyAreaSelected(area))}
-                    className="text-[11px] font-semibold text-brand-stratus-blue disabled:text-brand-ink-faint"
-                  >
-                    Clear all
-                  </button>
+                <div className="mb-2 flex items-center justify-end">
+                  <FilterAllClear
+                    label={`${preview.areaName} nearby areas preview`}
+                    allSelected={preview.nearbyAreas.every(isNearbyAreaSelected)}
+                    noneSelected={preview.nearbyAreas.every((area) => !isNearbyAreaSelected(area))}
+                    onAll={() => setPreview(setAllNearbyAreasSelected(preview, true))}
+                    onClear={() => setPreview(setAllNearbyAreasSelected(preview, false))}
+                  />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {preview.nearbyAreas.map((area) => {

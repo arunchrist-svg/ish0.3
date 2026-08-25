@@ -49,15 +49,18 @@ export async function notifyReplyReceived(params: NotifyReplyParams): Promise<{ 
   const leadUrl = `${appUrl}/leads/${params.leadId}?tab=Email`;
 
   const draftReady = !params.draftFailed && (params.rubricTotal ?? 0) >= 75;
+  const blankDraft = !params.draftFailed && !draftReady;
   const title = draftReady
-    ? `${contact.firstName ?? contact.name} replied — draft ready`
+    ? `${contact.firstName ?? contact.name} replied, draft ready`
     : `${contact.firstName ?? contact.name} replied at ${account.name}`;
 
   const body = params.draftFailed
-    ? `They said: "${snippet}" — AI draft needs your help.`
+    ? `They said: "${snippet}". Could not open a reply draft.`
     : draftReady
-      ? `They said: "${snippet}" — review your AI draft.`
-      : `They said: "${snippet}" — draft needs a quick edit.`;
+      ? `They said: "${snippet}". Review your AI draft.`
+      : blankDraft
+        ? `They said: "${snippet}". Write your reply.`
+        : `They said: "${snippet}". Draft needs a quick edit.`;
 
   const userIds = await getNotifyUserIds(params.tenantId);
   let inApp = 0;
@@ -86,7 +89,10 @@ export async function notifyReplyReceived(params: NotifyReplyParams): Promise<{ 
   }
 
   if (flags.notifyEmail !== false && urgency === "urgent") {
-    const emailConfig = await getResolvedEmailConfig(params.workspaceId);
+    const { listWorkspaceUserEmailSettings } = await import("@/lib/settings/email-settings");
+    const userSettings = await listWorkspaceUserEmailSettings(params.workspaceId);
+    const senderUserId = userSettings.find((row) => row.overrides.smtpPass?.trim())?.userId;
+    const emailConfig = await getResolvedEmailConfig(params.workspaceId, senderUserId ?? null);
     const status = smtpTransport.getStatus(emailConfig);
     if (status.configured) {
       for (const userId of userIds) {

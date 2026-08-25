@@ -678,6 +678,7 @@ export async function runWriterStream(
   }
 
   if (!finalDraft) throw new Error("Writer stream ended without a draft");
+  invalidateLeadCaches(leadId);
   return finalDraft;
 }
 
@@ -692,6 +693,7 @@ export async function runWriterSequence(
     occasionTheme: options?.occasionTheme,
     mode: "sequence",
   });
+  invalidateLeadCaches(leadId);
   return data.drafts ?? [data.draft];
 }
 
@@ -772,7 +774,7 @@ export async function fetchEmailOverview(tabs?: EmailOverviewTab | EmailOverview
     const list = Array.isArray(tabs) ? tabs : [tabs];
     params.set("tabs", list.join(","));
   } else {
-    params.set("tab", "needs_review");
+    params.set("tabs", "all");
   }
   const res = await fetch(`/api/email/overview?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to load outreach queue");
@@ -864,6 +866,37 @@ export async function createBlankOutreachSequence(params: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? "Failed to start blank drafts");
+  }
+  invalidateLeadCaches(params.leadId);
+  return res.json();
+}
+
+export async function ensureCatalogOnOpenDraftClient(params: {
+  leadId: string;
+}): Promise<{ draft: WriterDraft; drafts: WriterDraft[] }> {
+  const res = await fetch("/api/outreach/catalog-on-open", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? "Failed to load If Opened draft");
+  }
+  return res.json();
+}
+
+export async function ensureBlankReplyDraftClient(params: {
+  leadId: string;
+}): Promise<{ draft: WriterDraft; drafts: WriterDraft[] }> {
+  const res = await fetch("/api/outreach/blank-reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? "Failed to open blank reply");
   }
   return res.json();
 }
@@ -1320,7 +1353,7 @@ export type ThreadPhase =
 
 export type BarMode = "hidden" | "drafts" | "sequence" | "reply";
 
-export type BarNodeState = "done" | "current" | "upcoming" | "scheduled" | "paused";
+export type BarNodeState = "done" | "current" | "upcoming" | "scheduled" | "paused" | "skipped";
 
 export type BarNodeKind = "draft" | "sent" | "scheduled" | "inbound" | "reply_draft";
 
@@ -1366,9 +1399,10 @@ export type EmailThread = {
   sequenceState?: SequenceControlState;
   phase: ThreadPhase;
   nextAction: "send_reply" | "await_reply" | "followup_due" | "compose" | "complete";
-  nextStep: { title: string; description: string; primaryAction?: string };
+  nextStep?: { title: string; description: string; primaryAction?: string };
   barMode: BarMode;
   barNodes: BarNode[];
+  cadenceDays?: [number, number];
   selectedNodeId?: string;
   events: ThreadEvent[];
   inboundSnippet?: string;

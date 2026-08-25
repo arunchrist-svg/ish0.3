@@ -1,0 +1,55 @@
+[
+  {
+    "id": "hosur-hr-keep",
+    "expected": "accept",
+    "reason": "city_corridor",
+    "companyName": "Titan",
+    "person": {
+      "name": "Kavitha",
+      "title": "HR Manager",
+      "location": "Hosur"
+    }
+  },
+  {
+    "id": "bengaluru-hq-keep-on-hosur",
+    "expected": "accept",
+    "reason": "city_corridor",
+    "companyName": "Titan",
+    "person": {
+      "name": "Ramesh",
+      "title": "HR Director",
+      "location": "Bengaluru"
+    }
+  },
+  {
+    "id": "delhi-drop-on-hosur",
+    "expected": "reject",
+    "reason": "city_corridor",
+    "companyName": "Titan",
+    "person": {
+      "name": "Neha",
+      "title": "HR Head",
+      "location": "Delhi"
+    }
+  },
+  {
+    "id": "hr-manager-buyer",
+    "expected": "accept",
+    "reason": "buyer_role",
+    "companyName": "Titan Company",
+    "person": {
+      "name": "Asha",
+      "title": "HR Manager at Titan Company"
+    }
+  },
+  {
+    "id": "finance-director-non-buyer",
+    "expected": "reject",
+    "reason": "buyer_role",
+    "companyName": "Titan Company",
+    "person": {
+      "name": "Arjun",
+      "title": "Finance Director"
+    }
+  }
+]

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Columns3, RefreshCw, Search } from "lucide-react";
+import { Columns3, Loader2, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchLeadAddedByUsers, fetchLeadsPage } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
@@ -20,6 +20,7 @@ import {
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
+import { useLoadMoreOnScroll } from "@/hooks/use-load-more-on-scroll";
 import {
   applyLeadListView,
   LEAD_ADDED_BY_STORAGE_KEY,
@@ -208,6 +209,14 @@ export function LeadsBoardApp() {
     }
   }
 
+  const boardScrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreSentinelRef = useLoadMoreOnScroll({
+    enabled: Boolean(nextCursor) && !loading,
+    loading: loadingMore,
+    onLoadMore: loadMore,
+    root: boardScrollRef,
+  });
+
   useEffect(() => {
     load();
   }, []);
@@ -354,6 +363,19 @@ export function LeadsBoardApp() {
           size={40}
         />
       </div>
+      {!loading && !isEmpty ? (
+        <div className="flex flex-wrap gap-2 px-4 pb-2 lg:hidden">
+          {PIPELINE_STAGES.map((stage) => (
+            <span
+              key={stage}
+              className="rounded-full border border-brand-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft"
+            >
+              {stage}
+              <span className="ml-1.5 tabular-nums text-brand-ink">{grouped[stage]?.length ?? 0}</span>
+            </span>
+          ))}
+        </div>
+      ) : null}
       <AppPageHeader
         compact
         icon={Columns3}
@@ -410,7 +432,10 @@ export function LeadsBoardApp() {
         ) : null}
       </AppPageHeader>
 
-      <div className="min-h-0 flex-1 overflow-hidden px-6 py-5">
+      <div
+        ref={boardScrollRef}
+        className="ish-page-padding min-h-0 flex-1 overflow-x-auto overflow-y-auto py-3 lg:px-6 lg:py-5"
+      >
         {loading ? (
           <BoardSkeleton />
         ) : isEmpty ? (
@@ -422,7 +447,7 @@ export function LeadsBoardApp() {
             <p className="text-[12px] text-brand-ink-soft">Try a different search or clear filters</p>
           </div>
         ) : (
-          <div className="flex h-full gap-4 overflow-x-auto pb-2 scrollbar-none">
+          <div className="flex h-full min-h-[min(100%,520px)] gap-4 pb-2 scrollbar-none">
             {PIPELINE_STAGES.map((stage) => {
               const columnLeads = grouped[stage] ?? [];
               const writeBusy = Boolean(writingProgress);
@@ -472,15 +497,14 @@ export function LeadsBoardApp() {
           </div>
         )}
         {nextCursor && !loading ? (
-          <div className="flex justify-center border-t border-brand-border/40 py-3">
-            <button
-              type="button"
-              onClick={() => void loadMore()}
-              disabled={loadingMore}
-              className="rounded-full border border-brand-border/70 bg-white px-4 py-2 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
-            >
-              {loadingMore ? "Loading…" : "Load more leads"}
-            </button>
+          <div
+            ref={loadMoreSentinelRef}
+            className="flex h-10 items-center justify-center py-3"
+            aria-hidden={!loadingMore}
+          >
+            {loadingMore ? (
+              <Loader2 className="size-4 animate-spin text-brand-ink-faint" aria-label="Loading more leads" />
+            ) : null}
           </div>
         ) : null}
       </div>

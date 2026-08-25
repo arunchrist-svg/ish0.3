@@ -15,7 +15,7 @@ import {
   buildPersonalizationContext,
   formatPersonalizationContextForPrompt,
 } from "@/lib/agents/personalization-context";
-import { companyNameForEmail } from "@/lib/email/company-display-name";
+import { companyNameForEmail, scrubLegalEntityCopy } from "@/lib/email/company-display-name";
 import type { CompanyOverview } from "@/lib/company-overview";
 import { WhatsAppMobileRequiredError, WhatsAppNotConnectedError, shouldSetDraftReadyFromWhatsApp } from "@/lib/whatsapp/errors";
 import {
@@ -144,7 +144,7 @@ export async function runWhatsAppWriter(leadId: string): Promise<string> {
   const account = lead.account as typeof accounts.$inferSelect;
   if (!sanitizePhone(contact.phone)) throw new WhatsAppMobileRequiredError();
 
-  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
   const { brandConfig, campaignMode, fromName } = emailConfig;
   const senderFirstName = fromName.split(" ")[0] || fromName || "there";
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
@@ -158,14 +158,14 @@ export async function runWhatsAppWriter(leadId: string): Promise<string> {
     leadId,
     contactName: contact.name,
     contactTitle: contact.title,
-    accountName: account.name,
+    accountName: companyDisplayName,
     brandName: brandConfig.brandName,
     existing: research,
   });
   const persona = buildPersonalizationContext({
     industry: account.industry,
     city: account.city,
-    accountName: account.name,
+    accountName: companyDisplayName,
     contactTitle: contact.title,
     intelNotes: account.intelNotes,
     overview,
@@ -191,6 +191,7 @@ Rules:
 - Never: FREE, urgent, guarantee, act now, complimentary, excited to, just following up, circling back.
 - Prefer tasting sample or sample box over complimentary or free.
 - Never cite numeric company stats (employee count, headcount, revenue).
+- Use company name "${companyDisplayName}" only. Never append Pvt Ltd, Private Limited, Ltd, or other legal suffixes.
 - One question only.
 - Product truth to use, never announce as "${brandConfig.brandName} offers...": ${writeup}
 - Escape newlines in JSON as \\n.`;
@@ -231,6 +232,8 @@ ${formatPersonalizationContextForPrompt(persona)}`;
       hook: brief.outreachHook,
     });
   }
+
+  body = scrubLegalEntityCopy(sanitizeWhatsAppCopy(body), companyDisplayName);
 
   const outreachId = await persistWhatsAppDraft({
     leadId,

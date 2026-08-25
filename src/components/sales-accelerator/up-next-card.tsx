@@ -186,7 +186,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
   const showEmailThreadStep =
     emailThread &&
     emailThread.phase !== "compose" &&
-    emailThread.nextStep.primaryAction;
+    emailThread.nextStep?.primaryAction;
 
   const mailTaskTitles = new Set([
     "Generate Email Draft",
@@ -279,7 +279,7 @@ export function UpNextPanel({ tasks, lead, hasEmailDraft, onOpenEmailTab, onLead
         />
       )}
 
-      {showEmailThreadStep && emailThread && (
+      {showEmailThreadStep && emailThread?.nextStep && (
         <ActionCard
           title={emailThread.nextStep.title}
           step="Email outreach"

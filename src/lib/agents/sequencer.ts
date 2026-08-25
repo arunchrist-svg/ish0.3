@@ -8,9 +8,11 @@ import { runWriter } from "@/lib/agents/writer";
 import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { isOutreachSendingPaused } from "@/lib/email/config";
+import { isWithinSendWindow, nextSendWindowStart } from "@/lib/email/send-window";
+import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
-import { ensureCatalogFollowUpBeforeSend } from "@/lib/email/promote-catalog-on-open";
+import { isCatalogOnOpenDraft, isIshFestiveCatalogBody, CATALOG_ON_OPEN_EMAIL_KIND } from "@/lib/email/ish-festive-catalog";
 
 export async function runSequencer(): Promise<{
   processed: number;
@@ -58,11 +60,30 @@ export async function runSequencer(): Promise<{
       const account = lead.account as typeof accounts.$inferSelect;
       const research = lead.research as typeof leadResearch.$inferSelect | null;
 
-      const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+      const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
       if (isOutreachSendingPaused(emailConfig)) {
         skipped++;
         continue;
       }
+
+      const sendWindow = {
+        daysOfWeek: emailConfig.sendDaysOfWeek,
+        hourStart: emailConfig.sendHourStart,
+        hourEnd: emailConfig.sendHourEnd,
+        timezone: emailConfig.sendTimezone,
+      };
+      if (!isWithinSendWindow(now, sendWindow)) {
+        const nextSlot = nextSendWindowStart(now, sendWindow);
+        if (nextSlot.getTime() > now.getTime()) {
+          await db
+            .update(outreachSchedule)
+            .set({ scheduledFor: nextSlot })
+            .where(eq(outreachSchedule.id, sched.id));
+        }
+        skipped++;
+        continue;
+      }
+
       if (emailConfig.sendMode === "live") {
         await assertPlanEntitlement(lead.tenantId, "live_send");
         await assertCredits(lead.tenantId, "email.live", 1);
@@ -76,6 +97,10 @@ export async function runSequencer(): Promise<{
       const followUpMode = sched.sequenceDay <= 3 ? "follow_up" : "final_reminder";
 
       if (!generatedOutreach) {
+        if (sched.emailKind === CATALOG_ON_OPEN_EMAIL_KIND) {
+          skipped++;
+          continue;
+        }
         await assertCredits(lead.tenantId, "writer.draft", 1);
         const originalOutreach = await db.query.leadOutreach.findFirst({
           where: eq(leadOutreach.leadId, sched.leadId),
@@ -92,33 +117,29 @@ export async function runSequencer(): Promise<{
 
       if (!generatedOutreach) throw new Error("No outreach draft for follow-up");
 
-      const catalogSwap = await ensureCatalogFollowUpBeforeSend({
-        leadId: sched.leadId,
-        followUpOutreachId: generatedOutreach.id,
-        sequencePosition: generatedOutreach.sequencePosition ?? 2,
-      });
-      if (catalogSwap) {
-        generatedOutreach = {
-          ...generatedOutreach,
-          emailBody: catalogSwap.emailBody,
-          subjectA: catalogSwap.subjectA || generatedOutreach.subjectA,
-        };
-      }
-
-      const subject = generatedOutreach.subjectA ?? `Re: Outreach for ${account.name}`;
+      const subject =
+        generatedOutreach.subjectA ?? `Re: Outreach for ${companyNameForEmail(account.name)}`;
       const body = generatedOutreach.emailBody ?? "";
+      const isCatalog =
+        isCatalogOnOpenDraft(generatedOutreach) || isIshFestiveCatalogBody(body);
 
       const quality = await evaluateOutreachDraft({
         subject,
         emailBody: body,
         contact: { name: contact.name, firstName: contact.firstName, title: contact.title },
-        account,
+        account: {
+          name: companyNameForEmail(account.name),
+          industry: account.industry,
+          city: account.city,
+          employees: account.employees,
+          intelNotes: account.intelNotes,
+        },
         outreachHook: research?.outreachHook,
         sequencePosition: generatedOutreach.sequencePosition ?? 2,
       });
 
-      const requiresReview = emailConfig.followUpPolicy === "review_all_followups";
-      const failsQuality = !quality.passes || Boolean(generatedOutreach.revisionTimeout);
+      const requiresReview = !isCatalog && emailConfig.followUpPolicy === "review_all_followups";
+      const failsQuality = !isCatalog && (!quality.passes || Boolean(generatedOutreach.revisionTimeout));
 
       if (requiresReview || failsQuality) {
         await db

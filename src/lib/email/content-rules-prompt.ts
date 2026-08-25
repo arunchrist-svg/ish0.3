@@ -1,5 +1,6 @@
 import type { EmailStyle } from "@/lib/email/config";
 import { resolveOutreachEmailStyle } from "@/lib/email/config";
+import { REPLY_SEQUENCE_POSITION } from "@/lib/email/outreach-templates";
 
 export type AntiSpamPromptContext = {
   sequencePosition: number;
@@ -27,6 +28,7 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
     "- One question CTA; keep under 120 words",
     '- "Happy to coordinate" or "happy to help" is NOT a soft exit',
     `- ${NO_COMPANY_STATS_RULE}`,
+    "- Use the short company trading name only (e.g. MV, not MV Pvt Ltd). Never write Pvt Ltd, Private Limited, India Pvt Ltd, Ltd, LLP, or similar legal suffixes. Never invent a different company or parent-group name.",
     "REWRITE RULES:",
     "- Max 4 sentences in the pitch body for emails 1 and 2 (excluding greeting and sign-off)",
     "- Subject: specific + curiosity-inducing, under 50 characters, never generic (no Following up, Quick question, Checking in)",
@@ -57,7 +59,7 @@ export function getAntiSpamWritingRules(ctx: AntiSpamPromptContext): string {
     );
   }
 
-  if (ctx.sequencePosition >= 4 || ctx.isReplyDraft) {
+  if (ctx.sequencePosition === REPLY_SEQUENCE_POSITION || ctx.isReplyDraft) {
     lines.push(
       "- REPLY STAGE: They already replied to our outreach. Advance to the next step.",
       "- REPLY STAGE: You MAY ask for address, phone, delivery details, or scheduling as needed.",

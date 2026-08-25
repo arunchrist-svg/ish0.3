@@ -326,11 +326,10 @@ export function HomeApp() {
       largeTitle
       rightSlot={
         <div className="flex items-center gap-1.5">
-          <CreditBalanceChip compact className="lg:hidden" />
+          <CreditBalanceChip compact />
           <NotificationBell />
         </div>
       }
-      contentClassName="lg:overflow-y-visible"
       className="lg:bg-brand-canvas"
     >
       <PushPermissionBanner />
@@ -366,7 +365,7 @@ export function HomeApp() {
                 </span>
               );
             })()}
-            <CreditBalanceChip className="hidden lg:inline-flex" />
+            <CreditBalanceChip />
             <button
               type="button"
               onClick={() => loadAll(true)}
@@ -468,7 +467,7 @@ export function HomeApp() {
 {inboxCount > 0 ? (
           <Link
             href="/inbox"
-            className="mb-5 flex min-h-[56px] items-center gap-3 rounded-[20px] bg-white px-4 py-3 shadow-[var(--shadow-brand-sm)] ring-1 ring-brand-stratus-salmon/25 active:scale-[0.99] lg:hidden"
+            className="mb-5 flex min-h-[56px] items-center gap-3 rounded-[20px] bg-white px-4 py-3 shadow-[var(--shadow-brand-sm)] ring-1 ring-brand-stratus-salmon/25 active:scale-[0.99]"
           >
             <div className="flex size-10 items-center justify-center rounded-2xl bg-brand-pink-soft">
               <Inbox className="size-5 text-brand-stratus-salmon" />

@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { leads, accounts, contacts } from "@/db/schema";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
+import { canAccessLeadRecord, withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export async function GET() {
   try {
@@ -26,7 +27,7 @@ export async function GET() {
       .from(leads)
       .innerJoin(contacts, eq(leads.contactId, contacts.id))
       .innerJoin(accounts, eq(leads.accountId, accounts.id))
-      .where(and(eq(leads.tenantId, ctx.tenantId), eq(leads.isPinned, true)))
+      .where(withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId), eq(leads.isPinned, true)))
       .orderBy(desc(leads.updatedAt));
 
     const pinnedAccounts = await db
@@ -62,6 +63,10 @@ export async function POST(req: Request) {
     const { type, id, pinned } = await req.json();
 
     if (type === "lead") {
+      const [lead] = await db.select().from(leads).where(eq(leads.id, id)).limit(1);
+      if (!lead || !canAccessLeadRecord(ctx, lead)) {
+        return NextResponse.json({ error: "Lead not found" }, { status: 404 });
+      }
       await db.update(leads).set({ isPinned: pinned }).where(and(eq(leads.id, id), eq(leads.tenantId, ctx.tenantId)));
     } else if (type === "company") {
       await db.update(accounts).set({ isPinned: pinned }).where(and(eq(accounts.id, id), eq(accounts.tenantId, ctx.tenantId)));

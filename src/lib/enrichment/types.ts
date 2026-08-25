@@ -25,6 +25,7 @@ export type ScoutCompanyResult = {
   leadabilityProbeSource?: string;
   /** Set when returned under a Focus Area Places location bias circle. */
   scoutGeoVerified?: boolean;
+  fitScoreReason?: string;
 };
 
 export type ScoutPersonResult = {
@@ -42,6 +43,7 @@ export type ScoutPersonResult = {
   bio?: string;
   isKeyDM?: boolean;
   matchScore?: number;
+  matchScoreReason?: string;
   engagementSignals?: string[];
   dataSource: string;
   externalId?: string;

@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, queued: status === "queued", leadId });
     }
 
-    const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+    const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
     const [account] = await db.select().from(accounts).where(eq(accounts.id, lead.accountId)).limit(1);
     const occasionId =
       resolveWriteOccasion({

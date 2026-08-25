@@ -14,6 +14,8 @@ import {
   regenerateSequenceStep,
   updateOutreachDraft,
   createBlankOutreachSequence,
+  ensureCatalogOnOpenDraftClient,
+  ensureBlankReplyDraftClient,
   type WriterMode,
 } from "@/lib/api-client";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
@@ -42,6 +44,13 @@ import { ConversationTimeline } from "./conversation-timeline";
 import { SequenceControlButtons } from "./sequence-control-buttons";
 import { SyncRepliesButton } from "./sync-replies-button";
 import {
+  CATALOG_ON_OPEN_SEQUENCE_POSITION,
+  IF_OPENED_NODE_ID,
+  isCatalogOnOpenDraft,
+  isIshFestiveCatalogBody,
+} from "@/lib/email/ish-festive-catalog";
+import { IF_REPLIED_NODE_ID } from "@/lib/email/blank-reply-constants";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -49,10 +58,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-function ToolbarRule() {
-  return <span className="ish-scout-rule mx-0.5 hidden lg:block" aria-hidden />;
-}
 
 type Props = {
   lead: LeadDetailRecord;
@@ -119,13 +124,28 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }, [thread?.selectedNodeId, lead.id]);
 
   useEffect(() => {
-    if (isReplyLead && phase === "drafting_reply") {
-      setSelectedNodeId("reply-draft");
-    } else if (isReplyLead && phase === "they_replied" && thread?.events) {
-      const inbound = thread.events.find((e) => e.kind === "inbound_reply");
-      if (inbound) setSelectedNodeId(inbound.id);
+    if (isReplyLead && (phase === "drafting_reply" || phase === "they_replied")) {
+      setSelectedNodeId(IF_REPLIED_NODE_ID);
     }
-  }, [isReplyLead, phase, lead.id, thread?.events]);
+  }, [isReplyLead, phase, lead.id]);
+
+  // When they reply, open a blank reply draft so the user can write the body.
+  useEffect(() => {
+    if (!needsReplyDraft) return;
+    let cancelled = false;
+    void ensureBlankReplyDraftClient({ leadId: lead.id })
+      .then(({ draft: blank, drafts }) => {
+        if (cancelled) return;
+        setActiveDraft(blank);
+        onDraftUpdated(blank, drafts);
+        setSelectedNodeId(IF_REPLIED_NODE_ID);
+        onSilentRefresh();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [needsReplyDraft, lead.id, onDraftUpdated, onSilentRefresh]);
 
   useEffect(() => {
     setActiveDraft(draft);
@@ -175,12 +195,37 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     setSelectedOccasion(taggedOccasion ?? (detectedOccasion?.type ? detectedOccasion.type : FESTIVE_OCCASION_SENTINEL));
   }, [lead.id, taggedOccasion, detectedOccasion?.type]);
 
+  // Existing sequences may predate If Opened. Create the A/B catalogue draft on demand.
+  useEffect(() => {
+    if (selectedNodeId !== IF_OPENED_NODE_ID) return;
+    if (sequence.some((d) => isCatalogOnOpenDraft(d))) return;
+    if (!sequence.some((d) => d.sequencePosition === 1)) return;
+    let cancelled = false;
+    void ensureCatalogOnOpenDraftClient({ leadId: lead.id })
+      .then(({ draft: catalogDraft, drafts }) => {
+        if (cancelled) return;
+        setActiveDraft(catalogDraft);
+        onDraftUpdated(catalogDraft, drafts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNodeId, sequence, lead.id, onDraftUpdated]);
+
   const selectedNode = thread?.barNodes.find((n) => n.id === selectedNodeId);
   const selectedEvent = thread?.events.find((e) => e.id === selectedNodeId);
 
   const resolvedDraft = useMemo(() => {
-    if (selectedNodeId === "reply-draft" || selectedEvent?.label === "Your reply") {
+    if (
+      selectedNodeId === "reply-draft" ||
+      selectedNodeId === IF_REPLIED_NODE_ID ||
+      selectedEvent?.label === "Your reply"
+    ) {
       return replyDraft;
+    }
+    if (selectedNodeId === IF_OPENED_NODE_ID) {
+      return sequence.find((d) => isCatalogOnOpenDraft(d));
     }
     if (isReplyLead) {
       if (selectedNode?.outreachId && replyDraft?.id === selectedNode.outreachId) return replyDraft;
@@ -206,6 +251,8 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     return scoreSpamMeter(resolvedDraft.emailBody, resolvedDraft.subjectA ?? "", {
       contactFirstName: lead.firstName,
       sequencePosition: resolvedDraft.sequencePosition ?? 1,
+      allowLongCatalog:
+        isCatalogOnOpenDraft(resolvedDraft) || isIshFestiveCatalogBody(resolvedDraft.emailBody),
       account: {
         name: lead.company,
         employees: lead.employees !== "—" ? lead.employees : undefined,
@@ -231,6 +278,8 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     selectedNode?.kind === "reply_draft" ||
     selectedNode?.kind === "scheduled" ||
     selectedNodeId === "reply-draft" ||
+    selectedNodeId === IF_REPLIED_NODE_ID ||
+    selectedNodeId === IF_OPENED_NODE_ID ||
     selectedNodeId?.startsWith("draft-") ||
     selectedEvent?.status === "draft" ||
     selectedEvent?.status === "scheduled";
@@ -244,6 +293,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     isEditableNode ||
     thread?.showComposeZone ||
     (hasDraft && phase !== "reply_sent" && phase !== "complete") ||
+    (isReplyLead && phase !== "reply_sent") ||
     needsReplyDraft;
   const followUpPosition =
     selectedNode?.kind === "scheduled" && selectedNode.id === "e2"
@@ -278,7 +328,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         const newDraft = await runReplyWriter(lead.id);
         setActiveDraft(newDraft);
         onDraftUpdated(newDraft);
-        setSelectedNodeId("reply-draft");
+        setSelectedNodeId(IF_REPLIED_NODE_ID);
         onSilentRefresh();
         toast.success("Reply draft updated");
         return;
@@ -308,7 +358,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         setActiveDraft(draft);
         onDraftUpdated(draft, draft.sequencePosition != null ? [draft] : undefined);
         setSelectedNodeId("draft-1");
-        onSilentRefresh();
+        onSilentRefresh({ replaceOutreach: true });
         toast.success("Draft ready", {
           action: { label: "Inbox", onClick: () => window.location.assign("/inbox") },
         });
@@ -322,7 +372,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       setSequenceSubjectKey(asVariantKey(first.chosenSubjectKey));
       onDraftUpdated(first, drafts);
       setSelectedNodeId("draft-1");
-      onSilentRefresh();
+      onSilentRefresh({ replaceOutreach: true });
       toast.success("3 drafts ready", {
         action: {
           label: "View queue",
@@ -367,7 +417,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       const newDraft = await runReplyWriter(lead.id);
       setActiveDraft(newDraft);
       onDraftUpdated(newDraft);
-      setSelectedNodeId("reply-draft");
+      setSelectedNodeId(IF_REPLIED_NODE_ID);
       onSilentRefresh();
       composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       toast.success("Reply draft ready");
@@ -395,7 +445,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   function handleSequenceSubjectKey(key: VariantKey) {
     setSequenceSubjectKey(key);
     const ids = sequence
-      .filter((d) => d.templateVariant !== "reply")
+      .filter((d) => d.templateVariant !== "reply" && !isCatalogOnOpenDraft(d))
       .map((d) => d.id);
     void Promise.all(
       ids.map((leadOutreachId) => updateOutreachDraft({ leadOutreachId, chosenSubjectKey: key })),
@@ -406,9 +456,45 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   function handleNodeSelect(nodeId: string) {
     setSelectedNodeId(nodeId);
-    if (nodeId === "reply-draft") {
-      if (replyDraft) setActiveDraft(replyDraft);
-      composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (nodeId === "reply-draft" || nodeId === IF_REPLIED_NODE_ID) {
+      if (!isReplyLead) {
+        toast.message("Reply opens on the bar after they reply, with an empty body for you to write.");
+        return;
+      }
+      if (replyDraft) {
+        setActiveDraft(replyDraft);
+        composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      void ensureBlankReplyDraftClient({ leadId: lead.id })
+        .then(({ draft: blank, drafts }) => {
+          setActiveDraft(blank);
+          onDraftUpdated(blank, drafts);
+          setSelectedNodeId(IF_REPLIED_NODE_ID);
+          onSilentRefresh();
+          composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        })
+        .catch((e) => {
+          toast.error(e instanceof Error ? e.message : "Could not open blank reply");
+        });
+      return;
+    }
+    if (nodeId === IF_OPENED_NODE_ID || nodeId === `draft-${CATALOG_ON_OPEN_SEQUENCE_POSITION}`) {
+      const existing = sequence.find((s) => isCatalogOnOpenDraft(s));
+      if (existing) {
+        setActiveDraft(existing);
+        composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      void ensureCatalogOnOpenDraftClient({ leadId: lead.id })
+        .then(({ draft: catalogDraft, drafts }) => {
+          setActiveDraft(catalogDraft);
+          onDraftUpdated(catalogDraft, drafts);
+          composeRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        })
+        .catch((e) => {
+          toast.error(e instanceof Error ? e.message : "Could not load If Opened draft");
+        });
       return;
     }
     if (nodeId.startsWith("draft-")) {
@@ -454,12 +540,26 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const showProcessBar = (showComposeZone && isEditableNode && !generating) || (isEmptyCompose && !generating);
 
   const writeOptionsSummary = [
-    writerMode === "ai" ? "AI" : "Standard",
+    writerMode === "ai" ? "AI" : "Std",
     activeTemplate.shortLabel,
-    showOccasionPicker ? selectedOccasionDef.label : null,
   ]
     .filter(Boolean)
     .join(" · ");
+
+  const writerModeHint =
+    writerMode === "ai"
+      ? "Writes with research and brand context"
+      : "Personalizes with name and company";
+  const accountEventHint = detectedOccasion?.type
+    ? `${detectedOccasion.timing === "upcoming" ? "Upcoming: " : ""}${detectedOccasion.label ?? detectedOccasion.type}`
+    : "Account event";
+
+  function writeOptionClass(selected: boolean) {
+    return cn(
+      "gap-2 py-1.5 text-[12px] font-semibold text-brand-ink",
+      selected && "bg-brand-stratus-blue/[0.07]",
+    );
+  }
 
   const sentEmailKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -517,6 +617,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   const showRecipientControl =
     showProcessBar &&
     (isEmptyCompose ? needsInboxPick : !isLaterSequenceDraft || needsInboxPick);
+  /** Typed add-email row: after a draft exists, or when Pick inbox has nothing listed / user is typing. */
+  const showAddRecipientField =
+    !isEmptyCompose || recipientOptions.length === 0 || Boolean(extraRecipient.trim());
   const recipientTriggerLabel = needsInboxPick
     ? "Pick inbox"
     : sequenceRecipients.length === 1
@@ -551,13 +654,13 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
         <DropdownMenu modal={false}>
             <DropdownMenuTrigger
               className={cn(
-                "ish-scout-ghost inline-flex h-7 max-w-[12rem] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-brand-ink outline-none transition-all",
+                "ish-scout-ghost inline-flex h-7 max-w-[10rem] shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-brand-ink outline-none transition-all",
                 "hover:opacity-95 focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/25",
                 needsInboxPick && "ring-2 ring-brand-stratus-blue/30",
               )}
             >
               <Mail className="size-3 shrink-0 text-brand-stratus-blue" />
-              <span className="truncate">{recipientTriggerLabel}</span>
+              <span className="truncate" title={recipientTriggerLabel}>{recipientTriggerLabel}</span>
               <ChevronDown className="size-3 shrink-0 text-brand-ink-faint" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="ish-email-write-menu w-[min(100vw-2rem,280px)] rounded-[16px] p-1.5">
@@ -604,30 +707,34 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
               ) : (
                 <p className="px-2 py-1 text-[11px] text-brand-ink-soft">No saved inboxes yet.</p>
               )}
-              <DropdownMenuSeparator />
-              <div className="flex items-center gap-1 px-1 py-1" onPointerDown={(e) => e.stopPropagation()}>
-                <input
-                  type="email"
-                  value={extraRecipient}
-                  onChange={(e) => setExtraRecipient(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addTypedRecipient();
-                    }
-                  }}
-                  placeholder="Add another email"
-                  className="min-w-0 flex-1 rounded-[8px] border border-brand-stratus-blue/20 bg-white px-2 py-1 text-[11px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:ring-1 focus:ring-brand-stratus-blue/30"
-                />
-                <button
-                  type="button"
-                  onClick={addTypedRecipient}
-                  className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] text-brand-stratus-blue hover:bg-brand-canvas"
-                  aria-label="Add another email"
-                >
-                  <Plus className="size-3.5" />
-                </button>
-              </div>
+              {showAddRecipientField ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <div className="flex items-center gap-1 px-1 py-1" onPointerDown={(e) => e.stopPropagation()}>
+                    <input
+                      type="email"
+                      value={extraRecipient}
+                      onChange={(e) => setExtraRecipient(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addTypedRecipient();
+                        }
+                      }}
+                      placeholder="Add another email"
+                      className="min-w-0 flex-1 rounded-[8px] border border-brand-stratus-blue/20 bg-white px-2 py-1 text-[11px] text-brand-ink outline-none placeholder:text-brand-ink-faint focus:ring-1 focus:ring-brand-stratus-blue/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={addTypedRecipient}
+                      className="inline-flex size-7 shrink-0 items-center justify-center rounded-[8px] text-brand-stratus-blue hover:bg-brand-canvas"
+                      aria-label="Add another email"
+                    >
+                      <Plus className="size-3.5" />
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
       ) : null}
@@ -639,7 +746,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           className="ish-scout-cta-blue inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-50"
         >
           <Sparkles className="size-3" />
-          {draftingReply ? "Writing smart emails…" : replyDraft ? "Regenerate reply" : "Generate reply"}
+          {draftingReply ? "Writing…" : "Write smart reply"}
         </button>
       ) : null}
       {showSyncReplies ? (
@@ -691,46 +798,44 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       {showProcessBar ? (
         <>
           {showWriterControl ? (
-            <>
-              <ToolbarRule />
-              <DropdownMenu modal={false} open={writeOptionsOpen} onOpenChange={setWriteOptionsOpen}>
+            <DropdownMenu modal={false} open={writeOptionsOpen} onOpenChange={setWriteOptionsOpen}>
                 <DropdownMenuTrigger
                   disabled={!canWrite || generating}
                   className={cn(
-                    "ish-scout-ghost inline-flex h-7 max-w-[11rem] shrink-0 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-brand-ink outline-none transition-all",
+                    "ish-scout-ghost inline-flex h-7 max-w-[8.5rem] shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-semibold text-brand-ink outline-none transition-all",
                     "hover:opacity-95 focus-visible:ring-2 focus-visible:ring-brand-stratus-blue/25 disabled:cursor-not-allowed disabled:opacity-40",
                   )}
                 >
-                  <span className="truncate">{writeOptionsSummary}</span>
+                  <span className="truncate" title={writeOptionsSummary}>{writeOptionsSummary}</span>
                   <ChevronDown className="size-3 shrink-0 text-brand-ink-faint" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="ish-email-write-menu w-[min(100vw-2rem,280px)] rounded-[16px] p-2">
+                <DropdownMenuContent align="end" className="ish-email-write-menu w-[min(100vw-2rem,240px)] rounded-[16px] p-1.5">
                   {!isReplyLead && showRegenerate ? (
                     <>
                       <DropdownMenuLabel className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-ink-faint">
                         Writer
                       </DropdownMenuLabel>
                       <DropdownMenuItem
-                        className="text-[12px]"
+                        className={writeOptionClass(writerMode === "standard")}
+                        title="Personalizes templates with name and company"
                         closeOnClick={false}
                         onClick={() => setWriterMode("standard")}
                       >
-                        <span className="w-3 shrink-0">{writerMode === "standard" ? <Check className="size-3 text-brand-stratus-blue" /> : null}</span>
-                        <div>
-                          <div className="font-semibold">Standard</div>
-                          <div className="text-[11px] text-brand-ink-faint">Personalizes templates with name and company</div>
-                        </div>
+                        <span className="flex w-3 shrink-0 justify-center">
+                          {writerMode === "standard" ? <Check className="size-3 text-brand-stratus-blue" /> : null}
+                        </span>
+                        Standard
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        className="text-[12px]"
+                        className={writeOptionClass(writerMode === "ai")}
+                        title="Writes with AI using research and brand context"
                         closeOnClick={false}
                         onClick={() => setWriterMode("ai")}
                       >
-                        <span className="w-3 shrink-0">{writerMode === "ai" ? <Check className="size-3 text-brand-stratus-blue" /> : null}</span>
-                        <div>
-                          <div className="font-semibold">AI Writer</div>
-                          <div className="text-[11px] text-brand-ink-faint">Writes with AI using research and brand context</div>
-                        </div>
+                        <span className="flex w-3 shrink-0 justify-center">
+                          {writerMode === "ai" ? <Check className="size-3 text-brand-stratus-blue" /> : null}
+                        </span>
+                        AI Writer
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuLabel className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-ink-faint">
@@ -739,17 +844,17 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                       {templates.map((template) => (
                         <DropdownMenuItem
                           key={template.id}
-                          className="text-[12px]"
+                          className={writeOptionClass(selectedTemplate === template.id)}
+                          title={template.description}
                           closeOnClick={false}
                           onClick={() => setSelectedTemplate(template.id)}
                         >
-                          <span className="w-3 shrink-0">
-                            {selectedTemplate === template.id ? <Check className="size-3 text-brand-stratus-blue" /> : null}
+                          <span className="flex w-3 shrink-0 justify-center">
+                            {selectedTemplate === template.id ? (
+                              <Check className="size-3 text-brand-stratus-blue" />
+                            ) : null}
                           </span>
-                          <div>
-                            <div className="font-semibold">{template.label}</div>
-                            <div className="text-[11px] text-brand-ink-faint">{template.description}</div>
-                          </div>
+                          {template.label}
                         </DropdownMenuItem>
                       ))}
                       {showOccasionPicker ? (
@@ -758,59 +863,52 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                           <DropdownMenuLabel className="px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-ink-faint">
                             Occasion
                           </DropdownMenuLabel>
-                          <DropdownMenuItem
-                            className="text-[12px]"
-                            closeOnClick={false}
-                            onClick={() => setSelectedOccasion(FESTIVE_OCCASION_SENTINEL)}
-                          >
-                            <span className="w-3 shrink-0">
-                              {selectedOccasion === FESTIVE_OCCASION_SENTINEL ? (
-                                <Check className="size-3 text-brand-stratus-blue" />
-                              ) : null}
-                            </span>
-                            <div>
-                              <div className="font-semibold">Festive gifting</div>
-                              <div className="text-[11px] text-brand-ink-faint">Diwali and seasonal boxes</div>
-                            </div>
-                          </DropdownMenuItem>
-                          {detectedOccasion?.type ? (
+                          <div className="max-h-[min(40vh,14.5rem)] overflow-y-auto overscroll-contain">
                             <DropdownMenuItem
-                              className="text-[12px]"
+                              className={writeOptionClass(selectedOccasion === FESTIVE_OCCASION_SENTINEL)}
+                              title="Diwali and seasonal boxes"
                               closeOnClick={false}
-                              onClick={() => setSelectedOccasion("account_event")}
+                              onClick={() => setSelectedOccasion(FESTIVE_OCCASION_SENTINEL)}
                             >
-                              <span className="w-3 shrink-0">
-                                {selectedOccasion === "account_event" ? (
+                              <span className="flex w-3 shrink-0 justify-center">
+                                {selectedOccasion === FESTIVE_OCCASION_SENTINEL ? (
                                   <Check className="size-3 text-brand-stratus-blue" />
                                 ) : null}
                               </span>
-                              <div>
-                                <div className="font-semibold">Account event</div>
-                                <div className="text-[11px] text-brand-ink-faint">
-                                  {detectedOccasion.timing === "upcoming" ? "Upcoming: " : ""}
-                                  {detectedOccasion.label ?? detectedOccasion.type}
-                                </div>
-                              </div>
+                              Festive gifting
                             </DropdownMenuItem>
-                          ) : null}
-                          {WRITE_THEME_OCCASIONS.map((occasion) => (
-                            <DropdownMenuItem
-                              key={occasion.id}
-                              className="text-[12px]"
-                              closeOnClick={false}
-                              onClick={() => setSelectedOccasion(occasion.id)}
-                            >
-                              <span className="w-3 shrink-0">
-                                {selectedOccasion === occasion.id ? (
-                                  <Check className="size-3 text-brand-stratus-blue" />
-                                ) : null}
-                              </span>
-                              <div>
-                                <div className="font-semibold">{occasion.label}</div>
-                                <div className="text-[11px] text-brand-ink-faint">{occasion.pitch}</div>
-                              </div>
-                            </DropdownMenuItem>
-                          ))}
+                            {detectedOccasion?.type ? (
+                              <DropdownMenuItem
+                                className={writeOptionClass(selectedOccasion === "account_event")}
+                                title={accountEventHint}
+                                closeOnClick={false}
+                                onClick={() => setSelectedOccasion("account_event")}
+                              >
+                                <span className="flex w-3 shrink-0 justify-center">
+                                  {selectedOccasion === "account_event" ? (
+                                    <Check className="size-3 text-brand-stratus-blue" />
+                                  ) : null}
+                                </span>
+                                Account event
+                              </DropdownMenuItem>
+                            ) : null}
+                            {WRITE_THEME_OCCASIONS.map((occasion) => (
+                              <DropdownMenuItem
+                                key={occasion.id}
+                                className={writeOptionClass(selectedOccasion === occasion.id)}
+                                title={occasion.pitch}
+                                closeOnClick={false}
+                                onClick={() => setSelectedOccasion(occasion.id)}
+                              >
+                                <span className="flex w-3 shrink-0 justify-center">
+                                  {selectedOccasion === occasion.id ? (
+                                    <Check className="size-3 text-brand-stratus-blue" />
+                                  ) : null}
+                                </span>
+                                {occasion.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </div>
                         </>
                       ) : null}
                       <DropdownMenuSeparator />
@@ -837,34 +935,30 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            </>
           ) : null}
           {composeActions ? (
-            <>
-              <ToolbarRule />
-              {composeActions.viewInEmailOnly ? (
-                <Link
-                  href="/email?tab=active"
-                  className="ish-scout-cta-blue inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold hover:opacity-95"
-                >
-                  <Mail className="size-3" />
-                  View in Email
-                </Link>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => approvalRef.current?.send()}
-                  disabled={!composeActions.canSend}
-                  className={cn(
-                    "inline-flex h-7 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-semibold transition-opacity",
-                    composeActions.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
-                  )}
-                >
-                  {composeActions.sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-                  {composeActions.sending ? "Sending…" : composeActions.sendLabel}
-                </button>
-              )}
-            </>
+            composeActions.viewInEmailOnly ? (
+              <Link
+                href="/email?tab=active"
+                className="ish-scout-cta-blue inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold hover:opacity-95"
+              >
+                <Mail className="size-3" />
+                View in Email
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() => approvalRef.current?.send()}
+                disabled={!composeActions.canSend}
+                className={cn(
+                  "inline-flex h-7 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-semibold transition-opacity",
+                  composeActions.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
+                )}
+              >
+                {composeActions.sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                {composeActions.sending ? "Sending…" : composeActions.sendLabel}
+              </button>
+            )
           ) : null}
         </>
       ) : phase === "reply_sent" ? (
@@ -890,20 +984,50 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     </>
   );
 
+  const hasToolbarActions =
+    !isEmptyCompose &&
+    (showRecipientControl ||
+      (isReplyLead && phase !== "reply_sent") ||
+      showSyncReplies ||
+      showSequenceControls ||
+      (showProcessBar && showWriterControl) ||
+      (showProcessBar && Boolean(composeActions)) ||
+      phase === "reply_sent");
+
   return (
     <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-2 overflow-hidden px-0 py-1 lg:space-y-2.5 lg:px-[22px] lg:py-2">
-      <OutreachJourneyPanel
-        thread={thread}
-        processActions={processActions}
-        selectedNodeId={selectedNodeId}
-        onNodeSelect={handleNodeSelect}
-      />
+      {!isEmptyCompose ? (
+        <OutreachJourneyPanel
+          thread={thread}
+          processActions={hasToolbarActions ? processActions : undefined}
+          selectedNodeId={selectedNodeId}
+          onNodeSelect={handleNodeSelect}
+        />
+      ) : null}
 
-      {/* Status only; actions stay in the toolbar. */}
-      {thread?.nextStep &&
-      (thread.events?.length ?? 0) > 0 &&
-      !needsReplyDraft &&
-      phase !== "drafting_reply" ? (
+      {/* Status; after a reply, offer an empty-body compose path from the bar. */}
+      {isReplyLead && phase !== "reply_sent" ? (
+        <div className="flex min-h-7 items-center justify-between gap-2 rounded-[10px] border border-brand-stratus-blue/10 bg-white/80 px-2.5 py-1">
+          <p className="min-w-0 truncate text-[12px] leading-snug text-brand-ink">
+            <span className="font-semibold">They replied</span>
+            <span className="font-normal text-brand-ink-soft">
+              {" "}
+              · Empty body ready. Write your reply
+              {showWriterControl ? ", or use Write smart reply" : ""}.
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => handleNodeSelect(IF_REPLIED_NODE_ID)}
+            className="ish-scout-ghost shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          >
+            Open reply
+          </button>
+        </div>
+      ) : thread?.nextStep &&
+        (thread.events?.length ?? 0) > 0 &&
+        !needsReplyDraft &&
+        phase !== "drafting_reply" ? (
         <div className="flex min-h-7 items-center rounded-[10px] border border-brand-stratus-blue/10 bg-white/80 px-2.5 py-1">
           <p className="min-w-0 truncate text-[12px] leading-snug text-brand-ink">
             <span className="font-semibold">{thread.nextStep.title}</span>
@@ -941,22 +1065,15 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
             selectedEventId={selectedNodeId}
             onSelect={handleNodeSelect}
             hideDraftEvents={Boolean(
-              showComposeZone && isEditableNode && resolvedDraft && !needsReplyDraft,
+              (showComposeZone && isEditableNode && resolvedDraft && !needsReplyDraft) ||
+                selectedNodeId === IF_OPENED_NODE_ID,
             )}
           />
 
           {isEmptyCompose && !generating ? (
-            <div className="flex justify-center px-3 py-4 lg:px-0 lg:py-5">
+            <div className="space-y-3 px-3 py-3 lg:px-0 lg:py-4">
+              <div className="flex justify-center">
               <div className="w-full max-w-[22rem] overflow-hidden rounded-[14px] border border-black/[0.08] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)]">
-                <div className="border-b border-black/[0.06] px-4 py-3 text-center">
-                  <p className="text-[15px] font-semibold tracking-tight text-brand-ink">
-                    Email 1 for {lead.firstName || lead.name || "this contact"}
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-brand-ink-soft">
-                    Write a 3-email sequence
-                  </p>
-                </div>
-
                 <div className="space-y-3 px-4 py-3">
                   <div className="space-y-1.5">
                     <p className="text-[12px] font-medium text-brand-ink">Template</p>
@@ -978,22 +1095,21 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                         {templates.map((template) => (
                           <DropdownMenuItem
                             key={template.id}
-                            className="text-[12px]"
+                            className={writeOptionClass(selectedTemplate === template.id)}
+                            title={template.description}
                             onClick={() => setSelectedTemplate(template.id)}
                           >
-                            <span className="w-3 shrink-0">
+                            <span className="flex w-3 shrink-0 justify-center">
                               {selectedTemplate === template.id ? (
                                 <Check className="size-3 text-brand-stratus-blue" />
                               ) : null}
                             </span>
-                            <div>
-                              <div className="font-semibold">{template.label}</div>
-                              <div className="text-[11px] text-brand-ink-faint">{template.description}</div>
-                            </div>
+                            {template.label}
                           </DropdownMenuItem>
                         ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    <p className="text-[11px] leading-snug text-brand-ink-faint">{activeTemplate.description}</p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1025,11 +1141,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                         );
                       })}
                     </div>
-                    <p className="text-[11px] leading-snug text-brand-ink-faint">
-                      {writerMode === "ai"
-                        ? "Writes with research and brand context"
-                        : "Personalizes with name and company"}
-                    </p>
+                    <p className="text-[11px] leading-snug text-brand-ink-faint">{writerModeHint}</p>
                   </div>
 
                   {selectedTemplate === "gift_sampling" ? (
@@ -1050,58 +1162,58 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                           align="start"
                           className="ish-email-write-menu w-[min(100vw-2rem,20rem)] rounded-[14px] p-1.5"
                         >
-                          <DropdownMenuItem
-                            className="text-[12px]"
-                            onClick={() => setSelectedOccasion(FESTIVE_OCCASION_SENTINEL)}
-                          >
-                            <span className="w-3 shrink-0">
-                              {selectedOccasion === FESTIVE_OCCASION_SENTINEL ? (
-                                <Check className="size-3 text-brand-stratus-blue" />
-                              ) : null}
-                            </span>
-                            <div>
-                              <div className="font-semibold">Festive gifting</div>
-                              <div className="text-[11px] text-brand-ink-faint">Diwali and seasonal boxes</div>
-                            </div>
-                          </DropdownMenuItem>
-                          {detectedOccasion?.type ? (
+                          <div className="max-h-[min(40vh,14.5rem)] overflow-y-auto overscroll-contain">
                             <DropdownMenuItem
-                              className="text-[12px]"
-                              onClick={() => setSelectedOccasion("account_event")}
+                              className={writeOptionClass(selectedOccasion === FESTIVE_OCCASION_SENTINEL)}
+                              title="Diwali and seasonal boxes"
+                              onClick={() => setSelectedOccasion(FESTIVE_OCCASION_SENTINEL)}
                             >
-                              <span className="w-3 shrink-0">
-                                {selectedOccasion === "account_event" ? (
+                              <span className="flex w-3 shrink-0 justify-center">
+                                {selectedOccasion === FESTIVE_OCCASION_SENTINEL ? (
                                   <Check className="size-3 text-brand-stratus-blue" />
                                 ) : null}
                               </span>
-                              <div>
-                                <div className="font-semibold">Account event</div>
-                                <div className="text-[11px] text-brand-ink-faint">
-                                  {detectedOccasion.timing === "upcoming" ? "Upcoming: " : ""}
-                                  {detectedOccasion.label ?? detectedOccasion.type}
-                                </div>
-                              </div>
+                              Festive gifting
                             </DropdownMenuItem>
-                          ) : null}
-                          {WRITE_THEME_OCCASIONS.map((occasion) => (
-                            <DropdownMenuItem
-                              key={occasion.id}
-                              className="text-[12px]"
-                              onClick={() => setSelectedOccasion(occasion.id)}
-                            >
-                              <span className="w-3 shrink-0">
-                                {selectedOccasion === occasion.id ? (
-                                  <Check className="size-3 text-brand-stratus-blue" />
-                                ) : null}
-                              </span>
-                              <div>
-                                <div className="font-semibold">{occasion.label}</div>
-                                <div className="text-[11px] text-brand-ink-faint">{occasion.pitch}</div>
-                              </div>
-                            </DropdownMenuItem>
-                          ))}
+                            {detectedOccasion?.type ? (
+                              <DropdownMenuItem
+                                className={writeOptionClass(selectedOccasion === "account_event")}
+                                title={accountEventHint}
+                                onClick={() => setSelectedOccasion("account_event")}
+                              >
+                                <span className="flex w-3 shrink-0 justify-center">
+                                  {selectedOccasion === "account_event" ? (
+                                    <Check className="size-3 text-brand-stratus-blue" />
+                                  ) : null}
+                                </span>
+                                Account event
+                              </DropdownMenuItem>
+                            ) : null}
+                            {WRITE_THEME_OCCASIONS.map((occasion) => (
+                              <DropdownMenuItem
+                                key={occasion.id}
+                                className={writeOptionClass(selectedOccasion === occasion.id)}
+                                title={occasion.pitch}
+                                onClick={() => setSelectedOccasion(occasion.id)}
+                              >
+                                <span className="flex w-3 shrink-0 justify-center">
+                                  {selectedOccasion === occasion.id ? (
+                                    <Check className="size-3 text-brand-stratus-blue" />
+                                  ) : null}
+                                </span>
+                                {occasion.label}
+                              </DropdownMenuItem>
+                            ))}
+                          </div>
                         </DropdownMenuContent>
                       </DropdownMenu>
+                      <p className="text-[11px] leading-snug text-brand-ink-faint">
+                        {selectedOccasion === FESTIVE_OCCASION_SENTINEL
+                          ? "Diwali and seasonal boxes"
+                          : selectedOccasion === "account_event"
+                            ? accountEventHint
+                            : selectedOccasionDef.pitch}
+                      </p>
                     </div>
                   ) : null}
                 </div>
@@ -1130,6 +1242,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                   </button>
                 </div>
               </div>
+              </div>
             </div>
           ) : null}
 
@@ -1147,11 +1260,15 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                 contactEmails={lead.emails}
                 selectedEmails={sequenceRecipients}
                 onSelectedEmailsChange={setSequenceRecipients}
-                chosenSubjectKey={sequenceSubjectKey}
+                chosenSubjectKey={
+                  isCatalogOnOpenDraft(resolvedDraft) ? undefined : sequenceSubjectKey
+                }
                 onChosenSubjectKeyChange={
-                  resolvedDraft.sequencePosition === 1 || resolvedDraft.sequencePosition == null
-                    ? handleSequenceSubjectKey
-                    : undefined
+                  isCatalogOnOpenDraft(resolvedDraft)
+                    ? undefined
+                    : resolvedDraft.sequencePosition === 1 || resolvedDraft.sequencePosition == null
+                      ? handleSequenceSubjectKey
+                      : undefined
                 }
                 emailThread={thread}
                 onDraftUpdated={(d) => {

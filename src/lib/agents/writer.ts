@@ -1,8 +1,8 @@
 import { callLLM, type LLMProvider } from "@/lib/llm";
 import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { retrieveRelevantRules } from "@/lib/rag";
-import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel, outreachSchedule } from "@/db";
-import { and, eq } from "drizzle-orm";
+import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
+import { eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
 import { getOutreachTemplate, packIdFromBrand, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
@@ -33,8 +33,9 @@ import {
 } from "@/lib/agents/personalization-context";
 import { getBaselineEmail, TRANSFORMATION_RULES } from "@/lib/email/baseline-templates";
 import { fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import { appendEmailSignature } from "@/lib/email/templates";
 import { isIshFestiveCatalogBody } from "@/lib/email/ish-festive-catalog";
-import { companyNameForEmail } from "@/lib/email/company-display-name";
+import { companyNameForEmail, scrubLegalEntityCopy } from "@/lib/email/company-display-name";
 import { latestDetectedOccasion, resolveWriteOccasion } from "@/lib/occasions/resolve";
 import { FESTIVE_OCCASION_SENTINEL } from "@/lib/occasions/catalog";
 import type { CompanyOverview } from "@/lib/company-overview";
@@ -86,7 +87,8 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
-  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  // Prefer lead owner mailbox/signature; fall back to session user when creator is unset.
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
   const { brandConfig, campaignMode, fromName } = emailConfig;
   const emailStyle = resolveOutreachEmailStyle(emailConfig.emailStyle);
   const senderFirstName = fromName.split(" ")[0] || fromName;
@@ -154,7 +156,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
       leadId,
       contactName: contact.name,
       contactTitle: contact.title,
-      accountName: account.name,
+      accountName: companyDisplayName,
       brandName: brandConfig.brandName,
       existing: research,
     });
@@ -177,7 +179,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const persona = buildPersonalizationContext({
     industry: account.industry,
     city: account.city,
-    accountName: account.name,
+    accountName: companyDisplayName,
     contactTitle: contact.title,
     intelNotes: account.intelNotes,
     overview: (account.companyOverview as CompanyOverview | null) ?? null,
@@ -235,7 +237,7 @@ ${keywordRule}
 - Subject A: specific, under 50 characters, about a sample or tasting box (e.g. Sample box for festive tasting, ${contactFirstName}); never use em dashes (—) or " - Company" suffix; never slogan-style lines like "Send happiness" or "Happiness, handcrafted"
 - Email 2 and 3 subject A must be exactly Re: plus the Email 1 subject${options?.originalEmailSubject ? ` (${options.originalEmailSubject.replace(/^re:\s*/i, "")})` : ""}
 - Never use em dashes (—) in subject or body
-- In subject and body, use the short company name only (e.g. "${companyDisplayName}"). Never write Pvt Ltd, Private Limited, India Pvt Ltd, Ltd, LLP, or similar legal suffixes.
+- In subject and body, use the short company name only (e.g. "${companyDisplayName}"). Never write Pvt Ltd, Private Limited, India Pvt Ltd, Ltd, LLP, or similar legal suffixes. Never invent a different company, parent group, or legal entity name.
 - ${EMAIL_BODY_FORMAT_RULE}
 ${antiSpamRules}
 `;
@@ -289,8 +291,12 @@ ${template.ctaInstruction}
 ${isFollowUp ? `\nEmail #${options?.followUpMode === "follow_up" ? "2" : "3"} of 3.\nEmail 1 subject: ${options?.originalEmailSubject ?? "unknown"}\nOriginal email (do not repeat hook wording):\n"""\n${options?.originalEmailBody ?? ""}\n"""\n` : ""}
 ${options?.forceNewAngle ? `\n${SEQUENCE_REWRITE_INSTRUCTION}\n` : ""}
 ${isFollowUp && extraHooks.length ? `Unused angles for a new value line: ${extraHooks.slice(0, 2).join(" | ")}\n` : ""}
-Sign off with Thanks & Regards, then "${senderName}", then ${brandConfig.brandName}
-Use company name "${companyDisplayName}" only. Never append India Pvt Ltd, Pvt Ltd, or other legal suffixes.
+${
+    emailConfig.signature?.trim()
+      ? `Sign off with Thanks & Regards, then this exact signature block on its own lines (do not add a separate From name or brand line):\n"""\n${emailConfig.signature.trim()}\n"""`
+      : `Sign off with Thanks & Regards, then "${senderName}", then ${brandConfig.brandName}`
+  }
+Use company name "${companyDisplayName}" only. Never append India Pvt Ltd, Pvt Ltd, or other legal suffixes. Never invent a different company or parent-group name.
 Return ONLY the rewritten email fields in JSON.`;
 
   let emailBody = "";
@@ -309,7 +315,7 @@ Return ONLY the rewritten email fields in JSON.`;
     contactFirstName,
     sequencePosition,
     account: {
-      name: account.name,
+      name: companyDisplayName,
       employees: account.employees,
       industry: account.industry,
       city: account.city,
@@ -362,10 +368,27 @@ Return ONLY the rewritten email fields in JSON.`;
       templateVariant: parsed.templateVariant,
     };
 
-    emailBody = normalizeEmailBody(parsedWithFallback.emailBody ?? "");
-    emailBodyB = parsedWithFallback.emailBodyB ? normalizeEmailBody(parsedWithFallback.emailBodyB) : "";
-    subjectA = parsedWithFallback.subjectA ?? `Outreach for ${companyDisplayName}`;
-    subjectB = parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`;
+    emailBody = appendEmailSignature(
+      scrubLegalEntityCopy(
+        normalizeEmailBody(parsedWithFallback.emailBody ?? ""),
+        companyDisplayName,
+      ),
+      emailConfig.signature,
+    );
+    emailBodyB = parsedWithFallback.emailBodyB
+      ? appendEmailSignature(
+          scrubLegalEntityCopy(normalizeEmailBody(parsedWithFallback.emailBodyB), companyDisplayName),
+          emailConfig.signature,
+        )
+      : "";
+    subjectA = scrubLegalEntityCopy(
+      parsedWithFallback.subjectA ?? `Outreach for ${companyDisplayName}`,
+      companyDisplayName,
+    );
+    subjectB = scrubLegalEntityCopy(
+      parsedWithFallback.subjectB ?? `Quick question for ${contactFirstName}`,
+      companyDisplayName,
+    );
     templateVariant = options?.followUpMode ?? template.id;
     outreachGoal = parsedWithFallback.outreachGoal ?? template.label;
     revisionCount = attempt;
@@ -377,7 +400,12 @@ Return ONLY the rewritten email fields in JSON.`;
       subjectA,
       emailBody,
       contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
-      account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
+      account: {
+        name: companyDisplayName,
+        industry: account.industry,
+        city: account.city,
+        employees: account.employees,
+      },
       deliverabilityOptions: delivOpts,
       outreachHook,
       intelNotes: account.intelNotes,
@@ -492,26 +520,6 @@ async function persistIshTemplateDraft(params: {
     occasionId === "foundation_day" ||
     occasionId === "milestone";
 
-  let inboxOpened = false;
-  if (sequencePosition >= 2) {
-    const sent = await db.query.outreachSchedule.findMany({
-      where: and(eq(outreachSchedule.leadId, leadId), eq(outreachSchedule.status, "sent")),
-    });
-    if (sequencePosition === 2) {
-      inboxOpened = sent.some((row) => row.sequenceDay === 0 && row.openedAt);
-    } else {
-      const e2 = await db.query.leadOutreach.findFirst({
-        where: and(eq(leadOutreach.leadId, leadId), eq(leadOutreach.sequencePosition, 2)),
-      });
-      const e2WasCatalog = isIshFestiveCatalogBody(e2?.emailBody);
-      const e2Opened = sent.some(
-        (row) => row.sequenceDay > 0 && row.openedAt && row.draftLeadOutreachId === e2?.id,
-      );
-      const e1Opened = sent.some((row) => row.sequenceDay === 0 && row.openedAt);
-      inboxOpened = !e2WasCatalog && (e2Opened || e1Opened);
-    }
-  }
-
   const copy = fillIshDraftVariants({
     contactFirstName,
     companyName: companyDisplayName,
@@ -524,7 +532,7 @@ async function persistIshTemplateDraft(params: {
     senderPhone: emailConfig.fromPhone,
     fromAddress: emailConfig.fromAddress,
     fromLocation: emailConfig.fromLocation,
-    inboxOpened,
+    signature: emailConfig.signature,
   });
   const emailBody = normalizeEmailBody(copy.emailBody);
   const emailBodyB = copy.emailBodyB ? normalizeEmailBody(copy.emailBodyB) : null;
@@ -535,7 +543,7 @@ async function persistIshTemplateDraft(params: {
     contactFirstName,
     sequencePosition,
     account: {
-      name: account.name,
+      name: companyDisplayName,
       employees: account.employees,
       industry: account.industry,
       city: account.city,
@@ -557,7 +565,12 @@ async function persistIshTemplateDraft(params: {
         subjectA: copy.subjectA,
         emailBody,
         contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
-        account: { name: account.name, industry: account.industry, city: account.city, employees: account.employees },
+        account: {
+          name: companyDisplayName,
+          industry: account.industry,
+          city: account.city,
+          employees: account.employees,
+        },
         deliverabilityOptions: delivOpts,
       });
   const delivScore = spamResult.inboxScore;

@@ -52,6 +52,46 @@ describe("apply writer draft to lead state", () => {
     expect(next.status).toBe("draft_ready");
     expect(next.outreach?.id).toBe("e1");
     expect(next.outreachSequence).toHaveLength(3);
+    expect(next.emailThread?.barMode).toBe("drafts");
+    expect(next.emailThread?.barNodes.map((n) => n.label)).toEqual([
+      "Email 1",
+      "Email 2 (+3d)",
+      "Email 3 (+7d)",
+    ]);
+  });
+
+  it("rebuilds the drafts rail when applying a catalog If Opened draft", () => {
+    const lead: LeadDraftState<Draft> = {
+      status: "draft_ready",
+      outreach: draft({ id: "e1", sequencePosition: 1, emailBody: "one" }),
+      outreachSequence: [
+        draft({ id: "e1", sequencePosition: 1, emailBody: "one" }),
+        draft({ id: "e2", sequencePosition: 2, emailBody: "two" }),
+        draft({ id: "e3", sequencePosition: 3, emailBody: "three" }),
+      ],
+      emailThread: {
+        phase: "compose",
+        nextAction: "compose",
+        barMode: "hidden",
+        barNodes: [],
+        events: [],
+        showComposeZone: true,
+      },
+    };
+    const catalog = draft({
+      id: "e5",
+      sequencePosition: 5,
+      templateVariant: "catalog_on_open",
+      emailBody: "2026 gemstone collection",
+    });
+    const next = applyWriterDraft(lead, catalog);
+    expect(next.emailThread?.barMode).toBe("drafts");
+    expect(next.emailThread?.barNodes.map((n) => n.label)).toEqual([
+      "Email 1",
+      "Email 2 (+3d)",
+      "Email 3 (+7d)",
+      "If Opened",
+    ]);
   });
 
   it("keeps locally generated drafts when the server refresh has not caught up", () => {
@@ -62,11 +102,34 @@ describe("apply writer draft to lead state", () => {
         draft({ id: "e1", sequencePosition: 1, emailBody: "one" }),
         draft({ id: "e2", sequencePosition: 2, emailBody: "two" }),
       ],
+      emailThread: {
+        phase: "compose",
+        nextAction: "compose",
+        barMode: "drafts",
+        barNodes: [
+          { id: "draft-1", label: "Email 1", state: "current", kind: "draft" },
+          { id: "draft-2", label: "Email 2 (+3d)", state: "upcoming", kind: "draft" },
+        ],
+        events: [],
+        showComposeZone: true,
+      },
     };
-    const incoming: LeadDraftState<Draft> = { status: "draft_ready" };
+    const incoming: LeadDraftState<Draft> = {
+      status: "draft_ready",
+      emailThread: {
+        phase: "compose",
+        nextAction: "compose",
+        barMode: "hidden",
+        barNodes: [],
+        events: [],
+        showComposeZone: true,
+      },
+    };
     const next = mergeLeadOutreachFromServer(prev, incoming);
     expect(next.outreachSequence).toHaveLength(2);
     expect(next.outreach?.id).toBe("e1");
+    expect(next.emailThread?.barMode).toBe("drafts");
+    expect(next.emailThread?.barNodes.length).toBeGreaterThan(0);
   });
 
   it("drops local drafts when the server reset the lead back to researched", () => {

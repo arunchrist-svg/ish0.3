@@ -458,6 +458,8 @@ export async function searchPeopleViaTavily(params: {
   indiaOnly?: boolean;
   localOperators?: boolean;
   locationScope?: "focus" | "interest";
+  /** Skip plant Manager query bias; honor roleHints from user chips only. */
+  strictPeopleFilters?: boolean;
 }): Promise<ScoutPersonResult[]> {
   const limit = params.limit ?? 8;
   const dataSource = params.dataSource ?? "tavily+llm";
@@ -527,8 +529,12 @@ export async function searchPeopleViaTavily(params: {
   }
 
   // For plant-city scouts, prepend targeted "Plant HR" / "HR Manager" + city queries that
-  // LinkedIn doesn't surface in generic role searches.
-  if (hasPlantCitySelection(params.cities ?? []) && !localOperators) {
+  // LinkedIn doesn't surface in generic role searches. Skip when Strict people filters is on.
+  if (
+    !params.strictPeopleFilters &&
+    hasPlantCitySelection(params.cities ?? []) &&
+    !localOperators
+  ) {
     const plantCityClause = searchCities.length ? searchCities.slice(0, 2).join(" OR ") : "Hosur OR Bengaluru";
     const plantQueries = [
       `site:linkedin.com/in "${company}" "Plant HR" ${plantCityClause}`,

@@ -30,6 +30,7 @@ import {
   resolveDraftSubject,
   type VariantKey,
 } from "@/lib/email/draft-variants";
+import { appendEmailSignature } from "@/lib/email/templates";
 
 export type ComposeActionState = {
   dirty: boolean;
@@ -180,6 +181,8 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   const [dirty, setDirty] = useState(false);
   const [sending, setSending] = useState(false);
   const [outreachPaused, setOutreachPaused] = useState(false);
+  const [emailSignature, setEmailSignature] = useState("");
+
   const dirtyRef = useRef(false);
   const displayDraftRef = useRef(displayDraft);
   const subjectKeyRef = useRef(subjectKey);
@@ -253,9 +256,13 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   const isReplyDraft = draft.templateVariant === "reply" || draft.promptVersion?.includes("reply");
   const isFollowUpReview = Boolean(scheduleIdForFollowUp);
   const isSequenceFollowUp = isSequenceFollowUpDraft(draft.sequencePosition);
-  const isDraftLocked =
-    ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus) ||
-    Boolean(isReplyDraft && draft.replySent);
+  // Reply drafts stay editable until sent, even when the lead is already outreached.
+  // Pending follow-up review stays editable so Needs Review can edit before send.
+  const isDraftLocked = isReplyDraft
+    ? Boolean(draft.replySent)
+    : isFollowUpReview
+      ? false
+      : ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus);
   const canSendToAdditional =
     isDraftLocked &&
     !isReplyDraft &&
@@ -331,12 +338,19 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
       .then((cfg) => {
         if (cancelled || !cfg) return;
         setOutreachPaused(Boolean(cfg.outreachPaused));
+        setEmailSignature(typeof cfg.signature === "string" ? cfg.signature : "");
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const bodyWithSignature = appendEmailSignature(bodyText, emailSignature);
+  const signaturePreview = emailSignature.trim();
+  const bodyAlreadyHasSignature =
+    Boolean(signaturePreview) &&
+    bodyText.replace(/\s+/g, " ").toLowerCase().includes(signaturePreview.replace(/\s+/g, " ").toLowerCase());
 
   const persistDraft = useCallback(
     async (
@@ -637,17 +651,6 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
       className="ish-email-compose min-w-0 overflow-hidden bg-white lg:rounded-[16px] lg:border lg:border-black/[0.08] lg:shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)]"
     >
       <div className="flex min-w-0 flex-col">
-        {variantOptions.length > 1 ? (
-          <div className="flex items-center justify-end gap-3 border-b border-black/[0.06] px-4 py-2.5">
-            <VariantSegment
-              value={activeVariant}
-              options={variantOptions}
-              disabled={isDraftLocked}
-              onChange={selectVariant}
-            />
-          </div>
-        ) : null}
-
         {isReplyDraft && !isDraftLocked && emailThread?.inboundSnippet ? (
           <div className="border-b border-black/[0.06] bg-[#f5f5f7] px-4 py-2.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-ink-faint">
@@ -660,14 +663,22 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         ) : null}
 
         {showReRow ? (
-          <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-2.5">
+          <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-2">
             <span className="w-14 shrink-0 text-[12px] font-medium text-brand-ink-faint">Re</span>
             <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-brand-ink">
               {threadSubject}
             </p>
+            {variantOptions.length > 1 ? (
+              <VariantSegment
+                value={activeVariant}
+                options={variantOptions}
+                disabled={isDraftLocked}
+                onChange={selectVariant}
+              />
+            ) : null}
           </div>
         ) : (
-          <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-2.5">
+          <div className="flex items-center gap-3 border-b border-black/[0.06] px-4 py-2">
             <span className="w-14 shrink-0 text-[12px] font-medium text-brand-ink-faint">Subject</span>
             {isDraftLocked ? (
               <p className="min-w-0 flex-1 truncate text-[14px] font-medium text-brand-ink">
@@ -679,9 +690,17 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
                 value={activeSubject}
                 onChange={(e) => handleSubjectChange(e.target.value)}
                 placeholder="Subject"
-                className="min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-brand-ink placeholder:text-brand-ink-faint focus:outline-none focus:ring-0"
+                className="min-w-0 flex-1 truncate border-0 bg-transparent px-0 py-0 text-[14px] font-medium text-brand-ink placeholder:text-brand-ink-faint focus:outline-none focus:ring-0"
               />
             )}
+            {variantOptions.length > 1 ? (
+              <VariantSegment
+                value={activeVariant}
+                options={variantOptions}
+                disabled={isDraftLocked}
+                onChange={selectVariant}
+              />
+            ) : null}
           </div>
         )}
 
@@ -693,19 +712,31 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
                 "min-h-[12rem] whitespace-pre-wrap text-[14px] leading-[1.55] text-brand-ink-soft",
               )}
             >
-              {bodyText || "No message"}
+              {bodyWithSignature || "No message"}
             </p>
           ) : (
-            <textarea
-              value={bodyText}
-              onChange={(e) => handleBodyChange(e.target.value)}
-              placeholder="Write your message…"
-              className={cn(
-                "block min-h-[16rem] w-full resize-none border-0 bg-transparent px-0 py-0",
-                text.body,
-                "whitespace-pre-wrap text-[14px] leading-[1.55] text-brand-ink placeholder:text-brand-ink-faint focus:outline-none focus:ring-0",
-              )}
-            />
+            <>
+              <textarea
+                value={bodyText}
+                onChange={(e) => handleBodyChange(e.target.value)}
+                placeholder="Write your message…"
+                className={cn(
+                  "block min-h-[16rem] w-full resize-none border-0 bg-transparent px-0 py-0",
+                  text.body,
+                  "whitespace-pre-wrap text-[14px] leading-[1.55] text-brand-ink placeholder:text-brand-ink-faint focus:outline-none focus:ring-0",
+                )}
+              />
+              {signaturePreview && !bodyAlreadyHasSignature ? (
+                <div className="mt-4 border-t border-black/[0.06] pt-3">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
+                    Signature (from Settings)
+                  </p>
+                  <p className="whitespace-pre-wrap text-[14px] leading-[1.55] text-brand-ink-soft">
+                    {signaturePreview}
+                  </p>
+                </div>
+              ) : null}
+            </>
           )}
         </div>
 

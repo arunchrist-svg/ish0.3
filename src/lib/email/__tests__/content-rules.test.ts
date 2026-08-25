@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { scoreContentQuality } from "@/lib/email/content-quality-score";
+import { applyContentRules } from "@/lib/email/content-rules";
 
 const DIWALI_BODY = `Hi Arun,
 
@@ -101,6 +102,26 @@ ISH`,
     );
     expect(result.ruleHits.some((h) => h.id === "B")).toBe(true);
     expect(result.contentScore).toBeLessThan(85);
+  });
+});
+
+describe("legal entity suffixes in copy", () => {
+  it("flags Pvt Ltd / Private Limited in subject or body", () => {
+    const hits = applyContentRules(
+      `Hi Priya,\n\nA sample for MV Pvt Ltd this week?\n\nArun\nISH`,
+      "Sample for MV Private Limited",
+      { sequencePosition: 1, account: { name: "MV Pvt Ltd" }, contact: { firstName: "Priya" } },
+    );
+    expect(hits.some((h) => h.id === "L")).toBe(true);
+  });
+
+  it("does not flag short trading names", () => {
+    const hits = applyContentRules(
+      `Hi Priya,\n\nA sample for MV this week?\n\nArun\nISH`,
+      "Sample for MV",
+      { sequencePosition: 1, account: { name: "MV Pvt Ltd" }, contact: { firstName: "Priya" } },
+    );
+    expect(hits.some((h) => h.id === "L")).toBe(false);
   });
 });
 

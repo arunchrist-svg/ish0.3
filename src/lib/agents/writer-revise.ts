@@ -17,9 +17,9 @@ import { getOutreachTemplate, getReplyCtaInstruction, packIdFromBrand, REPLY_SEQ
 import { classifyReplyIntent, extractPriorCta } from "@/lib/email/reply-intent";
 import { pickOriginalEmailContext } from "@/lib/email/reply-context";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { companyNameForEmail, scrubLegalEntityCopy } from "@/lib/email/company-display-name";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { resolveOutreachEmailStyle } from "@/lib/email/config";
-import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { getAntiSpamWritingRules, getRevisionInstruction, getStyleOnlyRevisionInstruction } from "@/lib/email/content-rules-prompt";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
 import {
@@ -223,7 +223,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;
-  const emailConfig = await getResolvedEmailConfig(lead.workspaceId);
+  const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
   const senderFirstName = emailConfig.fromName.trim() || emailConfig.fromName.split(" ")[0] || emailConfig.fromName;
   const contactFirstName = contact.firstName ?? contact.name.split(" ")[0];
   const companyDisplayName = companyNameForEmail(account.name);
@@ -274,7 +274,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     replyIntent: isReplyDraft ? replyIntent.intent : undefined,
     priorCta: isReplyDraft ? replyPriorCta : undefined,
     account: {
-      name: account.name,
+      name: companyDisplayName,
       employees: account.employees,
       industry: account.industry,
       city: account.city,
@@ -287,7 +287,7 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
   const rubricParams = {
     contact: { name: contact.name, firstName: contactFirstName, title: contact.title },
     account: {
-      name: account.name,
+      name: companyDisplayName,
       industry: account.industry,
       city: account.city,
       employees: account.employees,
@@ -391,9 +391,9 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
       continue;
     }
 
-    subjectA = parsed.subjectA ?? subjectA;
-    subjectB = parsed.subjectB ?? subjectB;
-    emailBody = normalizeEmailBody(parsed.emailBody ?? emailBody);
+    subjectA = scrubLegalEntityCopy(parsed.subjectA ?? subjectA, companyDisplayName);
+    subjectB = scrubLegalEntityCopy(parsed.subjectB ?? subjectB, companyDisplayName);
+    emailBody = scrubLegalEntityCopy(normalizeEmailBody(parsed.emailBody ?? emailBody), companyDisplayName);
     changeSummary = parsed.changeSummary ?? changeSummary;
 
     const locked = applySubjectLock({
@@ -422,9 +422,12 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
           userPrompt: baseUserPrompt,
           extraNote: SURGICAL_RETRY_NOTE,
         });
-        subjectA = retryParsed.subjectA ?? subjectA;
-        subjectB = retryParsed.subjectB ?? subjectB;
-        emailBody = normalizeEmailBody(retryParsed.emailBody ?? emailBody);
+        subjectA = scrubLegalEntityCopy(retryParsed.subjectA ?? subjectA, companyDisplayName);
+        subjectB = scrubLegalEntityCopy(retryParsed.subjectB ?? subjectB, companyDisplayName);
+        emailBody = scrubLegalEntityCopy(
+          normalizeEmailBody(retryParsed.emailBody ?? emailBody),
+          companyDisplayName,
+        );
         changeSummary = retryParsed.changeSummary ?? changeSummary;
 
         const retryLocked = applySubjectLock({
@@ -459,7 +462,9 @@ export async function reviseWriter(leadOutreachId: string, userMessage: string) 
     changeSummary = "No visible changes applied. Try being more specific (e.g. change greeting to Hi Vikram).";
   }
 
-  emailBody = normalizeEmailBody(emailBody);
+  emailBody = scrubLegalEntityCopy(normalizeEmailBody(emailBody), companyDisplayName);
+  subjectA = scrubLegalEntityCopy(subjectA, companyDisplayName);
+  subjectB = scrubLegalEntityCopy(subjectB, companyDisplayName);
 
   const finalSpam = scoreSpamMeter(emailBody, subjectA, delivOpts);
   const delivScore = finalSpam.inboxScore;
