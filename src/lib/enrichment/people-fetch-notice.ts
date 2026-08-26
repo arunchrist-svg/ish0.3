@@ -13,10 +13,18 @@ export function summarizeEmptyPeopleFetch(params: {
   const unique = [...new Set(params.warnings.filter(Boolean))];
   const joined = unique.join(" ");
   const localOperators = params.searchKind === "business";
+  const plantAndCorridorEmpty = unique.some((m) =>
+    /searched plant city .+ and nearby hq corridor/i.test(m),
+  );
+  const hqFallbackEmpty = unique.some((m) =>
+    /no plant linkedin in .+showing nearby hq/i.test(m),
+  );
 
   const noDomain = unique.filter((m) => /no website domain/i.test(m)).length;
   const cityMiss = unique.filter((m) =>
-    /no decision-makers found in |hr\/procurement people found at .* but all had cities outside|no people found in /i.test(m),
+    /no decision-makers found in |hr\/procurement people found at .* but all had cities outside|no people found in |searched plant city .+ and nearby hq corridor/i.test(
+      m,
+    ),
   ).length;
   const focusAreaBlock = unique.some((m) => /switch to area of interest/i.test(m));
   const roleMiss = unique.filter((m) =>
@@ -36,16 +44,21 @@ export function summarizeEmptyPeopleFetch(params: {
           ? ` Searched ${params.cities!.join(", ")} for local seniors at that branch, not distant HQ.`
           : focusAreaBlock
             ? ` Focus Area is on: only people in ${params.cities!.join(", ")} are shown. Switch to Area of Interest to also include nearby HQ (e.g. Bengaluru for Hosur).`
-            : cityMiss
-              ? ` City filter was ${params.cities!.join(", ")} plus nearby HQ (not Delhi or NYC). LinkedIn often omits plant location.`
-              : ` Searched ${params.cities!.join(", ")} and nearby HQ for Head of HR.`;
+            : plantAndCorridorEmpty
+              ? ` Searched plant city ${params.cities!.join(", ")} first, then nearby HQ corridor. Both were empty. We do not fill with Delhi or NYC.`
+              : cityMiss
+                ? ` City filter was ${params.cities!.join(", ")} plus nearby HQ (not Delhi or NYC). LinkedIn often omits plant location.`
+                : ` Searched ${params.cities!.join(", ")} plant-first, then nearby HQ for Head of HR if the plant was empty.`;
   const roleBits = [...(params.departments ?? []), ...(params.seniority ?? [])];
   const roleBit = roleBits.length ? ` People filters: ${roleBits.join(", ")}.` : "";
 
   if (/tavily_api_key.*missing|tavily api key.*missing|tavily_api_key not set/i.test(joined)) {
     return {
       headline: "People search is temporarily unavailable.",
-      detail: n > 1 ? `Tried ${n} companies. Add a Tavily key, then fetch again.` : "Try again later or contact support if this persists.",
+      detail:
+        n > 1
+          ? `Tried ${n} companies. Add a Tavily key, then fetch again.`
+          : "Try again later or contact support if this persists.",
     };
   }
 
@@ -74,9 +87,13 @@ export function summarizeEmptyPeopleFetch(params: {
   if (n > 1) {
     parts.push(`Each of the ${n} selected companies was searched.`);
   }
-  if (cityMiss && !params.indiaOnly) {
+  if (plantAndCorridorEmpty) {
     parts.push(
-      `${cityMiss} had no people in the selected cit${cityMiss === 1 ? "y" : "ies"}. Empty is OK. We do not fill with Delhi or NYC.`,
+      "Plant city and nearby HQ corridor were both searched. Empty means no public LinkedIn match, not a soft fill from far metros.",
+    );
+  } else if (cityMiss && !params.indiaOnly) {
+    parts.push(
+      `${cityMiss} had no people in the selected cit${cityMiss === 1 ? "y" : "ies"}${hqFallbackEmpty ? " after nearby HQ fallback" : ""}. We do not fill with Delhi or NYC.`,
     );
   }
   if (roleMiss) {
@@ -91,7 +108,12 @@ export function summarizeEmptyPeopleFetch(params: {
   }
   parts.push(cityBit.trim(), roleBit.trim());
   const extra = unique
-    .filter((m) => !/no website domain|no decision-makers found in |no contacts match the selected seniority|no hr or procurement people found|switched to backup/i.test(m))
+    .filter(
+      (m) =>
+        !/no website domain|no decision-makers found in |no contacts match the selected seniority|no hr or procurement people found|switched to backup|searched plant city/i.test(
+          m,
+        ),
+    )
     .slice(0, 2);
   if (!parts.filter(Boolean).length && extra[0]) parts.push(extra[0]);
 

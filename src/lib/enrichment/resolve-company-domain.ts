@@ -187,16 +187,41 @@ export async function resolveCompanyDomain(params: {
   }
 
   if (hasTavilyKeys() && params.companyName.trim()) {
+    const cityHint = params.city?.trim();
+    const naiveGuessHost = normalizeDomain(domainFromCompany(params.companyName));
     const queries = [
-      `"${params.companyName}" official website India`,
-      `"${params.companyName}" (website OR "official site") India -site:zaubacorp.com -site:indiamart.com -site:linkedin.com`,
+      // Match what humans type in Google: "Aron Universal" Bangalore / official website.
+      `"${params.companyName}" official website`,
+      cityHint
+        ? `"${params.companyName}" ${cityHint}`
+        : `"${params.companyName}" India website`,
+      `"${params.companyName}" (website OR "official site") -site:zaubacorp.com -site:indiamart.com -site:linkedin.com`,
     ];
+    if (naiveGuessHost && isUsableForCompany(naiveGuessHost, params.companyName)) {
+      queries.push(`site:${naiveGuessHost} "${params.companyName}"`);
+    }
     try {
       for (const query of queries) {
         const hits = await tavilySearch(query, 5);
         const found = extractOfficialWebsiteFromHits(hits, params.companyName);
         if (found) {
           return withAliases({ ...found, source: "tavily" }, params.companyName);
+        }
+        // Name-slug domains (aronuniversal.com) often are correct; accept when Tavily
+        // actually returned a hit from that host for this company name.
+        if (
+          naiveGuessHost &&
+          isUsableForCompany(naiveGuessHost, params.companyName) &&
+          hits.some((hit) => domainFromWebsite(hit.url) === naiveGuessHost)
+        ) {
+          return withAliases(
+            {
+              domain: naiveGuessHost,
+              website: officialWebsiteForDomain(naiveGuessHost, `https://www.${naiveGuessHost}`, params.companyName),
+              source: "tavily",
+            },
+            params.companyName,
+          );
         }
       }
     } catch (e) {

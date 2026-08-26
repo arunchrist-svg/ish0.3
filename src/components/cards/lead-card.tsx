@@ -25,6 +25,9 @@ type Props = {
   companyName?: string;
   directoryLeadId?: string;
   compact?: boolean;
+  plantCity?: string;
+  onGoldVerdict?: (verdict: "keep" | "drop") => void;
+  goldBusy?: boolean;
 };
 
 function personMetaChips(person: Person): string[] {
@@ -77,6 +80,9 @@ export function LeadCard({
   companyName,
   directoryLeadId,
   compact = false,
+  plantCity,
+  onGoldVerdict,
+  goldBusy = false,
 }: Props) {
   const company = companyName
     ? { name: companyName }
@@ -90,6 +96,48 @@ export function LeadCard({
     name: person.name,
     companyName: company?.name,
   });
+  const seatLabel =
+    person.seat === "plant" ? "Plant" : person.seat === "nearby_hq" ? "Nearby HQ" : null;
+
+  const seatChip = seatLabel ? (
+    <span
+      className={cn(
+        "shrink-0 rounded-[5px] px-1.5 py-0.5 text-[8px] font-bold tracking-wide",
+        person.seat === "plant" ? "bg-emerald-100 text-emerald-800" : "bg-sky-100 text-sky-800",
+      )}
+      title={person.matchScoreReason}
+    >
+      {seatLabel}
+    </span>
+  ) : null;
+
+  const goldButtons =
+    onGoldVerdict && plantCity && !alreadyAdded ? (
+      <div className="flex items-center gap-1" data-card-action>
+        <button
+          type="button"
+          disabled={goldBusy}
+          onClick={(e) => {
+            e.stopPropagation();
+            onGoldVerdict("keep");
+          }}
+          className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+        >
+          Keep
+        </button>
+        <button
+          type="button"
+          disabled={goldBusy}
+          onClick={(e) => {
+            e.stopPropagation();
+            onGoldVerdict("drop");
+          }}
+          className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[9px] font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+        >
+          Drop
+        </button>
+      </div>
+    ) : null;
 
   function handleCardClick(e: React.MouseEvent) {
     if (alreadyAdded) return;
@@ -160,6 +208,7 @@ export function LeadCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1">
             <span className="line-clamp-2 text-[13px] font-semibold leading-snug text-brand-ink">{person.name}</span>
+            {seatChip}
             {person.isKeyDecisionMaker ? (
               <span className="mt-0.5 shrink-0 rounded bg-brand-black px-1 py-0.5 text-[8px] font-bold text-white">KEY</span>
             ) : null}
@@ -202,6 +251,7 @@ export function LeadCard({
             )}
           </div>
         ) : null}
+        {goldButtons ? <div className="mt-2 flex justify-center">{goldButtons}</div> : null}
       </div>
     );
   }
@@ -259,8 +309,9 @@ export function LeadCard({
           </div>
         </div>
 
-        <div className="mb-1 flex items-center gap-1.5">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5">
           <span className="text-[15px] font-bold leading-tight text-brand-ink line-clamp-1">{person.name}</span>
+          {seatChip}
           {person.isKeyDecisionMaker && (
             <span className="shrink-0 rounded-[5px] bg-brand-black px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
               KEY
@@ -291,6 +342,7 @@ export function LeadCard({
             </span>
           )}
         </div>
+        {goldButtons ? <div className="mt-2">{goldButtons}</div> : null}
       </div>
 
       <div className="mx-4 h-px bg-brand-border/60" />

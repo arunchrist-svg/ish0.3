@@ -3,6 +3,7 @@ import { includeHqCorridorForScoutPeople, nearbyLabelsForScoutCities, selectPeop
 import { indiaDirectoriesSearchPeople } from "./india-directories";
 import { buildRoleTitleHints, filterPeopleByRoles, personMatchesRoles } from "./people-role-filter";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
+import { corridorOnlyLabels, isPlantSeatScout, selectPeoplePlantThenCorridor } from "@/lib/scout/plant-seat";
 
 export type LeadabilityBand = "high" | "medium" | "low" | "unknown";
 
@@ -39,6 +40,7 @@ export function assessLeadabilityFromPeople(params: {
 }): LeadabilityAssessment {
   const { people, seniority, departments, cities, indiaOnly, searchKind, businesses } = params;
   const roleOpts = { searchKind, businesses };
+  const plantSeat = isPlantSeatScout(cities) && searchKind !== "business";
   const includeHqCorridor = includeHqCorridorForScoutPeople({
     cities,
     locationScope: params.locationScope,
@@ -52,10 +54,14 @@ export function assessLeadabilityFromPeople(params: {
       : seniority.length > 0 || departments.length > 0
         ? people.filter((person) => personMatchesRoles(person, seniority, departments))
         : filterPeopleByRoles(people, seniority, departments, roleOpts).people;
-  const exactCityMatches =
-    indiaOnly || cities.length
-      ? selectPeopleForLeadLocation(exactRoleMatches, cities, { indiaOnly, includeHqCorridor }).people
-      : exactRoleMatches;
+
+  const exactCityMatches = (() => {
+    if (!(indiaOnly || cities.length)) return exactRoleMatches;
+    if (plantSeat) {
+      return selectPeoplePlantThenCorridor(exactRoleMatches, cities).people;
+    }
+    return selectPeopleForLeadLocation(exactRoleMatches, cities, { indiaOnly, includeHqCorridor }).people;
+  })();
 
   if (exactCityMatches.length >= 2) {
     return {
@@ -83,10 +89,13 @@ export function assessLeadabilityFromPeople(params: {
   }
 
   const relaxedRoles = filterPeopleByRoles(people, seniority, departments, roleOpts).people;
-  const relaxedCityMatches =
-    indiaOnly || cities.length
-      ? selectPeopleForLeadLocation(relaxedRoles, cities, { indiaOnly, includeHqCorridor }).people
-      : relaxedRoles;
+  const relaxedCityMatches = (() => {
+    if (!(indiaOnly || cities.length)) return relaxedRoles;
+    if (plantSeat) {
+      return selectPeoplePlantThenCorridor(relaxedRoles, cities).people;
+    }
+    return selectPeopleForLeadLocation(relaxedRoles, cities, { indiaOnly, includeHqCorridor }).people;
+  })();
   const relaxedCount = relaxedCityMatches.length || relaxedRoles.length;
   if (relaxedCount > 0) {
     const score = cities.length && relaxedCityMatches.length === 0 ? 18 : 28;
@@ -121,6 +130,7 @@ export async function probeCompanyLeadability(params: {
     indiaOnly?: boolean;
     localOperators?: boolean;
     locationScope?: "focus" | "interest";
+    plantSeatPhase?: "plant" | "hq_corridor";
   }) => Promise<ScoutPersonResult[]>;
 }): Promise<LeadabilityAssessment> {
   const {
@@ -143,21 +153,60 @@ export async function probeCompanyLeadability(params: {
   });
   const roleOpts = { searchKind, businesses };
   const roleHints = buildRoleTitleHints(active.seniority, active.departments, roleOpts);
+  const plantSeat = isPlantSeatScout(cities) && searchKind !== "business";
   const includeHqCorridor = includeHqCorridorForScoutPeople({
     cities,
     locationScope,
     localOperators: searchKind === "business",
   });
-  const probeCities = includeHqCorridor && cities.length ? nearbyLabelsForScoutCities(cities) : cities;
-  const people = await searchPeople({
-    companyName: company.name,
-    companyDomain: company.domain,
-    limit,
-    roleHints: roleHints.length ? roleHints : undefined,
-    cities: probeCities.length ? probeCities : undefined,
-    localOperators: searchKind === "business",
-    locationScope,
-  });
+
+  let people: ScoutPersonResult[] = [];
+  let probeSource = "india_directories";
+
+  if (plantSeat && cities.length) {
+    // Stage A: plant city only. Stage B only if plant empty.
+    people = await searchPeople({
+      companyName: company.name,
+      companyDomain: company.domain,
+      limit,
+      roleHints: roleHints.length ? roleHints : undefined,
+      cities,
+      localOperators: false,
+      locationScope,
+      plantSeatPhase: "plant",
+    });
+    const plantSeated = selectPeoplePlantThenCorridor(people, cities);
+    if (plantSeated.people.length === 0) {
+      const corridor = corridorOnlyLabels(cities);
+      if (corridor.length) {
+        const hqPeople = await searchPeople({
+          companyName: company.name,
+          companyDomain: company.domain,
+          limit,
+          roleHints: roleHints.length ? roleHints : undefined,
+          cities: corridor,
+          localOperators: false,
+          locationScope,
+          plantSeatPhase: "hq_corridor",
+        });
+        people = [...people, ...hqPeople];
+      }
+    }
+    probeSource = people[0]?.dataSource ?? "india_directories";
+  } else {
+    const probeCities = includeHqCorridor && cities.length ? nearbyLabelsForScoutCities(cities) : cities;
+    people = await searchPeople({
+      companyName: company.name,
+      companyDomain: company.domain,
+      limit,
+      roleHints: roleHints.length ? roleHints : undefined,
+      cities: probeCities.length ? probeCities : undefined,
+      localOperators: searchKind === "business",
+      locationScope,
+    });
+    probeSource = people[0]?.dataSource ?? "india_directories";
+  }
+
   return {
     ...assessLeadabilityFromPeople({
       people,
@@ -168,7 +217,7 @@ export async function probeCompanyLeadability(params: {
       businesses,
       locationScope,
     }),
-    leadabilityProbeSource: people[0]?.dataSource ?? "india_directories",
+    leadabilityProbeSource: probeSource,
   };
 }
 
@@ -176,9 +225,17 @@ export function applyLeadability(
   company: ScoutCompanyResult,
   leadability: LeadabilityAssessment,
 ): ScoutCompanyResult {
+  const reason =
+    company.fitScoreReason ||
+    (leadability.leadabilityMatchedInCity > 0
+      ? "Plant or nearby HQ buyers found on LinkedIn"
+      : leadability.leadabilityBand === "low"
+        ? "No plant or nearby HQ buyers found yet"
+        : undefined);
   return {
     ...company,
     ...leadability,
+    ...(reason ? { fitScoreReason: reason } : {}),
   };
 }
 

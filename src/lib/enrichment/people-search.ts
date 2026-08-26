@@ -28,6 +28,8 @@ import {
   hasPlantCitySelection,
   includeHqCorridorForScoutPeople,
   nearbyLabelsForScoutCities,
+  parentCitiesForNeighborhoods,
+  selectionLooksLikeNeighborhoods,
 } from "./city-search";
 import {
   hitShowsCurrentEmployment,
@@ -325,11 +327,44 @@ function dedupePeople(people: ScoutPersonResult[]): ScoutPersonResult[] {
 }
 
 /** Short LinkedIn titles for plant companies whose Head of HR sits at HQ. */
-export const HQ_LINKEDIN_ROLE_TERM = '"Head of HR" OR "HR Director" OR CHRO';
+export const HQ_LINKEDIN_ROLE_TERM =
+  '"Head of HR" OR "HR Director" OR CHRO OR CPO OR "Chief People Officer"';
 
 /** Broader public-web titles: plant HR is often "HR", payroll, or Head of HR, not only Director. */
 export const HQ_BUYER_ROLE_TERM =
-  'HR OR "Head of HR" OR "HR Director" OR "HR Manager" OR payroll OR CHRO OR Admin OR Purchase OR "Head of Procurement"';
+  'HR OR "Head of HR" OR "HR Director" OR "HR Manager" OR payroll OR CHRO OR CPO OR "Chief People Officer" OR Admin OR Purchase OR "Head of Procurement"';
+
+/**
+ * Queries humans type in Google, e.g. "Himalaya Wellness Company head hr".
+ * Neighborhood Focus Area must still run these: LinkedIn lists Bengaluru HQ, not Kasturi Nagar.
+ */
+export function buildGoogleStyleSeniorPeopleQueries(params: {
+  company: string;
+  companyAliases?: string[];
+  /** Parent metro only, e.g. "Bengaluru OR Bangalore". Omit ward names. */
+  metroClause?: string;
+}): string[] {
+  const companies = [params.company, ...(params.companyAliases ?? [])].filter(
+    (name, index, all) => name && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === index,
+  );
+  if (!companies.length) return [];
+
+  const metro = params.metroClause?.trim();
+  const metroLead = metro?.split(/\s+OR\s+/i)[0]?.trim();
+  const queries: string[] = [];
+  for (const company of companies.slice(0, 2)) {
+    // Plain Google phrasing first (matches what users type and what AI Overviews cite).
+    queries.push(`${company} head hr linkedin`);
+    queries.push(`${company} "Head of HR" OR "HR Director" OR CHRO OR CPO linkedin`);
+    queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM})`);
+    if (metro) {
+      queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) (${metro})`);
+      if (metroLead) queries.push(`${company} head hr ${metroLead} linkedin`);
+    }
+    queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) India`);
+  }
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 8);
+}
 
 export function buildPeopleSearchQueries(params: {
   company: string;
@@ -460,6 +495,13 @@ export async function searchPeopleViaTavily(params: {
   locationScope?: "focus" | "interest";
   /** Skip plant Manager query bias; honor roleHints from user chips only. */
   strictPeopleFilters?: boolean;
+  /**
+   * Plant-first seat agent:
+   * - plant: plant-city queries first; defer Google metro Head of HR
+   * - hq_corridor: Google-style metro seniors only (after plant empty)
+   */
+  plantSeatPhase?: "plant" | "hq_corridor";
+  goldFewShot?: string;
 }): Promise<ScoutPersonResult[]> {
   const limit = params.limit ?? 8;
   const dataSource = params.dataSource ?? "tavily+llm";
@@ -469,14 +511,19 @@ export async function searchPeopleViaTavily(params: {
   const roleHints = params.roleHints ?? [];
   const indiaOnly = Boolean(params.indiaOnly);
   const localOperators = Boolean(params.localOperators);
-  const restrictToArea = !includeHqCorridorForScoutPeople({
-    cities: params.cities ?? [],
-    locationScope: params.locationScope,
-    localOperators,
-  });
+  const plantPhase = params.plantSeatPhase === "plant";
+  const hqCorridorPhase = params.plantSeatPhase === "hq_corridor";
+  // Plant-first stage must not expand Ramanagara → Bengaluru in the query.
+  const restrictToArea = plantPhase
+    ? true
+    : !includeHqCorridorForScoutPeople({
+        cities: params.cities ?? [],
+        locationScope: params.locationScope,
+        localOperators,
+      });
   const searchCities = indiaOnly
     ? []
-    : restrictToArea
+    : restrictToArea || plantPhase
       ? [...new Set((params.cities ?? []).map((c) => c.trim()).filter(Boolean))]
       : nearbyLabelsForScoutCities(params.cities ?? []);
   const cityClause = searchCities.length ? citySearchClause(searchCities, 6) : "India";
@@ -528,14 +575,47 @@ export async function searchPeopleViaTavily(params: {
     ];
   }
 
-  // For plant-city scouts, prepend targeted "Plant HR" / "HR Manager" + city queries that
-  // LinkedIn doesn't surface in generic role searches. Skip when Strict people filters is on.
+  const deferGoogleMetro = plantPhase;
+
+  // Industry scouts: Google-style "Company head hr" (metro). Skip on plant-first stage;
+  // run only on explicit HQ corridor fallback after the plant returned nobody.
+  if (!localOperators && !deferGoogleMetro) {
+    const scoutCities = params.cities ?? [];
+    const metroLabels = selectionLooksLikeNeighborhoods(scoutCities)
+      ? parentCitiesForNeighborhoods(scoutCities)
+      : nearbyLabelsForScoutCities(scoutCities).filter(
+          (label) => !selectionLooksLikeNeighborhoods([label]),
+        );
+    const metroClause =
+      metroLabels.length > 0 ? citySearchClause(metroLabels, 4) : undefined;
+    const googleStyle = buildGoogleStyleSeniorPeopleQueries({
+      company,
+      companyAliases,
+      metroClause: metroClause && metroClause !== "India" ? metroClause : undefined,
+    });
+    const metroNatural =
+      metroLabels.length > 0
+        ? buildNaturalLinkedInPeopleQueries({
+            company,
+            companyAliases,
+            localities: metroLabels.slice(0, 3),
+            roleHints: ["Head of HR", "HR Director", "CHRO", "CPO"],
+          })
+        : [];
+    queries = [...new Set([...googleStyle, ...metroNatural, ...queries])];
+  }
+
+  // For plant-city scouts, prepend targeted "Plant HR" / "HR Manager" + city queries.
+  // On HQ corridor phase, skip plant-local queries (we already know the plant was empty).
   if (
     !params.strictPeopleFilters &&
     hasPlantCitySelection(params.cities ?? []) &&
-    !localOperators
+    !localOperators &&
+    !hqCorridorPhase
   ) {
-    const plantCityClause = searchCities.length ? searchCities.slice(0, 2).join(" OR ") : "Hosur OR Bengaluru";
+    const plantCityClause = searchCities.length
+      ? searchCities.slice(0, 2).join(" OR ")
+      : "Hosur OR Bengaluru";
     const plantQueries = [
       `site:linkedin.com/in "${company}" "Plant HR" ${plantCityClause}`,
       `site:linkedin.com/in "${company}" "HR Manager" ${plantCityClause}`,
@@ -672,9 +752,14 @@ export async function searchPeopleViaTavily(params: {
 
     const geoInstruction = localOperators
       ? "Keep branch, school, hospital, or hotel operators in this area. Skip Head of HR, CHRO, and corporate HQ people unless they clearly work at this branch."
-      : restrictToArea
-        ? "Keep people based in the selected nearby areas only. Do not include city-wide Bengaluru HQ or India-wide Head of HR unless they work in those areas."
-        : "Keep HR Manager, Head of HR, HR Director, and CHRO at the same company's nearby HQ. Exclude other countries.";
+      : hqCorridorPhase
+        ? "Plant-city search was empty. Keep Head of HR, HR Director, CHRO, or CPO at this company's nearby HQ metro only. Drop Delhi, Mumbai, NYC, and other far metros. Drop wrong employers (e.g. M3M when the target is 3M)."
+        : restrictToArea
+          ? "Keep people based in the selected nearby areas only. Do not include city-wide Bengaluru HQ or India-wide Head of HR unless they work in those areas."
+          : "Keep HR Manager, Head of HR, HR Director, and CHRO at the same company's nearby HQ. Exclude other countries.";
+    const goldBlock = params.goldFewShot?.trim()
+      ? `\nWorkspace gold cases (follow KEEP/DROP like a human):\n${params.goldFewShot.trim()}\n`
+      : "";
     try {
       const raw = await callLLM({
         tier: "fast",
@@ -691,7 +776,7 @@ Target city: ${cityClause}
 Find: ${roleFocus}
 Prefer people based in or near ${cityClause} when location is stated.
 ${geoInstruction}
-
+${goldBlock}
 ${context}
 
 Return up to ${limit} people.`,

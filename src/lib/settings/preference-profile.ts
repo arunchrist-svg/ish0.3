@@ -18,6 +18,8 @@ import { requireTenantContext } from "@/lib/tenant";
 import { SCOUT_DEPARTMENTS, SCOUT_INDUSTRIES, SCOUT_SENIORITY } from "@/lib/scouting-data";
 import { getVerticalPack, resolveVerticalPackId } from "@/vertical-packs";
 import type { ScoutQualityLearning } from "@/lib/enrichment/quality-profile";
+import type { PlantSeatGoldCase } from "@/lib/scout/plant-seat-gold";
+import { parsePlantSeatGoldCases } from "@/lib/scout/plant-seat-gold";
 
 export type PreferenceTopic = "scout" | "leads" | "email" | "close";
 
@@ -48,6 +50,8 @@ export type UserPreferenceProfile = {
   messages: PreferenceChatMessage[];
   topicsCovered: PreferenceTopic[];
   scoutQualityLearning?: ScoutQualityLearning;
+  /** Keep/Drop cases for plant-seat learning (workspace scoped). */
+  plantSeatGoldCases?: PlantSeatGoldCase[];
 };
 
 export type PreferenceExtract = {
@@ -216,6 +220,7 @@ export function parseUserPreferenceProfile(raw: unknown): UserPreferenceProfile 
     messages: parseMessages(o.messages),
     topicsCovered: parseTopics(o.topicsCovered),
     scoutQualityLearning: parseLearning(o.scoutQualityLearning),
+    plantSeatGoldCases: parsePlantSeatGoldCases(o.plantSeatGoldCases),
   };
 }
 

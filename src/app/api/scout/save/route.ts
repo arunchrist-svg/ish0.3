@@ -15,10 +15,12 @@ export async function POST(req: Request) {
       people,
       company,
       dataMode: requestedDataMode,
+      plantCities,
     }: {
       people?: ScoutPersonResult[];
       company: ScoutCompanyResult;
       dataMode?: DataMode;
+      plantCities?: string[];
     } = body;
 
     if (!company?.name) {
@@ -52,6 +54,7 @@ export async function POST(req: Request) {
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
       createdByUserId: ctx.userId,
+      plantCities: Array.isArray(plantCities) ? plantCities.filter((c): c is string => typeof c === "string") : undefined,
     });
 
     return NextResponse.json(result);

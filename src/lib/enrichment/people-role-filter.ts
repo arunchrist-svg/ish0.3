@@ -26,7 +26,7 @@ const OFF_DEPT_TITLE =
 const BUYING_DEPTS = new Set(["HR", "Admin", "Procurement", "Facilities"]);
 
 const GIFTING_SEARCH_TITLES: Record<string, string[]> = {
-  HR: ["HR Director", "Head of HR", "HR Manager", "Plant HR", "CHRO", "People Manager"],
+  HR: ["HR Director", "Head of HR", "HR Manager", "Plant HR", "CHRO", "CPO", "Chief People Officer", "People Manager"],
   Procurement: ["Procurement Head", "Head of Procurement", "Procurement Manager", "Sourcing Head", "Purchase Manager"],
   Admin: ["Admin Head", "Head of Admin", "Admin Manager"],
   Facilities: ["Facilities Head", "Head of Facilities", "Facilities Manager"],
@@ -135,6 +135,7 @@ export function isFestivalBuyerRole(title: string | null | undefined): boolean {
   if (!buyerDept) return false;
   // Accept C-level buyer-dept acronyms by themselves (CHRO, CPO are inherently senior).
   if (/\b(chro|cpo)\b/i.test(t)) return true;
+  if (/\bchief people\b/i.test(t) || /\bchief human\b/i.test(t)) return true;
   // Plant HR is a buyer even without "Manager" in the title.
   if (/\bplant\b/i.test(t) && /\b(hr|human resources|people)\b/i.test(t)) return true;
   // "HR Executive" / "Procurement Officer" are common SME titles in India where that person IS the DM.

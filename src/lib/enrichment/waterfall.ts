@@ -57,6 +57,14 @@ import {
 import { listTenantAccountShapes } from "@/lib/scout/save-leads";
 import { logScoutQualityEvent, SCOUT_QUALITY_EVENT } from "@/lib/scout/quality-events";
 import {
+  filterPeopleAgainstGoldDrops,
+  formatGoldCasesFewShot,
+  goldCasesForPlantCity,
+  parsePlantSeatGoldCases,
+} from "@/lib/scout/plant-seat-gold";
+import { isPlantSeatScout, selectPeoplePlantThenCorridor, corridorOnlyLabels } from "@/lib/scout/plant-seat";
+import { loadUserPreferenceProfile } from "@/lib/settings/preference-profile";
+import {
   officialWebsiteForScoutCompany,
   rankCompaniesWithOfficialSitesFirst,
 } from "./company-domain-quality";
@@ -152,6 +160,40 @@ async function loadScoutBrandIcp(workspaceId: string): Promise<{
 
 function finalizeScoutCompanies(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
   return rankCompaniesWithOfficialSitesFirst(companies.map(officialWebsiteForScoutCompany));
+}
+
+/**
+ * Scout list discovery often returns Zauba names without a website. Google finds
+ * aronuniversal.com in one query; resolve those here so tiles and people probe get a domain.
+ */
+async function hydrateMissingCompanyWebsites(
+  companies: ScoutCompanyResult[],
+  opts?: { limit?: number; concurrency?: number },
+): Promise<ScoutCompanyResult[]> {
+  const cap = Math.min(companies.length, Math.max(opts?.limit ?? 12, 1));
+  const concurrency = opts?.concurrency ?? 3;
+  const head = companies.slice(0, cap);
+  const tail = companies.slice(cap);
+  const hydrated = await mapWithConcurrency(head, concurrency, async (company) => {
+    if (company.domain?.trim() || company.website?.trim()) return company;
+    try {
+      const resolved = await resolveCompanyDomain({
+        companyName: company.name,
+        city: company.city ?? undefined,
+        allowExternal: true,
+      });
+      if (!resolved.domain) return company;
+      return {
+        ...company,
+        domain: resolved.domain,
+        website: resolved.website ?? `https://www.${resolved.domain}`,
+      };
+    } catch (e) {
+      console.warn("[waterfall:hydrate_website] failed:", company.name, e);
+      return company;
+    }
+  });
+  return finalizeScoutCompanies([...hydrated, ...tail]);
 }
 
 function tavilyQuotaHit(messages: string[]): boolean {
@@ -821,6 +863,13 @@ export async function discoverCompanies(params: {
 
   companies = applySellerPollutionFilter(companies, qualityProfile, params.searchKind);
 
+  if (!tavilyQuotaHit([...warnings, ...errors])) {
+    companies = await hydrateMissingCompanyWebsites(companies, {
+      limit: Math.min(companies.length, Math.max(limit, 10)),
+      concurrency: 3,
+    });
+  }
+
   const selectedSeniority = params.seniority ?? [];
   const selectedDepartments = params.departments ?? [];
   // Corporate modes: probe reachability using scout roles or pack defaults so AccountScore
@@ -1132,13 +1181,28 @@ export async function discoverPeople(params: {
     Boolean(brandIcp?.sweetsGifting) && !localOperators && !cfg.strictPeopleFilters;
   const broadenStages: string[] = [];
   const allowPeopleBroaden = qualityProfile.broadenPeopleWhenEmpty && !cfg.strictPeopleFilters;
-  // For Focus Area neighborhood scouts, also include the parent city in the Tavily query
-  // so "Hosur"-location profiles are found when the chip is "SIPCOT Hosur".
-  const peopleSearchCities = includeHqCorridor
-    ? nearbyLabelsForScoutCities(scoutCities)
-    : [...new Set([...scoutCities.map((c) => c.trim()).filter(Boolean), ...focusParentCities])];
+  const plantSeatMode = isPlantSeatScout(scoutCities) && !localOperators;
+  // Plant-first: search the plant city before corridor HQ. Neighborhood Focus still
+  // includes parent metro in the query. Non-plant scouts keep prior corridor behavior.
+  const peopleSearchCities = plantSeatMode
+    ? scoutCities.map((c) => c.trim()).filter(Boolean)
+    : includeHqCorridor
+      ? nearbyLabelsForScoutCities(scoutCities)
+      : [...new Set([...scoutCities.map((c) => c.trim()).filter(Boolean), ...focusParentCities])];
   const roleHints = buildRoleTitleHints(activeSeniority, activeDepartments, roleOpts);
   if (expandedRoles.note) warnings.push(expandedRoles.note);
+
+  let goldFewShot = "";
+  let goldCases = parsePlantSeatGoldCases([]);
+  try {
+    const profile = await loadUserPreferenceProfile(params.workspaceId);
+    goldCases = parsePlantSeatGoldCases(profile.plantSeatGoldCases);
+    if (plantSeatMode && scoutCities[0]) {
+      goldFewShot = formatGoldCasesFewShot(goldCasesForPlantCity(goldCases, scoutCities[0]!));
+    }
+  } catch (e) {
+    console.warn("[waterfall:gold_cases] load failed:", e);
+  }
 
   // ── Step 1: Internal DB contacts for this company ───────────────────────
   let companyContacts: (typeof contacts.$inferSelect)[] = [];
@@ -1167,9 +1231,14 @@ export async function discoverPeople(params: {
       activeDepartments,
       roleOpts,
     );
-    const localized = scoutCities.length
-      ? selectPeopleForLeadLocation(filtered.people, scoutCities, { includeHqCorridor }).people
-      : filtered.people;
+    let localized = filtered.people;
+    if (scoutCities.length) {
+      if (plantSeatMode) {
+        localized = selectPeoplePlantThenCorridor(filtered.people, scoutCities).people;
+      } else {
+        localized = selectPeopleForLeadLocation(filtered.people, scoutCities, { includeHqCorridor }).people;
+      }
+    }
     // Saved HQ contacts in Delhi/Mumbai must not short-circuit a plant-city scout.
     if (localized.length > 0 || !scoutCities.length) {
       if (filtered.people.length === 0 && (activeSeniority.length > 0 || activeDepartments.length > 0)) {
@@ -1268,6 +1337,8 @@ export async function discoverPeople(params: {
           localOperators,
           locationScope: params.locationScope,
           strictPeopleFilters: cfg.strictPeopleFilters,
+          plantSeatPhase: plantSeatMode ? "plant" : undefined,
+          goldFewShot: goldFewShot || undefined,
         }),
       external,
       remaining,
@@ -1380,6 +1451,7 @@ export async function discoverPeople(params: {
   }
 
   let finalPeople = roleFilteredPeople;
+  finalPeople = filterPeopleAgainstGoldDrops(finalPeople, params.companyName, goldCases);
 
   // Neighborhood Focus Area: keep parent-metro HQ (Bengaluru for Kasturi Nagar).
   // LinkedIn almost never lists the ward name. Do not widen to the whole state.
@@ -1397,7 +1469,64 @@ export async function discoverPeople(params: {
     allowHqCorridor: allowsHqCorridor(geoPolicy),
   });
 
-  if (peopleCityFilter.length) {
+  if (plantSeatMode && scoutCities.length) {
+    let seated = selectPeoplePlantThenCorridor(finalPeople, scoutCities);
+    // Stage B: deep HQ corridor search only when plant stage returned nobody.
+    if (
+      seated.people.length === 0 &&
+      !tavilyQuotaHit([...warnings, ...errors]) &&
+      hasTavilyKeys()
+    ) {
+      const corridorCities = corridorOnlyLabels(scoutCities);
+      if (corridorCities.length) {
+        const hqHits: ScoutPersonResult[] = [];
+        await runStep(
+          "people_search_hq_corridor",
+          () =>
+            indiaDirectoriesSearchPeople({
+              companyName: params.companyName,
+              companyDomain: resolvedDomain,
+              limit: remaining,
+              roleHints: roleHints.length > 0 ? roleHints : undefined,
+              cities: corridorCities,
+              localOperators: false,
+              locationScope: params.locationScope,
+              strictPeopleFilters: cfg.strictPeopleFilters,
+              plantSeatPhase: "hq_corridor",
+              goldFewShot: goldFewShot || undefined,
+            }),
+          hqHits,
+          remaining,
+          external.map((p) => p.name),
+          [],
+          warnings,
+          errors,
+        );
+        appendTavilyKeySwitchWarning(warnings);
+        if (hqHits.length) {
+          const merged = [...allPeople, ...hqHits];
+          const hqRoleFiltered =
+            localOperators || activeSeniority.length > 0 || activeDepartments.length > 0
+              ? filterPeopleByRoles(merged, activeSeniority, activeDepartments, roleOpts).people
+              : merged;
+          finalPeople = filterPeopleAgainstGoldDrops(hqRoleFiltered, params.companyName, goldCases);
+          seated = selectPeoplePlantThenCorridor(finalPeople, scoutCities);
+        }
+      }
+    }
+
+    finalPeople = seated.people;
+    if (seated.usedHqFallback) {
+      broadenStages.push("hq_corridor");
+      warnings.push(
+        `No plant LinkedIn in ${scoutCities.join(", ")}. Showing Nearby HQ in ${seated.corridorLabels.slice(0, 2).join(" / ")} (not Delhi or NYC).`,
+      );
+    } else if (finalPeople.length === 0 && allPeople.length > 0) {
+      warnings.push(
+        `Searched plant city ${scoutCities.join(", ")} and nearby HQ corridor (${corridorOnlyLabels(scoutCities).slice(0, 2).join(" / ") || "metro"}). No matching decision-makers.`,
+      );
+    }
+  } else if (peopleCityFilter.length) {
     const selected = selectPeopleForLeadLocation(finalPeople, peopleCityFilter, {
       includeHqCorridor: peopleIncludeHqCorridor,
     });

@@ -56,6 +56,19 @@ describe("summarizeEmptyPeopleFetch", () => {
     expect(notice.detail).toMatch(/HR, Procurement, Director/);
   });
 
+  it("says plant and corridor were both searched when HQ fallback is empty", () => {
+    const notice = summarizeEmptyPeopleFetch({
+      companyCount: 1,
+      cities: ["Ramanagara"],
+      warnings: [
+        "Searched plant city Ramanagara and nearby HQ corridor (Bengaluru / Bangalore). No matching decision-makers.",
+      ],
+    });
+    expect(notice.detail).toMatch(/plant city.*nearby HQ corridor/i);
+    expect(notice.detail).toMatch(/both were empty|both searched/i);
+    expect(notice.detail).not.toMatch(/Empty is OK/i);
+  });
+
   it("surfaces plant-city role miss with LinkedIn explanation, not India-wide copy", () => {
     const notice = summarizeEmptyPeopleFetch({
       companyCount: 2,

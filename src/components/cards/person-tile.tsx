@@ -19,6 +19,11 @@ type Props = {
   selectable?: boolean;
   /** Narrow rail / Accounts detail: stacked actions, no badge collisions. */
   compact?: boolean;
+  /** Plant-town scout: mark Keep / Drop gold cases for this plant. */
+  plantCity?: string;
+  companyName?: string;
+  onGoldVerdict?: (verdict: "keep" | "drop") => void;
+  goldBusy?: boolean;
 };
 
 export function PersonTile({
@@ -30,15 +35,22 @@ export function PersonTile({
   onTileClick,
   selectable = true,
   compact = false,
+  plantCity,
+  companyName,
+  onGoldVerdict,
+  goldBusy = false,
 }: Props) {
   const scoreColor = getScoreColor(person.matchScore);
-  const companyName = COMPANIES.find((c) => c.id === person.companyId)?.name;
+  const resolvedCompany =
+    companyName ?? COMPANIES.find((c) => c.id === person.companyId)?.name;
   const linkedIn = personLinkedInHref({
     linkedIn: person.linkedIn,
     name: person.name,
-    companyName,
+    companyName: resolvedCompany,
   });
   const roleLine = [person.department, person.seniority].filter((value) => !isBlankPersonField(value)).join(" · ");
+  const seatLabel =
+    person.seat === "plant" ? "Plant" : person.seat === "nearby_hq" ? "Nearby HQ" : null;
 
   function handleRowClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest("[data-card-action]")) return;
@@ -49,6 +61,48 @@ export function PersonTile({
     e.stopPropagation();
     onCheckboxClick(e);
   }
+
+  const seatChip = seatLabel ? (
+    <span
+      className={cn(
+        "shrink-0 rounded-[5px] px-1.5 py-0.5 text-[8px] font-bold tracking-wide",
+        person.seat === "plant"
+          ? "bg-emerald-100 text-emerald-800"
+          : "bg-sky-100 text-sky-800",
+      )}
+      title={person.matchScoreReason}
+    >
+      {seatLabel}
+    </span>
+  ) : null;
+
+  const goldButtons =
+    onGoldVerdict && plantCity ? (
+      <div className="flex shrink-0 items-center gap-1" data-card-action>
+        <button
+          type="button"
+          disabled={goldBusy}
+          onClick={(e) => {
+            e.stopPropagation();
+            onGoldVerdict("keep");
+          }}
+          className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+        >
+          Keep
+        </button>
+        <button
+          type="button"
+          disabled={goldBusy}
+          onClick={(e) => {
+            e.stopPropagation();
+            onGoldVerdict("drop");
+          }}
+          className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[9px] font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+        >
+          Drop
+        </button>
+      </div>
+    ) : null;
 
   const linkedInButton = (
     <a
@@ -140,6 +194,7 @@ export function PersonTile({
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="truncate text-[13px] font-bold text-brand-ink">{person.name}</span>
+                  {seatChip}
                   {person.isKeyDecisionMaker ? (
                     <span className="shrink-0 rounded-[5px] bg-brand-black px-1.5 py-0.5 text-[8px] font-bold tracking-wide text-white">
                       KEY
@@ -155,9 +210,10 @@ export function PersonTile({
               </div>
               {scorePill}
             </div>
-            <div className="mt-2.5 flex items-center gap-2">
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
               {linkedInButton}
               {selectButton}
+              {goldButtons}
             </div>
           </div>
         </div>
@@ -197,6 +253,7 @@ export function PersonTile({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="truncate text-[13.5px] font-bold text-brand-ink">{person.name}</span>
+          {seatChip}
           {person.isKeyDecisionMaker && (
             <span className="shrink-0 rounded-[5px] bg-brand-black px-1.5 py-0.5 text-[8.5px] font-bold tracking-wide text-white">
               KEY
@@ -207,6 +264,7 @@ export function PersonTile({
         {roleLine ? (
           <div className="mt-0.5 text-[10.5px] text-brand-ink-faint">{roleLine}</div>
         ) : null}
+        {goldButtons ? <div className="mt-1.5">{goldButtons}</div> : null}
       </div>
 
       {linkedInButton}

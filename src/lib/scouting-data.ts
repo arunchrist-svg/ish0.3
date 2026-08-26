@@ -42,6 +42,7 @@ export type Person = {
   phone: string;
   bio: string;
   location?: string;
+  seat?: "plant" | "nearby_hq";
 };
 
 export const SCOUT_CITIES = [

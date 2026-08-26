@@ -34,6 +34,26 @@ export function industrySearchClause(industries: string[]): string {
   return industries.map((s) => s.trim()).filter(Boolean).join(" OR ");
 }
 
+function industryLabelMatchesSelected(inferred: string, selectedSet: Set<string>): boolean {
+  if (selectedSet.has(inferred)) return true;
+  const inferredLower = inferred.toLowerCase();
+  for (const selected of selectedSet) {
+    const s = selected.toLowerCase();
+    if (inferredLower === s) return true;
+    if (inferredLower.length >= 4 && s.includes(inferredLower)) return true;
+    if (s.length >= 4 && inferredLower.includes(s)) return true;
+  }
+  const mapped = INDUSTRY_BUCKET_MAP[inferred];
+  if (mapped?.some((m) => selectedSet.has(m))) return true;
+  // Provider often says "IT" / "Software" for SaaS offices.
+  if (/\b(it|information technology|software|saas)\b/i.test(inferred)) {
+    return [...selectedSet].some((s) =>
+      /^(it|it services|technology|software)$/i.test(s.trim()),
+    );
+  }
+  return false;
+}
+
 export function filterBySelectedIndustries(
   results: ScoutCompanyResult[],
   selectedIndustries: string[],
@@ -50,11 +70,8 @@ export function filterBySelectedIndustries(
     // Places often labels offices as Corporate. Drop that only on a narrow
     // industry pick; a 18-industry Autopilot should still keep those hits.
     if (inferred === "Corporate" && !broadIndustrySearch) return false;
+    if (inferred === "Corporate" && broadIndustrySearch) return true;
 
-    if (selectedSet.has(inferred)) return true;
-
-    const mapped = INDUSTRY_BUCKET_MAP[inferred];
-    if (!mapped) return true;
-    return mapped.some((m) => selectedSet.has(m));
+    return industryLabelMatchesSelected(inferred, selectedSet);
   });
 }

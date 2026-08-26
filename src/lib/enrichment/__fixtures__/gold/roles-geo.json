@@ -33,6 +33,30 @@
     }
   },
   {
+    "id": "ramanagara-empty-bengaluru-hq-keep",
+    "expected": "accept",
+    "reason": "plant_then_corridor",
+    "companyName": "3M",
+    "selectedCities": ["Ramanagara"],
+    "person": {
+      "name": "Anita Rao",
+      "title": "HR Director",
+      "location": "Bengaluru"
+    }
+  },
+  {
+    "id": "ramanagara-delhi-chro-drop",
+    "expected": "reject",
+    "reason": "plant_then_corridor",
+    "companyName": "3M",
+    "selectedCities": ["Ramanagara"],
+    "person": {
+      "name": "Rajesh Delhi",
+      "title": "CHRO",
+      "location": "New Delhi"
+    }
+  },
+  {
     "id": "hr-manager-buyer",
     "expected": "accept",
     "reason": "buyer_role",

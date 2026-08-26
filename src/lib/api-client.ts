@@ -379,8 +379,23 @@ export async function scoutSave(params: {
   people: ScoutPersonResult[];
   company: ScoutCompanyResult;
   dataMode?: DataMode;
+  plantCities?: string[];
 }): Promise<{ saved: { leadId: string; name: string; emailStatus: string }[]; skipped: { name: string; reason: string }[] }> {
   return post("/api/scout/save", params);
+}
+
+export async function scoutMarkPlantSeatGold(params: {
+  companyName: string;
+  plantCity: string;
+  personName: string;
+  title?: string;
+  location?: string;
+  linkedIn?: string;
+  seat?: "plant" | "nearby_hq";
+  verdict: "keep" | "drop";
+  reason?: string;
+}): Promise<{ ok: boolean; count: number }> {
+  return post("/api/scout/plant-seat-gold", params);
 }
 
 export async function scoutSaveCompanies(params: {
@@ -510,6 +525,7 @@ export async function scoutSaveBatchStream(
       people: ScoutPersonResult[];
     }[];
     dataMode?: DataMode;
+    plantCities?: string[];
   },
   onResult: (result: ScoutSaveBatchResult) => void,
 ): Promise<void> {

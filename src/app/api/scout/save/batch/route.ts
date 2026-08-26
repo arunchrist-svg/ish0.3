@@ -24,9 +24,11 @@ export async function POST(req: Request) {
     const {
       companies,
       dataMode: requestedDataMode,
+      plantCities,
     }: {
       companies: BatchCompanyInput[];
       dataMode?: DataMode;
+      plantCities?: string[];
     } = body;
 
     if (!Array.isArray(companies) || companies.length === 0) {
@@ -86,6 +88,9 @@ export async function POST(req: Request) {
         tenantId: ctx.tenantId,
         workspaceId: ctx.workspaceId,
         createdByUserId: ctx.userId,
+        plantCities: Array.isArray(plantCities)
+          ? plantCities.filter((c): c is string => typeof c === "string")
+          : undefined,
       });
       return { id: entry.id, ...result };
     };

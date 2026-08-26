@@ -28,6 +28,15 @@ describe("nameMatchesQuery", () => {
     expect(nameMatchesQuery("Karnataka", "Moneyview")).toBe(false);
     expect(nameMatchesQuery("India in 2026", "Moneyview")).toBe(false);
   });
+
+  it("does not confuse 3M with M3M via substring", () => {
+    expect(nameMatchesQuery("M3M", "3M")).toBe(false);
+    expect(nameMatchesQuery("3M", "M3M")).toBe(false);
+    expect(nameMatchesQuery("M3M India Limited", "3M")).toBe(false);
+    expect(nameMatchesQuery("M3M India Limited", "3M India")).toBe(false);
+    expect(nameMatchesQuery("3M India Limited", "3M")).toBe(true);
+    expect(nameMatchesQuery("3M", "3M India")).toBe(true);
+  });
 });
 
 describe("companyMatchesNameQuery", () => {

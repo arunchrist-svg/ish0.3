@@ -57,6 +57,22 @@ describe("resolveCompanyDomain", () => {
     expect(found?.domain).toBe("copralenergy.in");
   });
 
+  it("picks aronuniversal.com from a Google-style official site hit", () => {
+    const found = extractOfficialWebsiteFromHits(
+      [
+        {
+          title: "ARON Universal",
+          url: "https://aronuniversal.com/",
+          content:
+            "Aron Universal, a trusted fluorescent colors manufacturer since 1974, produces premium fluorescent pigments in Bangalore.",
+        },
+      ],
+      "Aron Universal",
+    );
+    expect(found?.domain).toBe("aronuniversal.com");
+    expect(found?.website).toMatch(/aronuniversal\.com/);
+  });
+
   it("keeps a pasted holding-company website that does not match the legal name", async () => {
     const resolved = await resolveCompanyDomain({
       companyName: "Sansu Automotives Private Limited",

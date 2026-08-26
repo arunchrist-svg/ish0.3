@@ -27,8 +27,11 @@ import {
   scoutCreateSession,
   scoutUpdateSession,
   scoutGetSession,
+  scoutMarkPlantSeatGold,
   type ScoutSessionDetail,
 } from "@/lib/api-client";
+import { isPlantSeatScout } from "@/lib/scout/plant-seat";
+import type { Person } from "@/lib/scouting-data";
 import { useSession } from "@/components/providers/session-provider";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { mapWithConcurrency } from "@/lib/async";
@@ -257,6 +260,7 @@ function toPersonShape(p: ScoutPersonResult, companyId: string, idx: number) {
     isKeyDecisionMaker: p.isKeyDM ?? false,
     matchScore: p.matchScore ?? 55,
     matchScoreReason: p.matchScoreReason,
+    seat: p.seat,
     engagementSignals: p.engagementSignals ?? [],
     linkedIn: normalizeLinkedInUrl(p.linkedIn) ?? "",
     email: p.email ? maskEmail(p.email) : "—",
@@ -460,6 +464,7 @@ export function ScoutingApp() {
   const [fetchMessage, setFetchMessage] = useState<string | null>(null);
   const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<{ headline: string; detail: string } | null>(null);
+  const [goldBusyId, setGoldBusyId] = useState<string | null>(null);
   const [applyingWebsites, setApplyingWebsites] = useState(false);
   const [applyingWebsiteIds, setApplyingWebsiteIds] = useState<Set<string>>(new Set());
   const [websiteRowStatus, setWebsiteRowStatus] = useState<Record<string, WebsiteRowStatus>>({});
@@ -2036,6 +2041,37 @@ export function ScoutingApp() {
     }
   }
 
+  async function handleGoldVerdict(person: Person, verdict: "keep" | "drop") {
+    const plantCity = cities[0]?.trim();
+    if (!plantCity || !isPlantSeatScout(cities)) return;
+    const companyName = companies.find((c) => c.id === person.companyId)?.name;
+    if (!companyName) return;
+    setGoldBusyId(person.id);
+    try {
+      await scoutMarkPlantSeatGold({
+        companyName,
+        plantCity,
+        personName: person.name,
+        title: person.title,
+        location: person.location,
+        linkedIn: person.linkedIn || undefined,
+        seat: person.seat,
+        verdict,
+        reason: verdict === "keep" ? "Marked keep for this plant" : "Marked drop for this plant",
+      });
+      toast.success(
+        verdict === "keep"
+          ? `Kept ${person.name} as a gold case for ${plantCity}.`
+          : `Dropped ${person.name} for ${plantCity}. Next fetch will learn from this.`,
+      );
+    } catch (e) {
+      console.error(e);
+      toast.error("Could not save gold case. Try again.");
+    } finally {
+      setGoldBusyId(null);
+    }
+  }
+
   async function handleAddLeads() {
     const selectedPeople = people.filter((p) => selectedPersonIds.has(p.id));
     if (!selectedPeople.length) return;
@@ -2083,6 +2119,7 @@ export function ScoutingApp() {
               people: batchPeople,
             })),
             dataMode,
+            plantCities: cities,
           },
           (result) => {
             totalSaved += result.saved.length;
@@ -2102,6 +2139,7 @@ export function ScoutingApp() {
             people: entry.people,
             company: entry.company,
             dataMode,
+            plantCities: cities,
           });
           totalSaved += result.saved.length;
           allSkipped.push(...result.skipped);
@@ -2111,7 +2149,7 @@ export function ScoutingApp() {
 
       if (totalSaved > 0) {
         toast.success(
-          `${totalSaved} lead${totalSaved > 1 ? "s" : ""} saved — updated Leads, Accounts, and Contacts`,
+          `${totalSaved} lead${totalSaved > 1 ? "s" : ""} saved. Emails fill in shortly if enrichment is on.`,
         );
         notifyCrmRecordsChanged({ source: "scout_add_leads", savedLeads: totalSaved });
         // mark saved people so they show as already-added if user returns
@@ -2432,6 +2470,9 @@ export function ScoutingApp() {
           onBookmark={(p) => toast.info(`Bookmarked ${p.name}`)}
           getCompanyName={(p) => companies.find((c) => c.id === p.companyId)?.name}
           compact={isMobileLayout}
+          plantCity={isPlantSeatScout(cities) ? cities[0] : undefined}
+          goldBusyId={goldBusyId}
+          onGoldVerdict={handleGoldVerdict}
         />
       )}
     </div>
@@ -2557,6 +2598,9 @@ export function ScoutingApp() {
                 companyName={companies.find((c) => c.id === primaryPerson.companyId)?.name}
                 companyWebsite={companies.find((c) => c.id === primaryPerson.companyId)?.website}
                 companyDomain={companies.find((c) => c.id === primaryPerson.companyId)?.domain}
+                plantCity={isPlantSeatScout(cities) ? cities[0] : undefined}
+                goldBusy={goldBusyId === primaryPerson.id}
+                onGoldVerdict={(verdict) => void handleGoldVerdict(primaryPerson, verdict)}
                 onWebsiteResolved={(resolved) => {
                   const cid = primaryPerson.companyId;
                   if (cid) applyResolvedCompanyDomain(cid, resolved.domain, resolved.website);
@@ -2740,6 +2784,9 @@ export function ScoutingApp() {
                   companyName={companies.find((c) => c.id === primaryPerson.companyId)?.name}
                   companyWebsite={companies.find((c) => c.id === primaryPerson.companyId)?.website}
                   companyDomain={companies.find((c) => c.id === primaryPerson.companyId)?.domain}
+                  plantCity={isPlantSeatScout(cities) ? cities[0] : undefined}
+                  goldBusy={goldBusyId === primaryPerson.id}
+                  onGoldVerdict={(verdict) => void handleGoldVerdict(primaryPerson, verdict)}
                   onWebsiteResolved={(resolved) => {
                     const cid = primaryPerson.companyId;
                     if (cid) applyResolvedCompanyDomain(cid, resolved.domain, resolved.website);

@@ -17,6 +17,9 @@ type Props = {
   getCompanyName?: (person: Person) => string | undefined;
   getDirectoryLeadId?: (person: Person) => string | undefined;
   compact?: boolean;
+  plantCity?: string;
+  onGoldVerdict?: (person: Person, verdict: "keep" | "drop") => void;
+  goldBusyId?: string | null;
 };
 
 export function LeadsGrid({
@@ -32,6 +35,9 @@ export function LeadsGrid({
   getCompanyName,
   getDirectoryLeadId,
   compact = false,
+  plantCity,
+  onGoldVerdict,
+  goldBusyId,
 }: Props) {
   return (
     <div
@@ -57,6 +63,13 @@ export function LeadsGrid({
           companyName={getCompanyName?.(person)}
           directoryLeadId={getDirectoryLeadId?.(person)}
           compact={compact}
+          plantCity={plantCity}
+          goldBusy={goldBusyId === person.id}
+          onGoldVerdict={
+            onGoldVerdict && plantCity
+              ? (verdict) => onGoldVerdict(person, verdict)
+              : undefined
+          }
         />
       ))}
     </div>

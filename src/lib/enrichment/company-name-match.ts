@@ -155,6 +155,15 @@ export function compactCompanyName(raw: string): string {
   return normalizeCompanyName(raw).replace(/\s+/g, "");
 }
 
+/**
+ * Short alphanumeric brands (3M, M3M, HP, IBM). Substring matching is unsafe:
+ * "m3m".includes("3m") would treat M3M as 3M.
+ */
+export function isShortBrandCode(value: string): boolean {
+  const compact = value.replace(/\s+/g, "").toLowerCase();
+  return compact.length > 0 && compact.length <= 5 && /^[a-z0-9]+$/.test(compact);
+}
+
 export function isGeographicEntity(name: string): boolean {
   const normalized = normalizeCompanyName(name);
   if (!normalized) return false;
@@ -171,13 +180,37 @@ export function nameMatchesQuery(candidate: string, query: string): boolean {
   const normalizedQuery = normalizeCompanyName(query);
   if (!normalizedCandidate || !normalizedQuery) return false;
   if (normalizedCandidate === normalizedQuery) return true;
-  if (normalizedCandidate.includes(normalizedQuery) || normalizedQuery.includes(normalizedCandidate)) {
-    return true;
-  }
 
   const compactCandidate = normalizedCandidate.replace(/\s+/g, "");
   const compactQuery = normalizedQuery.replace(/\s+/g, "");
   if (compactCandidate === compactQuery) return true;
+
+  const candidateTokens = normalizedCandidate.split(" ").filter((token) => token.length > 1);
+  const queryTokens = normalizedQuery.split(" ").filter((token) => token.length > 1);
+
+  // Leading short brand codes must match exactly (3M ≠ M3M, including "3M India" ≠ "M3M India").
+  const candidateBrand = candidateTokens[0];
+  const queryBrand = queryTokens[0];
+  if (
+    candidateBrand &&
+    queryBrand &&
+    candidateBrand !== queryBrand &&
+    (isShortBrandCode(candidateBrand) || isShortBrandCode(queryBrand))
+  ) {
+    return false;
+  }
+
+  // Short brand codes: require whole-token equality, never substring (3M ≠ M3M).
+  if (isShortBrandCode(compactCandidate) || isShortBrandCode(compactQuery)) {
+    if (queryTokens.length > 0 && queryTokens.every((token) => candidateTokens.includes(token))) return true;
+    if (candidateTokens.length > 0 && candidateTokens.every((token) => queryTokens.includes(token))) return true;
+    return false;
+  }
+
+  if (normalizedCandidate.includes(normalizedQuery) || normalizedQuery.includes(normalizedCandidate)) {
+    return true;
+  }
+
   if (
     Math.min(compactCandidate.length, compactQuery.length) >= 4 &&
     (compactCandidate.includes(compactQuery) || compactQuery.includes(compactCandidate))
@@ -185,8 +218,6 @@ export function nameMatchesQuery(candidate: string, query: string): boolean {
     return true;
   }
 
-  const candidateTokens = normalizedCandidate.split(" ").filter((token) => token.length > 1);
-  const queryTokens = normalizedQuery.split(" ").filter((token) => token.length > 1);
   if (queryTokens.length > 0 && queryTokens.every((token) => candidateTokens.includes(token))) return true;
   if (candidateTokens.length > 0 && candidateTokens.every((token) => queryTokens.includes(token))) return true;
 

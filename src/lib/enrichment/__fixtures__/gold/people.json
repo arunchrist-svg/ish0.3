@@ -42,5 +42,16 @@
       "title": "HR Executive",
       "bio": "3M · May 2024 - Present\nAron Universal · Jun 2014 - Jan 2016"
     }
+  },
+  {
+    "id": "m3m-on-3m-reject",
+    "expected": "reject",
+    "reason": "wrong_employer",
+    "companyName": "3M",
+    "person": {
+      "name": "Veena Bansal",
+      "title": "HR at M3M India",
+      "bio": "M3M India · Present"
+    }
   }
 ]

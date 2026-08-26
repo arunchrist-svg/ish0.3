@@ -2,7 +2,7 @@ import { Check, ExternalLink, Globe, Lock, Pencil, X, Zap } from "lucide-react";
 import { useState } from "react";
 import type { Person } from "@/lib/scouting-data";
 import { IshAvatar } from "@/design-system";
-import { displayPersonTitle, isBlankPersonField, personLinkedInHref } from "@/lib/utils";
+import { displayPersonTitle, isBlankPersonField, personLinkedInHref, cn } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
 import { LinkedInGlyph } from "@/components/icons/linkedin-glyph";
 import { COMPANIES } from "@/lib/scouting-data";
@@ -120,9 +120,22 @@ type Props = {
   companyWebsite?: string;
   companyDomain?: string;
   onWebsiteResolved?: (resolved: { domain?: string; website?: string }) => void;
+  plantCity?: string;
+  onGoldVerdict?: (verdict: "keep" | "drop") => void;
+  goldBusy?: boolean;
 };
 
-export function PersonDetailPanel({ person, index, companyName, companyWebsite, companyDomain, onWebsiteResolved }: Props) {
+export function PersonDetailPanel({
+  person,
+  index,
+  companyName,
+  companyWebsite,
+  companyDomain,
+  onWebsiteResolved,
+  plantCity,
+  onGoldVerdict,
+  goldBusy = false,
+}: Props) {
   const company = companyName ?? COMPANIES.find((c) => c.id === person.companyId)?.name;
   const linkedIn = personLinkedInHref({
     linkedIn: person.linkedIn,
@@ -131,6 +144,8 @@ export function PersonDetailPanel({ person, index, companyName, companyWebsite, 
   });
   const scoreColor = getScoreColor(person.matchScore);
   const roleLine = [person.department, person.seniority].filter((value) => !isBlankPersonField(value)).join(" · ");
+  const seatLabel =
+    person.seat === "plant" ? "Plant" : person.seat === "nearby_hq" ? "Nearby HQ" : null;
 
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto bg-white p-5">
@@ -139,8 +154,19 @@ export function PersonDetailPanel({ person, index, companyName, companyWebsite, 
         <IshAvatar name={person.name} index={index} size={60} />
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-[18px] font-bold leading-tight text-brand-ink">{person.name}</span>
+            {seatLabel ? (
+              <span
+                className={cn(
+                  "shrink-0 rounded-[5px] px-1.5 py-0.5 text-[9px] font-bold tracking-wide",
+                  person.seat === "plant" ? "bg-emerald-100 text-emerald-800" : "bg-sky-100 text-sky-800",
+                )}
+                title={person.matchScoreReason}
+              >
+                {seatLabel}
+              </span>
+            ) : null}
             {person.isKeyDecisionMaker && (
               <span className="shrink-0 rounded-[5px] bg-brand-black px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-white">
                 KEY
@@ -152,6 +178,26 @@ export function PersonDetailPanel({ person, index, companyName, companyWebsite, 
           </div>
           {roleLine ? (
             <div className="mt-1 text-[11px] text-brand-ink-faint">{roleLine}</div>
+          ) : null}
+          {onGoldVerdict && plantCity ? (
+            <div className="mt-2 flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={goldBusy}
+                onClick={() => onGoldVerdict("keep")}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+              >
+                Keep for plant
+              </button>
+              <button
+                type="button"
+                disabled={goldBusy}
+                onClick={() => onGoldVerdict("drop")}
+                className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[10px] font-bold text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+              >
+                Drop for plant
+              </button>
+            </div>
           ) : null}
         </div>
 

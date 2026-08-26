@@ -14,6 +14,10 @@ type Props = {
   /** Narrow rail layout (Accounts detail). */
   compact?: boolean;
   className?: string;
+  plantCity?: string;
+  companyNameFor?: (person: Person) => string | undefined;
+  onGoldVerdict?: (person: Person, verdict: "keep" | "drop") => void;
+  goldBusyId?: string | null;
 };
 
 export function PeopleList({
@@ -25,6 +29,10 @@ export function PeopleList({
   selectable = true,
   compact = false,
   className,
+  plantCity,
+  companyNameFor,
+  onGoldVerdict,
+  goldBusyId,
 }: Props) {
   return (
     <div className={cn("flex flex-col", compact ? "gap-2.5 p-0" : "gap-2 p-5", className)}>
@@ -36,6 +44,14 @@ export function PeopleList({
           isSelected={selectedIds.has(person.id)}
           isPrimary={primaryId === person.id}
           compact={compact}
+          plantCity={plantCity}
+          companyName={companyNameFor?.(person)}
+          goldBusy={goldBusyId === person.id}
+          onGoldVerdict={
+            onGoldVerdict && plantCity
+              ? (verdict) => onGoldVerdict(person, verdict)
+              : undefined
+          }
           onCheckboxClick={(e) => {
             e.stopPropagation();
             onToggleSelect(person.id);

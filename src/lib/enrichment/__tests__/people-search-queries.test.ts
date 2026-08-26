@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOpenToWorkDenylistQueries,
   buildPeopleSearchQueries,
+  buildGoogleStyleSeniorPeopleQueries,
   buildNaturalLinkedInPeopleQueries,
   companyPeopleSearchNames,
   companyPeopleSearchTokens,
@@ -22,6 +23,20 @@ describe("companyPeopleSearchNames", () => {
     expect(companyPeopleSearchTokens("State Bank of India")).toEqual(
       expect.arrayContaining(["SBI", "State Bank of India"]),
     );
+  });
+});
+
+describe("buildGoogleStyleSeniorPeopleQueries", () => {
+  it("mirrors what humans type in Google for Head of HR", () => {
+    const queries = buildGoogleStyleSeniorPeopleQueries({
+      company: "Himalaya Wellness",
+      metroClause: "Bengaluru OR Bangalore",
+    });
+    expect(queries[0]).toContain("Himalaya Wellness head hr linkedin");
+    expect(queries.some((q) => q.includes("Chief People Officer"))).toBe(true);
+    expect(queries.some((q) => q.includes("CPO"))).toBe(true);
+    expect(queries.some((q) => q.includes("Bengaluru"))).toBe(true);
+    expect(queries.join("\n")).not.toContain("Kasturi Nagar");
   });
 });
 
@@ -58,6 +73,7 @@ describe("buildPeopleSearchQueries", () => {
     expect(queries[0]).toContain("Head of HR");
     expect(queries[0]).toContain("HR Director");
     expect(queries[0]).toContain("CHRO");
+    expect(queries[0]).toContain("CPO");
     expect(queries[0]).toContain("Bengaluru");
     expect(queries[0]).toContain("Bangalore");
     expect(queries[0]).toContain("Hosur");

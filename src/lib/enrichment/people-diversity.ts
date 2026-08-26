@@ -168,10 +168,19 @@ export function rankPeopleForScout(
       if (locBonus >= 12) reasons.push("local");
       bonus += dataCompletenessBonus(person);
       if (person.linkedIn?.trim()) reasons.push("LinkedIn");
+      const seatReason = person.matchScoreReason?.startsWith("Plant city") ||
+        person.matchScoreReason?.startsWith("Nearby HQ")
+        ? person.matchScoreReason
+        : person.seat === "plant"
+          ? "Plant city"
+          : person.seat === "nearby_hq"
+            ? "Nearby HQ"
+            : undefined;
+      const reasonParts = [seatReason, ...reasons].filter(Boolean).slice(0, 3);
       return {
         ...person,
         matchScore: Math.max(0, Math.min(100, base + bonus)),
-        matchScoreReason: reasons.slice(0, 3).join(" · ") || "Title match",
+        matchScoreReason: reasonParts.join(" · ") || "Title match",
       };
     })
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));

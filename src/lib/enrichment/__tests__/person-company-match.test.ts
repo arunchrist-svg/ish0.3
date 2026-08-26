@@ -277,6 +277,31 @@ describe("current employer matching", () => {
     ).toBe(true);
   });
 
+  it("rejects M3M HR when scouting 3M (substring false positive)", () => {
+    expect(entitiesReferToSameCompany("M3M", "3M")).toBe(false);
+    expect(entitiesReferToSameCompany("M3M India", "3M")).toBe(false);
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Veena Bansal - HR Head - M3M | LinkedIn",
+          url: "https://www.linkedin.com/in/veena-bansal-75176112a/",
+          content: "HR Head at M3M India Limited · Bengaluru · Present",
+        },
+        "3M",
+      ),
+    ).toBe(false);
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Anusha Ramachandra | Human Resources Manager | LinkedIn",
+          content:
+            "Human Resources Manager\n3M · May 2024 - Present · 2 yrs 4 mos\nBengaluru, Karnataka",
+        },
+        "3M",
+      ),
+    ).toBe(true);
+  });
+
   it("flags a Tata Steel title on a Hosur Steel / Jindal account", () => {
     expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Hosur Steel Industries")).toBe(true);
     expect(personTitleConflictsWithCompany("Plant Head Tata Steel(Hosur)", "Tata Steel")).toBe(false);

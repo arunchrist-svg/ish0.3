@@ -28,6 +28,8 @@ export type ScoutCompanyResult = {
   fitScoreReason?: string;
 };
 
+export type ScoutPersonSeat = "plant" | "nearby_hq";
+
 export type ScoutPersonResult = {
   name: string;
   firstName?: string;
@@ -44,6 +46,11 @@ export type ScoutPersonResult = {
   isKeyDM?: boolean;
   matchScore?: number;
   matchScoreReason?: string;
+  /**
+   * Plant-seat scout only: person sits at the plant city, or was kept as nearby HQ
+   * after the plant search returned nobody.
+   */
+  seat?: ScoutPersonSeat;
   engagementSignals?: string[];
   dataSource: string;
   externalId?: string;

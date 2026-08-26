@@ -4,7 +4,7 @@ import type { EmailVerifyResult } from "@/lib/enrichment/types";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 import { logScoutQualityEvent, matchScoreBand, SCOUT_QUALITY_EVENT } from "@/lib/scout/quality-events";
-import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
+import { enqueueEnrichLead, enqueueResearchForLeads } from "@/lib/jobs/enqueue";
 import type { ScoutPersonResult, ScoutCompanyResult, DataMode } from "@/lib/enrichment/types";
 import { eq, and, desc, or, ilike } from "drizzle-orm";
 import { pickMatchingAccount, uniqueScoutCompanies } from "@/lib/scout/account-match";
@@ -38,10 +38,12 @@ import {
 } from "@/lib/enrichment/person-company-match";
 import { isFestivalBuyerRole } from "@/lib/enrichment/people-role-filter";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
+import { isPlantSeatScout, seatAllowedOnSave } from "@/lib/scout/plant-seat";
 import { mapWithConcurrency } from "@/lib/async";
 
 const DEFAULT_CAMPAIGN = "00000000-0000-0000-0000-000000000003";
-const SAVE_PERSON_CONCURRENCY = 4;
+/** Wizard saves should feel instant; enrichment runs in the background. */
+const SAVE_PERSON_CONCURRENCY = 8;
 
 const BUYING_TITLE_KEYWORDS = [
   "hr",
@@ -83,7 +85,12 @@ function looksLikeDecisionMaker(person: ScoutPersonResult): boolean {
 export function scoutPersonSaveGate(
   person: ScoutPersonResult,
   company: ScoutCompanyResult,
-  opts?: { leadSource?: string; sweetsGifting?: boolean },
+  opts?: {
+    leadSource?: string;
+    sweetsGifting?: boolean;
+    /** Plant-town scout cities (e.g. Ramanagara). Used to allow Nearby HQ and block Delhi. */
+    plantCities?: string[];
+  },
 ): { pass: boolean; reason: string } {
   // Open to Work and former-employee checks run for every source, including the wizard:
   // a job seeker must never become a lead just because the user ticked the box.
@@ -98,6 +105,14 @@ export function scoutPersonSaveGate(
   if (companyNeedsEmployerVerify(company.name, person.matchScore)) {
     if (!personFieldsShowCurrentEmployment(person, company.name)) {
       return { pass: false, reason: "employer verify failed" };
+    }
+  }
+
+  const plantCities = (opts?.plantCities ?? []).map((c) => c.trim()).filter(Boolean);
+  if (plantCities.length && isPlantSeatScout(plantCities) && person.location?.trim()) {
+    const seat = person.seat === "plant" || person.seat === "nearby_hq" ? person.seat : "nearby_hq";
+    if (!seatAllowedOnSave({ seat, location: person.location, plantCities })) {
+      return { pass: false, reason: "outside plant city or nearby HQ corridor" };
     }
   }
 
@@ -136,8 +151,9 @@ async function preFilterCheck(
   company: ScoutCompanyResult,
   leadSource?: string,
   sweetsGifting?: boolean,
+  plantCities?: string[],
 ): Promise<{ pass: boolean; reason: string }> {
-  return scoutPersonSaveGate(person, company, { leadSource, sweetsGifting });
+  return scoutPersonSaveGate(person, company, { leadSource, sweetsGifting, plantCities });
 }
 
 export type SaveLeadsResult = {
@@ -167,7 +183,7 @@ async function loadWorkspaceAccountCandidates(
     .select()
     .from(accounts)
     .where(and(eq(accounts.tenantId, tenantId), eq(accounts.workspaceId, workspaceId)))
-    .limit(2000);
+    .limit(500);
 }
 
 async function findExistingAccount(
@@ -442,6 +458,7 @@ export async function saveScoutLeads(params: {
   createdByUserId?: string;
   enrichmentConfig?: EnrichmentConfig;
   sweetsGifting?: boolean;
+  plantCities?: string[];
 }): Promise<SaveLeadsResult> {
   const { people, company, tenantId, workspaceId, createdByUserId } = params;
 
@@ -464,12 +481,17 @@ export async function saveScoutLeads(params: {
   const enrichMode = enrichModeForSettings(cfg.enrichProvider, cfg.dataMode);
   const skipGooglePlaces = leadSource === "scout_wizard";
   const sweetsGifting = params.sweetsGifting ?? false;
+  // Scout UI already resolved domains during people fetch. Do not re-hit Apollo/Tavily on save.
+  // Paid email enrichment is deferred so "Add as Leads" returns after DB writes only.
+  const isWizard = leadSource === "scout_wizard";
+  const deferEnrich = isWizard && shouldEnrich && enrichMode === "paid";
+  const runSyncEnrich = shouldEnrich && enrichMode === "paid" && !deferEnrich;
 
   const { account, resolvedCompany } = await upsertScoutAccount({
     company,
     tenantId,
     workspaceId,
-    skipExternalDomain: false,
+    skipExternalDomain: isWizard,
   });
   const resolvedAccountId = account.id;
 
@@ -482,12 +504,13 @@ export async function saveScoutLeads(params: {
       workspaceId,
       dataMode,
       leadSource,
-      shouldEnrich,
+      shouldEnrich: runSyncEnrich,
       enrichMode,
       cfg,
       skipGooglePlaces,
       sweetsGifting,
       createdByUserId,
+      plantCities: params.plantCities,
     });
   });
 
@@ -527,6 +550,18 @@ export async function saveScoutLeads(params: {
     void enqueueResearchForLeads(savedLeads.map((s) => s.leadId));
   }
 
+  if (deferEnrich && savedLeads.length > 0) {
+    for (const item of savedLeads) {
+      if (item.emailStatus === "verified" || item.emailStatus === "unverified") continue;
+      void enqueueEnrichLead({
+        leadId: item.leadId,
+        tenantId,
+        mode: enrichMode,
+        dataMode: cfg.dataMode,
+      });
+    }
+  }
+
   return { saved: savedLeads, skipped, accountId: resolvedAccountId };
 }
 
@@ -544,6 +579,7 @@ async function saveOnePerson(params: {
   skipGooglePlaces: boolean;
   sweetsGifting?: boolean;
   createdByUserId?: string;
+  plantCities?: string[];
 }): Promise<PersonSaveOutcome> {
   const {
     person,
@@ -559,6 +595,7 @@ async function saveOnePerson(params: {
     skipGooglePlaces,
     sweetsGifting,
     createdByUserId,
+    plantCities,
   } = params;
 
   if (personTitleConflictsWithCompany(person.title, resolvedCompany.name)) {
@@ -568,6 +605,14 @@ async function saveOnePerson(params: {
         name: person.name,
         reason: sweetsGifting ? "does not work at this company" : "title names a different employer",
       },
+    };
+  }
+
+  const filter = await preFilterCheck(person, resolvedCompany, leadSource, sweetsGifting, plantCities);
+  if (!filter.pass) {
+    return {
+      kind: "skipped",
+      item: { name: person.name, reason: `pre-filter rejected: ${filter.reason}` },
     };
   }
 
@@ -598,7 +643,8 @@ async function saveOnePerson(params: {
   // Fast CRM add:
   // - keepable email already present → skip providers
   // - free mode → skip Apollo/Hunter/website waterfall (permutation fill is enough)
-  // Paid enrich still runs when Settings use a paid provider and email is missing.
+  // Paid enrich still runs when Settings use a paid provider and email is missing
+  // (scout wizard defers this to background via enqueueEnrichLead).
   if (shouldEnrich && enrichMode === "paid" && !emailAlreadyReady) {
     const enriched = await enrichPersonContact({
       person: {
@@ -661,47 +707,42 @@ async function saveOnePerson(params: {
     didEnrich,
   });
 
-  await db.insert(enrichmentRuns).values({
-    provider: enrichmentProvider ?? person.dataSource,
-    dataMode,
-    success: true,
-    emailFound: !!resolvedEmail,
-    emailVerified: emailResult.status === "verified",
-    result: {
-      email: resolvedEmail,
-      emailStatus: emailResult.status,
-      confidence: emailConfidence,
-      attempts: enrichAttempts,
-    },
-  });
+  if (didEnrich || resolvedEmail) {
+    void db.insert(enrichmentRuns).values({
+      provider: enrichmentProvider ?? person.dataSource,
+      dataMode,
+      success: true,
+      emailFound: !!resolvedEmail,
+      emailVerified: emailResult.status === "verified",
+      result: {
+        email: resolvedEmail,
+        emailStatus: emailResult.status,
+        confidence: emailConfidence,
+        attempts: enrichAttempts,
+      },
+    });
+  }
 
   if (emailResult.status === "missing" && !normalizeLinkedInUrl(person.linkedIn)) {
     return { kind: "skipped", item: { name: person.name, reason: "no email or LinkedIn profile" } };
   }
 
-  const existingByEmail = resolvedEmail
-    ? await db.query.contacts.findFirst({
-        where: and(eq(contacts.email, resolvedEmail), eq(contacts.tenantId, tenantId)),
-      })
-    : null;
-
-  const existingByName = await db.query.contacts.findFirst({
-    where: and(
-      eq(contacts.name, person.name),
-      eq(contacts.accountId, resolvedAccountId),
-      eq(contacts.tenantId, tenantId),
-    ),
-  });
+  const [existingByEmail, existingByName] = await Promise.all([
+    resolvedEmail
+      ? db.query.contacts.findFirst({
+          where: and(eq(contacts.email, resolvedEmail), eq(contacts.tenantId, tenantId)),
+        })
+      : Promise.resolve(null),
+    db.query.contacts.findFirst({
+      where: and(
+        eq(contacts.name, person.name),
+        eq(contacts.accountId, resolvedAccountId),
+        eq(contacts.tenantId, tenantId),
+      ),
+    }),
+  ]);
 
   const existingContact = existingByEmail ?? existingByName;
-
-  const filter = await preFilterCheck(person, resolvedCompany, leadSource, sweetsGifting);
-  if (!filter.pass) {
-    return {
-      kind: "skipped",
-      item: { name: person.name, reason: `pre-filter rejected: ${filter.reason}` },
-    };
-  }
 
   let contactId: string;
 
@@ -841,14 +882,16 @@ async function saveOnePerson(params: {
 
   if (!lead) return { kind: "none" };
 
-  await db.insert(yieldFunnel).values({ leadId: lead.id, stage: "scouted" });
-  await db.insert(yieldFunnel).values({
-    leadId: lead.id,
-    stage: "prefiltered",
-    metadata: { reason: filter.reason },
-  });
+  await Promise.all([
+    db.insert(yieldFunnel).values({ leadId: lead.id, stage: "scouted" }),
+    db.insert(yieldFunnel).values({
+      leadId: lead.id,
+      stage: "prefiltered",
+      metadata: { reason: filter.reason },
+    }),
+  ]);
 
-  await logAudit({
+  void logAudit({
     tenantId,
     workspaceId,
     actorId: createdByUserId,

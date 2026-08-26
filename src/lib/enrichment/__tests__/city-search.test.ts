@@ -8,6 +8,7 @@ import {
   isForeignPersonLocation,
   isNationwideSelection,
   nearbyLabelsForScoutCities,
+  partitionCitiesForSearch,
   peopleFilterUsesHqCorridor,
   personLocationMatchesSelection,
   selectPeopleForLeadLocation,
@@ -39,6 +40,8 @@ describe("nearbyLabelsForScoutCities", () => {
 
   it("keeps HQ corridor for neighborhood Focus Area, not district Area of Interest Places bias", () => {
     expect(peopleFilterUsesHqCorridor({ locationScope: "focus", cities: ["Kasturi Nagar"] })).toBe(true);
+    expect(peopleFilterUsesHqCorridor({ locationScope: "focus", cities: ["Ramanagara"] })).toBe(true);
+    expect(peopleFilterUsesHqCorridor({ locationScope: "focus", cities: ["Hosur"] })).toBe(true);
     expect(
       peopleFilterUsesHqCorridor({
         locationScope: "focus",
@@ -53,6 +56,24 @@ describe("nearbyLabelsForScoutCities", () => {
     expect(
       shouldApplyPlacesFocusBias("focus", ["Madras", "Dharmapuri", "Erode", "Hosur", "Salem"]),
     ).toBe(false);
+  });
+
+  it("keeps Bengaluru Head of HR on a Ramanagara Focus Area plant scout", () => {
+    const includeHqCorridor = peopleFilterUsesHqCorridor({
+      locationScope: "focus",
+      cities: ["Ramanagara"],
+    });
+    expect(includeHqCorridor).toBe(true);
+    const result = selectPeopleForScoutCities(
+      [
+        { name: "PlantHR", location: "Ramanagara, Karnataka", matchScore: 40 },
+        { name: "HqDirector", location: "Bengaluru, Karnataka", matchScore: 88 },
+        { name: "DelhiHR", location: "New Delhi", matchScore: 95 },
+      ],
+      ["Ramanagara"],
+      { includeHqCorridor },
+    );
+    expect(result.people.map((p) => p.name)).toEqual(["PlantHR", "HqDirector"]);
   });
 
   it("keeps the corridor closed for local-business scouts", () => {
@@ -146,6 +167,35 @@ describe("expandCitySearchTerms", () => {
     expect(clause.startsWith("Bengaluru")).toBe(true);
     expect(clause).toContain("Bangalore");
     expect(clause).toContain("Kasturi Nagar");
+  });
+});
+
+describe("partitionCitiesForSearch", () => {
+  it("does not stuff 13 Karnataka districts into one web query", () => {
+    const cities = [
+      "Bellary",
+      "Bengaluru Rural",
+      "Bengaluru",
+      "Chamarajanagar",
+      "Chikkaballapur",
+      "Chitradurga",
+      "Hassan",
+      "Kodagu",
+      "Kolar",
+      "Mandya",
+      "Mysore",
+      "Ramanagara",
+      "Vijayanagara",
+    ];
+    const chunks = partitionCitiesForSearch(cities);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.length).toBeLessThanOrEqual(5);
+    expect(chunks.flat().sort()).toEqual([...cities].sort());
+    for (const chunk of chunks) {
+      expect(chunk.length).toBeLessThanOrEqual(3);
+      const clause = citySearchClause(chunk);
+      expect(clause.split(" OR ").length).toBeLessThanOrEqual(8);
+    }
   });
 });
 

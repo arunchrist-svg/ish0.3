@@ -9,6 +9,9 @@ function person(partial: Partial<ScoutPersonResult> & { name: string }): ScoutPe
     bio: partial.bio,
     department: partial.department,
     seniority: partial.seniority,
+    location: partial.location,
+    seat: partial.seat,
+    matchScore: partial.matchScore,
     dataSource: "test",
     emailStatus: "missing",
   };
@@ -91,6 +94,33 @@ describe("scoutPersonSaveGate sweets", () => {
         leadSource: "scout_wizard",
       }),
     ).toEqual({ pass: true, reason: "user-selected from scout wizard" });
+  });
+
+  it("allows nearby_hq Bengaluru on a Ramanagara plant scout and blocks Delhi", () => {
+    expect(
+      scoutPersonSaveGate(
+        person({
+          name: "Anita",
+          title: "HR Director",
+          location: "Bengaluru",
+          seat: "nearby_hq",
+        }),
+        titan,
+        { leadSource: "scout_wizard", plantCities: ["Ramanagara"] },
+      ).pass,
+    ).toBe(true);
+    expect(
+      scoutPersonSaveGate(
+        person({
+          name: "Neha",
+          title: "CHRO",
+          location: "Delhi",
+          seat: "nearby_hq",
+        }),
+        titan,
+        { leadSource: "scout_wizard", plantCities: ["Ramanagara"] },
+      ),
+    ).toEqual({ pass: false, reason: "outside plant city or nearby HQ corridor" });
   });
 
   it("skips borderline Sai Lifescience on a Sai Chemicals scout", () => {

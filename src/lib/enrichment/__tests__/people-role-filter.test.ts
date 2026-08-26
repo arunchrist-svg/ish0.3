@@ -30,6 +30,8 @@ describe("isFestivalBuyerRole", () => {
     expect(isFestivalBuyerRole("HR Director")).toBe(true);
     expect(isFestivalBuyerRole("Head of HR")).toBe(true);
     expect(isFestivalBuyerRole("CHRO")).toBe(true);
+    expect(isFestivalBuyerRole("CPO")).toBe(true);
+    expect(isFestivalBuyerRole("Chief People Officer")).toBe(true);
     expect(isFestivalBuyerRole("Plant HR Manager")).toBe(true);
     expect(isFestivalBuyerRole("People Manager")).toBe(true);
     expect(isFestivalBuyerRole("HR and payroll personnel")).toBe(true);

@@ -2,6 +2,7 @@ import { distinctiveBrandTokens } from "@/lib/enrichment/company-domain-quality"
 import {
   compactCompanyName,
   isGeographicEntity,
+  isShortBrandCode,
   nameMatchesQuery,
   normalizeCompanyName,
 } from "@/lib/enrichment/company-name-match";
@@ -247,6 +248,18 @@ export function entitiesReferToSameCompany(personEntity: string, scoutCompany: s
   // Profile names a more specific or sibling unit (Nissan Trading vs Nissan, Sai Lifescience vs Sai Chemicals).
   if (pExtra.length > 0) return false;
 
+  // Short brand codes that are not identical tokens (3M vs M3M) are different companies.
+  const pCompact = compactCompanyName(normalizedPerson);
+  const sCompact = compactCompanyName(scoutCompany);
+  if (
+    pCompact !== sCompact &&
+    (isShortBrandCode(pCompact) || isShortBrandCode(sCompact)) &&
+    !sTokens.every((token) => pTokens.includes(token)) &&
+    !pTokens.every((token) => sTokens.includes(token))
+  ) {
+    return false;
+  }
+
   // Weak prefix-only person brand ("Sai") must not match multi-token scouts ("Sai Chemicals").
   // Short true brands (TVS, HCL) still match a longer scout name.
   if (
@@ -463,6 +476,14 @@ function looksLikeRoleOrDepartment(value: string): boolean {
   if (!trimmed) return true;
   if (DEPARTMENT_PHRASE_RE.test(trimmed)) return true;
   if (isGeographicEntity(trimmed)) return true;
+  // LinkedIn tenure / date fragments after "·" splits: "2 yrs", "2 yrs 4 mos", "May 2024"
+  if (/^\d+\s*(yrs?|years?|mos?|months?)(\s+\d+\s*(mos?|months?))?$/i.test(trimmed)) return true;
+  if (/^(present|current)$/i.test(trimmed)) return true;
+  if (
+    /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}$/i.test(trimmed)
+  ) {
+    return true;
+  }
   const tokens = normalizeCompanyName(trimmed).split(" ").filter(Boolean);
   if (!tokens.length) return true;
   // "People & Culture", "Human Resources", "Corporate Relations"

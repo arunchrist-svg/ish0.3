@@ -68,6 +68,27 @@ export function expandCityMatchTerms(cities: string[]): string[] {
   return applyCityAliases(matchTermsForScoutLabels(cities));
 }
 
+/**
+ * Split a long district list so one web query is not Bellary OR Bengaluru Rural OR …
+ * OR Chikkaballapur (Tavily returns zero for that shape). Round-robin preserves coverage.
+ */
+export function partitionCitiesForSearch(
+  cities: string[],
+  maxPerChunk = 2,
+  maxChunks = 5,
+): string[][] {
+  const cleaned = cities.map((c) => c.trim()).filter(Boolean);
+  if (!cleaned.length) return [[]];
+  if (isNationwideSelection(cleaned)) return [["India"]];
+  if (cleaned.length <= maxPerChunk) return [cleaned];
+  const chunkCount = Math.min(maxChunks, Math.ceil(cleaned.length / maxPerChunk));
+  const chunks: string[][] = Array.from({ length: chunkCount }, () => []);
+  cleaned.forEach((city, i) => {
+    chunks[i % chunkCount]!.push(city);
+  });
+  return chunks.filter((chunk) => chunk.length > 0);
+}
+
 export function citySearchClause(cities?: string[], max = 8): string {
   const selected = (cities ?? []).map((c) => c.trim()).filter(Boolean);
   if (!selected.length) return "";
@@ -75,7 +96,24 @@ export function citySearchClause(cities?: string[], max = 8): string {
 
   const neighborhoodLabels = selected.filter((label) => resolveScoutLabel(label) == null);
   if (!neighborhoodLabels.length) {
-    return expandCitySearchTerms(selected).slice(0, max).join(" OR ");
+    const expanded = expandCitySearchTerms(selected);
+    if (expanded.length <= max) return expanded.join(" OR ");
+    // Many districts: fill the cap with one primary (+ alias) per label so
+    // Bengaluru Rural/Urban/Bangalore cannot crowd Mysore and Hassan out.
+    const out: string[] = [];
+    for (const label of selected) {
+      if (out.length >= max) break;
+      const primary = compactSearchTermsForScoutLabels([label]);
+      for (const term of applyCityAliases(primary.length ? primary : [label])) {
+        if (out.length >= max) break;
+        if (!out.includes(term)) out.push(term);
+      }
+    }
+    for (const term of expanded) {
+      if (out.length >= max) break;
+      if (!out.includes(term)) out.push(term);
+    }
+    return out.join(" OR ");
   }
 
   // LinkedIn profiles say "Bengaluru", never "Kasturi Nagar". Parent metros must
@@ -174,8 +212,8 @@ export function shouldApplyPlacesFocusBias(
 }
 
 /**
- * Neighborhood Focus Area (Kasturi Nagar) must keep Bengaluru HQ profiles.
- * LinkedIn says the metro, not the ward. Do not widen to the whole state.
+ * Keep HQ corridor (Bangalore on Hosur/Ramanagara, or Bengaluru on Kasturi Nagar).
+ * LinkedIn almost never tags plant-town or ward names on HQ HR profiles.
  * Local-business scouts stay inside the pin.
  */
 export function peopleFilterUsesHqCorridor(params: {
@@ -187,8 +225,11 @@ export function peopleFilterUsesHqCorridor(params: {
 }): boolean {
   if (params.allowHqCorridor === false) return false;
   if (params.localOperators) return false;
+  const cities = params.cities ?? [];
   if (params.locationScope === "focus") {
-    return selectionLooksLikeNeighborhoods(params.cities ?? []);
+    // Neighborhoods need the parent metro; plant towns need the Bangalore corridor.
+    // A Focus pin on Ramanagara alone must not drop Bengaluru Head of HR.
+    return selectionLooksLikeNeighborhoods(cities) || hasPlantCitySelection(cities);
   }
   if (params.peopleCities?.length) {
     return (

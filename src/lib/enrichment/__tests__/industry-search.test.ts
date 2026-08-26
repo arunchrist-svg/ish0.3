@@ -67,4 +67,16 @@ describe("filterBySelectedIndustries", () => {
     );
     expect(kept.map((c) => c.name)).toEqual(["TVS"]);
   });
+
+  it("drops IT offices when the user picked manufacturing industries only", () => {
+    const kept = filterBySelectedIndustries(
+      [
+        { name: "DATABRIDGE", industry: "IT", city: "Bangalore", dataSource: "tavily+llm", fitScore: 76 },
+        { name: "Aron Universal", industry: "Chemicals", city: "Bengaluru", dataSource: "tavily+llm", fitScore: 65 },
+        { name: "Unknown Co", industry: undefined, city: "Mysore", dataSource: "india_directories", fitScore: 60 },
+      ],
+      ["Manufacturing", "Electronics", "Steel & Metals", "Automotive", "Textiles", "Chemicals"],
+    );
+    expect(kept.map((c) => c.name).sort()).toEqual(["Aron Universal", "Unknown Co"]);
+  });
 });

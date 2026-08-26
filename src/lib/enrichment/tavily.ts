@@ -1,7 +1,7 @@
 import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
-import { citySearchClause } from "./city-search";
+import { citySearchClause, partitionCitiesForSearch } from "./city-search";
 import {
   industrySearchClause,
   partitionIndustriesForSearch,
@@ -298,24 +298,29 @@ async function tavilyDiscoverCompanies(params: {
   employeeBands?: string[];
   searchKind?: "industry" | "business";
 }): Promise<ScoutCompanyResult[]> {
-  const chunks = partitionIndustriesForSearch(params.industries);
-  const perChunkLimit = Math.max(5, Math.ceil(params.limit / Math.max(chunks.length, 1)));
+  const cityChunks = partitionCitiesForSearch(params.cities);
+  const industryChunks = partitionIndustriesForSearch(params.industries);
+  const pairCount = Math.max(cityChunks.length * industryChunks.length, 1);
+  const perChunkLimit = Math.max(5, Math.ceil(params.limit / pairCount));
   const merged: ScoutCompanyResult[] = [];
   let lastError: unknown = null;
-  for (const chunk of chunks) {
-    if (merged.length >= params.limit) break;
-    try {
-      const batch = await tavilyDiscoverCompaniesOnce({
-        ...params,
-        industries: chunk,
-        limit: Math.max(perChunkLimit, params.limit - merged.length),
-      });
-      merged.push(...batch);
-    } catch (e) {
-      lastError = e;
-      // Keep prior chunks. Quota mid-loop must not discard already-found companies.
-      const msg = e instanceof Error ? e.message : String(e);
-      if (/quota|usage limit|432|exhausted/i.test(msg)) break;
+  outer: for (const cities of cityChunks) {
+    for (const industries of industryChunks) {
+      if (merged.length >= params.limit) break outer;
+      try {
+        const batch = await tavilyDiscoverCompaniesOnce({
+          ...params,
+          cities,
+          industries,
+          limit: Math.max(perChunkLimit, params.limit - merged.length),
+        });
+        merged.push(...batch);
+      } catch (e) {
+        lastError = e;
+        // Keep prior chunks. Quota mid-loop must not discard already-found companies.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/quota|usage limit|432|exhausted/i.test(msg)) break outer;
+      }
     }
   }
   const deduped = dedupeCompaniesByName(merged).slice(0, params.limit);

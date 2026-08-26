@@ -8,7 +8,8 @@ import { callLLM } from "@/lib/llm";
 import { parseJsonArrayFromLLM } from "@/lib/llm/parse-json";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import type { ScoutCompanyResult, ScoutPersonResult } from "./types";
-import { citySearchClause, expandCitySearchTerms } from "./city-search";
+import { citySearchClause, expandCitySearchTerms, partitionCitiesForSearch } from "./city-search";
+import { partitionIndustriesForSearch } from "./industry-search";
 import {
   employeeSizeSearchClause,
   extractEmployeesFromHits,
@@ -131,9 +132,14 @@ export function directoryQueryBatchCount(limit: number, available: number): numb
 }
 
 /** Run enough Tavily searches to hit Zauba + listings, without burning the quota. */
-export function directorySearchQueryCap(limit: number, available: number): number {
+export function directorySearchQueryCap(
+  limit: number,
+  available: number,
+  opts?: { cityChunks?: number; industryChunks?: number },
+): number {
   const needed = directoryQueryBatchCount(limit, available);
-  const maxQueries = limit >= 25 ? 6 : 4;
+  const fanOut = Math.max(0, (opts?.cityChunks ?? 1) - 1) + Math.max(0, (opts?.industryChunks ?? 1) - 1);
+  const maxQueries = (limit >= 25 ? 6 : 4) + Math.min(6, fanOut * 2);
   return Math.min(available, Math.max(needed, 3), maxQueries);
 }
 
@@ -224,15 +230,32 @@ export async function indiaDirectoriesSearchCompanies(params: {
   }
 
   const fetchSeed = params.fetchSeed ?? 0;
-  const queries = buildDirectoryQueries(
-    params.cities,
-    params.industries,
-    fetchSeed,
-    params.employeeBands,
-    searchKind,
-    params.focusCityLabels,
+  const cityChunks = partitionCitiesForSearch(params.cities);
+  const industryChunks = partitionIndustriesForSearch(params.industries);
+  const queries: string[] = [];
+  let seed = fetchSeed;
+  for (const cities of cityChunks) {
+    for (const industries of industryChunks) {
+      // Two queries per city×industry pair keeps fan-out bounded; cap trims further.
+      queries.push(
+        ...buildDirectoryQueries(
+          cities,
+          industries,
+          seed++,
+          params.employeeBands,
+          searchKind,
+          params.focusCityLabels,
+        ).slice(0, 2),
+      );
+    }
+  }
+  const queryBatch = queries.slice(
+    0,
+    directorySearchQueryCap(limit, queries.length, {
+      cityChunks: cityChunks.length,
+      industryChunks: industryChunks.length,
+    }),
   );
-  const queryBatch = queries.slice(0, directorySearchQueryCap(limit, queries.length));
   const perQueryLimit = optimizedMaxResults(Math.ceil(limit / Math.max(queryBatch.length, 1)));
 
   let quotaExceeded = false;
@@ -355,6 +378,9 @@ export async function indiaDirectoriesSearchPeople(params: {
   localOperators?: boolean;
   locationScope?: "focus" | "interest";
   strictPeopleFilters?: boolean;
+  /** Plant-first: search plant city only. HQ corridor: Google-style metro seniors. */
+  plantSeatPhase?: "plant" | "hq_corridor";
+  goldFewShot?: string;
 }): Promise<ScoutPersonResult[]> {
   return searchPeopleViaTavily({
     companyName: params.companyName,
@@ -367,6 +393,8 @@ export async function indiaDirectoriesSearchPeople(params: {
     localOperators: params.localOperators,
     locationScope: params.locationScope,
     strictPeopleFilters: params.strictPeopleFilters,
+    plantSeatPhase: params.plantSeatPhase,
+    goldFewShot: params.goldFewShot,
   });
 }
 

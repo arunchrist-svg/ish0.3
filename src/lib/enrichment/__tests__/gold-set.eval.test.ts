@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { hitShowsCurrentEmployment } from "@/lib/enrichment/person-company-match";
 import { isFestivalBuyerRole } from "@/lib/enrichment/people-role-filter";
 import { selectPeopleForScoutCities } from "@/lib/enrichment/city-search";
+import { selectPeoplePlantThenCorridor } from "@/lib/scout/plant-seat";
 import { sortCompaniesByAccountScore } from "@/lib/enrichment/account-score";
 import { scoutQualityProfileFor } from "@/lib/enrichment/quality-profile";
 import type { ScoutCompanyResult, ScoutPersonResult } from "@/lib/enrichment/types";
@@ -73,6 +74,21 @@ describe("scout gold set eval", () => {
       });
       if (c.expected === "accept") expect(kept.map((p) => p.name)).toContain(c.person.name);
       else expect(kept.map((p) => p.name)).not.toContain(c.person.name);
+    },
+  );
+
+  it.each(rolesGeo.filter((c) => c.reason === "plant_then_corridor").map((c) => [c.id, c] as const))(
+    "%s plant-then-corridor",
+    (_id, c) => {
+      const cities = c.selectedCities ?? ["Ramanagara"];
+      const seated = selectPeoplePlantThenCorridor([asPerson(c.person)], cities);
+      if (c.expected === "accept") {
+        expect(seated.people.map((p) => p.name)).toContain(c.person.name);
+        expect(seated.usedHqFallback).toBe(true);
+        expect(seated.people.find((p) => p.name === c.person.name)?.seat).toBe("nearby_hq");
+      } else {
+        expect(seated.people.map((p) => p.name)).not.toContain(c.person.name);
+      }
     },
   );
 
