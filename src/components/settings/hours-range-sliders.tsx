@@ -15,29 +15,31 @@ import {
 } from "@/lib/email/send-window";
 import { Plus, X } from "lucide-react";
 
-/** Thumb / range bounds: 6:00 inclusive through 20:00 exclusive. */
+/** Thumb / range bounds: 6:00 AM inclusive through 8:00 PM exclusive. */
 const MIN_HOUR = MIN_SEND_HOUR;
 const MAX_HOUR = MAX_SEND_HOUR;
-/**
- * Full-day track for ticks, highlight, and native range thumbs.
- * Inputs must use min=0 / max=DAY_SCALE so thumb % matches highlight %;
- * values are still clamped to MIN_HOUR–MAX_HOUR on change.
- */
-const DAY_SCALE = 24;
+/** Track spans only the allowed send window (not midnight–midnight). */
+const TRACK_SPAN = MAX_HOUR - MIN_HOUR;
 const STEP = 0.5;
 const MIN_SPAN = 0.5;
 /** When thumbs are closer than this % of the track, floating pills would overlap. */
 const PILL_COLLISION_PCT = 14;
 
-/** Axis labels every 4 hours across the full day (visual only). */
-const AXIS_LABEL_HOURS = [0, 4, 8, 12, 16, 20, 24] as const;
+/** Axis labels every 2 hours across the allowed window. */
+const AXIS_LABEL_HOURS = [6, 8, 10, 12, 14, 16, 18, 20] as const;
 
 type ActiveThumb = "start" | "end" | null;
 
-/** Map a local hour onto the full-day track (0–24 → 0–100%). */
-export function hourToTrackPct(hour: number, dayScale: number = DAY_SCALE): number {
-  if (!Number.isFinite(hour) || dayScale <= 0) return 0;
-  return (hour / dayScale) * 100;
+/** Map a local hour onto the allowed-window track (6–20 → 0–100%). */
+export function hourToTrackPct(
+  hour: number,
+  minHour: number = MIN_HOUR,
+  maxHour: number = MAX_HOUR,
+): number {
+  if (!Number.isFinite(hour)) return 0;
+  const span = maxHour - minHour;
+  if (span <= 0) return 0;
+  return ((hour - minHour) / span) * 100;
 }
 
 function clampRange(
@@ -92,6 +94,7 @@ function HourRangeSlider({
   const endPct = hourToTrackPct(range.hourEnd);
   const interacting = activeThumb != null;
   const pillsCollide = endPct - startPct < PILL_COLLISION_PCT;
+  const tickCount = Math.round(TRACK_SPAN / STEP) + 1;
 
   useEffect(() => {
     if (!interacting) return;
@@ -151,17 +154,18 @@ function HourRangeSlider({
           style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
         />
         {/*
-          Native range thumbs position as (value - min) / (max - min).
-          min/max must match the visual day scale (0–DAY_SCALE), not MIN/MAX_HOUR,
-          or thumbs drift relative to the highlight bar and axis ticks.
+          Native range thumbs sit at (value - min) / (max - min).
+          min/max are the hard send-window bounds so thumbs cannot leave 6:00–8:00 PM.
         */}
         <input
           type="range"
-          min={0}
-          max={DAY_SCALE}
+          min={MIN_HOUR}
+          max={MAX_HOUR}
           step={STEP}
           value={range.hourStart}
           aria-label={`${label} start`}
+          aria-valuemin={MIN_HOUR}
+          aria-valuemax={MAX_HOUR - MIN_SPAN}
           onPointerDown={() => setActiveThumb("start")}
           onPointerUp={() => setActiveThumb(null)}
           onPointerCancel={() => setActiveThumb(null)}
@@ -175,18 +179,20 @@ function HourRangeSlider({
             );
             onChange({
               hourStart,
-              hourEnd: Math.max(hourStart + MIN_SPAN, range.hourEnd),
+              hourEnd: Math.max(hourStart + MIN_SPAN, Math.min(MAX_HOUR, range.hourEnd)),
             });
           }}
           className="ish-hours-range-thumb absolute inset-0 z-[2] w-full appearance-none bg-transparent"
         />
         <input
           type="range"
-          min={0}
-          max={DAY_SCALE}
+          min={MIN_HOUR}
+          max={MAX_HOUR}
           step={STEP}
           value={range.hourEnd}
           aria-label={`${label} end`}
+          aria-valuemin={MIN_HOUR + MIN_SPAN}
+          aria-valuemax={MAX_HOUR}
           onPointerDown={() => setActiveThumb("end")}
           onPointerUp={() => setActiveThumb(null)}
           onPointerCancel={() => setActiveThumb(null)}
@@ -199,7 +205,7 @@ function HourRangeSlider({
               Math.min(MAX_HOUR, snapToHalfHour(Number(e.target.value))),
             );
             onChange({
-              hourStart: Math.min(range.hourStart, hourEnd - MIN_SPAN),
+              hourStart: Math.max(MIN_HOUR, Math.min(range.hourStart, hourEnd - MIN_SPAN)),
               hourEnd,
             });
           }}
@@ -207,10 +213,10 @@ function HourRangeSlider({
         />
       </div>
 
-      {/* Tick marks: long = hour, short = :30 */}
+      {/* Tick marks: long = hour, short = :30 (allowed window only) */}
       <div className="relative mt-1.5 h-2.5" aria-hidden>
-        {Array.from({ length: 49 }, (_, i) => {
-          const hour = i * 0.5;
+        {Array.from({ length: tickCount }, (_, i) => {
+          const hour = MIN_HOUR + i * STEP;
           const isHour = hour % 1 === 0;
           return (
             <span
@@ -233,7 +239,11 @@ function HourRangeSlider({
             style={{
               left: `${hourToTrackPct(hour)}%`,
               transform:
-                hour === 0 ? undefined : hour === 24 ? "translateX(-100%)" : "translateX(-50%)",
+                hour === MIN_HOUR
+                  ? undefined
+                  : hour === MAX_HOUR
+                    ? "translateX(-100%)"
+                    : "translateX(-50%)",
             }}
           >
             {formatHourAxisLabel(hour)}
@@ -302,8 +312,8 @@ export function HoursRangeSliders({
       </div>
 
       <p className="text-[10px] leading-snug text-brand-ink-faint">
-        Drag both ends in 30-minute steps between 6:00 AM and 8:00 PM. Add another block for
-        split days (e.g. 8–14 and 16–20). Max {MAX_SEND_HOUR_RANGES} blocks.
+        Sliders stop at 6:00 AM and 8:00 PM. No sends before or after that window. Add another block
+        for split days (e.g. 8–14 and 16–20). Max {MAX_SEND_HOUR_RANGES} blocks.
       </p>
     </div>
   );
