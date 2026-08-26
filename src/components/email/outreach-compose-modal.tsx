@@ -368,6 +368,7 @@ export function OutreachComposeModal({
         emailBodyB: "",
         emailBodyC: "",
         replySent: false,
+        whatsapp: cleared.whatsapp ?? draft.whatsapp ?? undefined,
       };
       applyDraft(emptyDraft, drafts);
       setReplyComposeOpen(true);
