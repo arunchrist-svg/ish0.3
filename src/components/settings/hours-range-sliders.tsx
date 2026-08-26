@@ -18,7 +18,11 @@ import { Plus, X } from "lucide-react";
 /** Thumb / range bounds: 6:00 inclusive through 20:00 exclusive. */
 const MIN_HOUR = MIN_SEND_HOUR;
 const MAX_HOUR = MAX_SEND_HOUR;
-/** Full-day track for ticks and thumb position (thumbs still clamped to 6–20). */
+/**
+ * Full-day track for ticks, highlight, and native range thumbs.
+ * Inputs must use min=0 / max=DAY_SCALE so thumb % matches highlight %;
+ * values are still clamped to MIN_HOUR–MAX_HOUR on change.
+ */
 const DAY_SCALE = 24;
 const STEP = 0.5;
 const MIN_SPAN = 0.5;
@@ -29,6 +33,12 @@ const PILL_COLLISION_PCT = 14;
 const AXIS_LABEL_HOURS = [0, 4, 8, 12, 16, 20, 24] as const;
 
 type ActiveThumb = "start" | "end" | null;
+
+/** Map a local hour onto the full-day track (0–24 → 0–100%). */
+export function hourToTrackPct(hour: number, dayScale: number = DAY_SCALE): number {
+  if (!Number.isFinite(hour) || dayScale <= 0) return 0;
+  return (hour / dayScale) * 100;
+}
 
 function clampRange(
   next: SendHourRange,
@@ -78,8 +88,8 @@ function HourRangeSlider({
   label: string;
 }) {
   const [activeThumb, setActiveThumb] = useState<ActiveThumb>(null);
-  const startPct = (range.hourStart / DAY_SCALE) * 100;
-  const endPct = (range.hourEnd / DAY_SCALE) * 100;
+  const startPct = hourToTrackPct(range.hourStart);
+  const endPct = hourToTrackPct(range.hourEnd);
   const interacting = activeThumb != null;
   const pillsCollide = endPct - startPct < PILL_COLLISION_PCT;
 
@@ -140,10 +150,15 @@ function HourRangeSlider({
           className="absolute top-1/2 h-2 -translate-y-1/2 rounded-full bg-brand-stratus-blue"
           style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
         />
+        {/*
+          Native range thumbs position as (value - min) / (max - min).
+          min/max must match the visual day scale (0–DAY_SCALE), not MIN/MAX_HOUR,
+          or thumbs drift relative to the highlight bar and axis ticks.
+        */}
         <input
           type="range"
-          min={MIN_HOUR}
-          max={MAX_HOUR}
+          min={0}
+          max={DAY_SCALE}
           step={STEP}
           value={range.hourStart}
           aria-label={`${label} start`}
@@ -154,7 +169,10 @@ function HourRangeSlider({
           onBlur={() => setActiveThumb(null)}
           onChange={(e) => {
             setActiveThumb("start");
-            const hourStart = snapToHalfHour(Number(e.target.value));
+            const hourStart = Math.max(
+              MIN_HOUR,
+              Math.min(MAX_HOUR - MIN_SPAN, snapToHalfHour(Number(e.target.value))),
+            );
             onChange({
               hourStart,
               hourEnd: Math.max(hourStart + MIN_SPAN, range.hourEnd),
@@ -164,8 +182,8 @@ function HourRangeSlider({
         />
         <input
           type="range"
-          min={MIN_HOUR}
-          max={MAX_HOUR}
+          min={0}
+          max={DAY_SCALE}
           step={STEP}
           value={range.hourEnd}
           aria-label={`${label} end`}
@@ -176,7 +194,10 @@ function HourRangeSlider({
           onBlur={() => setActiveThumb(null)}
           onChange={(e) => {
             setActiveThumb("end");
-            const hourEnd = snapToHalfHour(Number(e.target.value));
+            const hourEnd = Math.max(
+              MIN_HOUR + MIN_SPAN,
+              Math.min(MAX_HOUR, snapToHalfHour(Number(e.target.value))),
+            );
             onChange({
               hourStart: Math.min(range.hourStart, hourEnd - MIN_SPAN),
               hourEnd,
@@ -198,7 +219,7 @@ function HourRangeSlider({
                 "absolute top-0 w-px -translate-x-1/2 bg-brand-stratus-blue/35",
                 isHour ? "h-2.5" : "h-1.5 bg-brand-stratus-blue/22",
               )}
-              style={{ left: `${(hour / DAY_SCALE) * 100}%` }}
+              style={{ left: `${hourToTrackPct(hour)}%` }}
             />
           );
         })}
@@ -210,7 +231,7 @@ function HourRangeSlider({
             key={hour}
             className="absolute text-[9px] font-medium tabular-nums text-brand-ink-faint"
             style={{
-              left: `${(hour / DAY_SCALE) * 100}%`,
+              left: `${hourToTrackPct(hour)}%`,
               transform:
                 hour === 0 ? undefined : hour === 24 ? "translateX(-100%)" : "translateX(-50%)",
             }}

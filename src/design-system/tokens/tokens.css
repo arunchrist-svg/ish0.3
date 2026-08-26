@@ -2335,7 +2335,8 @@
   box-shadow: 0 0 0 3px rgba(var(--brand-stratus-blue-rgb), 0.12) !important;
 }
 
-/* Dual-thumb hours range sliders (send window) */
+/* Dual-thumb hours range sliders (send window).
+   Inputs use min=0 max=24 so native thumb % matches the highlight/axis day scale. */
 .ish-hours-range-thumb {
   pointer-events: none;
   height: 100%;
