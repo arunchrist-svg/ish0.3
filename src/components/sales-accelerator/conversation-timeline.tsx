@@ -84,8 +84,15 @@ function MessageBubble({
       >
         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold tracking-wide text-brand-ink-faint">
           <span className="uppercase">{side === "them" ? "Them" : "Us"}</span>
+          {/* Skip title when it duplicates the status chip (e.g. inbound "Their reply"). */}
+          {event.label &&
+          event.label.trim().toLowerCase() !== chip.label.trim().toLowerCase() ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="text-brand-ink">{event.label}</span>
+            </>
+          ) : null}
           <span aria-hidden>·</span>
-          <span className="text-brand-ink">{event.label}</span>
           <span
             className={cn(
               "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold normal-case tracking-normal",

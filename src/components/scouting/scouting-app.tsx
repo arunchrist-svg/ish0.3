@@ -2720,36 +2720,40 @@ export function ScoutingApp() {
           <div className="ish-page-padding min-w-0 flex-1 overflow-y-auto bg-white/40 py-4 lg:px-6">
             {companiesResults}
           </div>
-          <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-brand-border bg-white lg:block">
-            {view === "companies" && primaryCompany ? (
-              <CompanyDetailPanel
-                company={primaryCompany}
-                decisionMakerHint={primaryCompanyDecisionMaker}
-                decisionMakerLeadId={primaryCompanyDecisionMakerLeadId}
-                onWebsiteResolved={(resolved) =>
-                  applyResolvedCompanyDomain(primaryCompany.id, resolved.domain, resolved.website)
-                }
-              />
-            ) : view === "people" && primaryPerson ? (
-              <PersonDetailPanel
-                person={primaryPerson}
-                index={primaryPersonIndex}
-                companyName={companies.find((c) => c.id === primaryPerson.companyId)?.name}
-                companyWebsite={companies.find((c) => c.id === primaryPerson.companyId)?.website}
-                companyDomain={companies.find((c) => c.id === primaryPerson.companyId)?.domain}
-                onWebsiteResolved={(resolved) => {
-                  const cid = primaryPerson.companyId;
-                  if (cid) applyResolvedCompanyDomain(cid, resolved.domain, resolved.website);
-                }}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-brand-ink-faint">
-                {view === "companies"
-                  ? "Click a company tile to see details"
-                  : "Click a lead card to see their profile"}
-              </div>
-            )}
-          </div>
+          {(view === "companies" && primaryCompany) ||
+          (view === "people" && primaryPerson) ||
+          (view === "companies" ? companies.length > 0 : people.length > 0) ? (
+            <div className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-brand-border bg-white lg:block">
+              {view === "companies" && primaryCompany ? (
+                <CompanyDetailPanel
+                  company={primaryCompany}
+                  decisionMakerHint={primaryCompanyDecisionMaker}
+                  decisionMakerLeadId={primaryCompanyDecisionMakerLeadId}
+                  onWebsiteResolved={(resolved) =>
+                    applyResolvedCompanyDomain(primaryCompany.id, resolved.domain, resolved.website)
+                  }
+                />
+              ) : view === "people" && primaryPerson ? (
+                <PersonDetailPanel
+                  person={primaryPerson}
+                  index={primaryPersonIndex}
+                  companyName={companies.find((c) => c.id === primaryPerson.companyId)?.name}
+                  companyWebsite={companies.find((c) => c.id === primaryPerson.companyId)?.website}
+                  companyDomain={companies.find((c) => c.id === primaryPerson.companyId)?.domain}
+                  onWebsiteResolved={(resolved) => {
+                    const cid = primaryPerson.companyId;
+                    if (cid) applyResolvedCompanyDomain(cid, resolved.domain, resolved.website);
+                  }}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center p-8 text-center text-[13px] text-brand-ink-faint">
+                  {view === "companies"
+                    ? "Click a company tile to see details"
+                    : "Click a lead card to see their profile"}
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
       {scoutModals}

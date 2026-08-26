@@ -244,6 +244,7 @@ describe("EMAIL-UNIT-001 additional config cases", () => {
     expect(resolved.sendDaysOfWeek).toEqual([1, 2, 3, 4, 5]);
     expect(resolved.sendHourStart).toBe(9);
     expect(resolved.sendHourEnd).toBe(17);
+    expect(resolved.sendHourRanges).toEqual([{ hourStart: 9, hourEnd: 17 }]);
     expect(resolved.sendTimezone).toBe("Asia/Kolkata");
   });
 
@@ -256,8 +257,34 @@ describe("EMAIL-UNIT-001 additional config cases", () => {
     });
     expect(resolved.sendDaysOfWeek).toEqual([1, 2, 3, 4, 5]);
     expect(resolved.sendHourStart).toBe(18);
-    expect(resolved.sendHourEnd).toBe(19);
+    expect(resolved.sendHourEnd).toBe(18.5);
+    expect(resolved.sendHourRanges).toEqual([{ hourStart: 18, hourEnd: 18.5 }]);
     expect(resolved.sendTimezone).toBe("Asia/Kolkata");
+  });
+
+  it("clamps send hours outside 6:00–20:00", () => {
+    const resolved = resolveEmailConfig({
+      sendHourStart: 2,
+      sendHourEnd: 23,
+    });
+    expect(resolved.sendHourStart).toBe(6);
+    expect(resolved.sendHourEnd).toBe(20);
+    expect(resolved.sendHourRanges).toEqual([{ hourStart: 6, hourEnd: 20 }]);
+  });
+
+  it("keeps multiple send hour ranges and syncs outer start/end", () => {
+    const resolved = resolveEmailConfig({
+      sendHourRanges: [
+        { hourStart: 8, hourEnd: 14 },
+        { hourStart: 16, hourEnd: 20 },
+      ],
+    });
+    expect(resolved.sendHourRanges).toEqual([
+      { hourStart: 8, hourEnd: 14 },
+      { hourStart: 16, hourEnd: 20 },
+    ]);
+    expect(resolved.sendHourStart).toBe(8);
+    expect(resolved.sendHourEnd).toBe(20);
   });
 
   it("ignores env test recipient defaults", () => {

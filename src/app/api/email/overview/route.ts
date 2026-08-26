@@ -212,7 +212,8 @@ function buildLeadRow(
   let queueStatus: LeadEmailRow["queueStatus"];
   if (opts.needsReviewMeta) {
     queueStatus = "needs_review";
-  } else if (hasInboundReply && !hasOutboundReply) {
+  } else if (hasInboundReply) {
+    // Keep the conversation in Replies after you send a reply so the thread stays findable.
     queueStatus = "replies";
   } else if (allOpens.length > 0 && first.leadStatus !== "replied" && (scheduledRows.length > 0 || pausedRows.length > 0)) {
     queueStatus = "hot";
@@ -635,7 +636,10 @@ export async function GET(req: Request) {
     }
 
     const needsReview = result.filter((r) => r.queueStatus === "needs_review").slice(0, rowLimit);
-    const replies = result.filter((r) => r.queueStatus === "replies").slice(0, rowLimit);
+    const replies = result
+      .filter((r) => r.queueStatus === "replies")
+      .sort((a, b) => Number(a.hasOutboundReply) - Number(b.hasOutboundReply))
+      .slice(0, rowLimit);
     const hot = result.filter((r) => r.queueStatus === "hot").slice(0, rowLimit);
     const active = result
       .filter((r) => r.queueStatus === "active" && r.sequenceState === "active")

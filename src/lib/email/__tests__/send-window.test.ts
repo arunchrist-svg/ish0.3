@@ -4,10 +4,12 @@ import {
   isWithinSendWindow,
   nextSendWindowStart,
   normalizeSendDays,
+  normalizeSendHourRanges,
   normalizeSendHours,
   normalizeSendTimezone,
   resolveSendWindow,
   snapToSendWindow,
+  suggestNextHourRange,
   zonedLocalToUtc,
 } from "@/lib/email/send-window";
 
@@ -38,8 +40,35 @@ describe("send-window normalize", () => {
   });
 
   it("clamps hours so end is after start", () => {
-    expect(normalizeSendHours(10, 10)).toEqual({ hourStart: 10, hourEnd: 11 });
+    expect(normalizeSendHours(10, 10)).toEqual({ hourStart: 10, hourEnd: 10.5 });
     expect(normalizeSendHours(9, 17)).toEqual({ hourStart: 9, hourEnd: 17 });
+    expect(normalizeSendHours(9.2, 17.4)).toEqual({ hourStart: 9, hourEnd: 17.5 });
+  });
+
+  it("clamps hours into the 6:00–20:00 allowed window", () => {
+    expect(normalizeSendHours(3, 5)).toEqual({ hourStart: 6, hourEnd: 6.5 });
+    expect(normalizeSendHours(5, 22)).toEqual({ hourStart: 6, hourEnd: 20 });
+    expect(normalizeSendHours(21, 23)).toEqual({ hourStart: 19.5, hourEnd: 20 });
+    expect(normalizeSendHours(0, 24)).toEqual({ hourStart: 6, hourEnd: 20 });
+  });
+
+  it("merges overlapping hour ranges and falls back to start/end", () => {
+    expect(normalizeSendHourRanges(null, 9, 17)).toEqual([{ hourStart: 9, hourEnd: 17 }]);
+    expect(
+      normalizeSendHourRanges([
+        { hourStart: 8, hourEnd: 14 },
+        { hourStart: 16, hourEnd: 20 },
+        { hourStart: 13, hourEnd: 15 },
+      ]),
+    ).toEqual([
+      { hourStart: 8, hourEnd: 15 },
+      { hourStart: 16, hourEnd: 20 },
+    ]);
+    expect(suggestNextHourRange([{ hourStart: 8, hourEnd: 14 }])).toEqual({
+      hourStart: 15,
+      hourEnd: 19,
+    });
+    expect(suggestNextHourRange([{ hourStart: 6, hourEnd: 20 }])).toBeNull();
   });
 
   it("falls back invalid timezone to Asia/Kolkata", () => {
@@ -187,5 +216,59 @@ describe("computeFollowUpScheduledFor", () => {
     expect(parts.weekday).toBe("Thu");
     expect(parts.day).toBe("20");
     expect(parts.hour).toBe("10");
+  });
+});
+
+describe("multi-range hour windows", () => {
+  const split = {
+    daysOfWeek: [...weekdays],
+    hourRanges: [
+      { hourStart: 8, hourEnd: 14 },
+      { hourStart: 16, hourEnd: 20 },
+    ],
+    timezone: IST,
+  };
+
+  it("is within either block and not the midday gap", () => {
+    const morning = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 10, minute: 0 }, IST);
+    const gap = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 15, minute: 0 }, IST);
+    const evening = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 17, minute: 0 }, IST);
+    expect(isWithinSendWindow(morning, split)).toBe(true);
+    expect(isWithinSendWindow(gap, split)).toBe(false);
+    expect(isWithinSendWindow(evening, split)).toBe(true);
+  });
+
+  it("snaps gap times forward to the next block same day", () => {
+    const gap = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 15, minute: 0 }, IST);
+    const snapped = snapToSendWindow(gap, split);
+    const parts = localParts(snapped, IST);
+    expect(parts.day).toBe("24");
+    expect(parts.hour).toBe("16");
+    expect(parts.minute).toBe("00");
+  });
+
+  it("snaps after the last block to the next weekday first block", () => {
+    const late = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 21, minute: 0 }, IST);
+    const snapped = snapToSendWindow(late, split);
+    const parts = localParts(snapped, IST);
+    expect(parts.weekday).toBe("Tue");
+    expect(parts.day).toBe("25");
+    expect(parts.hour).toBe("08");
+  });
+
+  it("supports half-hour range bounds", () => {
+    const window = {
+      daysOfWeek: [...weekdays],
+      hourRanges: [{ hourStart: 9.5, hourEnd: 17.5 }],
+      timezone: IST,
+    };
+    const before = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 9, minute: 15 }, IST);
+    const inside = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 9, minute: 45 }, IST);
+    expect(isWithinSendWindow(before, window)).toBe(false);
+    expect(isWithinSendWindow(inside, window)).toBe(true);
+    const snapped = snapToSendWindow(before, window);
+    const parts = localParts(snapped, IST);
+    expect(parts.hour).toBe("09");
+    expect(parts.minute).toBe("30");
   });
 });

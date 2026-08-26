@@ -1,10 +1,17 @@
 import { buildDraftsEmailThread, type EmailThread } from "@/lib/email/email-thread";
+import {
+  isFollowUpSubjectSyncPosition,
+  syncFollowUpSubjectsFromEmail1,
+} from "@/lib/email/draft-variants";
 
 export type SequenceDraft = {
   id: string;
   sequencePosition?: number;
   templateVariant?: string;
   subjectA?: string | null;
+  subjectB?: string | null;
+  subjectC?: string | null;
+  chosenSubjectKey?: string | null;
   emailBody?: string | null;
 };
 
@@ -46,7 +53,25 @@ export function upsertDraftInSequence<T extends SequenceDraft>(sequence: T[] | u
 }
 
 export function applyWriterDraft<T extends SequenceDraft, L extends LeadDraftState<T>>(prev: L, draft: T): L {
-  const outreachSequence = upsertDraftInSequence(prev.outreachSequence, draft);
+  let outreachSequence = upsertDraftInSequence(prev.outreachSequence, draft);
+
+  const previousEmail1 =
+    prev.outreachSequence?.find((d) => d.sequencePosition === 1) ??
+    (prev.outreach?.sequencePosition === 1 ? prev.outreach : undefined);
+  if (draft.sequencePosition === 1 && previousEmail1 && draft.templateVariant !== "reply") {
+    outreachSequence = outreachSequence.map((row) => {
+      if (row.id === draft.id) return row;
+      if (row.templateVariant === "reply") return row;
+      if (!isFollowUpSubjectSyncPosition(row.sequencePosition)) return row;
+      const synced = syncFollowUpSubjectsFromEmail1({
+        followUp: row,
+        previousEmail1,
+        nextEmail1: draft,
+      });
+      return synced ? { ...row, ...synced } : row;
+    });
+  }
+
   const replaceOutreach =
     !prev.outreach ||
     prev.outreach.id === draft.id ||

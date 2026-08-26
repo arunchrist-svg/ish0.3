@@ -17,6 +17,7 @@ import {
   type BoardBulkProgress,
   type SendQueueItem,
 } from "./board-bulk-actions";
+import { OutreachComposeModal } from "@/components/email/outreach-compose-modal";
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
@@ -124,6 +125,7 @@ export function LeadsBoardApp() {
   const sendAbortRef = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const queueHydrated = useRef(false);
+  const [composeLeadId, setComposeLeadId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = loadStoredSendQueue().filter(
@@ -491,6 +493,11 @@ export function LeadsBoardApp() {
                           : item,
                       )
                     : undefined}
+                  onLeadOpen={
+                    stage === "Email" || stage === "Email Sent"
+                      ? (lead) => setComposeLeadId(lead.id)
+                      : undefined
+                  }
                 />
               );
             })}
@@ -508,6 +515,14 @@ export function LeadsBoardApp() {
           </div>
         ) : null}
       </div>
+      {composeLeadId ? (
+        <OutreachComposeModal
+          leadId={composeLeadId}
+          tab="needs_review"
+          onClose={() => setComposeLeadId(null)}
+          onChanged={() => void load({ silent: true })}
+        />
+      ) : null}
     </MobilePageLayout>
   );
 }

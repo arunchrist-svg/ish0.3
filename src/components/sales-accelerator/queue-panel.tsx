@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Check, Loader2, Mail, RefreshCw } from "lucide-react";
-import { IshAvatar, ScoreBadge, SearchBar } from "@/design-system";
+import { IshAvatar, ScoreBadge, SearchBar, TruncatedText } from "@/design-system";
 import { LeadAddMenu } from "@/components/leads/lead-add-menu";
 import { cn } from "@/lib/utils";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
@@ -151,10 +151,17 @@ function CompactLeadCard({
         </span>
       </div>
       <div className="mt-2.5 min-w-0 flex-1">
-        <div className="line-clamp-2 min-w-0 text-[14px] font-semibold leading-snug text-brand-ink">{item.name}</div>
-        <p className="mt-0.5 truncate text-[11px] font-medium text-brand-ink-soft">{item.company}</p>
+        <TruncatedText
+          text={item.name}
+          lines={2}
+          className="text-[14px] font-semibold leading-snug text-brand-ink"
+        />
+        <TruncatedText
+          text={item.company}
+          className="mt-0.5 text-[11px] font-medium text-brand-ink-soft"
+        />
         {size ? (
-          <p className="mt-0.5 truncate text-[10.5px] text-brand-ink-faint">{size}</p>
+          <TruncatedText text={size} className="mt-0.5 text-[10.5px] text-brand-ink-faint" />
         ) : null}
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-1.5 border-t border-brand-border/35 pt-2">
@@ -196,10 +203,16 @@ function QueueCard({
         <div className="flex min-w-0 gap-3">
           <IshAvatar name={item.name} index={index} size={42} />
           <div className="min-w-0">
-            <div className="truncate text-[14.5px] font-bold text-brand-ink">{item.name}</div>
-            <div className="mt-0.5 truncate text-xs font-medium text-brand-ink-soft">{item.company}</div>
+            <TruncatedText
+              text={item.name}
+              className="text-[14.5px] font-bold text-brand-ink"
+            />
+            <TruncatedText
+              text={item.company}
+              className="mt-0.5 text-xs font-medium text-brand-ink-soft"
+            />
             {size ? (
-              <div className="mt-0.5 truncate text-[11px] text-brand-ink-faint">{size}</div>
+              <TruncatedText text={size} className="mt-0.5 text-[11px] text-brand-ink-faint" />
             ) : null}
           </div>
         </div>

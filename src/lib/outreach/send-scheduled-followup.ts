@@ -130,10 +130,12 @@ export async function sendScheduledFollowUp(params: {
   }
 
   const thread = await loadThreadContext(sched.leadId, lead);
-  // If Opened uses its own selected A/B subject, not Re: Email 1.
+  // Prefer the saved draft subject (Email 2/3 / If Opened may customize it). Fall back to
+  // Re: thread root for continuity when the draft subject is empty.
   const threadedSubject = isCatalog
     ? followUpDraftSubject || `festive gifting for ${account.name}`
-    : resolveOutboundSubject({
+    : followUpDraftSubject ||
+      resolveOutboundSubject({
         isReplySend: false,
         isFollowUp: true,
         rootSubject: thread.rootSubject,
@@ -143,7 +145,6 @@ export async function sendScheduledFollowUp(params: {
             email1Draft: email1Outreach,
           }) ||
           email1Subject ||
-          followUpDraftSubject ||
           `Re: Outreach for ${account.name}`,
       });
 

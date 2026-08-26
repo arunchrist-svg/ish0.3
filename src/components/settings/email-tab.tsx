@@ -37,12 +37,12 @@ import { emailKeywordsToInput, normalizeEmailKeywords } from "@/lib/brand/email-
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
 import {
   SEND_TIMEZONE_OPTIONS,
-  SEND_WINDOW_PRESETS,
   WEEKDAY_OPTIONS,
-  formatHourLabel,
+  normalizeSendHourRanges,
   sendWindowSummary,
   type Weekday,
 } from "@/lib/email/send-window";
+import { HoursRangeSliders } from "@/components/settings/hours-range-sliders";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleHelp, Loader2, XCircle } from "lucide-react";
@@ -197,12 +197,19 @@ function SequenceScheduleSettings({
   showInboxStyle?: boolean;
 }) {
   const sendDays = (config.sendDaysOfWeek ?? [1, 2, 3, 4, 5]) as Weekday[];
-  const sendHourStart = config.sendHourStart ?? 9;
-  const sendHourEnd = config.sendHourEnd ?? 17;
+  const sendHourRanges = normalizeSendHourRanges(
+    config.sendHourRanges,
+    config.sendHourStart ?? 9,
+    config.sendHourEnd ?? 17,
+  );
   const sendTimezone = config.sendTimezone ?? "Asia/Kolkata";
-  const sendHoursPreset =
-    SEND_WINDOW_PRESETS.find((p) => p.hourStart === sendHourStart && p.hourEnd === sendHourEnd)?.id ??
-    "custom";
+
+  function commitHourRanges(ranges: typeof sendHourRanges) {
+    const next = normalizeSendHourRanges(ranges);
+    onUpdate("sendHourRanges", next);
+    onUpdate("sendHourStart", next[0]!.hourStart);
+    onUpdate("sendHourEnd", next[next.length - 1]!.hourEnd);
+  }
 
   return (
     <SettingsGroup title="Sequence" className="mb-4">
@@ -250,8 +257,7 @@ function SequenceScheduleSettings({
           <span className="max-w-[14rem] text-right text-[10px] leading-snug text-brand-ink-faint">
             {sendWindowSummary({
               daysOfWeek: sendDays,
-              hourStart: sendHourStart,
-              hourEnd: sendHourEnd,
+              hourRanges: sendHourRanges,
               timezone: sendTimezone,
             })}
           </span>
@@ -274,8 +280,8 @@ function SequenceScheduleSettings({
                 className={cn(
                   "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
                   selected
-                    ? "bg-brand-stratus-blue text-white"
-                    : "border border-brand-stratus-blue/20 bg-white/80 text-brand-ink-soft hover:text-brand-ink",
+                    ? "bg-brand-stratus-blue text-white shadow-[var(--shadow-brand-sm)]"
+                    : "border border-brand-stratus-blue/20 bg-white/80 text-brand-ink-soft hover:border-brand-stratus-blue/40 hover:text-brand-ink",
                 )}
               >
                 {day.short}
@@ -283,68 +289,11 @@ function SequenceScheduleSettings({
             );
           })}
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium text-brand-ink-soft">Hours</span>
-          <SettingsSegmented
-            value={sendHoursPreset}
-            onChange={(next) => {
-              const preset = SEND_WINDOW_PRESETS.find((p) => p.id === next);
-              if (!preset) return;
-              onUpdate("sendHourStart", preset.hourStart);
-              onUpdate("sendHourEnd", preset.hourEnd);
-            }}
-            options={[
-              ...SEND_WINDOW_PRESETS.map((p) => ({ value: p.id, label: p.label })),
-              { value: "custom", label: "Custom" },
-            ]}
-          />
+        <div className="mt-3">
+          <HoursRangeSliders ranges={sendHourRanges} onChange={commitHourRanges} />
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <label className="block min-w-0">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-              From
-            </span>
-            <select
-              value={sendHourStart}
-              onChange={(e) => {
-                const start = Number(e.target.value);
-                const end = Math.max(start + 1, sendHourEnd);
-                onUpdate("sendHourStart", start);
-                onUpdate("sendHourEnd", end);
-              }}
-              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
-            >
-              {Array.from({ length: 23 }, (_, h) => (
-                <option key={h} value={h}>
-                  {formatHourLabel(h)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block min-w-0">
-            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-              Until
-            </span>
-            <select
-              value={sendHourEnd}
-              onChange={(e) => {
-                const end = Number(e.target.value);
-                const start = Math.min(sendHourStart, end - 1);
-                onUpdate("sendHourStart", Math.max(0, start));
-                onUpdate("sendHourEnd", end);
-              }}
-              className="ish-email-settings-input w-full rounded-xl border border-brand-stratus-blue/20 bg-white/80 px-3 py-2 text-[13px] text-brand-ink outline-none"
-            >
-              {Array.from({ length: 23 }, (_, i) => i + 1)
-                .filter((h) => h > sendHourStart)
-                .map((h) => (
-                  <option key={h} value={h}>
-                    {formatHourLabel(h)}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <label className="block min-w-0">
+        <div className="mt-3">
+          <label className="block min-w-0 sm:max-w-xs">
             <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-brand-ink-faint">
               Timezone
             </span>

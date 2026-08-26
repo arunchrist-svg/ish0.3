@@ -13,7 +13,7 @@ import {
   DEFAULT_SEND_HOUR_START,
   DEFAULT_SEND_TIMEZONE,
   normalizeSendDays,
-  normalizeSendHours,
+  normalizeSendHourRanges,
   normalizeSendTimezone,
   type Weekday,
 } from "@/lib/email/send-window";
@@ -121,10 +121,15 @@ export type EmailConfig = {
    * Defaults to Mon–Fri. Snapped when scheduling Email 2/3.
    */
   sendDaysOfWeek?: Weekday[];
-  /** Inclusive local hour when the send window opens (0–23). Default 9. */
+  /** Inclusive local hour when the send window opens (6–19.5, half-hour steps). Default 9. */
   sendHourStart?: number;
-  /** Exclusive local hour when the send window closes (1–24). Default 17. */
+  /** Exclusive local hour when the send window closes (6.5–20, half-hour steps). Default 17. */
   sendHourEnd?: number;
+  /**
+   * One or more local hour blocks (e.g. 8–14 and 16–20).
+   * When set, this is the source of truth; start/end mirror the outer span.
+   */
+  sendHourRanges?: { hourStart: number; hourEnd: number }[];
   /** IANA timezone for send-window snapping. Default Asia/Kolkata. */
   sendTimezone?: string;
   appUrl: string;
@@ -320,6 +325,7 @@ export function getDefaultEmailConfig(): EmailConfig {
     sendDaysOfWeek: [...DEFAULT_SEND_DAYS],
     sendHourStart: DEFAULT_SEND_HOUR_START,
     sendHourEnd: DEFAULT_SEND_HOUR_END,
+    sendHourRanges: [{ hourStart: DEFAULT_SEND_HOUR_START, hourEnd: DEFAULT_SEND_HOUR_END }],
     sendTimezone: DEFAULT_SEND_TIMEZONE,
     appUrl,
     emailStyle: "primary",
@@ -338,7 +344,17 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
   const cadence = overrides?.cadenceDays ?? merged.cadenceDays;
   const day1 = Math.max(1, Math.min(14, cadence[0] ?? 3));
   const day2 = Math.max(day1 + 1, Math.min(30, cadence[1] ?? 7));
-  const sendHours = normalizeSendHours(merged.sendHourStart, merged.sendHourEnd);
+  const sendHourRanges = normalizeSendHourRanges(
+    overrides && Object.prototype.hasOwnProperty.call(overrides, "sendHourRanges")
+      ? overrides.sendHourRanges
+      : overrides &&
+          (Object.prototype.hasOwnProperty.call(overrides, "sendHourStart") ||
+            Object.prototype.hasOwnProperty.call(overrides, "sendHourEnd"))
+        ? null
+        : merged.sendHourRanges,
+    merged.sendHourStart,
+    merged.sendHourEnd,
+  );
 
   const brandConfig = resolveBrandConfig(merged.brandConfig);
   const emailStyle = merged.emailStyle ?? "primary";
@@ -358,8 +374,9 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     signature: merged.signature?.trim() ?? "",
     cadenceDays: [day1, day2],
     sendDaysOfWeek: normalizeSendDays(merged.sendDaysOfWeek),
-    sendHourStart: sendHours.hourStart,
-    sendHourEnd: sendHours.hourEnd,
+    sendHourStart: sendHourRanges[0]!.hourStart,
+    sendHourEnd: sendHourRanges[sendHourRanges.length - 1]!.hourEnd,
+    sendHourRanges,
     sendTimezone: normalizeSendTimezone(merged.sendTimezone),
     sendMode: merged.sendMode ?? "dry_run",
     emailStyle,

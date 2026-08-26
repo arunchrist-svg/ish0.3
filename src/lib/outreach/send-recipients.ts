@@ -102,23 +102,90 @@ export function isWeakGuessEmail(entry: {
 export const EMPTY_SEND_TO_HINT =
   "To is empty. Pick an inbox from Send to, or add one. firstname@ and lastname@ guesses are not sent until you select them.";
 
+export const REPLY_EMPTY_SEND_TO_HINT =
+  "This reply needs a To address. Add the contact's email, then send.";
+
+export const SELECT_NEW_SEND_TO_HINT = "Select a new email address to send to";
+
+function isUsableRecipientAddress(raw: string): boolean {
+  const key = raw.trim().toLowerCase();
+  return Boolean(key) && key.includes("@") && key !== "—";
+}
+
+/** Last address we successfully mailed on this thread (not inbound, not bounced). */
+export function lastOutboundRecipientEmail(
+  events: { recipientEmail?: string | null; status?: string | null; kind?: string | null }[],
+  barNodes?: { recipientEmail?: string | null; kind?: string | null }[],
+): string | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i];
+    const email = ev.recipientEmail?.trim();
+    if (!email || !isUsableRecipientAddress(email)) continue;
+    if (ev.kind === "inbound_reply") continue;
+    if (ev.status === "sent" || ev.status === "opened") return email;
+  }
+  if (barNodes) {
+    for (let i = barNodes.length - 1; i >= 0; i--) {
+      const node = barNodes[i];
+      const email = node.recipientEmail?.trim();
+      if (!email || !isUsableRecipientAddress(email)) continue;
+      if (node.kind === "sent") return email;
+    }
+  }
+  return undefined;
+}
+
+export function defaultReplyRecipientEmails(
+  contactEmail?: string,
+  contactEmails?: ContactEmailEntry[],
+  lastSent?: string | null,
+): string[] {
+  const sent = lastSent?.trim();
+  if (sent && isUsableRecipientAddress(sent)) return [sent];
+  return defaultSelectedContactEmails(contactEmail, contactEmails);
+}
+
+/**
+ * How To: addresses relate to prior sends on this lead.
+ * - reply / follow_up: keep the thread To (Email 1 / last outbound), including already-sent.
+ * - outbound: "send to additional" only; drop addresses already used on this lead.
+ */
+export type SendRecipientMode = "reply" | "follow_up" | "outbound";
+
+export function selectedEmailsForSend(
+  selected: string[],
+  alreadySent: Set<string>,
+  mode: SendRecipientMode,
+): string[] {
+  const valid = selected.filter((raw) => isUsableRecipientAddress(raw)).map((raw) => raw.trim());
+  if (mode === "reply" || mode === "follow_up") return valid;
+  return valid.filter((email) => !alreadySent.has(email.trim().toLowerCase()));
+}
+
+/** True when send should reuse the prior outbound inbox (reply or Email 2/3). */
+export function reusesThreadRecipient(mode: SendRecipientMode): boolean {
+  return mode === "reply" || mode === "follow_up";
+}
+
 /** Keep explicit To: picks (including firstname@ and newly typed addresses). Fall back to auto-select. */
 export function retainSelectedRecipientEmails(
   prev: string[],
   listedEmails: string[],
   alreadySent: Set<string>,
   fallback: string[],
+  options?: { allowAlreadySent?: boolean },
 ): string[] {
+  const allowAlreadySent = options?.allowAlreadySent === true;
   const listed = new Set(listedEmails.map((e) => e.trim().toLowerCase()).filter(Boolean));
   const stillValid = prev.filter((raw) => {
     const key = raw.trim().toLowerCase();
-    if (!key.includes("@") || key === "—") return false;
-    if (alreadySent.has(key)) return false;
+    if (!isUsableRecipientAddress(raw)) return false;
+    if (!allowAlreadySent && alreadySent.has(key)) return false;
     if (listed.has(key)) return true;
     return Boolean(sanitizeEmail(key));
   });
   if (stillValid.length) return stillValid;
-  return fallback.filter((email) => !alreadySent.has(email.trim().toLowerCase()));
+  return fallback.filter((email) => allowAlreadySent || !alreadySent.has(email.trim().toLowerCase()));
 }
 
 function sendPreferenceScore(entry: ContactEmailEntry): number {

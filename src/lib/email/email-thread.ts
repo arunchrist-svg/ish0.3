@@ -35,6 +35,8 @@ export type DraftRailSource = {
   sequencePosition?: number | null;
   templateVariant?: string | null;
   subjectA?: string | null;
+  subjectB?: string | null;
+  chosenSubjectKey?: string | null;
   emailBody?: string | null;
 };
 
@@ -55,6 +57,9 @@ export function buildDraftsEmailThread(
     .sort((a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99));
   if (railDrafts.length === 0) return opts?.previous ?? undefined;
 
+  const email1 = railDrafts.find((d) => d.sequencePosition === 1) ?? railDrafts[0];
+  const email1Subject = email1 ? resolveDraftSubject(email1) : "";
+
   const barNodes: BarNode[] = railDrafts.map((d, i) => {
     const pos = d.sequencePosition ?? i + 1;
     return {
@@ -63,17 +68,17 @@ export function buildDraftsEmailThread(
       state: pos === 1 ? ("current" as const) : ("upcoming" as const),
       kind: "draft" as const,
       outreachId: d.id,
-      subject: d.subjectA ?? undefined,
+      subject: pos === 1 ? email1Subject || (d.subjectA ?? undefined) : (d.subjectA ?? undefined),
       body: clip(d.emailBody),
       snippet: preview(d.emailBody),
     };
   });
   if (barNodes.length > 0) barNodes[0].state = "current";
 
-  const email1 = railDrafts.find((d) => d.sequencePosition === 1) ?? railDrafts[0];
   const prev = opts?.previous;
   return {
-    threadRootSubject: prev?.threadRootSubject ?? (email1?.subjectA ?? undefined) ?? undefined,
+    // Always refresh from live Email 1 while rebuilding the drafts rail so Re: rows track subject edits.
+    threadRootSubject: email1Subject || prev?.threadRootSubject || undefined,
     sequenceState: prev?.sequenceState ?? "not_started",
     phase: "compose",
     nextAction: "compose",
@@ -226,7 +231,7 @@ function eventLabelForRow(
   if (emailKind === CATALOG_ON_OPEN_EMAIL_KIND) {
     return "If Opened";
   }
-  if (kind === "inbound_reply") return "They replied";
+  if (kind === "inbound_reply") return "Their reply";
   if (kind === "outbound_reply") return "Your reply";
   return emailStepLabel(sequenceDay, normalizeCadenceDays(cadenceDays));
 }
@@ -297,7 +302,7 @@ export function buildEmailThread(params: {
     events.push({
       id: `inbound-synth-${lead.id}`,
       kind: "inbound_reply",
-      label: "They replied",
+      label: "Their reply",
       snippet: preview(lead.lastReplyContent),
       body: clip(lead.lastReplyContent),
       at: inboundReplyAt ?? undefined,

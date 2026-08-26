@@ -12,6 +12,10 @@ import { isContactReadyStage, isManualStage } from "@/lib/pipeline-status";
 import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { CATALOG_ON_OPEN_SEQUENCE_POSITION } from "@/lib/email/ish-festive-catalog";
 import { upsertCatalogOnOpenDraft } from "@/lib/email/promote-catalog-on-open";
+import {
+  isFollowUpSubjectSyncPosition,
+  syncFollowUpSubjectsFromEmail1,
+} from "@/lib/email/draft-variants";
 
 /** Create a blank 3-email sequence the user can write themselves. */
 export async function POST(req: Request) {
@@ -210,6 +214,47 @@ export async function PATCH(req: Request) {
       .returning();
 
     if (!row) return NextResponse.json({ error: "Draft not found" }, { status: 404 });
+
+    const subjectFieldsChanged =
+      subjectA !== undefined || subjectB !== undefined || subjectC !== undefined;
+    if (
+      subjectFieldsChanged &&
+      row.sequencePosition === 1 &&
+      row.templateVariant !== "reply"
+    ) {
+      const siblings = await db.query.leadOutreach.findMany({
+        where: and(
+          eq(leadOutreach.leadId, row.leadId),
+          inArray(leadOutreach.sequencePosition, [2, 3, CATALOG_ON_OPEN_SEQUENCE_POSITION]),
+        ),
+      });
+
+      const previousEmail1 = {
+        subjectA: existing.outreach.subjectA,
+        subjectB: existing.outreach.subjectB,
+        subjectC: existing.outreach.subjectC,
+      };
+      const nextEmail1 = {
+        subjectA: row.subjectA,
+        subjectB: row.subjectB,
+        subjectC: row.subjectC,
+      };
+
+      for (const sibling of siblings) {
+        if (sibling.templateVariant === "reply") continue;
+        if (!isFollowUpSubjectSyncPosition(sibling.sequencePosition)) continue;
+        const synced = syncFollowUpSubjectsFromEmail1({
+          followUp: sibling,
+          previousEmail1,
+          nextEmail1,
+        });
+        if (!synced) continue;
+        await db
+          .update(leadOutreach)
+          .set(synced)
+          .where(eq(leadOutreach.id, sibling.id));
+      }
+    }
 
     return NextResponse.json({
       id: row.id,

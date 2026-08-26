@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, Send, Sparkles, X } from "lucide-react";
+import { Loader2, MessageSquarePlus, Redo2, Send, Sparkles, Undo2, X } from "lucide-react";
 import { ConversationTimeline } from "@/components/sales-accelerator/conversation-timeline";
 import {
   OutreachApprovalCard,
   type ComposeActionState,
   type OutreachApprovalHandle,
 } from "@/components/sales-accelerator/outreach-approval-card";
+import { SequenceControlButtons } from "@/components/sales-accelerator/sequence-control-buttons";
 import { SyncRepliesButton } from "@/components/sales-accelerator/sync-replies-button";
 import { WritingLoader } from "@/components/sales-accelerator/writing-loader";
 import {
@@ -19,18 +20,23 @@ import {
   IF_OPENED_NODE_ID,
   isCatalogOnOpenDraft,
 } from "@/lib/email/ish-festive-catalog";
+import { isSequenceFollowUpDraft } from "@/lib/email/draft-variants";
 import {
   ensureBlankReplyDraftClient,
   ensureCatalogOnOpenDraftClient,
   fetchLead,
   runReplyWriter,
+  updateOutreachDraft,
   type LeadDetailRecord,
   type WriterDraft,
 } from "@/lib/api-client";
 import { invalidateCached } from "@/lib/client-fetch-cache";
 import {
+  defaultReplyRecipientEmails,
   defaultSelectedContactEmails,
   EMPTY_SEND_TO_HINT,
+  lastOutboundRecipientEmail,
+  REPLY_EMPTY_SEND_TO_HINT,
 } from "@/lib/outreach/send-recipients";
 import { showError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
@@ -199,10 +205,11 @@ export function OutreachComposeModal({
   const [ensuringDraft, setEnsuringDraft] = useState(false);
   const [ensuringCatalog, setEnsuringCatalog] = useState(false);
   const [draftingReply, setDraftingReply] = useState(false);
+  /** Reply body stays closed until the user clicks Add reply (and only after they replied). */
+  const [replyComposeOpen, setReplyComposeOpen] = useState(false);
   const [composeActions, setComposeActions] = useState<ComposeActionState | null>(null);
   const [recipients, setRecipients] = useState<string[]>([]);
   const approvalRef = useRef<OutreachApprovalHandle>(null);
-  const ensureAttemptedRef = useRef<string | null>(null);
   const catalogEnsureAttemptedRef = useRef<string | null>(null);
 
   const mode = resolveMode(tab, lead, isFollowUpReview);
@@ -243,6 +250,9 @@ export function OutreachComposeModal({
 
   useEffect(() => {
     catalogEnsureAttemptedRef.current = null;
+    setReplyComposeOpen(false);
+    setReplyDraft(null);
+    setComposeActions(null);
   }, [leadId]);
 
   useEffect(() => {
@@ -262,17 +272,25 @@ export function OutreachComposeModal({
   }, []);
 
   useEffect(() => {
-    if (!lead) return;
-    setRecipients(defaultSelectedContactEmails(lead.email, lead.emails));
-  }, [lead?.id, lead?.email, lead?.emails]);
+    // Recipients for review follow-ups are synced after the active draft is resolved.
+    if (!lead || mode === "review") return;
+    const lastSent = lastOutboundRecipientEmail(
+      lead.emailThread?.events ?? [],
+      lead.emailThread?.barNodes,
+    );
+    setRecipients(defaultReplyRecipientEmails(lead.email, lead.emails, lastSent));
+  }, [lead?.id, lead?.email, lead?.emails, lead?.emailThread?.events, lead?.emailThread?.barNodes, mode]);
 
   const phase = lead?.emailThread?.phase;
   const hasInbound =
     Boolean(lead?.emailThread?.inboundSnippet) ||
     lead?.status === "replied" ||
     (lead?.emailThread?.events ?? []).some((e) => e.kind === "inbound_reply");
+  const hasOutboundReply = (lead?.emailThread?.events ?? []).some(
+    (e) => e.kind === "outbound_reply",
+  );
   const replyAlreadySent =
-    phase === "reply_sent" || Boolean(replyDraft?.replySent);
+    phase === "reply_sent" || hasOutboundReply || Boolean(replyDraft?.replySent);
 
   const reviewTabs = useMemo(
     () => (lead && mode === "review" ? buildReviewDraftTabs(lead) : []),
@@ -323,58 +341,43 @@ export function OutreachComposeModal({
       });
   }, [catalogEnsureLeadId]);
 
-  // Keep local reply draft in sync when lead outreach updates.
+  // Keep local reply draft in sync when lead outreach updates (only while composing).
   useEffect(() => {
-    if (!lead || mode !== "reply") return;
+    if (!lead || mode !== "reply" || !replyComposeOpen) return;
     const fromLead = findReplyDraft(lead);
     if (fromLead) setReplyDraft(fromLead);
-  }, [lead, mode]);
+  }, [lead, mode, replyComposeOpen]);
 
-  // Always open a blank reply draft (even while awaiting), unless a reply was already sent.
-  useEffect(() => {
-    if (!lead || mode !== "reply") return;
-    if (replyAlreadySent) return;
-    if (ensureAttemptedRef.current === lead.id) return;
-
-    const existing = findReplyDraft(lead);
-    if (existing?.replySent) {
-      setReplyDraft(existing);
-      ensureAttemptedRef.current = lead.id;
-      return;
-    }
-    if (existing) {
-      setReplyDraft(existing);
-      ensureAttemptedRef.current = lead.id;
-      return;
-    }
-
-    if (lead.status !== "replied" && lead.status !== "outreached") {
-      ensureAttemptedRef.current = lead.id;
-      return;
-    }
-
-    ensureAttemptedRef.current = lead.id;
-    let cancelled = false;
+  async function openEmptyReplyComposer() {
+    if (!lead || !hasInbound) return;
     setEnsuringDraft(true);
-    void ensureBlankReplyDraftClient({ leadId: lead.id })
-      .then(({ draft, drafts }) => {
-        if (cancelled) return;
-        applyDraft(draft, drafts);
-        void load({ silent: true });
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        ensureAttemptedRef.current = null;
-        toast.error(e instanceof Error ? e.message : "Could not open reply draft");
-      })
-      .finally(() => {
-        if (!cancelled) setEnsuringDraft(false);
+    try {
+      const { draft, drafts } = await ensureBlankReplyDraftClient({ leadId: lead.id });
+      // Always start from an empty body when the user clicks Add reply.
+      const cleared = await updateOutreachDraft({
+        leadOutreachId: draft.id,
+        emailBody: "",
+        emailBodyB: "",
+        emailBodyC: "",
+        chosenBodyKey: "A",
       });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [lead, mode, replyAlreadySent, load]);
+      const emptyDraft: WriterDraft = {
+        ...draft,
+        ...cleared,
+        emailBody: "",
+        emailBodyB: "",
+        emailBodyC: "",
+        replySent: false,
+      };
+      applyDraft(emptyDraft, drafts);
+      setReplyComposeOpen(true);
+      void load({ silent: true });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open reply draft");
+    } finally {
+      setEnsuringDraft(false);
+    }
+  }
 
   function applyDraft(draft: WriterDraft, sequence?: WriterDraft[]) {
     if (draft.templateVariant === "reply") {
@@ -396,15 +399,19 @@ export function OutreachComposeModal({
   async function handleSmartReply() {
     if (!lead) return;
     if (!hasInbound) {
-      toast.message("Write your reply below", {
-        description: "Smart reply needs their inbound message first. Sync replies if you expected one.",
+      toast.message("Wait for their reply first", {
+        description: "Add reply opens after they write back. Sync replies if you expected one.",
       });
       return;
+    }
+    if (!replyComposeOpen) {
+      await openEmptyReplyComposer();
     }
     setDraftingReply(true);
     try {
       const draft = await runReplyWriter(lead.id);
       applyDraft(draft);
+      setReplyComposeOpen(true);
       void load({ silent: true });
       toast.success("Reply draft ready");
     } catch (e) {
@@ -416,7 +423,9 @@ export function OutreachComposeModal({
 
   async function handleSend() {
     if (!composeActions?.canSend) {
-      if (!recipients.length) toast.error(EMPTY_SEND_TO_HINT);
+      if (!recipients.length) {
+        toast.error(mode === "reply" ? REPLY_EMPTY_SEND_TO_HINT : EMPTY_SEND_TO_HINT);
+      }
       return;
     }
     await approvalRef.current?.send();
@@ -424,41 +433,52 @@ export function OutreachComposeModal({
 
   const statusHint = useMemo(() => {
     if (!lead || mode !== "reply") return null;
-    if (hasInbound && !replyAlreadySent) return "They replied. Write your response below.";
-    if (replyAlreadySent) return "You already replied. Thread history is below.";
-    if (phase === "awaiting_reply") return "Awaiting their reply. You can still draft a note.";
-    return null;
-  }, [lead, mode, hasInbound, replyAlreadySent, phase]);
+    if (!hasInbound) return "Awaiting their reply. Conversation history is below.";
+    if (replyComposeOpen) return null;
+    if (replyAlreadySent) return "You already replied. Add another reply when you need to.";
+    return "They replied. Add a reply when you are ready.";
+  }, [lead, mode, hasInbound, replyAlreadySent, replyComposeOpen]);
 
-  const reviewStatusHint = useMemo(() => {
-    if (!lead || mode !== "review") return null;
-    if (selectedReviewNodeId === IF_OPENED_NODE_ID) {
-      return "If Opened catalogue draft. Sends after they open an earlier email.";
-    }
-    if (selectedReviewNodeId === "draft-2" || selectedReviewNodeId === "draft-3") {
-      if (isFollowUpReview || pendingFollowUpScheduleId) {
-        return "Follow-up ready for review. Edit if needed, then send.";
-      }
-      return `${selectedReviewNodeId === "draft-2" ? "Email 2" : "Email 3"} draft. Edit the body here; sending still starts the sequence from Email 1.`;
-    }
-    if (isFollowUpReview || pendingFollowUpScheduleId) {
-      return "Follow-up ready for review. Edit if needed, then send.";
-    }
-    if (lead.status === "draft_ready") {
-      return "Email 1 draft ready. Review and send to start the sequence.";
-    }
-    return "Draft ready for review.";
-  }, [lead, mode, isFollowUpReview, pendingFollowUpScheduleId, selectedReviewNodeId]);
+  const sequenceState = lead?.emailThread?.sequenceState ?? "not_started";
 
   const resolvedReviewDraft =
     lead && mode === "review" && selectedReviewNodeId
       ? draftForReviewNode(lead, selectedReviewNodeId) ?? null
       : null;
   const activeDraft = mode === "review" ? resolvedReviewDraft : replyDraft;
+
+  useEffect(() => {
+    if (!lead || mode !== "review") return;
+    const lastSent = lastOutboundRecipientEmail(
+      lead.emailThread?.events ?? [],
+      lead.emailThread?.barNodes,
+    );
+    const reuseThreadTo =
+      Boolean(pendingFollowUpScheduleId) ||
+      isSequenceFollowUpDraft(resolvedReviewDraft?.sequencePosition);
+    setRecipients(
+      reuseThreadTo
+        ? defaultReplyRecipientEmails(lead.email, lead.emails, lastSent)
+        : defaultSelectedContactEmails(lead.email, lead.emails),
+    );
+  }, [
+    lead?.id,
+    lead?.email,
+    lead?.emails,
+    lead?.emailThread?.events,
+    lead?.emailThread?.barNodes,
+    mode,
+    pendingFollowUpScheduleId,
+    resolvedReviewDraft?.id,
+    resolvedReviewDraft?.sequencePosition,
+  ]);
+
   const showComposer = Boolean(
-    activeDraft && (mode === "review" ? true : !replyDraft?.replySent),
+    activeDraft &&
+      (mode === "review" ? true : replyComposeOpen && !replyDraft?.replySent),
   );
-  const showSmartReply = mode === "reply" && hasInbound && !replyAlreadySent;
+  const showAddReply = mode === "reply" && hasInbound && !replyComposeOpen && !ensuringDraft;
+  const showSmartReply = mode === "reply" && hasInbound && replyComposeOpen && !replyAlreadySent;
   const email1Draft =
     lead ? sequenceDraftAt(lead, 1) : undefined;
   const viewingPendingFollowUp = Boolean(
@@ -471,7 +491,7 @@ export function OutreachComposeModal({
           !isCatalogOnOpenDraft(resolvedReviewDraft)),
   );
 
-  const headerEyebrow = mode === "review" ? "Review draft" : "Reply";
+  const headerEyebrow = mode === "review" ? "Review draft" : "Your Reply";
   const sendButtonLabel =
     mode === "review"
       ? composeActions?.sendLabel ?? (viewingPendingFollowUp ? "Send follow-up" : "Send")
@@ -512,14 +532,81 @@ export function OutreachComposeModal({
               <p className="truncate text-[12px] text-brand-ink-soft">{lead.company}</p>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex size-8 shrink-0 items-center justify-center rounded-full border border-brand-border/70 bg-white text-brand-ink-soft transition-colors hover:text-brand-ink"
-            aria-label="Close"
-          >
-            <X className="size-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5 pt-0.5">
+            {lead && mode === "review" ? (
+              <SequenceControlButtons
+                leadId={lead.id}
+                sequenceState={sequenceState}
+                sending={composeActions?.sending}
+                hideStart
+                onUpdated={(meta) => {
+                  if (meta?.action === "reset") {
+                    onChanged?.();
+                    onClose();
+                    return;
+                  }
+                  void load({ silent: true });
+                  onChanged?.();
+                }}
+                onStartSequence={async () => {
+                  await handleSend();
+                }}
+              />
+            ) : null}
+            {lead && showComposer ? (
+              <div className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={!composeActions?.canUndo}
+                  onClick={() => approvalRef.current?.undo()}
+                  title="Undo (⌘Z / Ctrl+Z)"
+                  aria-label="Undo"
+                  className="inline-flex size-7 items-center justify-center rounded-full text-brand-ink-soft transition-colors hover:bg-black/[0.04] hover:text-brand-ink disabled:cursor-default disabled:opacity-35"
+                >
+                  <Undo2 className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!composeActions?.canRedo}
+                  onClick={() => approvalRef.current?.redo()}
+                  title="Redo (⌘⇧Z / Ctrl+Y)"
+                  aria-label="Redo"
+                  className="inline-flex size-7 items-center justify-center rounded-full text-brand-ink-soft transition-colors hover:bg-black/[0.04] hover:text-brand-ink disabled:cursor-default disabled:opacity-35"
+                >
+                  <Redo2 className="size-3.5" />
+                </button>
+                <span className="mx-0.5 text-[11px] font-medium text-brand-ink-faint" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleSend()}
+                  disabled={!composeActions?.canSend || composeActions?.sending}
+                  className={cn(
+                    "inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-white transition-opacity",
+                    composeActions?.canSend
+                      ? "bg-brand-black hover:opacity-90"
+                      : "cursor-not-allowed bg-brand-ink-faint/50",
+                  )}
+                >
+                  {composeActions?.sending ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <Send className="size-3" />
+                  )}
+                  {composeActions?.sending ? "Sending…" : sendButtonLabel}
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex size-8 shrink-0 items-center justify-center rounded-full border border-brand-border/70 bg-white text-brand-ink-soft transition-colors hover:text-brand-ink"
+              aria-label="Close"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
         </header>
 
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
@@ -560,11 +647,6 @@ export function OutreachComposeModal({
                   })}
                 </div>
               ) : null}
-              {mode === "review" && reviewStatusHint ? (
-                <p className="rounded-[10px] border border-brand-stratus-blue/10 bg-brand-canvas/60 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft">
-                  {reviewStatusHint}
-                </p>
-              ) : null}
               {mode === "reply" && statusHint ? (
                 <p className="rounded-[10px] border border-brand-stratus-blue/10 bg-brand-canvas/60 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft">
                   {statusHint}
@@ -587,10 +669,10 @@ export function OutreachComposeModal({
                     sequenceLabel="Drafting reply"
                   />
                 </div>
-              ) : mode === "reply" && ensuringDraft && !replyDraft ? (
-                <div className="flex min-h-[10rem] flex-col items-center justify-center gap-2 text-brand-ink-soft">
+              ) : mode === "reply" && ensuringDraft ? (
+                <div className="flex min-h-[8rem] flex-col items-center justify-center gap-2 text-brand-ink-soft">
                   <Loader2 className="size-5 animate-spin" />
-                  <p className="text-[13px]">Opening reply draft…</p>
+                  <p className="text-[13px]">Opening empty reply…</p>
                 </div>
               ) : mode === "review" && ensuringCatalog && selectedReviewNodeId === IF_OPENED_NODE_ID && !activeDraft ? (
                 <div className="flex min-h-[10rem] flex-col items-center justify-center gap-2 text-brand-ink-soft">
@@ -619,82 +701,55 @@ export function OutreachComposeModal({
                   }
                   startSequenceDraft={mode === "review" ? email1Draft : undefined}
                   onSent={() => {
+                    setReplyComposeOpen(false);
+                    setReplyDraft(null);
+                    setComposeActions(null);
                     onChanged?.();
                     onClose();
                   }}
                   onSendFailed={() => void load({ silent: true })}
                 />
-              ) : mode === "reply" && replyAlreadySent ? (
-                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                  {hasInbound ? (
-                    <button
-                      type="button"
-                      disabled={draftingReply}
-                      onClick={() => void handleSmartReply()}
-                      className="ish-scout-cta-blue inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-50"
-                    >
-                      <Sparkles className="size-3.5" />
-                      Draft another reply
-                    </button>
-                  ) : null}
+              ) : mode === "reply" && showAddReply ? (
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    disabled={ensuringDraft}
+                    onClick={() => void openEmptyReplyComposer()}
+                    className="ish-scout-cta-blue inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[12px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-50"
+                  >
+                    <MessageSquarePlus className="size-3.5" />
+                    Add reply
+                  </button>
                 </div>
-              ) : (
+              ) : mode === "review" ? (
                 <p className="py-6 text-center text-[13px] text-brand-ink-soft">
-                  {mode === "review"
-                    ? "No outreach draft available for this lead yet."
-                    : "No reply draft available for this lead yet."}
+                  No outreach draft available for this lead yet.
                 </p>
-              )}
+              ) : null}
             </>
           ) : null}
         </div>
 
-        {lead && (showComposer || showSmartReply) ? (
-          <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-black/[0.06] bg-white px-3 py-2.5 sm:px-5">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              {showSmartReply ? (
-                <button
-                  type="button"
-                  disabled={draftingReply || ensuringDraft}
-                  onClick={() => void handleSmartReply()}
-                  className="ish-scout-ghost inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-50"
-                >
-                  <Sparkles className="size-3.5" />
-                  {draftingReply ? "Writing…" : "Write smart reply"}
-                </button>
-              ) : null}
-              {mode === "reply" ? (
-                <SyncRepliesButton
-                  leadId={lead.id}
-                  leadName={lead.name}
-                  compact
-                  onSynced={() => void load({ silent: true })}
-                  className="ish-scout-ghost border-0 shadow-none"
-                />
-              ) : (
-                <span />
-              )}
-            </div>
-            {showComposer ? (
+        {lead && mode === "reply" ? (
+          <footer className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-black/[0.06] bg-white px-3 py-2.5 sm:px-5">
+            {showSmartReply ? (
               <button
                 type="button"
-                onClick={() => void handleSend()}
-                disabled={!composeActions?.canSend || composeActions?.sending}
-                className={cn(
-                  "inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-[12px] font-semibold text-white transition-opacity",
-                  composeActions?.canSend
-                    ? "bg-brand-black hover:opacity-90"
-                    : "cursor-not-allowed bg-brand-ink-faint/50",
-                )}
+                disabled={draftingReply || ensuringDraft}
+                onClick={() => void handleSmartReply()}
+                className="ish-scout-ghost inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-semibold transition-opacity hover:opacity-95 disabled:opacity-50"
               >
-                {composeActions?.sending ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Send className="size-3.5" />
-                )}
-                {composeActions?.sending ? "Sending…" : sendButtonLabel}
+                <Sparkles className="size-3.5" />
+                {draftingReply ? "Writing…" : "Write smart reply"}
               </button>
             ) : null}
+            <SyncRepliesButton
+              leadId={lead.id}
+              leadName={lead.name}
+              compact
+              onSynced={() => void load({ silent: true })}
+              className="ish-scout-ghost border-0 shadow-none"
+            />
           </footer>
         ) : null}
       </div>

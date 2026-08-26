@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultReplyRecipientEmails,
   defaultSelectedContactEmails,
   EMPTY_SEND_TO_HINT,
   isWeakGuessEmail,
+  lastOutboundRecipientEmail,
   preferredSendRecipientEmails,
   retainSelectedRecipientEmails,
   resolveSendRecipients,
+  reusesThreadRecipient,
+  selectedEmailsForSend,
 } from "@/lib/outreach/send-recipients";
 
 describe("resolveSendRecipients", () => {
@@ -268,6 +272,71 @@ describe("resolveSendRecipients", () => {
         "umarani.n@bfwindia.com",
       ]),
     ).toEqual(["umarani.n@bfwindia.com"]);
+  });
+
+  it("drops already-sent addresses unless allowAlreadySent (replies)", () => {
+    expect(
+      retainSelectedRecipientEmails(
+        ["ops@acme.com"],
+        ["ops@acme.com"],
+        new Set(["ops@acme.com"]),
+        ["ops@acme.com"],
+      ),
+    ).toEqual([]);
+    expect(
+      retainSelectedRecipientEmails(
+        ["ops@acme.com"],
+        ["ops@acme.com"],
+        new Set(["ops@acme.com"]),
+        ["ops@acme.com"],
+        { allowAlreadySent: true },
+      ),
+    ).toEqual(["ops@acme.com"]);
+  });
+
+  it("keeps the original To for a reply even when that inbox already received Email 1", () => {
+    expect(
+      selectedEmailsForSend(["ops@acme.com"], new Set(["ops@acme.com"]), "reply"),
+    ).toEqual(["ops@acme.com"]);
+    expect(
+      selectedEmailsForSend(["ops@acme.com"], new Set(["ops@acme.com"]), "outbound"),
+    ).toEqual([]);
+  });
+
+  it("keeps the original To for sequence follow-ups (Email 2/3), same as reply", () => {
+    expect(
+      selectedEmailsForSend(["ops@acme.com"], new Set(["ops@acme.com"]), "follow_up"),
+    ).toEqual(["ops@acme.com"]);
+    expect(
+      retainSelectedRecipientEmails(
+        ["ops@acme.com"],
+        ["ops@acme.com"],
+        new Set(["ops@acme.com"]),
+        ["ops@acme.com"],
+        { allowAlreadySent: true },
+      ),
+    ).toEqual(["ops@acme.com"]);
+    expect(
+      defaultReplyRecipientEmails("other@acme.com", [], "ops@acme.com"),
+    ).toEqual(["ops@acme.com"]);
+    expect(reusesThreadRecipient("follow_up")).toBe(true);
+    expect(reusesThreadRecipient("reply")).toBe(true);
+    expect(reusesThreadRecipient("outbound")).toBe(false);
+  });
+
+  it("defaults a reply To to the last outbound address, including a weak guess already used", () => {
+    expect(
+      lastOutboundRecipientEmail(
+        [
+          { kind: "initial", status: "sent", recipientEmail: "firstname@bfwindia.com" },
+          { kind: "inbound_reply", status: "sent", recipientEmail: "firstname@bfwindia.com" },
+        ],
+        [{ kind: "sent", recipientEmail: "firstname@bfwindia.com" }],
+      ),
+    ).toBe("firstname@bfwindia.com");
+    expect(
+      defaultReplyRecipientEmails("other@bfwindia.com", [], "firstname@bfwindia.com"),
+    ).toEqual(["firstname@bfwindia.com"]);
   });
 
   it("still sends firstname@ when the user explicitly selected it", () => {

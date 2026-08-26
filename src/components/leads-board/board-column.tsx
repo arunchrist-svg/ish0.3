@@ -7,6 +7,7 @@ import {
   type PipelineStageLabel,
 } from "@/lib/pipeline-status";
 import { cn } from "@/lib/utils";
+import { TruncatedText } from "@/design-system";
 import { BoardLeadCard } from "./board-lead-card";
 import type { SendQueueItem } from "./board-bulk-actions";
 import { VirtualList } from "@/components/ui/virtual-list";
@@ -26,6 +27,7 @@ type Props = {
   action?: ColumnAction;
   queueByLeadId?: Record<string, SendQueueItem>;
   queueItems?: SendQueueItem[];
+  onLeadOpen?: (lead: LeadQueueItem) => void;
 };
 
 function queueStatusLabel(item: SendQueueItem): string {
@@ -45,7 +47,7 @@ function queueStatusLabel(item: SendQueueItem): string {
   }
 }
 
-export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }: Props) {
+export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, onLeadOpen }: Props) {
   const accent = PIPELINE_STAGE_ACCENTS[stage];
   const useVirtual = leads.length > 40;
 
@@ -95,7 +97,12 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }:
                 className="flex items-center justify-between gap-2 rounded-lg px-2 py-1"
                 title={item.error}
               >
-                <span className="min-w-0 truncate text-[11px] font-medium text-brand-ink">{item.name}</span>
+                <div className="min-w-0 flex-1">
+                  <TruncatedText
+                    text={item.name}
+                    className="text-[11px] font-medium text-brand-ink"
+                  />
+                </div>
                 <span
                   className={cn(
                     "shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold tabular-nums",
@@ -136,6 +143,7 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }:
                 accent={accent}
                 stage={stage}
                 sendStatus={queueByLeadId?.[lead.id]}
+                onOpen={onLeadOpen}
               />
             </div>
           )}
@@ -150,6 +158,7 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems }:
               accent={accent}
               stage={stage}
               sendStatus={queueByLeadId?.[lead.id]}
+              onOpen={onLeadOpen}
             />
           ))}
         </div>

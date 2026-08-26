@@ -76,7 +76,7 @@ const EMPTY_BY_TAB: Record<QueueTab, { title: string; body: string }> = {
   },
   replies: {
     title: "Inbox quiet",
-    body: "When someone replies, their thread lands here with a suggested next step.",
+    body: "When someone replies, their thread lands here. It stays after you respond so you can reopen it.",
   },
   done: {
     title: "Nothing finished yet",
@@ -298,21 +298,27 @@ function inboxStatus(row: LeadEmailRow, tab: QueueTab): { label: string; accent?
   return { label: "" };
 }
 
-/** Optional secondary line under name + company (preview only when it adds signal). */
+/** Optional secondary line under lead identity (short; never a long body dump). */
 function inboxSecondary(row: LeadEmailRow, tab: QueueTab): string | null {
   if (tab === "replies") {
     const snippet = (row.inboundSnippet ?? row.nextAction?.description ?? "")
       .replace(/\s+/g, " ")
       .trim();
-    return snippet || null;
+    if (!snippet) return null;
+    return snippet.length > 72 ? `${snippet.slice(0, 72).trimEnd()}…` : snippet;
   }
   if (tab === "needs_review") {
-    const subject = row.draftSubject ?? (row.isFollowUpReview ? "Follow-up draft" : "Email 1 draft");
-    const preview = (row.draftPreview ?? "").replace(/\s+/g, " ").trim();
-    if (preview) return `${subject}: ${preview}`;
-    return subject;
+    const subject = (row.draftSubject ?? (row.isFollowUpReview ? "Follow-up draft" : "Email 1 draft"))
+      .replace(/\s+/g, " ")
+      .trim();
+    return subject.length > 64 ? `${subject.slice(0, 64).trimEnd()}…` : subject;
   }
   return null;
+}
+
+function leadMetaLine(row: LeadEmailRow): string | null {
+  const parts = [row.companyName?.trim(), row.contactEmail?.trim()].filter(Boolean) as string[];
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 // ─── Lead card (scan-friendly inbox row) ──────────────────────────────────────
@@ -330,6 +336,7 @@ function LeadCard({
 }) {
   const status = inboxStatus(row, tab);
   const secondary = inboxSecondary(row, tab);
+  const meta = leadMetaLine(row);
   const unread = tab === "replies" && !row.hasOutboundReply;
   const showSequence = tab !== "needs_review" && tab !== "replies";
 
@@ -344,12 +351,12 @@ function LeadCard({
           onNavigate(row);
         }
       }}
-      className="ish-email-card group w-full cursor-pointer px-3 py-2.5 text-left transition-colors duration-150 sm:px-4"
+      className="ish-email-card group w-full cursor-pointer px-4 py-3.5 text-left transition-colors duration-150 sm:px-5 sm:py-4"
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3.5">
         <div
           className={cn(
-            "flex size-8 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-brand-ink",
+            "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-brand-ink",
             avatarColor(row.contactName),
           )}
         >
@@ -357,26 +364,24 @@ function LeadCard({
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-baseline justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0">
-                <span
-                  className={cn(
-                    "truncate text-[13px] text-brand-ink",
-                    unread ? "font-bold" : "font-semibold",
-                  )}
-                >
-                  {row.contactName}
-                </span>
-                {row.companyName ? (
-                  <span className="truncate text-[12px] text-brand-ink-soft">{row.companyName}</span>
-                ) : null}
-              </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1 space-y-1">
+              <span
+                className={cn(
+                  "block truncate text-[14px] leading-snug text-brand-ink",
+                  unread ? "font-bold" : "font-semibold",
+                )}
+              >
+                {row.contactName}
+              </span>
+              {meta ? (
+                <p className="truncate text-[12px] leading-snug text-brand-ink-soft">{meta}</p>
+              ) : null}
               {secondary ? (
-                <p className="mt-0.5 truncate text-[12px] leading-snug text-brand-ink-soft">{secondary}</p>
+                <p className="truncate text-[12px] leading-snug text-brand-ink-faint">{secondary}</p>
               ) : null}
               {showSequence ? (
-                <div className="mt-0.5">
+                <div className="pt-0.5">
                   <SequenceProgress row={row} cadence={cadence} />
                 </div>
               ) : null}
@@ -384,7 +389,7 @@ function LeadCard({
             {status.label ? (
               <span
                 className={cn(
-                  "shrink-0 text-[11px] tabular-nums",
+                  "shrink-0 pt-0.5 text-[11px] tabular-nums",
                   status.accent ? "font-semibold text-brand-stratus-blue" : "text-brand-ink-faint",
                 )}
               >
@@ -394,7 +399,7 @@ function LeadCard({
           </div>
         </div>
 
-        <ChevronRight className="hidden size-3.5 shrink-0 text-brand-ink-faint opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
+        <ChevronRight className="mt-1 hidden size-3.5 shrink-0 text-brand-ink-faint opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
       </div>
     </div>
   );
@@ -568,6 +573,7 @@ export function EmailApp() {
         (r) =>
           r.contactName.toLowerCase().includes(q) ||
           r.companyName.toLowerCase().includes(q) ||
+          (r.contactEmail?.toLowerCase().includes(q) ?? false) ||
           (r.city?.toLowerCase().includes(q) ?? false),
       );
     },
@@ -614,7 +620,7 @@ export function EmailApp() {
         tab: "replies" as PageTab,
         label: "Replies",
         value: tabCount(data, "replies"),
-        sub: "They replied",
+        sub: "Conversations",
         icon: MessageSquare,
         iconClass: "bg-brand-stratus-blue/20 text-brand-stratus-blue",
       },

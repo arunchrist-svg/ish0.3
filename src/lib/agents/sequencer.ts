@@ -8,7 +8,7 @@ import { runWriter } from "@/lib/agents/writer";
 import { assertCredits, deductCredits, InsufficientCreditsError } from "@/lib/billing/credits";
 import { assertPlanEntitlement } from "@/lib/billing/entitlements";
 import { isOutreachSendingPaused } from "@/lib/email/config";
-import { isWithinSendWindow, nextSendWindowStart } from "@/lib/email/send-window";
+import { isWithinSendWindow, nextSendWindowStart, sendWindowFromEmailFields } from "@/lib/email/send-window";
 import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
@@ -66,12 +66,7 @@ export async function runSequencer(): Promise<{
         continue;
       }
 
-      const sendWindow = {
-        daysOfWeek: emailConfig.sendDaysOfWeek,
-        hourStart: emailConfig.sendHourStart,
-        hourEnd: emailConfig.sendHourEnd,
-        timezone: emailConfig.sendTimezone,
-      };
+      const sendWindow = sendWindowFromEmailFields(emailConfig);
       if (!isWithinSendWindow(now, sendWindow)) {
         const nextSlot = nextSendWindowStart(now, sendWindow);
         if (nextSlot.getTime() > now.getTime()) {

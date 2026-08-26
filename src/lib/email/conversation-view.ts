@@ -21,10 +21,10 @@ export function conversationStatusChip(event: ThreadEvent): {
   tone: "draft" | "scheduled" | "sent" | "opened" | "bounced" | "inbound" | "outbound";
 } {
   if (event.kind === "inbound_reply") {
-    return { label: "They replied", tone: "inbound" };
+    return { label: "Their reply", tone: "inbound" };
   }
   if (event.kind === "outbound_reply" && event.status !== "draft") {
-    return { label: "You replied", tone: "outbound" };
+    return { label: "Your reply", tone: "outbound" };
   }
   if (event.status === "bounced" || event.bouncedAt) {
     return { label: "Bounced", tone: "bounced" };

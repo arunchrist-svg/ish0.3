@@ -7,12 +7,21 @@ import {
   type LeadDraftState,
 } from "@/lib/email/apply-writer-draft";
 
-function draft(partial: { id: string; sequencePosition?: number; templateVariant?: string; emailBody?: string }) {
+function draft(partial: {
+  id: string;
+  sequencePosition?: number;
+  templateVariant?: string;
+  emailBody?: string;
+  subjectA?: string | null;
+  subjectB?: string | null;
+}) {
   return {
     id: partial.id,
     sequencePosition: partial.sequencePosition,
     templateVariant: partial.templateVariant,
     emailBody: partial.emailBody,
+    subjectA: partial.subjectA,
+    subjectB: partial.subjectB,
   };
 }
 
@@ -161,5 +170,50 @@ describe("apply writer draft to lead state", () => {
     const next = mergeLeadOutreachFromServer(prev, incoming);
     expect(next.outreach?.emailBody).toBe("edited");
     expect(next.outreachSequence?.[0].emailBody).toBe("edited");
+  });
+
+  it("syncs Re: subjects on Email 2/3 when Email 1 subject is edited", () => {
+    const lead: LeadDraftState<Draft> = {
+      status: "draft_ready",
+      outreach: {
+        ...draft({ id: "e1", sequencePosition: 1 }),
+        subjectA: "A festive sample for STELLANTIS AVTEC POWERTRAIN",
+        subjectB: "Festive sweets sample for STELLANTIS AVTEC POWERTRAIN",
+      },
+      outreachSequence: [
+        {
+          ...draft({ id: "e1", sequencePosition: 1 }),
+          subjectA: "A festive sample for STELLANTIS AVTEC POWERTRAIN",
+          subjectB: "Festive sweets sample for STELLANTIS AVTEC POWERTRAIN",
+        },
+        {
+          ...draft({ id: "e2", sequencePosition: 2 }),
+          subjectA: "Re: A festive sample for STELLANTIS AVTEC POWERTRAIN",
+          subjectB: "Re: Festive sweets sample for STELLANTIS AVTEC POWERTRAIN",
+        },
+        {
+          ...draft({ id: "e3", sequencePosition: 3 }),
+          subjectA: "Re: A festive sample for STELLANTIS AVTEC POWERTRAIN",
+          subjectB: "Custom follow-up subject",
+        },
+        {
+          ...draft({ id: "e5", sequencePosition: 5, templateVariant: "catalog_on_open" }),
+          subjectA: "festive gifting for STELLANTIS",
+        },
+      ],
+    };
+
+    const next = applyWriterDraft(lead, {
+      ...draft({ id: "e1", sequencePosition: 1 }),
+      subjectA: "A festive sample for STELLANTIS",
+      subjectB: "Festive sweets sample for STELLANTIS",
+    });
+
+    expect(next.outreachSequence?.[1].subjectA).toBe("Re: A festive sample for STELLANTIS");
+    expect(next.outreachSequence?.[1].subjectB).toBe("Re: Festive sweets sample for STELLANTIS");
+    expect(next.outreachSequence?.[2].subjectA).toBe("Re: A festive sample for STELLANTIS");
+    expect(next.outreachSequence?.[2].subjectB).toBe("Custom follow-up subject");
+    expect(next.outreachSequence?.[3].subjectA).toBe("festive gifting for STELLANTIS");
+    expect(next.emailThread?.threadRootSubject).toBe("A festive sample for STELLANTIS");
   });
 });

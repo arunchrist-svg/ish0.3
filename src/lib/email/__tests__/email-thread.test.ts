@@ -112,6 +112,24 @@ describe("buildEmailThread", () => {
     expect(thread?.selectedNodeId).toBe("draft-1");
   });
 
+  it("buildDraftsEmailThread refreshes thread root when Email 1 subject changes", () => {
+    const previous = buildDraftsEmailThread([
+      { id: "d1", sequencePosition: 1, subjectA: "Old subject", emailBody: "Body 1" },
+      { id: "d2", sequencePosition: 2, subjectA: "Re: Old subject", emailBody: "Body 2" },
+    ]);
+    expect(previous?.threadRootSubject).toBe("Old subject");
+
+    const next = buildDraftsEmailThread(
+      [
+        { id: "d1", sequencePosition: 1, subjectA: "New subject", emailBody: "Body 1" },
+        { id: "d2", sequencePosition: 2, subjectA: "Re: Old subject", emailBody: "Body 2" },
+      ],
+      { previous },
+    );
+
+    expect(next?.threadRootSubject).toBe("New subject");
+  });
+
   it("shows If Opened as scheduled on the sequence bar", () => {
     const scheduledFor = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const thread = buildEmailThread({
@@ -348,10 +366,10 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes[1].state).toBe("skipped");
     expect(thread.barNodes[2].state).toBe("skipped");
     const inbound = thread.events.find((e) => e.kind === "inbound_reply");
-    expect(inbound?.label).toBe("They replied");
+    expect(inbound?.label).toBe("Their reply");
     expect(inbound?.body).toMatch(/sample please/);
     expect(conversationSide(inbound!)).toBe("them");
-    expect(conversationStatusChip(inbound!).label).toBe("They replied");
+    expect(conversationStatusChip(inbound!).label).toBe("Their reply");
     expect(thread.phase).toBe("they_replied");
     expect(shouldShowConversationTimeline(thread)).toBe(true);
   });
@@ -415,6 +433,6 @@ describe("buildEmailThread", () => {
     expect(thread.nextStep?.primaryAction).toBe("Mark tasting sent");
     const outbound = thread.events.find((e) => e.kind === "outbound_reply");
     expect(outbound?.label).toBe("Your reply");
-    expect(conversationStatusChip(outbound!).label).toBe("You replied");
+    expect(conversationStatusChip(outbound!).label).toBe("Your reply");
   });
 });

@@ -4,7 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
 import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE, resolveOutreachEmailStyle } from "@/lib/email/config";
-import { computeFollowUpScheduledFor } from "@/lib/email/send-window";
+import { computeFollowUpScheduledFor, sendWindowFromEmailFields } from "@/lib/email/send-window";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { assertResourceTenant, requireTenantContext } from "@/lib/tenant";
@@ -428,12 +428,7 @@ export async function POST(req: Request) {
 
       const cadence = emailConfig.cadenceDays;
       const now = new Date();
-      const sendWindow = {
-        daysOfWeek: emailConfig.sendDaysOfWeek,
-        hourStart: emailConfig.sendHourStart,
-        hourEnd: emailConfig.sendHourEnd,
-        timezone: emailConfig.sendTimezone,
-      };
+      const sendWindow = sendWindowFromEmailFields(emailConfig);
       const sequenceDrafts = await loadSequenceDrafts(approval.leadId);
       for (let i = 0; i < cadence.length; i++) {
         const day = cadence[i];

@@ -1,14 +1,35 @@
-/** Days and local hours when follow-up outreach may be scheduled. */
+/** Days and local hours (6:00–20:00 exclusive end) when follow-up outreach may be scheduled. */
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type SendHourRange = {
+  /** Inclusive local start hour (6–19.5), snapped to 30-minute steps. */
+  hourStart: number;
+  /** Exclusive local end hour (6.5–20), snapped to 30-minute steps. e.g. 8–14 = 08:00 up to but not including 14:00. */
+  hourEnd: number;
+};
+
+/** Snap a decimal hour to the nearest half-hour (e.g. 9.2 → 9, 9.4 → 9.5). */
+export function snapToHalfHour(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 2) / 2;
+}
 
 export type SendWindow = {
   /** Allowed weekdays (0 = Sunday … 6 = Saturday). */
   daysOfWeek: Weekday[];
-  /** Inclusive local start hour (0–23). */
+  /**
+   * Inclusive local start of the earliest range (6–19.5, half-hour steps).
+   * Kept for backward compatibility; prefer `hourRanges`.
+   */
   hourStart: number;
-  /** Exclusive local end hour (1–24). e.g. 9–17 = 09:00 up to but not including 17:00. */
+  /**
+   * Exclusive local end of the latest range (6.5–20, half-hour steps).
+   * Kept for backward compatibility; prefer `hourRanges`.
+   */
   hourEnd: number;
+  /** One or more non-overlapping local hour blocks. Source of truth for send windows. */
+  hourRanges: SendHourRange[];
   /** IANA timezone used when snapping scheduled sends into the window. */
   timezone: string;
 };
@@ -17,6 +38,11 @@ export const DEFAULT_SEND_DAYS: Weekday[] = [1, 2, 3, 4, 5];
 export const DEFAULT_SEND_HOUR_START = 9;
 export const DEFAULT_SEND_HOUR_END = 17;
 export const DEFAULT_SEND_TIMEZONE = "Asia/Kolkata";
+export const MAX_SEND_HOUR_RANGES = 4;
+/** Inclusive earliest allowed local hour (6:00 AM). */
+export const MIN_SEND_HOUR = 6;
+/** Exclusive latest allowed local hour (8:00 PM). No sends at or after this. */
+export const MAX_SEND_HOUR = 20;
 
 export const WEEKDAY_OPTIONS: { value: Weekday; label: string; short: string }[] = [
   { value: 1, label: "Monday", short: "Mon" },
@@ -84,12 +110,48 @@ export function normalizeSendDays(input?: number[] | null): Weekday[] {
 export function normalizeSendHours(
   hourStart?: number | null,
   hourEnd?: number | null,
-): { hourStart: number; hourEnd: number } {
-  let start = Number.isFinite(hourStart) ? Math.round(hourStart as number) : DEFAULT_SEND_HOUR_START;
-  let end = Number.isFinite(hourEnd) ? Math.round(hourEnd as number) : DEFAULT_SEND_HOUR_END;
-  start = Math.max(0, Math.min(22, start));
-  end = Math.max(start + 1, Math.min(24, end));
+): SendHourRange {
+  let start = Number.isFinite(hourStart)
+    ? snapToHalfHour(hourStart as number)
+    : DEFAULT_SEND_HOUR_START;
+  let end = Number.isFinite(hourEnd) ? snapToHalfHour(hourEnd as number) : DEFAULT_SEND_HOUR_END;
+  // Allowed window: 6:00 inclusive through 20:00 exclusive (half-hour steps).
+  start = Math.max(MIN_SEND_HOUR, Math.min(MAX_SEND_HOUR - 0.5, start));
+  end = Math.max(start + 0.5, Math.min(MAX_SEND_HOUR, end));
   return { hourStart: start, hourEnd: end };
+}
+
+/** Normalize, sort, and merge overlapping hour ranges. Caps at MAX_SEND_HOUR_RANGES. */
+export function normalizeSendHourRanges(
+  ranges?: SendHourRange[] | null,
+  fallbackStart?: number | null,
+  fallbackEnd?: number | null,
+): SendHourRange[] {
+  const source =
+    ranges && ranges.length > 0
+      ? ranges
+      : [normalizeSendHours(fallbackStart, fallbackEnd)];
+
+  const normalized = source
+    .map((r) => normalizeSendHours(r?.hourStart, r?.hourEnd))
+    .sort((a, b) => a.hourStart - b.hourStart || a.hourEnd - b.hourEnd);
+
+  const merged: SendHourRange[] = [];
+  for (const range of normalized) {
+    const last = merged[merged.length - 1];
+    if (!last) {
+      merged.push({ ...range });
+      continue;
+    }
+    // Touching or overlapping ranges coalesce into one block.
+    if (range.hourStart <= last.hourEnd) {
+      last.hourEnd = Math.max(last.hourEnd, range.hourEnd);
+      continue;
+    }
+    merged.push({ ...range });
+  }
+
+  return merged.slice(0, MAX_SEND_HOUR_RANGES);
 }
 
 export function normalizeSendTimezone(input?: string | null): string {
@@ -99,13 +161,64 @@ export function normalizeSendTimezone(input?: string | null): string {
 }
 
 export function resolveSendWindow(input?: Partial<SendWindow> | null): SendWindow {
-  const { hourStart, hourEnd } = normalizeSendHours(input?.hourStart, input?.hourEnd);
+  const hourRanges = normalizeSendHourRanges(
+    input?.hourRanges,
+    input?.hourStart,
+    input?.hourEnd,
+  );
   return {
     daysOfWeek: normalizeSendDays(input?.daysOfWeek),
-    hourStart,
-    hourEnd,
+    hourStart: hourRanges[0]!.hourStart,
+    hourEnd: hourRanges[hourRanges.length - 1]!.hourEnd,
+    hourRanges,
     timezone: normalizeSendTimezone(input?.timezone),
   };
+}
+
+/**
+ * Build a send window from email settings fields (single range or multi-range).
+ */
+export function sendWindowFromEmailFields(fields: {
+  sendDaysOfWeek?: number[] | null;
+  sendHourStart?: number | null;
+  sendHourEnd?: number | null;
+  sendHourRanges?: SendHourRange[] | null;
+  sendTimezone?: string | null;
+}): SendWindow {
+  return resolveSendWindow({
+    daysOfWeek: fields.sendDaysOfWeek as Weekday[] | undefined,
+    hourStart: fields.sendHourStart ?? undefined,
+    hourEnd: fields.sendHourEnd ?? undefined,
+    hourRanges: fields.sendHourRanges ?? undefined,
+    timezone: fields.sendTimezone ?? undefined,
+  });
+}
+
+/** Suggest a non-overlapping block to append, or null when the allowed 6–20 band is full. */
+export function suggestNextHourRange(ranges: SendHourRange[]): SendHourRange | null {
+  const current = normalizeSendHourRanges(ranges);
+  if (current.length >= MAX_SEND_HOUR_RANGES) return null;
+
+  const last = current[current.length - 1];
+  if (last) {
+    // Leave a 1-hour gap so the new block stays separate (e.g. 8–14 then 15–19).
+    const start = last.hourEnd + 1;
+    if (start < MAX_SEND_HOUR) {
+      const end = Math.min(MAX_SEND_HOUR, start + 4);
+      if (end > start) return { hourStart: start, hourEnd: end };
+    }
+  }
+
+  let cursor = MIN_SEND_HOUR;
+  for (const range of current) {
+    if (range.hourStart - cursor >= 2) {
+      const start = cursor;
+      const end = Math.min(range.hourStart - 1, start + 4);
+      if (end > start) return { hourStart: start, hourEnd: end };
+    }
+    cursor = Math.max(cursor, range.hourEnd);
+  }
+  return null;
 }
 
 function getZonedParts(date: Date, timeZone: string): ZonedParts {
@@ -179,35 +292,54 @@ function addCalendarDays(
   };
 }
 
-function atWindowStart(
+function atLocalHour(
   dateParts: { year: number; month: number; day: number },
-  window: SendWindow,
+  hour: number,
+  timezone: string,
 ): Date {
+  const snapped = snapToHalfHour(hour);
+  const wholeHour = Math.floor(snapped);
+  const minute = Math.round((snapped - wholeHour) * 60);
   return zonedLocalToUtc(
-    { year: dateParts.year, month: dateParts.month, day: dateParts.day, hour: window.hourStart, minute: 0, second: 0 },
-    window.timezone,
+    {
+      year: dateParts.year,
+      month: dateParts.month,
+      day: dateParts.day,
+      hour: wholeHour,
+      minute,
+      second: 0,
+    },
+    timezone,
   );
 }
 
+function firstRangeStart(window: SendWindow): number {
+  return window.hourRanges[0]?.hourStart ?? window.hourStart;
+}
+
 /**
- * True when `now` is an allowed weekday and falls in `[hourStart, hourEnd)` in the window timezone.
+ * True when `now` is an allowed weekday and falls in any hour range in the window timezone.
  */
 export function isWithinSendWindow(now: Date, windowInput?: Partial<SendWindow> | null): boolean {
   const window = resolveSendWindow(windowInput);
   const parts = getZonedParts(now, window.timezone);
   if (!window.daysOfWeek.includes(parts.weekday)) return false;
   const minutes = parts.hour * 60 + parts.minute;
-  return minutes >= window.hourStart * 60 && minutes < window.hourEnd * 60;
+  return window.hourRanges.some(
+    (range) => minutes >= range.hourStart * 60 && minutes < range.hourEnd * 60,
+  );
 }
 
 /**
  * Snap a candidate instant into the allowed send window in `window.timezone`.
  * If the day or local time is outside the window, rolls forward to the next valid slot
- * (next allowed day at hourStart, or same day at hourStart when still before the window).
+ * (next allowed day at the first range start, same-day next range start when in a gap,
+ * or same-day first range start when still before the window).
  */
 export function snapToSendWindow(candidate: Date, windowInput?: Partial<SendWindow> | null): Date {
   const window = resolveSendWindow(windowInput);
   const allowed = new Set(window.daysOfWeek);
+  const openHour = firstRangeStart(window);
 
   let current = candidate;
   let parts = getZonedParts(current, window.timezone);
@@ -216,30 +348,34 @@ export function snapToSendWindow(candidate: Date, windowInput?: Partial<SendWind
   while (guard++ < 14) {
     if (!allowed.has(parts.weekday)) {
       const next = addCalendarDays(parts, 1);
-      current = atWindowStart(next, window);
+      current = atLocalHour(next, openHour, window.timezone);
       parts = getZonedParts(current, window.timezone);
       continue;
     }
 
     const minutes = parts.hour * 60 + parts.minute;
-    const startMinutes = window.hourStart * 60;
-    const endMinutes = window.hourEnd * 60;
+    let snapped: Date | null = null;
 
-    if (minutes < startMinutes) {
-      current = atWindowStart(parts, window);
-      return current;
-    }
-    if (minutes >= endMinutes) {
-      const next = addCalendarDays(parts, 1);
-      current = atWindowStart(next, window);
-      parts = getZonedParts(current, window.timezone);
-      continue;
+    for (const range of window.hourRanges) {
+      const startMinutes = range.hourStart * 60;
+      const endMinutes = range.hourEnd * 60;
+      if (minutes < startMinutes) {
+        snapped = atLocalHour(parts, range.hourStart, window.timezone);
+        break;
+      }
+      if (minutes < endMinutes) {
+        return current;
+      }
     }
 
-    return current;
+    if (snapped) return snapped;
+
+    const next = addCalendarDays(parts, 1);
+    current = atLocalHour(next, openHour, window.timezone);
+    parts = getZonedParts(current, window.timezone);
   }
 
-  return atWindowStart(getZonedParts(candidate, window.timezone), window);
+  return atLocalHour(getZonedParts(candidate, window.timezone), openHour, window.timezone);
 }
 
 /**
@@ -272,12 +408,32 @@ export function sameCalendarDay(a: Date, b: Date, timezone: string): boolean {
   return pa.year === pb.year && pa.month === pb.month && pa.day === pb.day;
 }
 
+function formatClockPart(hour: number): { h12: number; minutes: string; suffix: "AM" | "PM" } {
+  const snapped = snapToHalfHour(hour);
+  if (snapped === 24 || snapped === 0) {
+    return { h12: 12, minutes: "00", suffix: "AM" };
+  }
+  const whole = Math.floor(snapped);
+  const minutes = snapped % 1 === 0.5 ? "30" : "00";
+  const suffix: "AM" | "PM" = whole >= 12 ? "PM" : "AM";
+  const h12 = whole % 12 === 0 ? 12 : whole % 12;
+  return { h12, minutes, suffix };
+}
+
 export function formatHourLabel(hour: number): string {
-  if (hour === 0) return "12:00 AM";
-  if (hour === 12) return "12:00 PM";
-  if (hour === 24) return "12:00 AM";
-  if (hour < 12) return `${hour}:00 AM`;
-  return `${hour - 12}:00 PM`;
+  const { h12, minutes, suffix } = formatClockPart(hour);
+  return `${h12}:${minutes} ${suffix}`;
+}
+
+/** Compact label for axis ticks (e.g. 12a, 4a, 12p). */
+export function formatHourAxisLabel(hour: number): string {
+  const { h12, suffix } = formatClockPart(hour);
+  return `${h12}${suffix === "AM" ? "a" : "p"}`;
+}
+
+export function formatHourRangeShort(range: SendHourRange): string {
+  const fmt = (h: number) => (h % 1 === 0 ? String(h) : h.toFixed(1));
+  return `${fmt(range.hourStart)}–${fmt(range.hourEnd)}`;
 }
 
 export function sendWindowSummary(windowInput?: Partial<SendWindow> | null): string {
@@ -287,5 +443,8 @@ export function sendWindowSummary(windowInput?: Partial<SendWindow> | null): str
     .join(", ");
   const tz =
     SEND_TIMEZONE_OPTIONS.find((o) => o.value === window.timezone)?.label ?? window.timezone;
-  return `${days}, ${formatHourLabel(window.hourStart)}–${formatHourLabel(window.hourEnd)} (${tz})`;
+  const hours = window.hourRanges
+    .map((r) => `${formatHourLabel(r.hourStart)}–${formatHourLabel(r.hourEnd)}`)
+    .join(" & ");
+  return `${days}, ${hours} (${tz})`;
 }

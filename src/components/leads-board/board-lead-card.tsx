@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Check, Clock, Loader2, MapPin, X } from "lucide-react";
-import { IshAvatar, ScoreBadge } from "@/design-system";
+import { IshAvatar, ScoreBadge, TruncatedText } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { statusToDisplayLabel, type PipelineStageAccent } from "@/lib/pipeline-status";
@@ -14,6 +14,8 @@ type Props = {
   accent: PipelineStageAccent;
   stage?: string;
   sendStatus?: SendQueueItem;
+  /** When set, card opens this handler instead of navigating to the lead page. */
+  onOpen?: (lead: LeadQueueItem) => void;
 };
 
 type CardSendBadge = {
@@ -54,13 +56,13 @@ function cardSendBadge(
   return null;
 }
 
-export function BoardLeadCard({ lead, index, accent, stage, sendStatus }: Props) {
+export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen }: Props) {
   const badge = cardSendBadge(lead, stage, sendStatus);
-  return (
-    <Link
-      href={`/leads?lead=${lead.id}`}
-      className="ish-board-lead-card group block overflow-hidden rounded-[16px] transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5"
-    >
+  const className =
+    "ish-board-lead-card group block w-full overflow-hidden rounded-[16px] text-left transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5";
+
+  const body = (
+    <>
       <div
         className={cn(
           "ish-board-lead-card-accent pointer-events-none h-1",
@@ -75,8 +77,16 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus }: Props)
       <div className="p-3.5">
         <div className="mb-2.5 flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13.5px] font-bold leading-tight text-brand-ink">{lead.name}</div>
-            <div className="mt-0.5 truncate text-[11.5px] text-brand-ink-soft">{lead.company}</div>
+            <TruncatedText
+              text={lead.name}
+              expandOnGroupHover
+              className="text-[13.5px] font-bold leading-tight text-brand-ink"
+            />
+            <TruncatedText
+              text={lead.company}
+              expandOnGroupHover
+              className="mt-0.5 text-[11.5px] text-brand-ink-soft"
+            />
           </div>
           <ScoreBadge score={lead.score ?? 0} />
         </div>
@@ -114,6 +124,20 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus }: Props)
           <IshAvatar name={lead.name} index={index} size={26} />
         </div>
       </div>
+    </>
+  );
+
+  if (onOpen) {
+    return (
+      <button type="button" onClick={() => onOpen(lead)} className={className}>
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <Link href={`/leads?lead=${lead.id}`} className={className}>
+      {body}
     </Link>
   );
 }

@@ -1,6 +1,7 @@
 export { CircleButton } from "./circle-button";
 export { IshAvatar } from "./ish-avatar";
 export { ScoreBadge } from "./score-badge";
+export { TruncatedText } from "./truncated-text";
 export { FieldRow } from "./field-row";
 export { ScoreGauge } from "./score-gauge";
 export { PanelCard, panelCardVariants } from "./panel-card";

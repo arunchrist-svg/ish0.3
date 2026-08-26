@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, FileText, Loader2, Mail, Plus, Send, Sparkles } from "lucide-react";
+import { Check, ChevronDown, FileText, Loader2, Mail, Plus, Redo2, Send, Sparkles, Undo2 } from "lucide-react";
 import { Button } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -22,7 +22,7 @@ import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
-import { asVariantKey, type VariantKey } from "@/lib/email/draft-variants";
+import { asVariantKey, isSequenceFollowUpDraft, type VariantKey } from "@/lib/email/draft-variants";
 import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { WRITE_THEME_OCCASIONS, FESTIVE_OCCASION_SENTINEL, occasionIdFromTags } from "@/lib/occasions/catalog";
 import { latestDetectedOccasion } from "@/lib/occasions/resolve";
@@ -34,8 +34,11 @@ import {
   type OutreachApprovalHandle,
 } from "./outreach-approval-card";
 import {
+  defaultReplyRecipientEmails,
   defaultSelectedContactEmails,
   EMPTY_SEND_TO_HINT,
+  lastOutboundRecipientEmail,
+  REPLY_EMPTY_SEND_TO_HINT,
   retainSelectedRecipientEmails,
 } from "@/lib/outreach/send-recipients";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
@@ -179,14 +182,6 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }, [templates, selectedTemplate]);
 
   useEffect(() => {
-    const defaults = defaultSelectedContactEmails(lead.email, lead.emails);
-    const listed = [lead.email, ...(lead.emails ?? []).map((e) => e.email)].filter(
-      (e): e is string => Boolean(e),
-    );
-    setSequenceRecipients((prev) => retainSelectedRecipientEmails(prev, listed, new Set(), defaults));
-  }, [lead.id, lead.email, lead.emails]);
-
-  useEffect(() => {
     const e1 = sequence.find((d) => d.sequencePosition === 1);
     setSequenceSubjectKey(asVariantKey(e1?.chosenSubjectKey ?? draft?.chosenSubjectKey));
   }, [lead.id]);
@@ -245,6 +240,34 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     }
     return activeDraft ?? draft;
   }, [selectedNode, selectedNodeId, selectedEvent, sequence, activeDraft, draft, isReplyLead, replyDraft]);
+
+  useEffect(() => {
+    const lastSent = lastOutboundRecipientEmail(thread?.events ?? [], thread?.barNodes);
+    const laterSequence = isSequenceFollowUpDraft(resolvedDraft?.sequencePosition);
+    const reuseThreadTo = isReplyDraft || isReplyLead || laterSequence;
+    const defaults = reuseThreadTo
+      ? defaultReplyRecipientEmails(lead.email, lead.emails, lastSent)
+      : defaultSelectedContactEmails(lead.email, lead.emails);
+    const listed = [
+      lead.email,
+      lastSent,
+      ...(lead.emails ?? []).map((e) => e.email),
+    ].filter((e): e is string => Boolean(e));
+    setSequenceRecipients((prev) =>
+      retainSelectedRecipientEmails(prev, listed, new Set(), defaults, {
+        allowAlreadySent: reuseThreadTo,
+      }),
+    );
+  }, [
+    lead.id,
+    lead.email,
+    lead.emails,
+    isReplyDraft,
+    isReplyLead,
+    resolvedDraft?.sequencePosition,
+    thread?.events,
+    thread?.barNodes,
+  ]);
 
   const contentQuality = useMemo(() => {
     if (!resolvedDraft?.emailBody) return null;
@@ -605,14 +628,17 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                 : undefined;
       add(entry.email, label);
     }
+    const lastSent = lastOutboundRecipientEmail(thread?.events ?? [], thread?.barNodes);
+    if (lastSent) add(lastSent, "Thread");
     for (const email of sequenceRecipients) {
       add(email, "Added");
     }
     return out;
-  }, [lead.email, lead.emails, sentEmailKeys, sequenceRecipients]);
+  }, [lead.email, lead.emails, sentEmailKeys, sequenceRecipients, thread?.events, thread?.barNodes]);
 
   const isLaterSequenceDraft =
     resolvedDraft?.sequencePosition === 2 || resolvedDraft?.sequencePosition === 3;
+  const reuseThreadRecipient = isReplyDraft || isReplyLead || isLaterSequenceDraft;
   const needsInboxPick = sequenceRecipients.length === 0;
   const showRecipientControl =
     showProcessBar &&
@@ -639,7 +665,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
   }
 
   function toggleRecipient(email: string) {
-    if (sentEmailKeys.has(email.trim().toLowerCase())) return;
+    if (!reuseThreadRecipient && sentEmailKeys.has(email.trim().toLowerCase())) return;
     setSequenceRecipients((prev) => {
       if (prev.some((e) => e.toLowerCase() === email.toLowerCase())) {
         return prev.filter((e) => e.toLowerCase() !== email.toLowerCase());
@@ -680,7 +706,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                 return (
                   <DropdownMenuItem
                     key={entry.email}
-                    disabled={entry.sent}
+                    disabled={entry.sent && !reuseThreadRecipient}
                     closeOnClick={false}
                     onClick={() => toggleRecipient(entry.email)}
                     className="text-[12px]"
@@ -698,7 +724,11 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                     <div className="min-w-0">
                       <div className="truncate font-semibold text-brand-ink">{entry.email}</div>
                       <div className="text-[10px] text-brand-ink-faint">
-                        {entry.sent ? "Already sent" : entry.label ?? "Inbox"}
+                        {entry.sent && !reuseThreadRecipient
+                          ? "Already sent"
+                          : entry.sent && reuseThreadRecipient
+                            ? "Original To"
+                            : entry.label ?? "Inbox"}
                       </div>
                     </div>
                   </DropdownMenuItem>
@@ -782,7 +812,9 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
               if (composeActions.sending) return;
               if (!composeActions.canSend) {
                 if (!sequenceRecipients.length) {
-                  toast.error(EMPTY_SEND_TO_HINT);
+                  toast.error(
+                    reuseThreadRecipient ? REPLY_EMPTY_SEND_TO_HINT : EMPTY_SEND_TO_HINT,
+                  );
                 } else {
                   toast.error("Outreach sending is paused. Resume with Start sending on the Email queue or in Settings.");
                 }
@@ -946,18 +978,43 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                 View in Email
               </Link>
             ) : (
-              <button
-                type="button"
-                onClick={() => approvalRef.current?.send()}
-                disabled={!composeActions.canSend}
-                className={cn(
-                  "inline-flex h-7 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-semibold transition-opacity",
-                  composeActions.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
-                )}
-              >
-                {composeActions.sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
-                {composeActions.sending ? "Sending…" : composeActions.sendLabel}
-              </button>
+              <div className="inline-flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  disabled={!composeActions.canUndo}
+                  onClick={() => approvalRef.current?.undo()}
+                  title="Undo (⌘Z / Ctrl+Z)"
+                  aria-label="Undo"
+                  className="inline-flex size-7 items-center justify-center rounded-full text-brand-ink-soft transition-colors hover:bg-black/[0.04] hover:text-brand-ink disabled:cursor-default disabled:opacity-35"
+                >
+                  <Undo2 className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  disabled={!composeActions.canRedo}
+                  onClick={() => approvalRef.current?.redo()}
+                  title="Redo (⌘⇧Z / Ctrl+Y)"
+                  aria-label="Redo"
+                  className="inline-flex size-7 items-center justify-center rounded-full text-brand-ink-soft transition-colors hover:bg-black/[0.04] hover:text-brand-ink disabled:cursor-default disabled:opacity-35"
+                >
+                  <Redo2 className="size-3.5" />
+                </button>
+                <span className="mx-0.5 text-[11px] font-medium text-brand-ink-faint" aria-hidden>
+                  |
+                </span>
+                <button
+                  type="button"
+                  onClick={() => approvalRef.current?.send()}
+                  disabled={!composeActions.canSend}
+                  className={cn(
+                    "inline-flex h-7 min-w-[4.5rem] shrink-0 items-center justify-center gap-1 rounded-full px-3 text-[11px] font-semibold transition-opacity",
+                    composeActions.canSend ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
+                  )}
+                >
+                  {composeActions.sending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                  {composeActions.sending ? "Sending…" : composeActions.sendLabel}
+                </button>
+              </div>
             )
           ) : null}
         </>

@@ -17,7 +17,7 @@ import { packIdFromBrand } from "@/lib/email/outreach-templates";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { asVariantKey } from "@/lib/email/draft-variants";
 import { normalizeCadenceDays } from "@/lib/email/cadence";
-import { computeFollowUpScheduledFor, type SendWindow } from "@/lib/email/send-window";
+import { computeFollowUpScheduledFor, sendWindowFromEmailFields, type SendWindow } from "@/lib/email/send-window";
 
 const CATALOG_PENDING = ["scheduled", "paused", "pending_review"] as const;
 
@@ -291,12 +291,7 @@ export async function scheduleCatalogOnOpenAfterOpen(params: {
       .where(eq(outreachSchedule.id, nextFollowUp.id));
   }
 
-  const sendWindow: Partial<SendWindow> = {
-    daysOfWeek: ctx.emailConfig.sendDaysOfWeek,
-    hourStart: ctx.emailConfig.sendHourStart,
-    hourEnd: ctx.emailConfig.sendHourEnd,
-    timezone: ctx.emailConfig.sendTimezone,
-  };
+  const sendWindow: Partial<SendWindow> = sendWindowFromEmailFields(ctx.emailConfig);
   const scheduledFor = computeIfOpenedScheduledFor(params.openedAt, sendWindow);
 
   const remainingPending = pendingFollowUps.filter((row) => row.id !== nextFollowUp?.id);

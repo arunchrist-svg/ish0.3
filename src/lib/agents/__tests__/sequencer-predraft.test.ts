@@ -56,10 +56,10 @@ vi.mock("@/lib/settings/email-settings", () => ({
     emailStyle: "plain",
     appUrl: "http://localhost",
     followUpPolicy: "auto_send",
-    // Always-open window so clock time does not flake send-path tests.
+    // Max allowed window (6–20) so midday UTC stays in-window for send-path tests.
     sendDaysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-    sendHourStart: 0,
-    sendHourEnd: 24,
+    sendHourStart: 6,
+    sendHourEnd: 20,
     sendTimezone: "UTC",
   }),
 }));
@@ -81,6 +81,9 @@ const IST = "Asia/Kolkata";
 describe("runSequencer pre-linked drafts", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Midday UTC: inside the 6–20 send window used by default mocks.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
     mocks.select.mockReturnValue({
       from: () => ({
         where: () => ({
@@ -153,8 +156,8 @@ describe("runSequencer pre-linked drafts", () => {
       appUrl: "http://localhost",
       followUpPolicy: "review_all_followups",
       sendDaysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-      sendHourStart: 0,
-      sendHourEnd: 24,
+      sendHourStart: 6,
+      sendHourEnd: 20,
       sendTimezone: "UTC",
     } as never);
 
