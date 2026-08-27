@@ -17,6 +17,19 @@ export function isLLMQuotaOrAuthError(error: unknown): boolean {
   );
 }
 
+/** Model slug is dead or not free anymore. Retry another OpenRouter model, do not kill the key. */
+export function isLLMModelUnavailableError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /unavailable for free|use this slug instead|model.?not.?found|404|no such model|is not a valid model|does not exist|data policy/i.test(
+    msg,
+  );
+}
+
+/** True when OpenRouter (or any provider) should try the next model in the list. */
+export function isLLMModelFallbackError(error: unknown): boolean {
+  return isLLMQuotaOrAuthError(error) || isLLMModelUnavailableError(error);
+}
+
 export function hasAnthropicKey(): boolean {
   return !!sanitizeEnvValue(process.env.ANTHROPIC_API_KEY);
 }

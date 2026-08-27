@@ -377,22 +377,23 @@ describe("assessPeopleFetchRisk", () => {
     ).toBeNull();
   });
 
-  it("flags plant-city VP or C-Level buyer stacks before credits are spent", () => {
+  it("skips plant-city confirm; HQ fallback handles empty plant LinkedIn", () => {
     const risk = assessPeopleFetchRisk({
       companyCount: 4,
       cities: ["Ramanagara"],
       seniority: ["Director", "VP", "C-Level"],
       departments: ["HR", "Procurement", "Marketing"],
     });
-    expect(risk.needsConfirm).toBe(true);
-    expect(risk.headline).toMatch(/0 leads/i);
-    expect(risk.emptyRiskLine).toMatch(/Manager or Director/i);
+    expect(risk.needsConfirm).toBe(false);
+    expect(risk.suggestedFilters).toBeNull();
     expect(risk.costLine).toContain("4 people search credits");
-    expect(risk.suggestedFilters).toEqual({
-      seniority: ["Manager", "Director"],
-      departments: ["HR", "Procurement"],
-    });
-    expect(risk.suggestionLine).toContain("Manager + Director");
+    expect(
+      peopleAndFilterWarning(
+        ["Director", "VP", "C-Level"],
+        ["HR", "Procurement", "Marketing"],
+        ["Ramanagara"],
+      ),
+    ).toBeNull();
   });
 
   it("keeps the buyer waterfall relaxed for plant cities without VP or C-Level filters", () => {

@@ -431,7 +431,8 @@ export function DirectoryApp() {
                         </div>
                       ) : (
                         <p className="border-t border-brand-border p-5 text-[13px] text-brand-ink-faint">
-                          No lead contacts for this company.
+                          No saved lead contacts yet. Use Fetch Leads above to find people, then Add
+                          Leads.
                         </p>
                       )}
                     </>

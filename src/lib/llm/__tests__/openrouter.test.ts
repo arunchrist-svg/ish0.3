@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { friendlyLLMError } from "@/lib/llm";
+import { isLLMModelFallbackError, isLLMModelUnavailableError } from "@/lib/llm/provider-chain";
 import {
   DEFAULT_OPENROUTER_MODEL,
   ensureOpenRouterApiKey,
   getOpenRouterKeys,
   hasOpenRouterKey,
+  OPENROUTER_LEGACY_FREE_MODEL,
   openrouterModelId,
   openrouterModelsToAttempt,
+  parseOpenRouterSuggestedSlug,
 } from "@/lib/llm/openrouter";
 
 describe("openrouter helpers", () => {
@@ -29,15 +32,38 @@ describe("openrouter helpers", () => {
     else process.env.OPENROUTER_MODEL = prevModel;
   });
 
-  it("defaults to a fast free model, not the openrouter/free queue", () => {
+  it("defaults to paid gpt-oss-20b, not the discontinued :free slug", () => {
     delete process.env.OPENROUTER_MODEL;
     expect(openrouterModelId()).toBe(DEFAULT_OPENROUTER_MODEL);
-    expect(DEFAULT_OPENROUTER_MODEL).toBe("openai/gpt-oss-20b:free");
+    expect(DEFAULT_OPENROUTER_MODEL).toBe("openai/gpt-oss-20b");
+    expect(DEFAULT_OPENROUTER_MODEL).not.toContain(":free");
   });
 
-  it("does not lead with openrouter/free even if that is configured", () => {
+  it("does not lead with openrouter/free or dead :free even if configured", () => {
     process.env.OPENROUTER_MODEL = "openrouter/free";
     expect(openrouterModelsToAttempt()[0]).toBe(DEFAULT_OPENROUTER_MODEL);
+    process.env.OPENROUTER_MODEL = OPENROUTER_LEGACY_FREE_MODEL;
+    expect(openrouterModelsToAttempt()[0]).toBe("openai/gpt-oss-20b");
+  });
+
+  it("parses OpenRouter suggested slug and retries that model first", () => {
+    const err = new Error(
+      "openai/gpt-oss-20b:free is temporarily unavailable for free. use this slug instead: `openai/gpt-oss-20b`",
+    );
+    expect(parseOpenRouterSuggestedSlug(err)).toBe("openai/gpt-oss-20b");
+    expect(isLLMModelUnavailableError(err)).toBe(true);
+    expect(isLLMModelFallbackError(err)).toBe(true);
+    expect(openrouterModelsToAttempt(err)[0]).toBe("openai/gpt-oss-20b");
+  });
+
+  it("maps dead :free errors to a short scout-friendly line", () => {
+    expect(
+      friendlyLLMError(
+        new Error(
+          "openai/gpt-oss-20b:free is temporarily unavailable for free. use this slug instead: `openai/gpt-oss-20b`",
+        ),
+      ),
+    ).toBe("Backup AI model was unavailable; used directory parsing.");
   });
 
   it("requires OPENROUTER_API_KEY", () => {

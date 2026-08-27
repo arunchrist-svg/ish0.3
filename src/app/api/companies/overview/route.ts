@@ -7,7 +7,8 @@ import { requirePipelineWrite } from "@/lib/auth/permissions";
 
 export async function POST(req: Request) {
   try {
-    await requireTenantContext();
+    const ctx = await requireTenantContext();
+    requirePipelineWrite(ctx);
     const body = (await req.json()) as CompanyOverviewInput;
 
     if (!body.name?.trim()) {

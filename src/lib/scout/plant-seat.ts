@@ -9,6 +9,7 @@ import {
   personLocationMatchesSelection,
   selectPeopleForScoutCities,
   selectionLooksLikeNeighborhoods,
+  isVagueLevelLocation,
 } from "@/lib/enrichment/city-search";
 import type { ScoutPersonResult } from "@/lib/enrichment/types";
 
@@ -34,9 +35,15 @@ export function plantSeatReason(seat: PlantSeat, corridorLabels: string[]): stri
   return `Nearby HQ: ${metro} (plant had no public LinkedIn)`;
 }
 
+/** Explicit plant-city location only. Vague "India" / blank must not block HQ fallback. */
+function isExplicitPlantLocation(location: string | null | undefined, plantCities: string[]): boolean {
+  if (isVagueLevelLocation(location)) return false;
+  return personLocationMatchesSelection(location, plantCities);
+}
+
 /**
  * Two-stage keep for plant-town scouts.
- * Stage A: plant city only. Stage B (if A empty): plant + corridor HQ.
+ * Stage A: plant city only (explicit location). Stage B (if A empty): plant + corridor HQ.
  */
 export function selectPeoplePlantThenCorridor<T extends { location?: string | null; matchScore?: number }>(
   people: T[],
@@ -48,10 +55,13 @@ export function selectPeoplePlantThenCorridor<T extends { location?: string | nu
 } {
   const corridorLabels = corridorOnlyLabels(plantCities);
   const plantOnly = selectPeopleForScoutCities(people, plantCities, { includeHqCorridor: false });
+  const explicitPlant = plantOnly.people.filter((person) =>
+    isExplicitPlantLocation(person.location, plantCities),
+  );
 
-  if (plantOnly.people.length > 0) {
+  if (explicitPlant.length > 0) {
     return {
-      people: plantOnly.people.map((person) => ({
+      people: explicitPlant.map((person) => ({
         ...person,
         seat: "plant" as const,
         matchScoreReason: plantSeatReason("plant", corridorLabels),
@@ -63,8 +73,8 @@ export function selectPeoplePlantThenCorridor<T extends { location?: string | nu
 
   const withCorridor = selectPeopleForScoutCities(people, plantCities, { includeHqCorridor: true });
   const hqPeople = withCorridor.people.filter((person) => {
-    // Keep only corridor (or vague) seats, not a re-hit of empty plant.
-    if (!person.location?.trim()) return true;
+    // Keep corridor (or vague) seats, not a re-hit of empty plant.
+    if (isVagueLevelLocation(person.location)) return true;
     return !personLocationMatchesSelection(person.location, plantCities);
   });
 

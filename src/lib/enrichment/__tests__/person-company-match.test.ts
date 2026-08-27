@@ -308,6 +308,41 @@ describe("current employer matching", () => {
     expect(personTitleConflictsWithCompany("Chief Human Resources Officer", "Pavna Industries")).toBe(false);
   });
 
+  it("treats plant-city / Units employer tails as the same company (global)", () => {
+    expect(entitiesReferToSameCompany("Ashok Leyland Hosur Units", "Ashok Leyland")).toBe(true);
+    expect(entitiesReferToSameCompany("Ashok Leyland, Hosur", "Ashok Leyland")).toBe(true);
+    expect(entitiesReferToSameCompany("Titan Company Hosur Plant", "Titan Company")).toBe(true);
+    expect(entitiesReferToSameCompany("Tata Steel(Hosur)", "Tata Steel")).toBe(true);
+
+    expect(
+      personTitleConflictsWithCompany("Head HR - Ashok Leyland Hosur Units", "Ashok Leyland"),
+    ).toBe(false);
+    expect(
+      personTitleConflictsWithCompany("HEAD HR (H1) - Ashok Leyland, Hosur", "Ashok Leyland"),
+    ).toBe(false);
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Ramesh Kumar K - Head HR - Ashok Leyland Hosur Units | LinkedIn",
+          content: "Head HR at Ashok Leyland Hosur Units. Hosur, Tamil Nadu.",
+        },
+        "Ashok Leyland",
+      ),
+    ).toBe(true);
+    expect(
+      hitShowsCurrentEmployment(
+        {
+          title: "Karunakaran N - HEAD HR (H1) - Ashok Leyland, Hosur | LinkedIn",
+          content: "HEAD HR (H1) · Ashok Leyland · Hosur",
+        },
+        "Ashok Leyland",
+      ),
+    ).toBe(true);
+
+    // True subsidiaries / different brands still reject.
+    expect(entitiesReferToSameCompany("Ashok Leyland Motors Trading", "Ashok Leyland")).toBe(false);
+  });
+
   it("rejects Nissan Trading India HR on a generic Nissan or Nissan Motor scout", () => {
     const title = "Amit Kumar Patnaik | Head - Human Resources ( Nissan Trading India ) | LinkedIn";
     const content =

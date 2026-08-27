@@ -3,11 +3,12 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { startAgentRun, completeAgentRun } from "@/lib/agents/log-agent-run";
 import { ensureGeminiApiKey, geminiModelId, sanitizeModelId } from "@/lib/llm/gemini-env";
-import { getOpenRouterChatModel, openrouterModelsToAttempt } from "@/lib/llm/openrouter";
+import { getOpenRouterChatModel, openrouterModelsToAttempt, parseOpenRouterSuggestedSlug } from "@/lib/llm/openrouter";
 import type { LLMProvider, LLMTier } from "@/lib/llm/tiers";
 import {
   getAvailableGeminiKeys,
   getAvailableOpenRouterKeys,
+  isLLMModelFallbackError,
   isLLMQuotaOrAuthError,
   markGeminiKeyRejected,
   markOpenRouterKeyRejected,
@@ -125,31 +126,45 @@ async function generateWithProvider(params: {
   if (params.provider === "openrouter") {
     const keys = getAvailableOpenRouterKeys();
     if (!keys.length) throw new Error("OPENROUTER_API_KEY is missing");
-    const models = openrouterModelsToAttempt();
+    let models = openrouterModelsToAttempt();
     let lastError: unknown;
     for (const keyEntry of keys) {
+      const tried = new Set<string>();
       for (let modelIndex = 0; modelIndex < models.length; modelIndex++) {
+        const modelId = models[modelIndex]!;
+        if (tried.has(modelId)) continue;
+        tried.add(modelId);
         try {
           return await generateWithTier({
             ...params,
-            openrouterModel: models[modelIndex],
+            openrouterModel: modelId,
             openrouterApiKey: keyEntry.key,
           });
         } catch (error) {
           lastError = error;
-          const hasModelFallback = modelIndex < models.length - 1;
           console.warn(
             "[callLLM] OpenRouter",
             keyEntry.id,
             "model failed",
-            models[modelIndex],
+            modelId,
             error instanceof Error ? error.message : error,
           );
-          if (hasModelFallback && isLLMQuotaOrAuthError(error)) continue;
+          // Dead :free slug → insert paid slug next in the queue.
+          const suggested = parseOpenRouterSuggestedSlug(error);
+          if (suggested && !models.includes(suggested)) {
+            models = [
+              ...models.slice(0, modelIndex + 1),
+              suggested,
+              ...models.slice(modelIndex + 1).filter((m) => m !== suggested),
+            ];
+          }
+          const hasModelFallback = models.slice(modelIndex + 1).some((m) => !tried.has(m));
+          if (hasModelFallback && isLLMModelFallbackError(error)) continue;
           if (isLLMQuotaOrAuthError(error)) {
             markOpenRouterKeyRejected(keyEntry.id);
             break;
           }
+          if (isLLMModelFallbackError(error)) break;
           throw error;
         }
       }
@@ -267,6 +282,10 @@ export function friendlyLLMError(error: unknown): string {
   }
   if (/OPENROUTER_API_KEY is missing/i.test(msg)) {
     return "Add OPENROUTER_API_KEY in .env.local to use AI Writer.";
+  }
+  // OpenRouter may omit the word "openrouter" when a :free slug is dead.
+  if (/unavailable for free|use this slug instead/i.test(msg)) {
+    return "Backup AI model was unavailable; used directory parsing.";
   }
   if (/openrouter/i.test(msg)) {
     if (/quota|rate.?limit|429|too many requests/i.test(msg)) {

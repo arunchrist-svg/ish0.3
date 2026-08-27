@@ -211,6 +211,12 @@ async function tavilyDiscoverCompaniesOnce(params: {
     dataSource: "tavily+llm" as const,
   }));
 
+  // Prefer parser hits when we already have enough real names. LLM is last resort.
+  const heuristicFloor = Math.max(1, Math.min(8, Math.ceil(params.limit / 4)));
+  if (heuristic.length >= heuristicFloor) {
+    return heuristic.slice(0, params.limit);
+  }
+
   if (hasLLMKey()) {
     const context = results
       .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 500)}`)

@@ -29,6 +29,7 @@ import {
   includeHqCorridorForScoutPeople,
   nearbyLabelsForScoutCities,
   parentCitiesForNeighborhoods,
+  partitionCitiesForSearch,
   selectionLooksLikeNeighborhoods,
 } from "./city-search";
 import {
@@ -328,11 +329,88 @@ function dedupePeople(people: ScoutPersonResult[]): ScoutPersonResult[] {
 
 /** Short LinkedIn titles for plant companies whose Head of HR sits at HQ. */
 export const HQ_LINKEDIN_ROLE_TERM =
-  '"Head of HR" OR "HR Director" OR CHRO OR CPO OR "Chief People Officer"';
+  '"Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR CHRO OR CPO OR "Chief People Officer"';
 
 /** Broader public-web titles: plant HR is often "HR", payroll, or Head of HR, not only Director. */
 export const HQ_BUYER_ROLE_TERM =
-  'HR OR "Head of HR" OR "HR Director" OR "HR Manager" OR payroll OR CHRO OR CPO OR "Chief People Officer" OR Admin OR Purchase OR "Head of Procurement"';
+  'HR OR "Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR "HR Manager" OR payroll OR CHRO OR CPO OR "Chief People Officer" OR Admin OR Purchase OR "Head of Procurement"';
+
+/**
+ * Human Google phrasing for plant-city Head HR, e.g. "head hr ashok leyland hosur".
+ * Runs before site:/Director templates so Tavily mirrors what works in Google.
+ */
+export function buildGoogleStylePlantPeopleQueries(params: {
+  company: string;
+  companyAliases?: string[];
+  plantCities: string[];
+  roleHints?: string[];
+}): string[] {
+  const companies = [params.company, ...(params.companyAliases ?? [])].filter(
+    (name, index, all) => name && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === index,
+  );
+  const cities = params.plantCities.map((c) => c.trim()).filter(Boolean).slice(0, 2);
+  if (!companies.length || !cities.length) return [];
+
+  const rolePhrases = (
+    params.roleHints?.length
+      ? params.roleHints
+      : ["Head of HR", "Head HR", "HR Director", "Head of Procurement"]
+  )
+    .map(normalizeRoleLabel)
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((role) =>
+      role
+        .replace(/\bHead of\b/gi, "head")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase(),
+    )
+    .filter(Boolean);
+
+  const queries: string[] = [];
+  for (const company of companies.slice(0, 2)) {
+    for (const city of cities) {
+      // Plain Google order first (matches user SERPs).
+      queries.push(`head hr ${company} ${city}`);
+      queries.push(`${company} head hr ${city} linkedin`);
+      for (const phrase of rolePhrases.slice(0, 2)) {
+        if (phrase === "head hr") continue;
+        queries.push(`${phrase} ${company} ${city}`);
+        queries.push(`${company} ${phrase} ${city} linkedin`);
+      }
+      queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) ${city}`);
+    }
+  }
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 10);
+}
+
+/**
+ * Plant-stage LinkedIn queries: max 2 cities per Tavily string.
+ * Mega-OR of 6–8 districts returns zero (same as company discovery).
+ */
+export function buildChunkedPlantPeopleQueries(params: {
+  company: string;
+  companyAliases?: string[];
+  cities: string[];
+  roleTerm: string;
+}): string[] {
+  const companies = [params.company, ...(params.companyAliases ?? [])].filter(
+    (name, index, all) => name && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === index,
+  );
+  const chunks = partitionCitiesForSearch(params.cities, 2, 5);
+  const queries: string[] = [];
+  for (const chunk of chunks) {
+    const clause = citySearchClause(chunk, 4);
+    if (!clause || clause === "India") continue;
+    for (const company of companies.slice(0, 2)) {
+      queries.push(`site:linkedin.com/in "${company}" (${params.roleTerm}) (${clause})`);
+      queries.push(`site:linkedin.com/in "${company}" "Plant HR" OR "HR Manager" ${clause}`);
+      queries.push(`"${company}" "Plant HR Manager" OR "HR Manager" OR "Procurement Manager" ${clause}`);
+    }
+  }
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 12);
+}
 
 /**
  * Queries humans type in Google, e.g. "Himalaya Wellness Company head hr".
@@ -355,7 +433,9 @@ export function buildGoogleStyleSeniorPeopleQueries(params: {
   for (const company of companies.slice(0, 2)) {
     // Plain Google phrasing first (matches what users type and what AI Overviews cite).
     queries.push(`${company} head hr linkedin`);
-    queries.push(`${company} "Head of HR" OR "HR Director" OR CHRO OR CPO linkedin`);
+    queries.push(
+      `${company} "Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR CHRO OR CPO linkedin`,
+    );
     queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM})`);
     if (metro) {
       queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) (${metro})`);
@@ -526,7 +606,19 @@ export async function searchPeopleViaTavily(params: {
     : restrictToArea || plantPhase
       ? [...new Set((params.cities ?? []).map((c) => c.trim()).filter(Boolean))]
       : nearbyLabelsForScoutCities(params.cities ?? []);
-  const cityClause = searchCities.length ? citySearchClause(searchCities, 6) : "India";
+  // HQ stage: prefer metro clause (Bengaluru), never 8-district OR.
+  const cityClause = hqCorridorPhase
+    ? citySearchClause(
+        nearbyLabelsForScoutCities(params.cities ?? []).filter(
+          (label) => !selectionLooksLikeNeighborhoods([label]),
+        ).slice(0, 3),
+        4,
+      ) || "Bengaluru OR Bangalore"
+    : plantPhase && searchCities.length > 2
+      ? citySearchClause(searchCities.slice(0, 2), 4)
+      : searchCities.length
+        ? citySearchClause(searchCities, 6)
+        : "India";
 
   if (!hasTavilyKey()) throw new Error("TAVILY_API_KEY not set");
 
@@ -537,42 +629,72 @@ export async function searchPeopleViaTavily(params: {
         ? '"Branch Manager" OR Principal OR "General Manager" OR Manager'
         : HQ_BUYER_ROLE_TERM;
 
-  const baseQueries = buildPeopleSearchQueries({
-    company,
-    roleTerm,
-    cityClause,
-    companyDomain: params.companyDomain,
-    hasCityFilter: searchCities.length > 0,
-    companyAliases,
-    localOperators,
-    restrictToArea,
-  });
+  const baseQueries = plantPhase && searchCities.length > 0
+    ? buildChunkedPlantPeopleQueries({
+        company,
+        companyAliases,
+        cities: searchCities,
+        roleTerm,
+      })
+    : buildPeopleSearchQueries({
+        company,
+        roleTerm,
+        cityClause,
+        companyDomain: params.companyDomain,
+        hasCityFilter: searchCities.length > 0,
+        companyAliases,
+        localOperators,
+        restrictToArea,
+      });
 
   const roleLabels =
     roleHints.length > 0
       ? roleHints
       : localOperators
         ? DEFAULT_LOCAL_OPERATOR_ROLES
-        : ["HR Director", "Head of HR", "HR Manager"];
+        : ["HR Director", "Head of HR", "Head HR", "HR Manager"];
 
   let queries = baseQueries;
-  if ((restrictToArea || localOperators) && searchCities.length > 0) {
+  // Skip LLM query gen on multi-city plant stage: that call hits OpenRouter before LinkedIn search.
+  const skipLlmQueryGen = plantPhase && searchCities.length >= 3;
+  if ((restrictToArea || localOperators) && searchCities.length > 0 && !skipLlmQueryGen) {
+    const naturalLocalities =
+      plantPhase && searchCities.length > 2 ? searchCities.slice(0, 2) : searchCities;
     const naturalQueries = buildNaturalLinkedInPeopleQueries({
       company,
       companyAliases,
-      localities: searchCities,
+      localities: naturalLocalities,
       roleHints: roleLabels,
     });
     const llmQueries = await generateLinkedInSearchQueriesWithLLM({
       company,
       companyAliases,
-      localities: searchCities,
+      localities: naturalLocalities,
       roleHints: roleLabels,
       localOperators,
     });
     queries = [
       ...new Set([...naturalQueries, ...llmQueries.map(excludeOpenToWork), ...baseQueries]),
     ];
+  } else if (plantPhase && searchCities.length >= 3) {
+    const naturalQueries = buildNaturalLinkedInPeopleQueries({
+      company,
+      companyAliases,
+      localities: searchCities.slice(0, 4),
+      roleHints: roleLabels,
+    });
+    queries = [...new Set([...naturalQueries, ...baseQueries])];
+  }
+
+  // Plant-first: human Google phrasing before site:/Director templates.
+  if (plantPhase && searchCities.length > 0 && !localOperators) {
+    const plantGoogle = buildGoogleStylePlantPeopleQueries({
+      company,
+      companyAliases,
+      plantCities: searchCities.slice(0, 2),
+      roleHints: roleLabels,
+    });
+    queries = [...new Set([...plantGoogle, ...queries])];
   }
 
   const deferGoogleMetro = plantPhase;
@@ -586,32 +708,42 @@ export async function searchPeopleViaTavily(params: {
       : nearbyLabelsForScoutCities(scoutCities).filter(
           (label) => !selectionLooksLikeNeighborhoods([label]),
         );
+    // HQ stage: Bengaluru/Bangalore only, not plant districts OR'd in.
+    const bangaloreOnly = metroLabels
+      .filter((l) => /bengaluru|bangalore/i.test(l))
+      .slice(0, 2);
+    const metroForQuery = hqCorridorPhase
+      ? bangaloreOnly.length
+        ? bangaloreOnly
+        : metroLabels.slice(0, 2)
+      : metroLabels;
     const metroClause =
-      metroLabels.length > 0 ? citySearchClause(metroLabels, 4) : undefined;
+      metroForQuery.length > 0 ? citySearchClause(metroForQuery, 4) : undefined;
     const googleStyle = buildGoogleStyleSeniorPeopleQueries({
       company,
       companyAliases,
-      metroClause: metroClause && metroClause !== "India" ? metroClause : undefined,
+      metroClause: metroClause && metroClause !== "India" ? metroClause : "Bengaluru OR Bangalore",
     });
     const metroNatural =
-      metroLabels.length > 0
+      metroForQuery.length > 0
         ? buildNaturalLinkedInPeopleQueries({
             company,
             companyAliases,
-            localities: metroLabels.slice(0, 3),
-            roleHints: ["Head of HR", "HR Director", "CHRO", "CPO"],
+            localities: metroForQuery.slice(0, 3),
+            roleHints: ["Head of HR", "Head HR", "HR Director", "CHRO", "CPO"],
           })
         : [];
+    // Google-style first on HQ stage so Tavily hits Head of HR before broad role OR.
     queries = [...new Set([...googleStyle, ...metroNatural, ...queries])];
   }
 
-  // For plant-city scouts, prepend targeted "Plant HR" / "HR Manager" + city queries.
-  // On HQ corridor phase, skip plant-local queries (we already know the plant was empty).
+  // Extra plant HR prepend only when not already using chunked plant queries.
   if (
     !params.strictPeopleFilters &&
     hasPlantCitySelection(params.cities ?? []) &&
     !localOperators &&
-    !hqCorridorPhase
+    !hqCorridorPhase &&
+    !(plantPhase && searchCities.length > 0)
   ) {
     const plantCityClause = searchCities.length
       ? searchCities.slice(0, 2).join(" OR ")
@@ -684,11 +816,15 @@ export async function searchPeopleViaTavily(params: {
     const matched = raw
       .filter((person) => isUsableScoutPerson(person, allResults, { localOperators }))
       .filter(matchCompany);
-    const roleMatched = roleHints.length
+    let roleMatched = roleHints.length
       ? matched.filter((p) => titleMatchesRoleHints(p.title, roleHints, { localOperators }))
       : localOperators
         ? matched.filter((p) => titleMatchesRoleHints(p.title, roleHints.length ? roleHints : ["Branch Manager", "Principal", "General Manager", "Manager"], { localOperators }))
         : matched;
+    // HQ corridor: stacked Manager chips must not wipe Head of HR / CHRO from Google-style hits.
+    if (hqCorridorPhase && roleMatched.length === 0 && matched.length > 0) {
+      roleMatched = matched.filter((p) => isFestivalBuyerRole(p.title));
+    }
     return { raw, matched, roleMatched };
   };
 
@@ -820,5 +956,40 @@ Return up to ${limit} people.`,
   if (localOperators) return [];
   const buyerHeuristic = heuristic.filter((p) => isFestivalBuyerRole(p.title));
   if (buyerHeuristic.length) return finalize(buyerHeuristic.slice(0, limit));
+
+  // Light agentic retry: plant stage still empty after match/filters → one Google-style rewrite.
+  if (plantPhase && searchCities.length > 0) {
+    const rewriteBase = buildGoogleStylePlantPeopleQueries({
+      company,
+      companyAliases,
+      plantCities: searchCities.slice(0, 2),
+      roleHints: roleLabels,
+    });
+    const executed = new Set(queries.slice(0, 6));
+    const pendingRewrite = rewriteBase.filter((q) => !executed.has(q));
+    const altPhrases = searchCities.slice(0, 2).flatMap((city) => [
+      excludeOpenToWork(`"${company}" head hr ${city}`),
+      excludeOpenToWork(`head of hr ${company} ${city} linkedin`),
+      excludeOpenToWork(`${company} "Head HR" OR "HEAD HR" ${city} linkedin`),
+    ]);
+    const rewriteBatch = [...new Set([...pendingRewrite, ...altPhrases])]
+      .filter((q) => !executed.has(q))
+      .slice(0, 4);
+    if (rewriteBatch.length) {
+      console.info(
+        "[people-search] Plant stage empty after filters; Google-style rewrite pass",
+        { company, cities: searchCities.slice(0, 2), queries: rewriteBatch.length },
+      );
+      await runQueryBatch(rewriteBatch);
+      const afterRewrite = keepableFromHits();
+      if (afterRewrite.roleMatched.length) {
+        const kept = await finalize(afterRewrite.roleMatched.slice(0, limit));
+        if (kept.length) return kept;
+      }
+      const buyers = afterRewrite.matched.filter((p) => isFestivalBuyerRole(p.title));
+      if (buyers.length) return finalize(buyers.slice(0, limit));
+    }
+  }
+
   return [];
 }

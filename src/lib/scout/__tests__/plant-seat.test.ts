@@ -45,6 +45,19 @@ describe("selectPeoplePlantThenCorridor", () => {
     expect(result.people[0]?.matchScoreReason).toMatch(/Nearby HQ: Bengaluru/);
     expect(corridorOnlyLabels(["Ramanagara"])).toEqual(expect.arrayContaining(["Bengaluru", "Bangalore"]));
   });
+
+  it("does not treat vague India location as a plant hit that blocks HQ", () => {
+    const result = selectPeoplePlantThenCorridor(
+      [
+        { name: "VagueIndia", location: "India", matchScore: 40 },
+        { name: "HqDirector", location: "Bengaluru, Karnataka", matchScore: 88 },
+      ],
+      ["Ramanagara"],
+    );
+    expect(result.usedHqFallback).toBe(true);
+    expect(result.people.map((p) => p.name)).toContain("HqDirector");
+    expect(result.people.find((p) => p.name === "HqDirector")?.seat).toBe("nearby_hq");
+  });
 });
 
 describe("seatAllowedOnSave", () => {

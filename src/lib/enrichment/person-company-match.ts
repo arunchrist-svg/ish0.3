@@ -220,14 +220,62 @@ export function entityTokens(name: string): string[] {
     .filter((token) => token.length > 1 && !ENTITY_SUFFIX_TOKENS.has(token));
 }
 
-/** "Tata Steel(Hosur)" → "Tata Steel" when the parenthetical is a plant city, not a company name. */
-function normalizeOperatingEntityForMatch(entity: string): string {
-  const parenMatch = entity.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
-  if (!parenMatch) return entity;
-  const base = parenMatch[1]?.trim() ?? "";
-  const inner = parenMatch[2]?.trim() ?? "";
-  if (base && inner && isGeographicEntity(inner)) return base;
-  return entity;
+/**
+ * Plant / site words that LinkedIn appends to the brand ("Ashok Leyland Hosur Units").
+ * These are not subsidiary markers like "Trading" or "Lifescience".
+ */
+const PLANT_SITE_NOISE_TOKENS = new Set([
+  "units",
+  "unit",
+  "plant",
+  "plants",
+  "factory",
+  "factories",
+  "works",
+  "campus",
+  "site",
+  "sites",
+  "facility",
+  "facilities",
+  "complex",
+]);
+
+/** True for geo or plant-site tokens that should not prove a different employer. */
+export function isPlantSiteNoiseToken(token: string): boolean {
+  const t = token.toLowerCase().trim();
+  if (!t) return false;
+  if (PLANT_SITE_NOISE_TOKENS.has(t)) return true;
+  return isGeographicEntity(t);
+}
+
+/**
+ * "Tata Steel(Hosur)" → "Tata Steel"; "Ashok Leyland, Hosur" → "Ashok Leyland".
+ * Parenthetical or trailing city is plant location, not a different legal entity.
+ */
+export function normalizeOperatingEntityForMatch(entity: string): string {
+  let value = entity.trim();
+  if (!value) return value;
+
+  const parenMatch = value.match(/^(.+?)\s*\(([^)]+)\)\s*$/);
+  if (parenMatch) {
+    const base = parenMatch[1]?.trim() ?? "";
+    const inner = parenMatch[2]?.trim() ?? "";
+    if (base && inner && isGeographicEntity(inner)) value = base;
+  }
+
+  const commaMatch = value.match(/^(.+?),\s*([^,]+)$/);
+  if (commaMatch) {
+    const base = commaMatch[1]?.trim() ?? "";
+    const tail = commaMatch[2]?.trim() ?? "";
+    if (base && tail && isGeographicEntity(tail)) value = base;
+  }
+
+  return value;
+}
+
+/** Brand tokens only: drop plant cities and Units/Plant suffixes before subsidiary checks. */
+function brandEntityTokens(name: string): string[] {
+  return entityTokens(name).filter((token) => !isPlantSiteNoiseToken(token));
 }
 
 /**
@@ -235,12 +283,16 @@ function normalizeOperatingEntityForMatch(entity: string): string {
  * Rejects parent-brand matches when the profile names a more specific subsidiary
  * (e.g. "Nissan Trading India" on a "Nissan" or "Nissan Motor Corporation" scout).
  * Allows short headline brands when the person is less specific than the scout (TVS vs TVS Motor).
+ * Allows plant-city / Units tails ("Ashok Leyland Hosur Units" ≡ "Ashok Leyland").
  */
 export function entitiesReferToSameCompany(personEntity: string, scoutCompany: string): boolean {
   const normalizedPerson = normalizeOperatingEntityForMatch(personEntity);
-  const pTokens = entityTokens(normalizedPerson);
-  const sTokens = entityTokens(scoutCompany);
-  if (!pTokens.length || !sTokens.length) return nameMatchesQuery(normalizedPerson, scoutCompany);
+  const normalizedScout = normalizeOperatingEntityForMatch(scoutCompany);
+  const pTokens = brandEntityTokens(normalizedPerson);
+  const sTokens = brandEntityTokens(normalizedScout);
+  if (!pTokens.length || !sTokens.length) {
+    return nameMatchesQuery(normalizedPerson, normalizedScout);
+  }
 
   const pExtra = pTokens.filter((token) => !sTokens.includes(token));
   const sExtra = sTokens.filter((token) => !pTokens.includes(token));
@@ -250,7 +302,7 @@ export function entitiesReferToSameCompany(personEntity: string, scoutCompany: s
 
   // Short brand codes that are not identical tokens (3M vs M3M) are different companies.
   const pCompact = compactCompanyName(normalizedPerson);
-  const sCompact = compactCompanyName(scoutCompany);
+  const sCompact = compactCompanyName(normalizedScout);
   if (
     pCompact !== sCompact &&
     (isShortBrandCode(pCompact) || isShortBrandCode(sCompact)) &&

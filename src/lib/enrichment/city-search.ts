@@ -143,6 +143,11 @@ const PLANT_CITY_LABELS = new Set([
   "mandya",
   "kolar",
   "chitradurga",
+  "kodagu",
+  "coorg",
+  "mysore",
+  "mysuru",
+  "vijayanagara",
   "hubli",
   "hubballi",
   "davanagere",
@@ -469,6 +474,19 @@ export function nearbyLabelsForScoutCities(selectedCities: string[]): string[] {
     Tumakuru: ["Tumakuru", "Tumkur", ...BANGALORE_HQ],
     Mandya: ["Mandya", ...BANGALORE_HQ],
     Hassan: ["Hassan", ...BANGALORE_HQ],
+    Chitradurga: ["Chitradurga", ...BANGALORE_HQ],
+    Kodagu: ["Kodagu", "Coorg", ...BANGALORE_HQ],
+    Coorg: ["Coorg", "Kodagu", ...BANGALORE_HQ],
+    Mysore: ["Mysore", "Mysuru", ...BANGALORE_HQ],
+    Mysuru: ["Mysuru", "Mysore", ...BANGALORE_HQ],
+    Vijayanagara: ["Vijayanagara", ...BANGALORE_HQ],
+    Hubli: ["Hubli", "Hubballi", ...BANGALORE_HQ],
+    Hubballi: ["Hubballi", "Hubli", ...BANGALORE_HQ],
+    Davanagere: ["Davanagere", ...BANGALORE_HQ],
+    Bellary: ["Bellary", "Ballari", ...BANGALORE_HQ],
+    Ballari: ["Ballari", "Bellary", ...BANGALORE_HQ],
+    Belgaum: ["Belgaum", "Belagavi", ...BANGALORE_HQ],
+    Belagavi: ["Belagavi", "Belgaum", ...BANGALORE_HQ],
   };
   for (const city of selectedCities) {
     for (const nearby of corridor[city] ?? []) extra.add(nearby);
@@ -483,7 +501,7 @@ const FAR_METRO_WHEN_SOUTH_PLANT = ["Delhi", "Mumbai", "Kolkata", "Pune", "Hyder
  * "Karnataka", "Tamil Nadu", etc. These are treated the same as blank location
  * for plant-city corridor scouts: we keep the person rather than drop them.
  */
-function isVagueLevelLocation(location: string | null | undefined): boolean {
+export function isVagueLevelLocation(location: string | null | undefined): boolean {
   if (!location?.trim()) return true;
   const norm = normalizeCity(location);
   if (UNVERIFIED_CITY_LABELS.has(norm)) return true;

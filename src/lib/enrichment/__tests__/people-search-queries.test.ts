@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildChunkedPlantPeopleQueries,
   buildOpenToWorkDenylistQueries,
   buildPeopleSearchQueries,
+  buildGoogleStylePlantPeopleQueries,
   buildGoogleStyleSeniorPeopleQueries,
   buildNaturalLinkedInPeopleQueries,
   companyPeopleSearchNames,
@@ -37,6 +39,76 @@ describe("buildGoogleStyleSeniorPeopleQueries", () => {
     expect(queries.some((q) => q.includes("CPO"))).toBe(true);
     expect(queries.some((q) => q.includes("Bengaluru"))).toBe(true);
     expect(queries.join("\n")).not.toContain("Kasturi Nagar");
+  });
+
+  it("HQ queries include head hr plus Bengaluru, not an 8-district OR", () => {
+    const queries = buildGoogleStyleSeniorPeopleQueries({
+      company: "AkzoNobel",
+      metroClause: "Bengaluru OR Bangalore",
+    });
+    const blob = queries.join("\n");
+    expect(blob).toMatch(/head hr/i);
+    expect(blob).toContain("Bengaluru");
+    expect(blob).not.toMatch(/Bellary.*Chikkaballapur|Chitradurga.*Kodagu.*Mysore/i);
+  });
+
+  it("includes Head HR LinkedIn phrasing alongside Head of HR", () => {
+    expect(HQ_LINKEDIN_ROLE_TERM).toContain('"Head HR"');
+    expect(HQ_LINKEDIN_ROLE_TERM).toContain('"HEAD HR"');
+    expect(HQ_BUYER_ROLE_TERM).toContain('"Head HR"');
+  });
+});
+
+describe("buildGoogleStylePlantPeopleQueries", () => {
+  it("leads with human Google head hr + plant city (Ashok Leyland Hosur)", () => {
+    const queries = buildGoogleStylePlantPeopleQueries({
+      company: "Ashok Leyland",
+      plantCities: ["Hosur"],
+      roleHints: ["Head of HR", "HR Director"],
+    });
+    expect(queries[0]).toMatch(/^head hr Ashok Leyland Hosur/i);
+    expect(queries.some((q) => /Ashok Leyland head hr Hosur linkedin/i.test(q))).toBe(true);
+    expect(queries.some((q) => q.includes('"Head HR"') || q.includes("Head HR"))).toBe(true);
+    expect(queries.join("\n")).not.toMatch(/Bengaluru|Bangalore/i);
+  });
+
+  it("works for any plant company, not only Ashok Leyland", () => {
+    const queries = buildGoogleStylePlantPeopleQueries({
+      company: "Titan Company",
+      plantCities: ["Hosur"],
+    });
+    expect(queries.some((q) => /head hr Titan Company Hosur/i.test(q))).toBe(true);
+  });
+});
+
+describe("buildChunkedPlantPeopleQueries", () => {
+  it("partitions 8 plant cities into short chunks, not one 6-way OR", () => {
+    const cities = [
+      "Bellary",
+      "Chikkaballapur",
+      "Chitradurga",
+      "Hassan",
+      "Kolar",
+      "Mandya",
+      "Mysore",
+      "Ramanagara",
+    ];
+    const queries = buildChunkedPlantPeopleQueries({
+      company: "Berger Paints",
+      cities,
+      roleTerm: HQ_BUYER_ROLE_TERM,
+    });
+    expect(queries.length).toBeGreaterThan(0);
+    const megaOr = queries.some((q) => {
+      const cityHits = cities.filter((c) => q.includes(c)).length;
+      return cityHits >= 6;
+    });
+    expect(megaOr).toBe(false);
+    // Each LinkedIn city clause should stay at most 2 selected districts.
+    for (const q of queries) {
+      const selectedHits = cities.filter((c) => q.includes(c)).length;
+      expect(selectedHits).toBeLessThanOrEqual(2);
+    }
   });
 });
 

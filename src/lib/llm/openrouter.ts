@@ -1,9 +1,15 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { sanitizeEnvValue, sanitizeModelId } from "@/lib/llm/gemini-env";
 
-/** Fast free model for AI Writer. Avoid openrouter/free: it queues and can pick slow reasoning models. */
-export const DEFAULT_OPENROUTER_MODEL = "openai/gpt-oss-20b:free";
+/**
+ * Default OpenRouter model. Prefer the paid slug: `:free` was discontinued for
+ * gpt-oss-20b and the API returns "use this slug instead: openai/gpt-oss-20b".
+ */
+export const DEFAULT_OPENROUTER_MODEL = "openai/gpt-oss-20b";
+/** Legacy free slug kept as a later attempt only. */
+export const OPENROUTER_LEGACY_FREE_MODEL = "openai/gpt-oss-20b:free";
 export const OPENROUTER_FALLBACK_MODELS = [
+  OPENROUTER_LEGACY_FREE_MODEL,
   "nvidia/nemotron-nano-9b-v2:free",
   "openrouter/free",
 ] as const;
@@ -56,10 +62,32 @@ export function openrouterModelId(): string {
   return sanitizeModelId(process.env.OPENROUTER_MODEL, DEFAULT_OPENROUTER_MODEL);
 }
 
-export function openrouterModelsToAttempt(): string[] {
+/** Pull "use this slug instead: `model/id`" from OpenRouter error text. */
+export function parseOpenRouterSuggestedSlug(error: unknown): string | null {
+  const msg = error instanceof Error ? error.message : String(error);
+  const match = msg.match(/use this slug instead:\s*`?([a-z0-9_./:-]+)`?/i);
+  const slug = match?.[1]?.trim();
+  return slug && slug.length >= 3 ? slug : null;
+}
+
+/**
+ * Models to try in order. If OPENROUTER_MODEL is the dead `:free` slug, lead with
+ * the paid gpt-oss-20b. Always include DEFAULT + fallbacks.
+ */
+export function openrouterModelsToAttempt(errorHint?: unknown): string[] {
   const primary = openrouterModelId();
-  const preferred = primary === "openrouter/free" ? DEFAULT_OPENROUTER_MODEL : primary;
-  return [...new Set([preferred, DEFAULT_OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS])];
+  const preferred =
+    primary === "openrouter/free" || primary === OPENROUTER_LEGACY_FREE_MODEL
+      ? DEFAULT_OPENROUTER_MODEL
+      : primary;
+  const suggested = errorHint ? parseOpenRouterSuggestedSlug(errorHint) : null;
+  return [
+    ...new Set(
+      [suggested, preferred, DEFAULT_OPENROUTER_MODEL, ...OPENROUTER_FALLBACK_MODELS].filter(
+        (m): m is string => Boolean(m),
+      ),
+    ),
+  ];
 }
 
 export function ensureOpenRouterApiKey(): string {

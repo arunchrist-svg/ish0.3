@@ -29,6 +29,17 @@ describe("nearbyLabelsForScoutCities", () => {
     );
   });
 
+  it("opens Bangalore corridor for Chitradurga and Mysore plant towns", () => {
+    expect(nearbyLabelsForScoutCities(["Chitradurga"])).toEqual(
+      expect.arrayContaining(["Chitradurga", "Bengaluru", "Bangalore"]),
+    );
+    expect(nearbyLabelsForScoutCities(["Mysore"])).toEqual(
+      expect.arrayContaining(["Mysore", "Mysuru", "Bengaluru", "Bangalore"]),
+    );
+    expect(nearbyLabelsForScoutCities(["Chitradurga"])).not.toContain("Delhi");
+    expect(nearbyLabelsForScoutCities(["Mysore"])).not.toContain("Delhi");
+  });
+
   it("expands Focus Area neighborhoods to their parent metro", () => {
     expect(nearbyLabelsForScoutCities(["Kasturi Nagar", "Ramamurthy Nagar"])).toEqual(
       expect.arrayContaining(["Kasturi Nagar", "Ramamurthy Nagar", "Bengaluru", "Bangalore"]),

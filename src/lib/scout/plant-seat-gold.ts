@@ -57,9 +57,8 @@ export function goldCasesForPlantCity(
   limit = 12,
 ): PlantSeatGoldCase[] {
   const key = plantCity.trim().toLowerCase();
-  const matched = cases.filter((c) => c.plantCity.trim().toLowerCase() === key);
-  const pool = matched.length ? matched : cases;
-  return pool.slice(-limit);
+  // Only same plant city. Do not leak Keep/Drop from other plants into few-shot.
+  return cases.filter((c) => c.plantCity.trim().toLowerCase() === key).slice(-limit);
 }
 
 export function formatGoldCasesFewShot(cases: PlantSeatGoldCase[]): string {

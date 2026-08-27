@@ -9,6 +9,7 @@ import {
   companyMatchesScoutSelection,
   expandCityMatchTerms,
   expandCitySearchTerms,
+  hasPlantCitySelection,
   isNationwideSelection,
   includeHqCorridorForScoutPeople,
   mentionsSelectedLocality,
@@ -22,7 +23,7 @@ import {
 } from "./city-search";
 import { placesLocationBiasFromFocuses } from "@/lib/geo/area-of-focus";
 import { companyDomainAliases } from "./company-domain-aliases";
-import { buildRoleTitleHints, filterPeopleByRoles } from "./people-role-filter";
+import { buildRoleTitleHints, filterPeopleByRoles, isFestivalBuyerRole } from "./people-role-filter";
 import { rankPeopleForScout, trimPeopleToHighConfidence } from "./people-diversity";
 import { applyGoldDensityEarlyStop, sortCompaniesByAccountScore } from "./account-score";
 import {
@@ -750,8 +751,11 @@ export async function discoverCompanies(params: {
     .map(hydrateEmployees);
   let cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry", geoPolicy);
   let softCityFail = false;
+  // Plant-district scouts must not soft-recover off-city companies ("show anything").
+  const allowSoftRecover =
+    allowsSoftCityRecover(geoPolicy) && !hasPlantCitySelection(selectionLabels);
   if (
-    allowsSoftCityRecover(geoPolicy) &&
+    allowSoftRecover &&
     cityFiltered.length === 0 &&
     selectionLabels.length > 0 &&
     !nationwide &&
@@ -848,6 +852,16 @@ export async function discoverCompanies(params: {
     productSummary: brandIcp?.productSummary,
   };
   companies = finalizeScoutCompanies(companies);
+
+  // Hydrate official websites before the LLM name gate and leadability probe so
+  // domain-based skip + LinkedIn people search work without a bigger model.
+  if (!tavilyQuotaHit([...warnings, ...errors])) {
+    companies = await hydrateMissingCompanyWebsites(companies, {
+      limit: Math.min(companies.length, Math.max(limit, 10)),
+      concurrency: 3,
+    });
+  }
+
   const runIcpGate = Boolean(icpCompanyFilterInstructions(icpMeta));
   if (runIcpGate || !shouldSkipCompaniesLlmFilter(companies, limit)) {
     const beforeLlmFilter = companies;
@@ -862,13 +876,6 @@ export async function discoverCompanies(params: {
   }
 
   companies = applySellerPollutionFilter(companies, qualityProfile, params.searchKind);
-
-  if (!tavilyQuotaHit([...warnings, ...errors])) {
-    companies = await hydrateMissingCompanyWebsites(companies, {
-      limit: Math.min(companies.length, Math.max(limit, 10)),
-      concurrency: 3,
-    });
-  }
 
   const selectedSeniority = params.seniority ?? [];
   const selectedDepartments = params.departments ?? [];
@@ -1505,10 +1512,22 @@ export async function discoverPeople(params: {
         appendTavilyKeySwitchWarning(warnings);
         if (hqHits.length) {
           const merged = [...allPeople, ...hqHits];
-          const hqRoleFiltered =
+          let hqRoleFiltered =
             localOperators || activeSeniority.length > 0 || activeDepartments.length > 0
               ? filterPeopleByRoles(merged, activeSeniority, activeDepartments, roleOpts).people
               : merged;
+          // HQ seniors (Head of HR / CHRO) must not die on stacked Manager chips.
+          if (
+            hqRoleFiltered.length === 0 &&
+            !cfg.strictPeopleFilters &&
+            !localOperators
+          ) {
+            const buyerHits = merged.filter((p) => isFestivalBuyerRole(p.title));
+            if (buyerHits.length) {
+              hqRoleFiltered = buyerHits;
+              broadenStages.push("hq_buyer_roles");
+            }
+          }
           finalPeople = filterPeopleAgainstGoldDrops(hqRoleFiltered, params.companyName, goldCases);
           seated = selectPeoplePlantThenCorridor(finalPeople, scoutCities);
         }

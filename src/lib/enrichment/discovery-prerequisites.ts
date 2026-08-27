@@ -50,6 +50,9 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
 
 export function llmErrorMessage(err: unknown): string {
   const detail = friendlyLLMError(err);
+  if (/unavailable for free|use this slug instead|Backup AI model was unavailable/i.test(detail)) {
+    return "Backup AI model was unavailable; used directory parsing.";
+  }
   if (/quota|rate.?limit|resource_exhausted|billing/i.test(detail)) {
     return "LLM API quota exceeded — using directory parsing fallback.";
   }

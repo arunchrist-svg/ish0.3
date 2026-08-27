@@ -1,6 +1,5 @@
 import type { ScoutPersonResult } from "./types";
 import { personLooksOpenToWork } from "@/lib/enrichment/person-company-match";
-import { hasPlantCitySelection, selectionLooksLikeNeighborhoods } from "./city-search";
 
 export const SENIORITY_TITLES: Record<string, string[]> = {
   "C-Level": ["CEO", "COO", "CHRO", "CPO", "CXO", "Chief", "MD", "Managing Director", "President"],
@@ -26,7 +25,7 @@ const OFF_DEPT_TITLE =
 const BUYING_DEPTS = new Set(["HR", "Admin", "Procurement", "Facilities"]);
 
 const GIFTING_SEARCH_TITLES: Record<string, string[]> = {
-  HR: ["HR Director", "Head of HR", "HR Manager", "Plant HR", "CHRO", "CPO", "Chief People Officer", "People Manager"],
+  HR: ["HR Director", "Head of HR", "Head HR", "HR Manager", "Plant HR", "CHRO", "CPO", "Chief People Officer", "People Manager"],
   Procurement: ["Procurement Head", "Head of Procurement", "Procurement Manager", "Sourcing Head", "Purchase Manager"],
   Admin: ["Admin Head", "Head of Admin", "Admin Manager"],
   Facilities: ["Facilities Head", "Head of Facilities", "Facilities Manager"],
@@ -302,50 +301,19 @@ export type PeopleFetchRisk = {
   } | null;
 };
 
-const PLANT_CITY_BUYER_DEPTS = ["HR", "Procurement"] as const;
-const PLANT_CITY_PUBLIC_DEPTS = new Set([...PLANT_CITY_BUYER_DEPTS, "Admin", "Facilities", "Marketing"]);
-
-function isPlantCityLikelyZeroRisk(
-  cities: string[],
-  seniority: string[],
-  departments: string[],
-  locationScope?: "focus" | "interest",
-): boolean {
-  // Focus Area / neighborhood chips are not plant towns. Skip this gate.
-  if (locationScope === "focus") return false;
-  if (selectionLooksLikeNeighborhoods(cities)) return false;
-  if (!hasPlantCitySelection(cities)) return false;
-  if (!seniority.length || !departments.length) return false;
-  const hasUpperExec = seniority.includes("VP") || seniority.includes("C-Level");
-  if (!hasUpperExec) return false;
-  const publicDeptCount = departments.filter((dept) => PLANT_CITY_PUBLIC_DEPTS.has(dept)).length;
-  return publicDeptCount >= 2;
-}
-
-function suggestedPlantCityFilters(
-  departments: string[],
-): { seniority: string[]; departments: string[] } | null {
-  const buyerDepts = PLANT_CITY_BUYER_DEPTS.filter((dept) => departments.includes(dept));
-  if (!buyerDepts.length) return null;
-  return {
-    seniority: ["Manager", "Director"],
-    departments: buyerDepts,
-  };
-}
-
 export function peopleAndFilterWarning(
   seniority: string[],
   departments: string[],
   cities: string[] = [],
   opts?: PeopleRoleFilterOpts,
-  locationScope?: "focus" | "interest",
+  _locationScope?: "focus" | "interest",
 ): string | null {
   if (opts?.strict) return null;
   if (isBusinessPeopleSearch(opts)) return null;
   if (!seniority.length || !departments.length) return null;
-  if (isPlantCityLikelyZeroRisk(cities, seniority, departments, locationScope)) {
-    return "In towns like Hosur or Ramanagara, LinkedIn usually lists Manager or Director, not VP. Tight People filters often return 0 leads, and you still spend one credit per company.";
-  }
+  // Plant towns no longer block on VP/C-Level: plant-first HQ fallback searches
+  // nearby corridor seniors after an empty plant stage.
+  void cities;
   if (usesBuyerDmWaterfall(seniority, departments, opts)) return null;
   return "A contact must match seniority AND department. Stacking both often returns 0 people, and Fetch Leads still spends one search credit per company.";
 }
@@ -360,7 +328,7 @@ export function assessPeopleFetchRisk(input: {
   locationScope?: "focus" | "interest";
   strict?: boolean;
 }): PeopleFetchRisk {
-  const { companyCount, cities = [], seniority, departments, locationScope } = input;
+  const { companyCount, seniority, departments } = input;
   const roleOpts: PeopleRoleFilterOpts = {
     searchKind: input.searchKind,
     businesses: input.businesses,
@@ -397,21 +365,6 @@ export function assessPeopleFetchRisk(input: {
     };
   }
 
-  if (isPlantCityLikelyZeroRisk(cities, seniority, departments, locationScope)) {
-    const suggestedFilters = suggestedPlantCityFilters(departments);
-    return {
-      needsConfirm: true,
-      stacked: true,
-      headline: "These People filters may return 0 leads",
-      costLine,
-      emptyRiskLine: peopleAndFilterWarning(seniority, departments, cities, roleOpts, locationScope),
-      suggestionLine: suggestedFilters
-        ? `Try this instead: ${suggestedFilters.seniority.join(" + ")} with ${suggestedFilters.departments.join(" + ")}.`
-        : null,
-      suggestedFilters,
-    };
-  }
-
   if (!both || usesBuyerDmWaterfall(seniority, departments, roleOpts)) {
     return {
       needsConfirm: false,
@@ -431,7 +384,7 @@ export function assessPeopleFetchRisk(input: {
       ? "These People filters often return 0 leads"
       : "People filters require both seniority and department",
     costLine,
-    emptyRiskLine: peopleAndFilterWarning(seniority, departments, cities, roleOpts, locationScope),
+    emptyRiskLine: peopleAndFilterWarning(seniority, departments, input.cities ?? [], roleOpts, input.locationScope),
     suggestionLine: null,
     suggestedFilters: null,
   };
