@@ -33,6 +33,15 @@ export type ScoutBatchResult = {
   leadsSaved: number;
   leadsSkipped: number;
   errors: string[];
+  stageTrace: ScoutStageTrace[];
+};
+
+export type ScoutStageTrace = {
+  stage: "company_discovery" | "scale_verification" | "people_discovery" | "lead_save";
+  status: "started" | "completed" | "skipped";
+  provider?: string;
+  count?: number;
+  reason?: string;
 };
 
 const AGENT_COMPANY_CONCURRENCY = 4;
@@ -47,6 +56,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
   const locationLabels = defaultLabelsFromLocationOptions(locationOptions);
   const cities = params.cities?.length ? params.cities : locationLabels;
   const dataMode = params.dataMode ?? (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free";
+  const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
   const companyLimit = params.companyLimit ?? getScoutCompaniesLimit();
   const maxCompanies = params.maxCompaniesToProcess ?? 20;
 
@@ -54,6 +64,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
   const seniority = params.seniority ?? [];
   const departments = params.departments ?? [];
   const errors: string[] = [];
+  const stageTrace: ScoutStageTrace[] = [];
   let leadsSaved = 0;
   let leadsSkipped = 0;
 
@@ -74,6 +85,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
       leadsSaved: 0,
       leadsSkipped: 0,
       errors: [emptyMessage],
+      stageTrace,
     };
   }
 
@@ -91,10 +103,34 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     cities,
     industries,
     dataMode,
+    config: enrichmentConfig,
     limit: companyLimit,
     skipInternal: true,
     seniority,
     departments,
+  });
+
+  stageTrace.push({
+    stage: "company_discovery",
+    status: "completed",
+    provider: enrichmentConfig.searchProvider,
+    count: discovery.companies.length,
+  });
+  const scaleCounts = discovery.companies.reduce(
+    (counts, company) => {
+      counts[company.scaleStatus ?? "unknown"] += 1;
+      return counts;
+    },
+    { verified: 0, estimated: 0, unknown: 0 },
+  );
+  stageTrace.push({
+    stage: "scale_verification",
+    status: "completed",
+    provider: scaleCounts.verified ? "apollo" : "none",
+    count: scaleCounts.verified,
+    reason: scaleCounts.verified
+      ? `${scaleCounts.verified} companies have verified employee evidence.`
+      : "No configured scale verifier returned employee evidence.",
   });
 
   errors.push(...discovery.errors, ...discovery.warnings);
@@ -110,9 +146,25 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     console.warn("[scout] tenant accounts preload failed:", e);
   }
 
-  const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
+  if (enrichmentConfig.peopleSearchProvider === "none") {
+    stageTrace.push({
+      stage: "people_discovery",
+      status: "skipped",
+      provider: "none",
+      count: 0,
+      reason: "People search is turned off.",
+    });
+  } else {
+    stageTrace.push({
+      stage: "people_discovery",
+      status: "started",
+      provider: enrichmentConfig.peopleSearchProvider,
+      count: toProcess.length,
+    });
+  }
 
-  await mapWithConcurrency(toProcess, AGENT_COMPANY_CONCURRENCY, async (company) => {
+  if (enrichmentConfig.peopleSearchProvider !== "none") {
+    await mapWithConcurrency(toProcess, AGENT_COMPANY_CONCURRENCY, async (company) => {
     try {
       const { people, resolvedDomain, resolvedWebsite } = await discoverPeople({
         tenantId: params.tenantId,
@@ -121,6 +173,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
         companyDomain: company.domain,
         companyWebsite: company.website,
         dataMode,
+        config: enrichmentConfig,
         limit: peoplePerCompanyLimit(getScoutLeadsLimit()),
         seniority: seniority.length ? seniority : undefined,
         departments: departments.length ? departments : undefined,
@@ -155,6 +208,23 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
       const msg = e instanceof Error ? e.message : String(e);
       errors.push(`${company.name}: ${msg}`);
     }
+    });
+    stageTrace.push({
+      stage: "people_discovery",
+      status: "completed",
+      provider: enrichmentConfig.peopleSearchProvider,
+      count: toProcess.length - leadsSkipped,
+    });
+  }
+
+  stageTrace.push({
+    stage: "lead_save",
+    status: enrichmentConfig.peopleSearchProvider === "none" ? "skipped" : "completed",
+    count: leadsSaved,
+    reason:
+      enrichmentConfig.peopleSearchProvider === "none"
+        ? "No people provider was enabled."
+        : "Saved eligible people returned by the people stage.",
   });
 
   await logAudit({
@@ -168,6 +238,7 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
       leadsSaved,
       leadsSkipped,
       errors: errors.length,
+      stageTrace,
     },
   });
 
@@ -177,5 +248,6 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
     leadsSaved,
     leadsSkipped,
     errors,
+    stageTrace,
   };
 }

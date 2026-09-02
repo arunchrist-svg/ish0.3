@@ -38,6 +38,7 @@ import {
   personFieldsShowCurrentEmployment,
   personLooksOpenToWork,
   personTitleConflictsWithCompany,
+  textMentionsCompany,
 } from "@/lib/enrichment/person-company-match";
 import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
 import { normalizeCompanyName } from "@/lib/enrichment/company-name-match";
@@ -282,6 +283,25 @@ function mapLLMPerson(p: Record<string, unknown>, dataSource: string): ScoutPers
   };
 }
 
+/**
+ * True when any search hit explicitly mentions both the person's name and the company.
+ * Used as a fallback when the person's own bio/title fields don't embed the company name —
+ * common for LLM-extracted people whose bio is a clean summary rather than raw snippet text.
+ */
+function personNameFoundInCompanyHit(
+  name: string,
+  hits: { title: string; url: string; content: string }[],
+  companyNames: string[],
+): boolean {
+  const nameNorm = name.trim().toLowerCase();
+  if (nameNorm.length < 4) return false;
+  return hits.some((hit) => {
+    const blob = `${hit.title}\n${hit.url}\n${hit.content}`.toLowerCase();
+    if (!blob.includes(nameNorm)) return false;
+    return companyNames.some((company) => textMentionsCompany(blob, company));
+  });
+}
+
 /** Drop LLM inventions that stamp the scout company onto someone at a different employer. */
 function llmPersonSupportedBySearchHits(
   person: ScoutPersonResult,
@@ -296,22 +316,28 @@ function llmPersonSupportedBySearchHits(
       return Boolean(slug) && (blob.includes(slug) || row.url.toLowerCase().includes(slug));
     });
     if (!hit) {
-      // LinkedIn URL found but the exact hit can't be located (URL variation). Fall back to
-      // person bio/title fields rather than dropping a potentially valid current employee.
-      return companyNames.some(
-        (name) =>
-          personFieldsShowCurrentEmployment(person, name) &&
-          !personTitleConflictsWithCompany(person.title, name),
+      // LinkedIn URL found but the exact hit can't be located (URL variation). Check bio/title
+      // fields first, then fall back to checking whether any hit mentions this person's name
+      // alongside the company (common when Tavily returns the company page, not the profile).
+      return (
+        companyNames.some(
+          (name) =>
+            personFieldsShowCurrentEmployment(person, name) &&
+            !personTitleConflictsWithCompany(person.title, name),
+        ) || personNameFoundInCompanyHit(person.name, hits, companyNames)
       );
     }
     if (personAppearsOnOpenToWorkHit(person, hits)) return false;
     return companyNames.some((name) => hitShowsCurrentEmployment(hit, name));
   }
 
-  return companyNames.some(
-    (name) =>
-      personFieldsShowCurrentEmployment(person, name) &&
-      !personTitleConflictsWithCompany(person.title, name),
+  // No LinkedIn URL: bio/title check first, then name-in-hit fallback.
+  return (
+    companyNames.some(
+      (name) =>
+        personFieldsShowCurrentEmployment(person, name) &&
+        !personTitleConflictsWithCompany(person.title, name),
+    ) || personNameFoundInCompanyHit(person.name, hits, companyNames)
   );
 }
 
@@ -485,6 +511,11 @@ export function buildPeopleSearchQueries(params: {
     queries.push(`site:linkedin.com/in "${params.company}" (${HQ_LINKEDIN_ROLE_TERM}) India`);
   }
 
+  // "Role at Company" phrasing: directly surfaces profiles whose headline embeds the employer,
+  // making them trivially verifiable. Most CHRO/CPO/Head of HR titles are written this way.
+  queries.push(`"CHRO at ${params.company}" OR "Head of HR at ${params.company}" OR "HR Director at ${params.company}"`);
+  queries.push(`"Head of Procurement at ${params.company}" OR "Admin Head at ${params.company}" OR "CPO at ${params.company}"`);
+
   queries.push(`"${params.company}" (${HQ_BUYER_ROLE_TERM}) ${geoTerm}`);
   queries.push(`site:linkedin.com/in "${params.company}" (${HQ_BUYER_ROLE_TERM}) ${geoTerm}`);
   if (params.hasCityFilter) {
@@ -502,7 +533,7 @@ export function buildPeopleSearchQueries(params: {
     queries.push(`"${company}" ${params.roleTerm} ${geoTerm}`);
   }
 
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 8);
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 10);
 }
 
 const OPEN_TO_WORK_SERP_TERM = '(#OPENTOWORK OR "Open to Work" OR OPEN_TO_WORK)';
@@ -902,11 +933,14 @@ export async function searchPeopleViaTavily(params: {
         system: `Extract named individuals from search results for a B2B outreach contact list.
 Output ONLY a valid JSON array. No markdown fences.
 Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
-Only people whose CURRENT employer is the target company. Keep the employer from the source headline when present (e.g. "Plant HR Manager at Titan Company" or "CHRO - Titan Company").
-Exclude former employees, Open to Work / job-seeker profiles, Team Leads, consultants at other firms, and anyone whose headline names a different company.
-Never rewrite a different employer into the target company name.
-Never invent emails, phones, or LinkedIn URLs that are not in the results.
-Prefer people located in the target city when location is stated.`,
+Rules:
+- Only people whose CURRENT employer is the target company.
+- Format title as "Role at Company" when the source headline shows the employer (e.g. "Head of HR at Infosys", "CHRO at Titan Company", "Plant HR Manager at JSW Steel"). If the employer is not in the snippet, keep the role alone.
+- Format bio as one short sentence that always includes the employer name when the person works at the target company (e.g. "CHRO at Infosys based in Bengaluru." or "Head of Procurement at Titan Company."). Never leave bio blank.
+- Exclude former employees, Open to Work / job-seeker profiles, Team Leads, consultants at other firms, and anyone whose headline names a different company.
+- Never rewrite a different employer into the target company name.
+- Never invent emails, phones, or LinkedIn URLs that are not in the results.
+- Prefer people located in the target city when location is stated.`,
         prompt: `Company: ${company}${companyAliases.length ? ` (also known as ${companyAliases.join(", ")})` : ""}
 Target city: ${cityClause}
 Find: ${roleFocus}
@@ -921,10 +955,15 @@ Return up to ${limit} people.`,
 
       // City filtering deferred to waterfall.ts — LLM-extracted people without a parsed
       // location should still reach the buyer-role check and city relaxation downstream.
+      // matchCompany is NOT applied here: it checks person.bio/title for company name, but
+      // the LLM bio is a clean summary that often omits the company. The LLM was already
+      // instructed to only extract current employees; llmPersonSupportedBySearchHits does
+      // the employment verification against the actual search hits. Only the title-conflict
+      // guard (e.g. "Plant Head Tata Steel" on a JSW Steel scout) is kept.
       const parsed = parseJsonArrayFromLLM(raw)
         .map((person) => mapLLMPerson(person, dataSource))
         .filter((person): person is ScoutPersonResult => !!person)
-        .filter(matchCompany)
+        .filter((person) => !personTitleConflictsWithCompany(person.title, company))
         .filter((person) => isUsableScoutPerson(person, allResults, { localOperators }))
         .filter((person) => llmPersonSupportedBySearchHits(person, allResults, searchNames));
 

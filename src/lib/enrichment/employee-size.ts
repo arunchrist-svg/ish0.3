@@ -1,3 +1,5 @@
+import type { ScoutScaleSource, ScoutScaleStatus } from "./types";
+
 export const EMPLOYEE_SIZE_BANDS = [
   {
     id: "micro",
@@ -134,6 +136,52 @@ export function formatScoutSizeLine(raw?: string | null): string {
   if (!count) return scale;
   if (scale === "Unknown scale") return count;
   return `${scale} · ${count}`;
+}
+
+export function inferScaleMetadata(params: {
+  employees?: string | null;
+  dataSource?: string | null;
+  scaleStatus?: ScoutScaleStatus;
+  scaleSource?: ScoutScaleSource;
+}): { scaleStatus: ScoutScaleStatus; scaleSource: ScoutScaleSource } {
+  if (params.scaleStatus) {
+    return {
+      scaleStatus: params.scaleStatus,
+      scaleSource:
+        params.scaleSource ??
+        (params.scaleStatus === "verified"
+          ? "apollo"
+          : params.scaleStatus === "unknown"
+            ? "unknown"
+            : "unknown"),
+    };
+  }
+  if (!parseEmployeeRange(params.employees)) {
+    return { scaleStatus: "unknown", scaleSource: "unknown" };
+  }
+  const source = params.scaleSource ??
+    (params.dataSource === "apollo"
+      ? "apollo"
+      : params.dataSource === "india_directories"
+        ? "india_directories"
+        : params.dataSource === "google_places"
+          ? "google_places"
+          : params.dataSource === "internal"
+            ? "internal"
+            : "unknown");
+  return {
+    scaleStatus: source === "apollo" ? "verified" : source === "unknown" ? "estimated" : "estimated",
+    scaleSource: source,
+  };
+}
+
+export function formatVerifiedScoutSizeLine(params: {
+  employees?: string | null;
+  scaleStatus?: ScoutScaleStatus;
+}): string {
+  if (params.scaleStatus === "unknown" || !parseEmployeeRange(params.employees)) return "Unknown scale";
+  const line = formatScoutSizeLine(params.employees);
+  return params.scaleStatus === "verified" ? `Verified · ${line}` : `Estimated · ${line}`;
 }
 
 export function employeeMatchesBands(

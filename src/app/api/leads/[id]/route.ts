@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
+import { requireTenantContext } from "@/lib/tenant";
 import { db, leads, contacts, accounts, users, leadResearch, leadOutreach, outreachApprovals, outreachSchedule, yieldFunnel, outreachEditMessages } from "@/db";
 import { eq, desc, asc, and, inArray } from "drizzle-orm";
-import { canManuallyAdvance, isEmailOutreachStarted, parseDealAmount } from "@/lib/pipeline-status";
-import { logAudit } from "@/lib/audit";
+import { isEmailOutreachStarted } from "@/lib/pipeline-status";
 import { handleApiError } from "@/lib/api-errors";
 import type { LeadDetailRecord } from "@/lib/api-client";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
@@ -16,7 +15,7 @@ import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { getOutreachTemplatesForBrand } from "@/lib/email/outreach-templates";
 import { resolveDefaultOutreachCta } from "@/lib/settings/preference-profile";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
-import { updateLeadFields, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
+import { updateLeadFields, updateLeadStatus, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
 import { canAccessLeadRecord } from "@/lib/leads/lead-visibility";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { ensureCatalogOnOpenDraft } from "@/lib/email/promote-catalog-on-open";
@@ -487,50 +486,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    if (!canManuallyAdvance(lead.status, nextStatus)) {
+    try {
+      await updateLeadStatus({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        actorId: ctx.userId,
+        leadId: id,
+        status: nextStatus,
+        closedDealAmount,
+      });
+    } catch (error) {
       return NextResponse.json(
-        { error: `Cannot advance from ${lead.status} to ${nextStatus}` },
+        { error: error instanceof Error ? error.message : "Unable to update lead status" },
         { status: 400 },
       );
     }
-
-    if (nextStatus === "closed") {
-      if (!closedDealAmount?.trim()) {
-        return NextResponse.json({ error: "closedDealAmount required to close deal" }, { status: 400 });
-      }
-      const parsed = parseDealAmount(closedDealAmount);
-      if (parsed === null) {
-        return NextResponse.json({ error: "Invalid deal amount" }, { status: 400 });
-      }
-    }
-
-    const updates: { status: string; closedDealAmount?: string; updatedAt: Date } = {
-      status: nextStatus,
-      updatedAt: new Date(),
-    };
-    if (nextStatus === "closed" && closedDealAmount) {
-      updates.closedDealAmount = closedDealAmount.trim();
-    }
-
-    await db.update(leads).set(updates).where(eq(leads.id, id));
-
-    if (nextStatus === "closed") {
-      await db.insert(yieldFunnel).values({
-        leadId: id,
-        stage: "po_closed",
-        metadata: { closedDealAmount: closedDealAmount?.trim(), source: "manual" },
-      });
-    }
-
-    await logAudit({
-      tenantId: ctx.tenantId,
-      workspaceId: ctx.workspaceId,
-      actorId: ctx.userId,
-      action: `lead.status.${nextStatus}`,
-      entityType: "lead",
-      entityId: id,
-      metadata: { from: lead.status, to: nextStatus, closedDealAmount },
-    });
 
     return NextResponse.json({ ok: true, status: nextStatus });
   } catch (e) {

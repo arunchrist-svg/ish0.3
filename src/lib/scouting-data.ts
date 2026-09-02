@@ -1,4 +1,5 @@
 import type { CompanyOverview } from "@/lib/company-overview";
+import type { ScoutScaleSource, ScoutScaleStatus } from "@/lib/enrichment/types";
 
 export type Company = {
   id: string;
@@ -10,6 +11,9 @@ export type Company = {
   city: string;
   industry: string;
   employees: string;
+  scaleStatus?: ScoutScaleStatus;
+  scaleSource?: ScoutScaleSource;
+  scaleEvidence?: string;
   revenue: string;
   founded: number;
   fitScore: number;

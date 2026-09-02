@@ -31,7 +31,7 @@ function company(partial: Partial<ScoutCompanyResult> & { name: string }): Scout
 }
 
 describe("assessLeadabilityFromPeople", () => {
-  it("scores exact in-corridor matches as high", () => {
+  it("scores an exact plant match as high and prefers it over corridor matches", () => {
     const leadability = assessLeadabilityFromPeople({
       people: [
         person({ name: "Asha", title: "HR Director", location: "Bangalore, Karnataka" }),
@@ -42,7 +42,7 @@ describe("assessLeadabilityFromPeople", () => {
       cities: ["Hosur"],
     });
     expect(leadability.leadabilityBand).toBe("high");
-    expect(leadability.leadabilityMatchedInCity).toBe(2);
+    expect(leadability.leadabilityMatchedInCity).toBe(1);
     expect(leadability.leadabilityScore).toBeGreaterThanOrEqual(80);
   });
 

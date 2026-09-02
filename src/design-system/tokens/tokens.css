@@ -194,6 +194,25 @@
     1px 0 24px rgba(131, 162, 219, 0.08);
 }
 
+.stratus .ish-brand-header {
+  background: #ffffff;
+  color: var(--color-brand-ink);
+}
+
+.stratus .ish-brand-name {
+  color: var(--color-brand-ink);
+  font-family: var(--font-playfair), Georgia, serif;
+}
+
+.stratus .ish-brand-header button {
+  background: rgba(var(--brand-stratus-blue-rgb), 0.12);
+  color: var(--color-brand-ink);
+}
+
+.stratus .ish-brand-header button:hover {
+  background: rgba(var(--brand-stratus-blue-rgb), 0.20);
+}
+
 .stratus .ish-ambient-canvas {
   background-color: #f6f7fa;
   background-image:

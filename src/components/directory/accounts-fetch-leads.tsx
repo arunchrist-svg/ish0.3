@@ -13,6 +13,7 @@ import {
   type DirectoryCompany,
 } from "@/lib/api-client";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
+import type { PeopleSearchProvider } from "@/lib/enrichment/config";
 import { assessPeopleFetchRisk, inferRoleFromTitle } from "@/lib/enrichment/people-role-filter";
 import { peoplePerCompanyLimit } from "@/lib/enrichment/people-diversity";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
@@ -77,6 +78,7 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [dataMode, setDataMode] = useState<DataMode>("free");
+  const [peopleSearchProvider, setPeopleSearchProvider] = useState<PeopleSearchProvider>("tavily_ai");
   const [scoutLeadsLimit, setScoutLeadsLimit] = useState(5);
   const [platformIntent, setPlatformIntent] = useState<PlatformIntent | null>(null);
 
@@ -93,6 +95,7 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
     void scoutBootstrap()
       .then((data) => {
         if (data.dataMode) setDataMode(data.dataMode);
+        if (data.peopleSearchProvider) setPeopleSearchProvider(data.peopleSearchProvider);
         if (typeof data.scoutLeadsLimit === "number") setScoutLeadsLimit(data.scoutLeadsLimit);
       })
       .catch(() => {
@@ -144,9 +147,9 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
     setPeople([]);
     setSelectedIds(new Set());
     const missingDomain = !company.domain?.trim() && !company.website?.trim();
-    if (missingDomain) {
+    if (missingDomain && peopleSearchProvider !== "none") {
       setNotice(
-        `No website on file for ${company.name}. Looking up a domain first, then LinkedIn. This is slower and often finds fewer people.`,
+        `No website on file for ${company.name}. Looking up a domain first, then ${peopleSearchProvider === "apollo" ? "Apollo" : "web search"}. This is slower and often finds fewer people.`,
       );
     }
     try {
@@ -155,6 +158,7 @@ export function AccountsFetchLeads({ company, onSaved }: Props) {
         companyDomain: company.domain,
         companyWebsite: company.website,
         dataMode,
+        peopleSearchProvider,
         limit: peoplePerCompanyLimit(scoutLeadsLimit),
         seniority,
         departments,

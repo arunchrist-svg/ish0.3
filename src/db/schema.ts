@@ -208,6 +208,9 @@ export const accounts = pgTable("accounts", {
   industry:     text("industry"),
   city:         text("city"),
   employees:    text("employees"),
+  scaleStatus:  text("scale_status"),
+  scaleSource:  text("scale_source"),
+  scaleEvidence: text("scale_evidence"),
   revenue:      text("revenue"),
   logo:         text("logo"),
   fitScore:     integer("fit_score"),
@@ -659,6 +662,7 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 
 // ─── Relations (for Drizzle query API) ────────────────────────────────────────
 import { relations } from "drizzle-orm";
+export * from "./schema/agent";
 
 export const leadsRelations = relations(leads, ({ one, many }) => ({
   contact: one(contacts, { fields: [leads.contactId], references: [contacts.id] }),

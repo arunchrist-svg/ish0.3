@@ -6,9 +6,11 @@ import {
   employeeSizeSearchClause,
   extractEmployeesFromHits,
   extractEmployeesFromText,
+  formatVerifiedScoutSizeLine,
   formatCompanyScale,
   formatEmployeeCount,
   formatScoutSizeLine,
+  inferScaleMetadata,
   parseEmployeeRange,
   rankAndFilterByEmployeeBands,
 } from "@/lib/enrichment/employee-size";
@@ -77,6 +79,28 @@ describe("employee search helpers", () => {
     expect(formatScoutSizeLine("8,500")).toBe("Large scale · 8,500");
     expect(formatScoutSizeLine("Small scale")).toBe("Small scale");
     expect(formatScoutSizeLine("—")).toBe("Unknown scale");
+  });
+
+  it("marks Apollo scale as verified and free-provider scale as estimated", () => {
+    expect(inferScaleMetadata({ employees: "8500", dataSource: "apollo" })).toEqual({
+      scaleStatus: "verified",
+      scaleSource: "apollo",
+    });
+    expect(inferScaleMetadata({ employees: "8500", dataSource: "google_places" })).toEqual({
+      scaleStatus: "estimated",
+      scaleSource: "google_places",
+    });
+    expect(inferScaleMetadata({ employees: "8500", scaleStatus: "verified" })).toEqual({
+      scaleStatus: "verified",
+      scaleSource: "apollo",
+    });
+    expect(formatVerifiedScoutSizeLine({ employees: "8500", scaleStatus: "unknown" })).toBe("Unknown scale");
+    expect(formatVerifiedScoutSizeLine({ employees: "8500", scaleStatus: "estimated" })).toBe(
+      "Estimated · Large scale · 8,500",
+    );
+    expect(formatVerifiedScoutSizeLine({ employees: "8500", scaleStatus: "verified" })).toBe(
+      "Verified · Large scale · 8,500",
+    );
   });
 
   it("ranks known matches ahead of unknown and drops mismatches", () => {

@@ -14,6 +14,9 @@ export type TavilyHit = { title: string; url: string; content: string };
 export const TAVILY_QUOTA_COMPANY_MSG =
   "Tavily API quota exceeded. Upgrade at tavily.com or wait for your monthly credit reset.";
 
+export const TAVILY_QUOTA_INDIA_DIRECTORIES_MSG =
+  "India Directories uses Tavily credits to search Indian directory sites. Switch Company search to Google Places, add another Tavily key, or wait for your monthly reset.";
+
 export const TAVILY_QUOTA_PEOPLE_MSG =
   "People search needs Tavily credits (or Apollo). Company scouting can continue via Google Places.";
 

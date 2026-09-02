@@ -203,7 +203,7 @@ describe("apply writer draft to lead state", () => {
       ],
     };
 
-    const next = applyWriterDraft(lead, {
+    const next = applyWriterDraft<Draft, LeadDraftState<Draft>>(lead, {
       ...draft({ id: "e1", sequencePosition: 1 }),
       subjectA: "A festive sample for STELLANTIS",
       subjectB: "Festive sweets sample for STELLANTIS",

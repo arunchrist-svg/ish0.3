@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { Check, ExternalLink, Globe, Lightbulb, MapPin, Pencil, RefreshCw, X } from "lucide-react";
-import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
+import { formatVerifiedScoutSizeLine } from "@/lib/enrichment/employee-size";
 import type { CompanyOverview, CompanyOverviewInput } from "@/lib/company-overview";
 import { displayValue } from "@/lib/company-overview";
 import { useCompanyOverview } from "@/hooks/use-company-overview";
@@ -22,6 +22,7 @@ type Props = {
   city?: string;
   fitScore?: number;
   industry?: string;
+  scaleStatus?: "verified" | "estimated" | "unknown";
   leadabilityScore?: number;
   leadabilityBand?: "high" | "medium" | "low" | "unknown";
   leadabilityMatchedPeople?: number;
@@ -281,6 +282,7 @@ export function CompanyOverviewPanel({
   website,
   city,
   industry,
+  scaleStatus,
   leadabilityScore,
   leadabilityBand,
   leadabilityMatchedPeople,
@@ -307,7 +309,10 @@ export function CompanyOverviewPanel({
   const displayWebsite = didFetch ? resolvedWebsite : (website ?? overviewInput?.website);
   const site = displayCompanyWebsite(displayDomain, displayWebsite);
   const showWebsiteUnknown = didFetch && !site;
-  const sizeLine = formatScoutSizeLine(overviewInput?.employees ?? o.employees);
+  const sizeLine = formatVerifiedScoutSizeLine({
+    employees: overviewInput?.employees ?? o.employees,
+    scaleStatus,
+  });
   const sizeKnown = sizeLine !== "Unknown scale";
   const pastGifting = o.pastGiftingBrands ?? [];
   const milestones = (o.corporateMilestones ?? []).filter((m) => m.trim());
@@ -445,10 +450,15 @@ export function CompanyOverviewPanel({
                     <OverviewRow
                       label="Employees"
                       value={displayValue(
-                        o.employees ||
-                          (overviewInput?.employees
-                            ? formatScoutSizeLine(overviewInput.employees)
-                            : undefined),
+                        scaleStatus === "unknown"
+                          ? sizeLine
+                          : o.employees ||
+                              (overviewInput?.employees
+                                ? formatVerifiedScoutSizeLine({
+                                    employees: overviewInput.employees,
+                                    scaleStatus,
+                                  })
+                                : undefined),
                       )}
                     />
                   </div>

@@ -1,6 +1,18 @@
-import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "./types";
+import type {
+  DataMode,
+  ScoutCompanyResult,
+  ScoutCoverageMetrics,
+  ScoutPersonResult,
+  ScoutScaleMetrics,
+} from "./types";
 import type { EnrichmentConfig } from "./config";
-import { hasApolloKey, resolveEnrichmentConfig, MAX_SCOUT_LEADS_LIMIT } from "./config";
+import {
+  hasApolloKey,
+  resolveEnrichmentConfig,
+  MAX_SCOUT_LEADS_LIMIT,
+  searchProviderUsesTavily,
+  shouldFallbackToIndiaDirectories,
+} from "./config";
 import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies, type PlacesLocationBias } from "./google-places";
@@ -70,11 +82,8 @@ import {
   rankCompaniesWithOfficialSitesFirst,
 } from "./company-domain-quality";
 import {
-  applyLeadability,
-  probeCompanyLeadability,
-} from "./company-leadability";
-import {
   extractEmployeesFromText,
+  inferScaleMetadata,
   normalizeEmployeeBandIds,
   normalizeEmployeeField,
   rankAndFilterByEmployeeBands,
@@ -105,6 +114,8 @@ export type DiscoveryResult = {
     requested: number;
     earlyStop: string | null;
     softCityRecover: boolean;
+    coverage: ScoutCoverageMetrics;
+    scale: ScoutScaleMetrics;
   };
 };
 
@@ -112,6 +123,35 @@ export type ScoutQualityContext = {
   userId?: string | null;
   sessionId?: string | null;
 };
+
+function scaleMetrics(companies: ScoutCompanyResult[], excluded = 0): ScoutScaleMetrics {
+  const metrics = companies.reduce<ScoutScaleMetrics>(
+    (metrics, company) => {
+      metrics[company.scaleStatus ?? "unknown"] += 1;
+      return metrics;
+    },
+    { verified: 0, estimated: 0, unknown: 0, excluded: 0 },
+  );
+  metrics.excluded = excluded;
+  return metrics;
+}
+
+function coverageMetrics(params: {
+  requestedCities: string[];
+  searchedCities: string[];
+  requestedIndustries: string[];
+  searchedIndustries: string[];
+}): ScoutCoverageMetrics {
+  return {
+    citiesRequested: params.requestedCities.length,
+    citiesSearched: [...new Set(params.searchedCities.filter(Boolean))],
+    industriesRequested: params.requestedIndustries.length,
+    industriesSearched: [...new Set(params.searchedIndustries.filter(Boolean))],
+    sampled:
+      new Set(params.requestedCities.filter(Boolean)).size > new Set(params.searchedCities.filter(Boolean)).size ||
+      new Set(params.requestedIndustries.filter(Boolean)).size > new Set(params.searchedIndustries.filter(Boolean)).size,
+  };
+}
 
 async function loadScoutBrandIcp(workspaceId: string): Promise<{
   icpSummary?: string;
@@ -160,7 +200,18 @@ async function loadScoutBrandIcp(workspaceId: string): Promise<{
 }
 
 function finalizeScoutCompanies(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
-  return rankCompaniesWithOfficialSitesFirst(companies.map(officialWebsiteForScoutCompany));
+  return rankCompaniesWithOfficialSitesFirst(
+    companies.map((company) => {
+      const scale = inferScaleMetadata(company);
+      return {
+        ...company,
+        ...scale,
+        scaleEvidence:
+          company.scaleEvidence ??
+          (company.employees ? `${scale.scaleSource}: ${company.employees}` : undefined),
+      };
+    }).map(officialWebsiteForScoutCompany),
+  );
 }
 
 /**
@@ -169,7 +220,7 @@ function finalizeScoutCompanies(companies: ScoutCompanyResult[]): ScoutCompanyRe
  */
 async function hydrateMissingCompanyWebsites(
   companies: ScoutCompanyResult[],
-  opts?: { limit?: number; concurrency?: number },
+  opts?: { limit?: number; concurrency?: number; allowExternal?: boolean; allowTavily?: boolean },
 ): Promise<ScoutCompanyResult[]> {
   const cap = Math.min(companies.length, Math.max(opts?.limit ?? 12, 1));
   const concurrency = opts?.concurrency ?? 3;
@@ -181,7 +232,8 @@ async function hydrateMissingCompanyWebsites(
       const resolved = await resolveCompanyDomain({
         companyName: company.name,
         city: company.city ?? undefined,
-        allowExternal: true,
+        allowExternal: opts?.allowExternal ?? true,
+        allowTavily: opts?.allowTavily,
       });
       if (!resolved.domain) return company;
       return {
@@ -308,11 +360,22 @@ function filterExcluded<T extends ScoutCompanyResult>(
 }
 
 function hydrateEmployees(company: ScoutCompanyResult): ScoutCompanyResult {
-  if (normalizeEmployeeField(company.employees)) return company;
-  const extracted = extractEmployeesFromText(
-    [company.name, company.intelNotes].filter(Boolean).join(" "),
-  );
-  return extracted ? { ...company, employees: extracted } : company;
+  const withEmployees = normalizeEmployeeField(company.employees)
+    ? company
+    : (() => {
+        const extracted = extractEmployeesFromText(
+          [company.name, company.intelNotes].filter(Boolean).join(" "),
+        );
+        return extracted ? { ...company, employees: extracted } : company;
+      })();
+  const scale = inferScaleMetadata(withEmployees);
+  return {
+    ...withEmployees,
+    ...scale,
+    scaleEvidence:
+      withEmployees.scaleEvidence ??
+      (withEmployees.employees ? `${scale.scaleSource}: ${withEmployees.employees}` : undefined),
+  };
 }
 
 export async function discoverCompanies(params: {
@@ -387,6 +450,31 @@ export async function discoverCompanies(params: {
   const queryCities = [
     ...new Set([...expandCitySearchTerms(selectionLabels), ...(focusCityLabels ?? [])]),
   ];
+  // Scope saved-account exclusions to the current search area so a company saved
+  // from a Hosur scout doesn't block discovery in Kasturi Nagar.
+  if (!nationwide && savedAccounts.length) {
+    const scoutCityLower = new Set(
+      [...matchCities, ...queryCities].map((c) => c.toLowerCase().trim()),
+    );
+    savedAccounts = savedAccounts.filter((a) => {
+      if (!a.city) return true;
+      const ac = a.city.toLowerCase().trim();
+      return scoutCityLower.has(ac) ||
+        [...scoutCityLower].some((sc) => ac.includes(sc) || sc.includes(ac));
+    });
+  }
+  const searchKind = params.searchKind ?? "industry";
+  const cityWindow = cfg.searchProvider === "google_places" ? selectionLabels.slice(0, 6) : selectionLabels;
+  const industryWindow =
+    cfg.searchProvider === "google_places"
+      ? params.industries.slice(0, searchKind === "business" ? 5 : 9)
+      : params.industries;
+  const coverage = coverageMetrics({
+    requestedCities: selectionLabels,
+    searchedCities: cityWindow,
+    requestedIndustries: params.industries,
+    searchedIndustries: industryWindow,
+  });
 
   // ── SEARCH MODE: targeted lookup by company name ──────────────────────────
   if (isNameSearch) {
@@ -423,6 +511,8 @@ export async function discoverCompanies(params: {
         const resolved = await resolveCompanyDomain({
           companyName: nameQuery,
           city: locationHint[0],
+          allowExternal: cfg.searchProvider !== "google_places",
+          allowTavily: searchProviderUsesTavily(cfg.searchProvider),
         });
         if (resolved.domain) {
           external.push({
@@ -440,7 +530,12 @@ export async function discoverCompanies(params: {
       }
     }
 
-    if (dbMapped.length + external.length < limit && !tavilyQuotaHit([...warnings, ...errors])) {
+    const companyWebSearchEnabled = searchProviderUsesTavily(cfg.searchProvider);
+    if (
+      companyWebSearchEnabled &&
+      dbMapped.length + external.length < limit &&
+      !tavilyQuotaHit([...warnings, ...errors])
+    ) {
       const remaining = limit - dbMapped.length - external.length;
       await runStep("name_search_tavily", () =>
         tavilySearchCompanies({
@@ -495,6 +590,8 @@ export async function discoverCompanies(params: {
         requested: limit,
         earlyStop: null,
         softCityRecover: false,
+        coverage,
+        scale: scaleMetrics(companies),
       },
     };
   }
@@ -529,15 +626,42 @@ export async function discoverCompanies(params: {
   const knownDbMatches = rankedDb.companies.length - rankedDb.unknownCount;
 
   if (!employeeBands.length && dbMapped.length >= limit) {
-    return { companies: dbMapped.slice(0, limit), warnings, errors };
+    const companies = dbMapped.slice(0, limit).map(hydrateEmployees);
+    return {
+      companies,
+      warnings,
+      errors,
+      qualityMetrics: {
+        empty: companies.length === 0,
+        returned: companies.length,
+        requested: limit,
+        earlyStop: null,
+        softCityRecover: false,
+        coverage,
+        scale: scaleMetrics(companies),
+      },
+    };
   }
   if (employeeBands.length && knownDbMatches >= limit) {
-    return { companies: rankedDb.companies.slice(0, limit), warnings, errors };
+    const companies = rankedDb.companies.slice(0, limit).map(hydrateEmployees);
+    return {
+      companies,
+      warnings,
+      errors,
+      qualityMetrics: {
+        empty: companies.length === 0,
+        returned: companies.length,
+        requested: limit,
+        earlyStop: null,
+        softCityRecover: false,
+        coverage,
+        scale: scaleMetrics(companies),
+      },
+    };
   }
 
   const remaining = Math.max(limit - (employeeBands.length ? knownDbMatches : dbMapped.length), 0) || limit;
   const stepLimit = Math.min(Math.max(remaining * 2, remaining + 8), 120);
-  const searchKind = params.searchKind ?? "industry";
   const useFocusBias = shouldApplyPlacesFocusBias(params.locationScope, selectionLabels);
   const focusesForBias = cfg.scoutAreasOfFocus?.length
     ? cfg.scoutAreasOfFocus
@@ -644,7 +768,7 @@ export async function discoverCompanies(params: {
   // (Zauba, Tofler) index them far better, so backfill whenever city-matched hits are short.
   if (
     cityUsable(external).length < fillFloor &&
-    cfg.searchProvider !== "india_directories" &&
+    shouldFallbackToIndiaDirectories(cfg.searchProvider) &&
     !tavilyQuotaHit([...warnings, ...errors])
   ) {
     const fallbackLimit = Math.max(stepLimit - external.length, limit);
@@ -728,6 +852,8 @@ export async function discoverCompanies(params: {
     cfg.fallbackToAI &&
     cityUsable(external).length < Math.floor(remaining * 0.5) &&
     cfg.searchProvider !== "tavily_ai" &&
+    cfg.searchProvider !== "google_places" &&
+    cfg.searchProvider !== "apollo" &&
     !tavilyQuotaHit([...warnings, ...errors])
   ) {
     await runStep("tavily_ai_fallback", () =>
@@ -853,12 +979,14 @@ export async function discoverCompanies(params: {
   };
   companies = finalizeScoutCompanies(companies);
 
-  // Hydrate official websites before the LLM name gate and leadability probe so
-  // domain-based skip + LinkedIn people search work without a bigger model.
+  // Hydrate official websites before the LLM name gate so domain-based filtering
+  // and the separate people-search stage can use a company domain.
   if (!tavilyQuotaHit([...warnings, ...errors])) {
     companies = await hydrateMissingCompanyWebsites(companies, {
       limit: Math.min(companies.length, Math.max(limit, 10)),
       concurrency: 3,
+      allowExternal: cfg.searchProvider !== "google_places",
+      allowTavily: searchProviderUsesTavily(cfg.searchProvider),
     });
   }
 
@@ -874,76 +1002,7 @@ export async function discoverCompanies(params: {
   } else {
     companies = companies.slice(0, overfetchTarget);
   }
-
   companies = applySellerPollutionFilter(companies, qualityProfile, params.searchKind);
-
-  const selectedSeniority = params.seniority ?? [];
-  const selectedDepartments = params.departments ?? [];
-  // Corporate modes: probe reachability using scout roles or pack defaults so AccountScore
-  // can rank even when the UI left seniority empty (dept-first stacks).
-  const probeRoles = cfg.strictPeopleFilters
-    ? {
-        seniority: selectedSeniority,
-        departments: selectedDepartments,
-        expanded: false as const,
-      }
-    : expandPeopleFiltersForOffer(
-        brandIcp?.platformIntent,
-        selectedSeniority,
-        selectedDepartments,
-        {
-          treatAsGifting: brandIcp?.sweetsGifting,
-          searchKind: params.searchKind,
-          businesses: params.searchKind === "business" ? params.industries : undefined,
-        },
-      );
-  const shouldProbeLeadability =
-    params.searchKind !== "business" &&
-    companies.length > 0 &&
-    (probeRoles.departments.length > 0 || probeRoles.seniority.length > 0);
-
-  if (shouldProbeLeadability) {
-    const probeCount = Math.min(companies.length, Math.max(limit, Math.min(limit + 6, 16)));
-    let quotaStop = false;
-    const unknownLeadability = {
-      leadabilityScore: 0,
-      leadabilityBand: "unknown" as const,
-      leadabilityMatchedPeople: 0,
-      leadabilityMatchedInCity: 0,
-    };
-    const probed = await mapWithConcurrency(companies.slice(0, probeCount), 4, async (company) => {
-      if (quotaStop) return applyLeadability(company, unknownLeadability);
-      try {
-        const leadability = await probeCompanyLeadability({
-          company,
-          seniority: probeRoles.seniority,
-          departments: probeRoles.departments,
-          cities: selectionLabels,
-          platformIntent: brandIcp?.platformIntent,
-          treatAsGifting: brandIcp?.sweetsGifting,
-          searchKind: params.searchKind,
-          businesses: params.searchKind === "business" ? params.industries : undefined,
-          locationScope: params.locationScope,
-        });
-        return applyLeadability(company, leadability);
-      } catch (e) {
-        const msg = stepFailureMessage("leadability_probe", e);
-        if (isTavilyQuotaError(msg)) quotaStop = true;
-        return applyLeadability(company, unknownLeadability);
-      }
-    });
-    companies = [
-      ...probed,
-      ...companies.slice(probeCount).map((company) =>
-        applyLeadability(company, {
-          leadabilityScore: 0,
-          leadabilityBand: "unknown",
-          leadabilityMatchedPeople: 0,
-          leadabilityMatchedInCity: 0,
-        }),
-      ),
-    ];
-  }
 
   const rankedAccounts = sortCompaniesByAccountScore(companies, {
     profile: qualityProfile,
@@ -964,7 +1023,20 @@ export async function discoverCompanies(params: {
     warnings.push("Stopped adding lower-fit companies once gold density flattened.");
   }
 
-  if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
+  // Silent-zero guard: every provider came back empty (or every hit was off-city).
+  // Without this the caller sees zero companies and an empty warnings array, so the
+  // UI can only show generic "No companies found" and the real cause stays hidden.
+  if (merged.length === 0 && companies.length === 0) {
+    if (discardedByCity.length > 0) {
+      warnings.push(
+        `${discardedByCity.length} companies came back from ${cfg.searchProvider}, but none were in ${selectionLabels.slice(0, 3).join(", ")}. That provider has thin coverage here — try Free data mode to search India registry directories.`,
+      );
+    } else if (!errors.length) {
+      warnings.push(
+        `No provider returned candidates for ${selectionLabels.slice(0, 3).join(", ")}. Try Free data mode, fewer industries, or a nearby larger city.`,
+      );
+    }
+  } else if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
     warnings.push(
       `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
     );
@@ -997,6 +1069,8 @@ export async function discoverCompanies(params: {
     requested: limit,
     earlyStop: goldCut.earlyStop ? "gold_density" : null,
     softCityRecover: softCityFail,
+    coverage,
+    scale: scaleMetrics(companies, ranked.droppedKnown),
   };
   void logScoutQualityEvent({
     tenantId: params.tenantId,
@@ -1112,6 +1186,18 @@ export async function discoverPeople(params: {
 }): Promise<PeopleDiscoveryResult> {
   const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
   const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
+  if (cfg.peopleSearchProvider === "none") {
+    return finishPeopleDiscovery({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      qualityContext: params.qualityContext,
+      ranked: [],
+      limit,
+      warnings: ["People search is turned off. Select Tavily or Apollo to find contacts."],
+      errors: [],
+      broadenStages: [],
+    });
+  }
   // Headroom for role + city filters. Plant-city scouts with buyer-dept filters often
   // discard most raw Tavily hits, so we fetch more candidates up front.
   const fetchLimit = Math.min(18, Math.max(limit + 5, limit));
@@ -1126,6 +1212,7 @@ export async function discoverPeople(params: {
       website: params.companyWebsite,
       city: scoutCities[0],
       allowExternal: !hasDomainHint,
+      allowTavily: cfg.peopleSearchProvider === "tavily_ai",
     }),
     loadScoutBrandIcp(params.workspaceId),
   ]);
@@ -1316,22 +1403,19 @@ export async function discoverPeople(params: {
     }
   };
 
-  if (cfg.searchProvider === "apollo" && apolloDomain) {
+  if (cfg.peopleSearchProvider === "apollo" && apolloDomain && hasApolloKey()) {
     try {
       await pullApolloPeople();
     } catch (e) {
       if (isApolloAuthError(e)) {
-        warnings.push("Apollo key invalid, using web search.");
+        errors.push("Apollo key was rejected for people search.");
       } else {
         errors.push(stepFailureMessage("apollo_people", e));
       }
     }
   }
 
-  if (external.length === 0) {
-    if (cfg.searchProvider === "apollo" && !resolvedDomain) {
-      warnings.push(`No website domain for ${params.companyName}. Searching LinkedIn instead of Apollo.`);
-    }
+  if (external.length === 0 && cfg.peopleSearchProvider === "tavily_ai") {
     await runStep(
       "people_search",
       () =>
@@ -1357,15 +1441,13 @@ export async function discoverPeople(params: {
     appendTavilyKeySwitchWarning(warnings);
   }
 
-  if (external.length === 0 && hasApolloKey() && cfg.searchProvider !== "apollo" && apolloDomain) {
-    try {
-      await pullApolloPeople();
-    } catch (e) {
-      if (isApolloAuthError(e)) {
-        warnings.push("Apollo key invalid, using web search.");
-      } else {
-        errors.push(stepFailureMessage("apollo_people", e));
-      }
+  if (external.length === 0 && cfg.peopleSearchProvider === "apollo") {
+    if (!hasApolloKey()) {
+      warnings.push("Apollo is selected for people search, but APOLLO_API_KEY is not configured.");
+    } else if (!apolloDomain) {
+      warnings.push(`No website domain for ${params.companyName}. Apollo needs a company domain to find people.`);
+    } else {
+      warnings.push(`Apollo found no matching people for ${params.companyName}.`);
     }
   }
 
@@ -1392,7 +1474,7 @@ export async function discoverPeople(params: {
       if (quotaMsg && !warnings.some(isTavilyQuotaError)) {
         warnings.push(quotaMsg);
       }
-    } else if (!hasTavilyKeys()) {
+    } else if (cfg.peopleSearchProvider === "tavily_ai" && !hasTavilyKeys()) {
       errors.push("TAVILY_API_KEY is missing. Add it in .env.local to search LinkedIn for decision-makers.");
     } else if (!hasActionable) {
       if (!resolvedDomain) {
@@ -1815,6 +1897,9 @@ function dbToResult(a: typeof accounts.$inferSelect): ScoutCompanyResult {
     industry: a.industry ?? undefined,
     city: a.city ?? undefined,
     employees: a.employees ?? undefined,
+    scaleStatus: a.scaleStatus as ScoutCompanyResult["scaleStatus"] | undefined,
+    scaleSource: a.scaleSource as ScoutCompanyResult["scaleSource"] | undefined,
+    scaleEvidence: a.scaleEvidence ?? undefined,
     logo: a.logo ?? undefined,
     fitScore: a.fitScore ?? undefined,
     intelNotes: a.intelNotes ?? undefined,

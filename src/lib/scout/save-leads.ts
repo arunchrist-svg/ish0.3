@@ -14,6 +14,7 @@ import {
   isNamedPerson,
 } from "@/lib/enrichment/enrich-lead";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
+import { searchProviderUsesTavily } from "@/lib/enrichment/config";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { isGenericCompanyEmail, sanitizeEmail, sanitizePhone, resolveSavedWhatsAppPhone } from "@/lib/enrichment/validate-contact";
@@ -222,9 +223,19 @@ async function upsertScoutAccount(params: {
   tenantId: string;
   workspaceId: string;
   skipExternalDomain?: boolean;
+  allowExternal?: boolean;
+  allowTavily?: boolean;
   candidates?: AccountRow[];
 }): Promise<{ account: AccountRow; created: boolean; resolvedCompany: ScoutCompanyResult }> {
-  const { company, tenantId, workspaceId, skipExternalDomain = false, candidates } = params;
+  const {
+    company,
+    tenantId,
+    workspaceId,
+    skipExternalDomain = false,
+    allowExternal = true,
+    allowTavily = true,
+    candidates,
+  } = params;
   const usableDomain = usableStoredDomain(company.domain, company.name);
 
   let resolvedCompany: ScoutCompanyResult = {
@@ -239,13 +250,14 @@ async function upsertScoutAccount(params: {
       domain: usableDomain,
       website: company.website ?? `https://www.${usableDomain}`,
     };
-  } else if (!skipExternalDomain) {
+  } else if (!skipExternalDomain && allowExternal) {
     const domainResolution = await resolveCompanyDomain({
       companyName: company.name,
       domain: company.domain,
       website: company.website,
       city: company.city,
       allowExternal: true,
+      allowTavily,
     });
     resolvedCompany = {
       ...company,
@@ -288,6 +300,18 @@ async function upsertScoutAccount(params: {
         industry: existing.industry ?? resolvedCompany.industry ?? null,
         city: existing.city ?? resolvedCompany.city ?? null,
         employees: existing.employees ?? resolvedCompany.employees ?? null,
+        scaleStatus:
+          existing.scaleStatus === "verified"
+            ? existing.scaleStatus
+            : resolvedCompany.scaleStatus ?? existing.scaleStatus ?? null,
+        scaleSource:
+          existing.scaleStatus === "verified"
+            ? existing.scaleSource
+            : resolvedCompany.scaleSource ?? existing.scaleSource ?? null,
+        scaleEvidence:
+          existing.scaleStatus === "verified"
+            ? existing.scaleEvidence
+            : resolvedCompany.scaleEvidence ?? existing.scaleEvidence ?? null,
         logo: existing.logo ?? resolvedCompany.logo ?? null,
         intelNotes: existing.intelNotes ?? resolvedCompany.intelNotes ?? null,
         fitScore: existing.fitScore ?? resolvedCompany.fitScore ?? null,
@@ -308,6 +332,9 @@ async function upsertScoutAccount(params: {
       industry: resolvedCompany.industry,
       city: resolvedCompany.city,
       employees: resolvedCompany.employees,
+      scaleStatus: resolvedCompany.scaleStatus,
+      scaleSource: resolvedCompany.scaleSource,
+      scaleEvidence: resolvedCompany.scaleEvidence,
       logo: resolvedCompany.logo,
       fitScore: resolvedCompany.fitScore,
       budgetBand: resolvedCompany.budgetBand,
@@ -331,6 +358,7 @@ export async function saveScoutCompanies(params: {
 }): Promise<SaveScoutCompaniesResult> {
   const unique = uniqueScoutCompanies(params.companies);
   const candidates = await loadWorkspaceAccountCandidates(params.tenantId, params.workspaceId);
+  const cfg = await getResolvedWorkspaceEnrichmentConfig();
   const savedAccounts: { id: string; name: string }[] = [];
 
   for (const company of unique) {
@@ -339,6 +367,8 @@ export async function saveScoutCompanies(params: {
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       skipExternalDomain: true,
+      allowExternal: cfg.searchProvider !== "google_places",
+      allowTavily: searchProviderUsesTavily(cfg.searchProvider),
       candidates,
     });
     if (created) candidates.push(account);
@@ -367,6 +397,9 @@ export function accountToScoutCompany(row: AccountRow): ScoutCompanyResult {
     industry: row.industry ?? undefined,
     city: row.city ?? undefined,
     employees: row.employees ?? undefined,
+    scaleStatus: row.scaleStatus as ScoutCompanyResult["scaleStatus"] | undefined,
+    scaleSource: row.scaleSource as ScoutCompanyResult["scaleSource"] | undefined,
+    scaleEvidence: row.scaleEvidence ?? undefined,
     logo: row.logo ?? undefined,
     fitScore: row.fitScore ?? undefined,
     budgetBand: row.budgetBand ?? undefined,
@@ -492,6 +525,8 @@ export async function saveScoutLeads(params: {
     tenantId,
     workspaceId,
     skipExternalDomain: isWizard,
+    allowExternal: cfg.searchProvider !== "google_places",
+    allowTavily: searchProviderUsesTavily(cfg.searchProvider),
   });
   const resolvedAccountId = account.id;
 

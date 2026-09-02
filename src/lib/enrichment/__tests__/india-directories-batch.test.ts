@@ -4,6 +4,7 @@ import {
   directoryQueryBatchCount,
   directorySearchQueryCap,
 } from "@/lib/enrichment/india-directories";
+import { TAVILY_QUOTA_INDIA_DIRECTORIES_MSG } from "@/lib/enrichment/tavily-client";
 
 describe("directoryQueryBatchCount", () => {
   it("keeps a small batch and scales modestly for 100 companies", () => {
@@ -27,5 +28,13 @@ describe("buildDirectoryQueries", () => {
     expect(queries[0]).toMatch(/justdial|sulekha|indiamart/i);
     expect(queries.some((q) => /Banks/.test(q))).toBe(true);
     expect(queries[0]).not.toMatch(/private limited companies/i);
+  });
+});
+
+describe("India Directories provider semantics", () => {
+  it("identifies the Tavily-backed company search in quota messaging", () => {
+    expect(TAVILY_QUOTA_INDIA_DIRECTORIES_MSG).toMatch(/India Directories uses Tavily credits/i);
+    expect(TAVILY_QUOTA_INDIA_DIRECTORIES_MSG).toMatch(/Google Places/i);
+    expect(TAVILY_QUOTA_INDIA_DIRECTORIES_MSG).not.toMatch(/People search/i);
   });
 });

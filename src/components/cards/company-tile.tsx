@@ -4,13 +4,21 @@ import { cn } from "@/lib/utils";
 import { getScoreColor } from "@/design-system/tokens/colors";
 import { MapPin, Check, ChevronRight } from "lucide-react";
 import type { Company } from "@/lib/scouting-data";
-import { formatScoutSizeLine } from "@/lib/enrichment/employee-size";
+import { formatVerifiedScoutSizeLine } from "@/lib/enrichment/employee-size";
 import { CompanyLogo } from "@/components/company/company-logo";
 import { LeadabilityBadge } from "@/components/company/leadability-badge";
 import { scoutCardSurface } from "./scout-card-surface";
 
-function SizePill({ employees, compact = false }: { employees?: string; compact?: boolean }) {
-  const line = formatScoutSizeLine(employees);
+function SizePill({
+  employees,
+  scaleStatus,
+  compact = false,
+}: {
+  employees?: string;
+  scaleStatus?: Company["scaleStatus"];
+  compact?: boolean;
+}) {
+  const line = formatVerifiedScoutSizeLine({ employees, scaleStatus });
   const known = line !== "Unknown scale";
   return (
     <span
@@ -123,7 +131,7 @@ export function CompanyTile({
             <span className="inline-block max-w-full truncate rounded-full bg-brand-canvas px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-brand-ink-soft">
               {company.type}
             </span>
-            <SizePill employees={company.employees} compact />
+            <SizePill employees={company.employees} scaleStatus={company.scaleStatus} compact />
             <LeadabilityBadge
               compact
               leadabilityBand={company.leadabilityBand}
@@ -215,7 +223,7 @@ export function CompanyTile({
           <span className="inline-block rounded-full bg-brand-canvas px-2.5 py-0.5 text-[10.5px] font-medium text-brand-ink-soft">
             {company.type}
           </span>
-          <SizePill employees={company.employees} />
+          <SizePill employees={company.employees} scaleStatus={company.scaleStatus} />
           <LeadabilityBadge
             leadabilityBand={company.leadabilityBand}
             leadabilityScore={company.leadabilityScore}

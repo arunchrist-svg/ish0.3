@@ -135,8 +135,13 @@ export function rankPeopleForScout(
         /\b(hr|people|chro|procurement|purchase|sourcing|admin|facilit)\b/i.test(title) &&
         /\b(director|head|vp|chro|chief|manager)\b/i.test(title)
       ) {
-        bonus += 14;
+        bonus += 16;
         reasons.push("HR/Procurement DM");
+        // Top-DM tier: CHRO, CPO, Head of HR — the single decision-maker for gifting budgets.
+        if (/\b(chro|cpo|head of hr|head of people|chief people|chief hr)\b/i.test(title)) {
+          bonus += 8;
+          reasons.push("top DM");
+        }
       }
       if (
         preferDm &&

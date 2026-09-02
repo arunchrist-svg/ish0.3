@@ -37,6 +37,11 @@ import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { mapWithConcurrency } from "@/lib/async";
 import { isLogoUrl } from "@/lib/company-logo";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
+import type { PeopleSearchProvider, SearchProvider } from "@/lib/enrichment/config";
+import {
+  filterCompanyNoticesForProvider,
+  filterPeopleNoticesForProvider,
+} from "@/lib/enrichment/provider-notices";
 import type { ScoutSessionFilters, ScoutSessionPerson, ScoutSessionUiState } from "@/db/schema";
 import { toast } from "sonner";
 import { normalizeLinkedInUrl, personFieldOrEmpty, cn } from "@/lib/utils";
@@ -59,7 +64,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { ScoutHistoryPanel } from "./scout-history-panel";
 import { RolePickerModal, FetchLeadsRiskModal } from "./role-picker-modal";
 import { SCOUT_SENIORITY, SCOUT_DEPARTMENTS, SCOUT_EMPLOYEE_BANDS, parseScoutVerticalScope, type ScoutVerticalScope } from "@/lib/scouting-data";
-import { extractEmployeesFromText, normalizeEmployeeField } from "@/lib/enrichment/employee-size";
+import { extractEmployeesFromText, inferScaleMetadata, normalizeEmployeeField } from "@/lib/enrichment/employee-size";
 import {
   peoplePerCompanyLimit,
   scoutPeopleCoverage,
@@ -214,6 +219,11 @@ function companyKey(c: ScoutCompanyResult, index = 0): string {
 }
 
 function toCompanyShape(c: ScoutCompanyResult, index = 0) {
+  const employees =
+    normalizeEmployeeField(c.employees) ||
+    extractEmployeesFromText(`${c.intelNotes ?? ""} ${c.name}`) ||
+    "—";
+  const scale = inferScaleMetadata({ ...c, employees });
   return {
     id: companyKey(c, index),
     logo: isLogoUrl(c.logo) ? c.logo : undefined,
@@ -223,10 +233,9 @@ function toCompanyShape(c: ScoutCompanyResult, index = 0) {
     type: c.industry ?? "Corporate",
     city: c.city ?? "",
     industry: c.industry ?? "",
-    employees:
-      normalizeEmployeeField(c.employees) ||
-      extractEmployeesFromText(`${c.intelNotes ?? ""} ${c.name}`) ||
-      "—",
+    employees,
+    ...scale,
+    scaleEvidence: c.scaleEvidence,
     revenue: c.revenue ?? "—",
     founded: 0,
     fitScore: c.fitScore ?? 60,
@@ -440,6 +449,9 @@ export function ScoutingApp() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [peopleCities, setPeopleCities] = useState<string[]>([]);
   const [dataMode, setDataMode] = useState<DataMode>("free");
+  const [searchProvider, setSearchProvider] = useState<SearchProvider>("india_directories");
+  const [peopleSearchProvider, setPeopleSearchProvider] = useState<PeopleSearchProvider>("tavily_ai");
+  const [scaleVerificationAvailable, setScaleVerificationAvailable] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [icpHint, setIcpHint] = useState<string | null>(null);
   const [platformIntent, setPlatformIntent] = useState<PlatformIntent | null>(null);
@@ -710,7 +722,8 @@ export function ScoutingApp() {
     setFetchSeed(session.uiState.fetchSeed ?? 0);
     setHasMore(Boolean(session.uiState.hasMore));
     setHasFetched(true);
-    setDiscoveryNotice(session.warnings?.length ? session.warnings.join(" ") : null);
+    const sessionWarnings = filterCompanyNoticesForProvider(session.warnings ?? [], searchProvider);
+    setDiscoveryNotice(sessionWarnings.length ? sessionWarnings.join(" ") : null);
     setFetchMessage(null);
     setPeopleNotice(null);
     activeSessionIdRef.current = session.id;
@@ -818,6 +831,9 @@ export function ScoutingApp() {
           );
         }
         if (data.dataMode) setDataMode(data.dataMode);
+        if (data.searchProvider) setSearchProvider(data.searchProvider);
+        if (data.peopleSearchProvider) setPeopleSearchProvider(data.peopleSearchProvider);
+        setScaleVerificationAvailable(Boolean(data.scaleVerificationAvailable));
         if (typeof data.scoutCompaniesLimit === "number") setScoutCompaniesLimit(data.scoutCompaniesLimit);
         if (typeof data.scoutLeadsLimit === "number") setScoutLeadsLimit(data.scoutLeadsLimit);
         if (Array.isArray(data.scoutPeopleCities) && data.scoutPeopleCities.length) {
@@ -962,13 +978,26 @@ export function ScoutingApp() {
 
       try {
         const batchExclude = append ? companies.map((c) => c.name) : [];
-        const savedExclude = savedAccountShapes.map((c) => c.name);
+        // Only exclude saved accounts whose city overlaps the current scout area.
+        // A company saved from Hosur should not block results in Kasturi Nagar.
+        const scoutCitySet = new Set(nextCities.map((c) => c.toLowerCase()));
+        const savedExclude = savedAccountShapes
+          .filter((c) => {
+            if (!c.city) return true;
+            const savedCity = c.city.toLowerCase();
+            return scoutCitySet.has(savedCity) ||
+              nextCities.some((nc) => {
+                const ncLower = nc.toLowerCase();
+                return savedCity.includes(ncLower) || ncLower.includes(savedCity);
+              });
+          })
+          .map((c) => c.name);
         const excludeNames =
           options?.excludeNames ?? [...new Set([...batchExclude, ...savedExclude])];
         const excludeSavedAccounts = options?.excludeSavedAccounts ?? !options?.companyName;
         const seed = options?.seed ?? fetchSeed;
         const requestParams = {
-          cities: nextCities,
+          cities: [...new Set(nextCities)],
           industries: nextIndustries,
           dataMode,
           seniority,
@@ -1041,24 +1070,46 @@ export function ScoutingApp() {
         const shaped = applyCompanies(response.companies, true);
         setHasMore(response.hasMore);
 
-        if (append && !shaped.length && !response.errors?.length) {
+        const companyErrors = filterCompanyNoticesForProvider(response.errors ?? [], searchProvider);
+        const companyWarnings = filterCompanyNoticesForProvider(response.warnings ?? [], searchProvider);
+        const qualityWarnings: string[] = [];
+        const coverage = response.qualityMetrics?.coverage;
+        const scale = response.qualityMetrics?.scale;
+        if (coverage?.sampled) {
+          qualityWarnings.push(
+            `Showing a sample from ${coverage.citiesSearched.length} of ${coverage.citiesRequested} cities and ${coverage.industriesSearched.length} of ${coverage.industriesRequested} industries. Load more to rotate coverage.`,
+          );
+        }
+        if (employeeBands.length && scale?.unknown) {
+          qualityWarnings.push(
+            `${scale.unknown} result${scale.unknown === 1 ? "" : "s"} have unknown scale. Large scale is not verified by the selected provider.`,
+          );
+        }
+        if (employeeBands.length && scale?.excluded) {
+          qualityWarnings.push(
+            `${scale.excluded} result${scale.excluded === 1 ? "" : "s"} were excluded because the known employee range did not match the selected scale.`,
+          );
+        }
+
+        if (append && !shaped.length && !companyErrors.length) {
           const helpfulWarning =
-            response.warnings?.find((w) =>
+            companyWarnings.find((w) =>
               /verified city|already saved|Found \d+ candidate|directory|parse|no companies matched|listings found/i.test(
                 w,
               ),
-            ) ?? response.warnings?.[0];
+            ) ?? companyWarnings[0];
           toast.info(
             helpfulWarning ??
               "No additional companies found for these filters. Try other cities or industries.",
           );
         }
 
-        const allNotices = [...(response.errors ?? []), ...(response.warnings ?? [])];
+        const displayedWarnings = [...companyWarnings, ...qualityWarnings];
+        const allNotices = [...companyErrors, ...displayedWarnings];
         const primaryNotice = pickPrimaryNotice(allNotices);
 
-        if (response.warnings?.length) {
-          setDiscoveryNotice(response.warnings.join(" "));
+        if (displayedWarnings.length) {
+          setDiscoveryNotice(displayedWarnings.join(" "));
         } else {
           setDiscoveryNotice(null);
         }
@@ -1076,14 +1127,14 @@ export function ScoutingApp() {
 
         if (!append && !shaped.length && !primaryNotice) {
           const helpfulWarning =
-            response.warnings?.find((w) =>
+            companyWarnings.find((w) =>
               /verified city|directory|parse|no companies found|listings found/i.test(w),
-            ) ?? response.warnings?.[0];
+            ) ?? companyWarnings[0];
           setFetchMessage(helpfulWarning ?? null);
         }
 
         const mergedForSession = append ? mergeCompanies(companies, shaped) : shaped;
-        const warnings = response.warnings ?? [];
+        const warnings = companyWarnings;
         if (!append) {
           setPeople([]);
           peopleRef.current = [];
@@ -1148,6 +1199,7 @@ export function ScoutingApp() {
     },
     [
       dataMode,
+      searchProvider,
       companies,
       fetchSeed,
       scoutCompaniesLimit,
@@ -1779,6 +1831,7 @@ export function ScoutingApp() {
           companyDomain: resolveCompanyDomain(company._raw),
           companyWebsite: company._raw.website,
           dataMode,
+          peopleSearchProvider,
           limit: peoplePerCompanyLimit(scoutLeadsLimit),
           seniority: activeSeniority,
           departments: activeDepartments,
@@ -1789,7 +1842,12 @@ export function ScoutingApp() {
           locationScope: geo.locationScope,
         });
         applyResolvedCompanyDomain(company.id, resolvedDomain, resolvedWebsite);
-        peopleWarnings.push(...(warnings ?? []), ...(errors ?? []));
+        peopleWarnings.push(
+          ...filterPeopleNoticesForProvider(
+            [...(warnings ?? []), ...(errors ?? [])],
+            peopleSearchProvider,
+          ),
+        );
         const shaped = results.map((p, j) => toPersonShape(p, company.id, j));
         allPeople.push(...shaped);
         setPeople((prev) => {
@@ -1798,7 +1856,10 @@ export function ScoutingApp() {
         });
       } catch (e) {
         peopleWarnings.push(
-          e instanceof Error ? e.message : `People search failed for ${company.name}`,
+          ...filterPeopleNoticesForProvider(
+            [e instanceof Error ? e.message : `People search failed for ${company.name}`],
+            peopleSearchProvider,
+          ),
         );
       } finally {
         doneCount += 1;
@@ -1829,6 +1890,16 @@ export function ScoutingApp() {
       setPrimaryPersonId(null);
     }
 
+    if (peopleSearchProvider === "none") {
+      setLoadingPeople(false);
+      setFetchProgress({ done: selected.length, total: selected.length });
+      setPeopleNotice({
+        headline: "People search is turned off",
+        detail: "Select Tavily or Apollo in Settings to find contacts.",
+      });
+      return;
+    }
+
     const leadsDedupePromise = fetch("/api/leads/dedupe")
       .then((res) => res.json())
       .catch(() => null);
@@ -1851,6 +1922,7 @@ export function ScoutingApp() {
                 website: c._raw.website,
               })),
               dataMode,
+              peopleSearchProvider,
               limit: peoplePerCompanyLimit(scoutLeadsLimit),
               seniority: activeSeniority,
               departments: activeDepartments,
@@ -1864,7 +1936,12 @@ export function ScoutingApp() {
               const company = selected.find((c) => c.id === companyId);
               if (!company) return;
               applyResolvedCompanyDomain(company.id, batchResult.resolvedDomain, batchResult.resolvedWebsite);
-              peopleWarnings.push(...(batchResult.warnings ?? []), ...(batchResult.errors ?? []));
+              peopleWarnings.push(
+                ...filterPeopleNoticesForProvider(
+                  [...(batchResult.warnings ?? []), ...(batchResult.errors ?? [])],
+                  peopleSearchProvider,
+                ),
+              );
               const shaped = batchResult.people.map((p, j) => toPersonShape(p, company.id, j));
               for (const person of shaped) incomingIds.add(person.id);
               allPeople.push(...shaped);
@@ -2225,6 +2302,7 @@ export function ScoutingApp() {
     departments,
     selectedCount: view === "companies" ? selectedCompanyIds.size : selectedPersonIds.size,
     settingsLoaded,
+    scaleVerificationAvailable,
     scoutCompaniesLimit,
     scoutLeadsLimit,
     loadingCompanies,

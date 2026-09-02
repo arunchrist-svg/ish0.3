@@ -1,4 +1,4 @@
-import type { EnrichmentConfig } from "./config";
+import { searchProviderUsesTavily, type EnrichmentConfig } from "./config";
 import { friendlyLLMError } from "@/lib/llm";
 import { hasGeminiKeys } from "@/lib/llm/gemini-keys";
 import { hasAnthropicKey } from "@/lib/llm/provider-chain";
@@ -19,17 +19,18 @@ export function hasLLMKey(): boolean {
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
   const errors: string[] = [];
-  const needsTavily =
-    cfg.searchProvider === "india_directories" ||
-    cfg.searchProvider === "tavily_ai" ||
-    cfg.fallbackToAI;
+  const needsTavily = searchProviderUsesTavily(cfg.searchProvider);
 
   if (needsTavily && !hasTavilyKey()) {
-    errors.push("TAVILY_API_KEY is missing. Add it in .env.local or Settings to discover companies.");
+    errors.push(
+      cfg.searchProvider === "india_directories"
+        ? "India Directories uses Tavily to search Indian directory sites. Add a Tavily key or switch Company search to Google Places."
+        : "TAVILY_API_KEY is missing. Add it in .env.local or Settings to discover companies.",
+    );
   }
 
   if (
-    (cfg.searchProvider === "india_directories" || cfg.searchProvider === "tavily_ai" || cfg.fallbackToAI) &&
+    needsTavily &&
     !hasLLMKey()
   ) {
     errors.push(

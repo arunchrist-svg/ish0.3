@@ -14,6 +14,7 @@ import { AreaOfFocusSettings } from "@/components/settings/area-of-focus-setting
 import { DEFAULT_SCOUT_GEO, summarizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
 import {
   SEARCH_PROVIDER_LABELS,
+  PEOPLE_SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
   DATA_MODE_OPTIONS,
   SCOUT_VOLUME_PRESETS,
@@ -27,6 +28,7 @@ import {
 
 type Props = {
   config: EnrichmentConfig | null;
+  apolloConfigured?: boolean;
   prospeoConfigured?: boolean;
   zintlrConfigured?: boolean;
   onUpdate: <K extends keyof EnrichmentConfig>(key: K, value: EnrichmentConfig[K]) => void;
@@ -35,6 +37,7 @@ type Props = {
 
 export function EnrichmentTab({
   config,
+  apolloConfigured = false,
   prospeoConfigured = false,
   zintlrConfigured = false,
   onUpdate,
@@ -54,6 +57,10 @@ export function EnrichmentTab({
     SearchProvider,
     (typeof SEARCH_PROVIDER_LABELS)[SearchProvider],
   ][];
+  const peopleSearchProviders = Object.entries(PEOPLE_SEARCH_PROVIDER_LABELS) as [
+    keyof typeof PEOPLE_SEARCH_PROVIDER_LABELS,
+    (typeof PEOPLE_SEARCH_PROVIDER_LABELS)[keyof typeof PEOPLE_SEARCH_PROVIDER_LABELS],
+  ][];
   const enrichProviders = Object.entries(ENRICH_PROVIDER_LABELS) as [
     EnrichProvider,
     (typeof ENRICH_PROVIDER_LABELS)[EnrichProvider],
@@ -70,17 +77,63 @@ export function EnrichmentTab({
 
   return (
     <div className="pb-6">
-      <SettingsGroup title="Providers" className="mb-4">
+      <SettingsGroup
+        title="Providers"
+        className="mb-4"
+        footer="Company search finds businesses. People search runs only after a company is selected and finds contacts for that company. These providers are independent."
+      >
         <SettingsRow className="justify-between py-2.5">
           <span className="text-[13px] font-semibold text-brand-ink">Company search</span>
           <SettingsSegmented
             value={config.searchProvider}
             onChange={(v) => onUpdate("searchProvider", v)}
-            options={searchProviders.map(([value, meta]) => ({
+            options={searchProviders.map(([value]) => ({
               value,
-              label: value === "india_directories" ? "India" : value === "google_places" ? "Places" : value === "tavily_ai" ? "Tavily" : "Apollo",
+              label:
+                value === "india_directories"
+                  ? "India + Tavily"
+                  : value === "google_places"
+                    ? "Places"
+                    : value === "tavily_ai"
+                      ? "Tavily"
+                      : "Apollo",
             }))}
           />
+        </SettingsRow>
+        {config.searchProvider === "india_directories" ? (
+          <p className="px-4 pb-2 text-[11.5px] leading-relaxed text-brand-ink-soft">
+            India Directories searches JustDial, IndiaMART, Sulekha, ZaubaCorp, and TradeIndia through Tavily credits.
+            People search being Off does not disable this company search.
+          </p>
+        ) : null}
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <div className="min-w-0 flex-1 pr-4">
+            <span className="text-[13px] font-semibold text-brand-ink">People search</span>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
+              Finds HR, Procurement, Admin, and Facilities contacts after a company is selected.
+            </p>
+          </div>
+          <SettingsSegmented
+            value={config.peopleSearchProvider}
+            onChange={(v) => onUpdate("peopleSearchProvider", v)}
+            options={peopleSearchProviders.map(([value]) => ({
+              value,
+              label: value === "tavily_ai" ? "Tavily" : value === "apollo" ? "Apollo" : "Off",
+            }))}
+          />
+        </SettingsRow>
+        <SettingsGroupDivider />
+        <SettingsRow className="justify-between py-2.5">
+          <div className="min-w-0 flex-1 pr-4">
+            <span className="text-[13px] font-semibold text-brand-ink">Scale verification</span>
+            <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
+              Large companies are confirmed only when employee evidence is available.
+            </p>
+          </div>
+          <span className="shrink-0 text-[12px] font-semibold text-brand-ink-soft">
+            {apolloConfigured ? "Apollo configured" : "No verifier"}
+          </span>
         </SettingsRow>
         <SettingsGroupDivider />
         <SettingsRow className="justify-between py-2.5">

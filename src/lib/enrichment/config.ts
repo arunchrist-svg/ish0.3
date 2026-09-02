@@ -4,11 +4,13 @@ import { DEFAULT_SCOUT_GEO, normalizeScoutGeo, type ScoutGeoSelection } from "@/
 import { normalizeScoutAreasOfFocus, type ScoutAreaOfFocus } from "@/lib/geo/area-of-focus";
 
 export type SearchProvider = "india_directories" | "google_places" | "tavily_ai" | "apollo";
+export type PeopleSearchProvider = "tavily_ai" | "apollo" | "none";
 export type EnrichProvider = "website_email" | "prospeo" | "apollo" | "hunter" | "none";
 export type DataMode = "free" | "paid" | "auto";
 
 export type EnrichmentConfig = {
   searchProvider: SearchProvider;
+  peopleSearchProvider: PeopleSearchProvider;
   enrichProvider: EnrichProvider;
   fallbackToAI: boolean;
   enrichOnImport: boolean;
@@ -69,9 +71,9 @@ export function getScoutLeadsLimit(): number {
 
 export const SEARCH_PROVIDER_LABELS: Record<SearchProvider, { label: string; desc: string; badge: string }> = {
   india_directories: {
-    label: "India Directories",
-    desc: "JustDial, IndiaMART, Sulekha, ZaubaCorp — best free coverage for Indian SMBs",
-    badge: "Free",
+    label: "India + Tavily",
+    desc: "Tavily searches JustDial, IndiaMART, Sulekha, ZaubaCorp, and TradeIndia for Indian companies",
+    badge: "Tavily",
   },
   google_places: {
     label: "Google Places",
@@ -139,6 +141,27 @@ export const ENRICH_PROVIDER_LABELS: Record<EnrichProvider, { label: string; des
   },
 };
 
+export const PEOPLE_SEARCH_PROVIDER_LABELS: Record<
+  PeopleSearchProvider,
+  { label: string; desc: string; badge: string }
+> = {
+  tavily_ai: {
+    label: "Tavily + AI",
+    desc: "Google-style web and LinkedIn search for people",
+    badge: "Usage based",
+  },
+  apollo: {
+    label: "Apollo.io",
+    desc: "Structured people search by company and title",
+    badge: "Paid",
+  },
+  none: {
+    label: "None",
+    desc: "Do not search externally for people",
+    badge: "No search",
+  },
+};
+
 export function hasApolloKey(): boolean {
   return !!process.env.APOLLO_API_KEY;
 }
@@ -157,15 +180,51 @@ export function hasZintlrKeys(): boolean {
   return Boolean(token && secret);
 }
 
+/** Company providers that spend Tavily credits during discovery. */
+export function searchProviderUsesTavily(provider: SearchProvider): boolean {
+  return provider === "india_directories" || provider === "tavily_ai";
+}
+
+/**
+ * Which providers may backfill from the Tavily-backed India registry directories
+ * when a search comes up short.
+ *
+ * Apollo is included because `auto`/`paid` mode routes every scout to Apollo when an
+ * Apollo key is present, and Apollo has almost no coverage of Indian tier-2/3 cities.
+ * Without this, an Apollo miss on a city like Bellary left no working provider:
+ * the directory fallback was gated off, Places was the only remaining fill, and the
+ * Tavily AI fallback is skipped for Apollo — so the scout returned zero with no warning.
+ *
+ * Google Places stays out on purpose: its misses should not spend Tavily quota.
+ */
+export function shouldFallbackToIndiaDirectories(provider: SearchProvider): boolean {
+  return provider === "tavily_ai" || provider === "apollo";
+}
+
 /** Resolve search provider from dataMode + configured default */
 export function resolveSearchProvider(dataMode: DataMode, configured: SearchProvider): SearchProvider {
   if (dataMode === "paid" || dataMode === "auto") {
     if (hasApolloKey()) return "apollo";
   }
   if (configured === "apollo" && !hasApolloKey()) {
-    return "india_directories";
+    return configured;
   }
   return configured;
+}
+
+/** Resolve the provider used only for people/contact discovery. */
+export function resolvePeopleSearchProvider(
+  dataMode: DataMode,
+  configured: PeopleSearchProvider,
+): PeopleSearchProvider {
+  if ((dataMode === "paid" || dataMode === "auto") && hasApolloKey()) {
+    return configured === "tavily_ai" ? "apollo" : configured;
+  }
+  return configured;
+}
+
+export function defaultPeopleSearchProvider(searchProvider: SearchProvider): PeopleSearchProvider {
+  return searchProvider === "apollo" ? "apollo" : "tavily_ai";
 }
 
 /** Resolve enrich provider from dataMode + configured default */
@@ -182,6 +241,11 @@ export function resolveEnrichProvider(dataMode: DataMode, configured: EnrichProv
 export function getEnrichmentConfig(): EnrichmentConfig {
   return {
     searchProvider: (process.env.ENRICHMENT_SEARCH_PROVIDER as SearchProvider) ?? "india_directories",
+    peopleSearchProvider:
+      (process.env.ENRICHMENT_PEOPLE_SEARCH_PROVIDER as PeopleSearchProvider) ??
+      defaultPeopleSearchProvider(
+        (process.env.ENRICHMENT_SEARCH_PROVIDER as SearchProvider) ?? "india_directories",
+      ),
     enrichProvider: (process.env.ENRICHMENT_ENRICH_PROVIDER as EnrichProvider) ?? "website_email",
     fallbackToAI: process.env.ENRICHMENT_FALLBACK_TO_AI !== "false",
     enrichOnImport: process.env.ENRICHMENT_ENRICH_ON_IMPORT !== "false",
@@ -203,15 +267,26 @@ export function resolveEnrichmentConfig(
   const base = { ...getEnrichmentConfig(), ...override };
   const mode = dataMode ?? base.dataMode;
   const configuredSearch = override?.searchProvider ?? base.searchProvider;
+  const configuredPeopleSearch = override?.peopleSearchProvider ?? base.peopleSearchProvider;
   const configuredEnrich = override?.enrichProvider ?? base.enrichProvider;
+  const fallbackToAI =
+    configuredSearch === "google_places" ? false : Boolean(base.fallbackToAI);
 
   const giftIntel = resolveGiftIntelConfig(override ?? base);
   const scoutAreasOfFocus = normalizeScoutAreasOfFocus(base.scoutAreasOfFocus, base.scoutAreaOfFocus);
   return {
     ...base,
     dataMode: mode,
-    searchProvider: resolveSearchProvider(mode, configuredSearch),
+    // A provider selected in the UI is explicit. Data-mode upgrades only apply
+    // to environment defaults, never to a user's provider choice.
+    searchProvider: override?.searchProvider
+      ? configuredSearch
+      : resolveSearchProvider(mode, configuredSearch),
+    peopleSearchProvider: override?.peopleSearchProvider
+      ? configuredPeopleSearch
+      : resolvePeopleSearchProvider(mode, configuredPeopleSearch),
     enrichProvider: resolveEnrichProvider(mode, configuredEnrich),
+    fallbackToAI,
     giftIntelProductCategory: giftIntel.productCategory || undefined,
     giftIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
     brandIntelProductCategory: giftIntel.productCategory || undefined,

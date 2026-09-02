@@ -12,6 +12,7 @@ import {
 import { normalizeScoutAreasOfFocus } from "@/lib/geo/area-of-focus";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
+import { hasApolloKey } from "@/lib/enrichment/config";
 
 export const preferredRegion = ["sin1"];
 
@@ -82,6 +83,9 @@ export async function GET() {
           website: c.website ?? undefined,
         })),
         dataMode: config.dataMode,
+        searchProvider: config.searchProvider,
+        peopleSearchProvider: config.peopleSearchProvider,
+        scaleVerificationAvailable: hasApolloKey(),
         scoutCompaniesLimit: config.scoutCompaniesLimit,
         scoutLeadsLimit: config.scoutLeadsLimit,
         scoutPeopleCities: config.scoutPeopleCities ?? [],
@@ -93,7 +97,7 @@ export async function GET() {
         focusLocations: scoutLocationOptions(scoutGeo, scoutAreasOfFocus, "focus"),
         interestLocations: scoutLocationOptions(scoutGeo, scoutAreasOfFocus, "interest"),
       },
-      { headers: { "Cache-Control": "private, max-age=30" } },
+      { headers: { "Cache-Control": "private, no-store" } },
     );
     return withServerTiming(res, marks, t0);
   } catch (e) {

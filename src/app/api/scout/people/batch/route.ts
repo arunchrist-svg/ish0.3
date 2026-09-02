@@ -37,6 +37,7 @@ export async function POST(req: Request) {
       companies,
       dataMode = (process.env.DEFAULT_DATA_MODE ?? "free") as DataMode,
       searchProvider,
+      peopleSearchProvider,
       enrichProvider,
       limit: requestedLimit,
       seniority = [],
@@ -54,6 +55,7 @@ export async function POST(req: Request) {
 
     const requestOverride = {
       ...(searchProvider ? { searchProvider } : {}),
+      ...(peopleSearchProvider ? { peopleSearchProvider } : {}),
       ...(enrichProvider ? { enrichProvider } : {}),
       dataMode,
     };

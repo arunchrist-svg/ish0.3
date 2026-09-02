@@ -9,6 +9,7 @@ import { isKeepableContactEmail } from "@/lib/enrichment/company-domain-quality"
 import { refreshPermutationEmails, toDbEmailStatus, isPermutationGuessEmail } from "@/lib/enrichment/contact-emails";
 import { resolveAccountDomain } from "@/lib/enrichment/email-permutations";
 import { nameCompanyDedupeKey } from "@/lib/leads/duplicates";
+import { canManuallyAdvance, parseDealAmount } from "@/lib/pipeline-status";
 export class LeadNotFoundError extends Error {
   constructor() {
     super("Lead not found");
@@ -407,6 +408,64 @@ export async function updateLeadFields(input: UpdateLeadInput): Promise<void> {
     entityId: input.leadId,
     metadata: { fields: Object.keys(input).filter((k) => k !== "tenantId" && k !== "workspaceId" && k !== "actorId" && k !== "leadId") },
   });
+}
+
+export async function updateLeadStatus(input: {
+  tenantId: string;
+  workspaceId: string;
+  actorId?: string;
+  leadId: string;
+  status: string;
+  closedDealAmount?: string;
+  source?: "manual" | "agent";
+}): Promise<{ status: string }> {
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.leadId) });
+  if (!lead || lead.tenantId !== input.tenantId || lead.workspaceId !== input.workspaceId) {
+    throw new LeadNotFoundError();
+  }
+
+  if (!canManuallyAdvance(lead.status, input.status)) {
+    throw new Error(`Cannot advance from ${lead.status} to ${input.status}`);
+  }
+
+  if (input.status === "closed") {
+    if (!input.closedDealAmount?.trim()) {
+      throw new Error("closedDealAmount required to close deal");
+    }
+    if (parseDealAmount(input.closedDealAmount) === null) {
+      throw new Error("Invalid deal amount");
+    }
+  }
+
+  const updates: { status: string; closedDealAmount?: string; updatedAt: Date } = {
+    status: input.status,
+    updatedAt: new Date(),
+  };
+  if (input.status === "closed" && input.closedDealAmount) {
+    updates.closedDealAmount = input.closedDealAmount.trim();
+  }
+
+  await db.update(leads).set(updates).where(eq(leads.id, input.leadId));
+
+  if (input.status === "closed") {
+    await db.insert(yieldFunnel).values({
+      leadId: input.leadId,
+      stage: "po_closed",
+      metadata: { closedDealAmount: input.closedDealAmount?.trim(), source: input.source ?? "manual" },
+    });
+  }
+
+  await logAudit({
+    tenantId: input.tenantId,
+    workspaceId: input.workspaceId,
+    actorId: input.actorId,
+    action: `lead.status.${input.status}`,
+    entityType: "lead",
+    entityId: input.leadId,
+    metadata: { from: lead.status, to: input.status, closedDealAmount: input.closedDealAmount },
+  });
+
+  return { status: input.status };
 }
 
 export async function deleteLeadById(params: {

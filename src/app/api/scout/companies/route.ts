@@ -7,7 +7,6 @@ import type { DataMode, ScoutCompanyResult } from "@/lib/enrichment/types";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import {
   getResolvedWorkspaceEnrichmentConfig,
-  loadWorkspaceEnrichmentOverrides,
 } from "@/lib/settings/workspace-settings";
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
 import { MAX_SCOUT_COMPANIES_LIMIT } from "@/lib/enrichment/config";
@@ -65,9 +64,7 @@ export async function POST(req: Request) {
       ...(enrichProvider ? { enrichProvider } : {}),
       dataMode,
     };
-    const storedSettings = await loadWorkspaceEnrichmentOverrides();
     const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
-    const discoveryConfig = { ...storedSettings, ...requestOverride };
     const limit = Math.min(requestedLimit ?? cfg.scoutCompaniesLimit, MAX_SCOUT_COMPANIES_LIMIT);
 
     const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);
@@ -96,7 +93,9 @@ export async function POST(req: Request) {
       cities,
       industries,
       dataMode: cfg.dataMode,
-      config: discoveryConfig,
+      // Pass the fully resolved config. Passing raw workspace overrides here can
+      // re-enable a stale Tavily provider after this route resolved Places.
+      config: cfg,
       limit,
       excludeNames,
       excludeSavedAccounts,
@@ -161,6 +160,7 @@ export async function POST(req: Request) {
             limit,
             warnings: [...new Set(allWarnings)],
             errors: [...new Set(allErrors)],
+            qualityMetrics: result.qualityMetrics,
           });
           await writer.close();
         } catch (e) {
@@ -187,7 +187,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const { companies, warnings, errors } = await discoverCompanies(discoverParams);
+    const { companies, warnings, errors, qualityMetrics } = await discoverCompanies(discoverParams);
 
     const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));
     const allWarnings = [...softPrereqWarnings, ...warnings];
@@ -216,6 +216,7 @@ export async function POST(req: Request) {
       limit,
       warnings: [...new Set(allWarnings)],
       errors: [...new Set(allErrors)],
+      qualityMetrics,
     });
   } catch (e) {
     const { handleApiError } = await import("@/lib/api-errors");

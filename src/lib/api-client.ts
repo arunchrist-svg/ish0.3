@@ -1,5 +1,11 @@
 import type { CompanyOverview, CompanyOverviewInput, CompanyOverviewResult } from "./company-overview";
-import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "./enrichment/types";
+import type {
+  ScoutCompanyResult,
+  ScoutCoverageMetrics,
+  ScoutPersonResult,
+  ScoutScaleMetrics,
+  DataMode,
+} from "./enrichment/types";
 import { cachedFetch, invalidateCached } from "@/lib/client-fetch-cache";
 
 export function isAbortError(error: unknown): boolean {
@@ -122,8 +128,8 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+async function get<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, init);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throwFromErrorBody(err, res.statusText);
@@ -164,6 +170,15 @@ export type ScoutCompaniesResponse = {
   limit: number;
   warnings?: string[];
   errors?: string[];
+  qualityMetrics?: {
+    empty: boolean;
+    returned: number;
+    requested: number;
+    earlyStop: string | null;
+    softCityRecover: boolean;
+    coverage: ScoutCoverageMetrics;
+    scale: ScoutScaleMetrics;
+  };
 };
 
 export async function scoutCompanies(params: {
@@ -240,6 +255,7 @@ export async function scoutCompaniesStream(
         limit: chunk.limit,
         warnings: chunk.warnings,
         errors: chunk.errors,
+        qualityMetrics: chunk.qualityMetrics,
       };
     }
   };
@@ -278,6 +294,7 @@ export async function scoutPeople(params: {
   companyDomain?: string;
   companyWebsite?: string;
   dataMode: DataMode;
+  peopleSearchProvider?: "tavily_ai" | "apollo" | "none";
   limit?: number;
   seniority?: string[];
   departments?: string[];
@@ -305,6 +322,7 @@ export async function scoutPeopleBatch(params: {
     website?: string;
   }[];
   dataMode: DataMode;
+  peopleSearchProvider?: "tavily_ai" | "apollo" | "none";
   limit?: number;
   seniority?: string[];
   departments?: string[];
@@ -327,6 +345,7 @@ export async function scoutPeopleBatchStream(
       website?: string;
     }[];
     dataMode: DataMode;
+    peopleSearchProvider?: "tavily_ai" | "apollo" | "none";
     limit?: number;
     seniority?: string[];
     departments?: string[];
@@ -494,6 +513,9 @@ export type ScoutBootstrapPayload = {
   leads?: { id: string; name: string; company: string }[];
   companies: ScoutBootstrapCompany[] | ScoutCompanyResult[];
   dataMode?: DataMode;
+  searchProvider?: "india_directories" | "google_places" | "tavily_ai" | "apollo";
+  peopleSearchProvider?: "tavily_ai" | "apollo" | "none";
+  scaleVerificationAvailable?: boolean;
   scoutCompaniesLimit?: number;
   scoutLeadsLimit?: number;
   scoutPeopleCities?: string[];
@@ -507,7 +529,7 @@ export type ScoutBootstrapPayload = {
 };
 
 export async function scoutBootstrap(): Promise<ScoutBootstrapPayload> {
-  return get("/api/scout/bootstrap");
+  return get("/api/scout/bootstrap", { cache: "no-store" });
 }
 
 export type ScoutSaveBatchResult = {

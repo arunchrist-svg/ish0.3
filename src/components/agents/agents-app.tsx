@@ -60,6 +60,13 @@ export function AgentsApp() {
   const catalog = useMemo(
     () => [
       {
+        key: "console",
+        title: "Agent Console",
+        body: "Direct the Supervisor to perform safe CRM operations with visible progress and audit trails.",
+        href: "/agents/console",
+        icon: Bot,
+      },
+      {
         key: "scout",
         title: "Scout",
         body: "Batch-discover companies and decision-makers, then enrich email on save.",

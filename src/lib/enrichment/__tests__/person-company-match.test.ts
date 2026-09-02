@@ -284,7 +284,6 @@ describe("current employer matching", () => {
       hitShowsCurrentEmployment(
         {
           title: "Veena Bansal - HR Head - M3M | LinkedIn",
-          url: "https://www.linkedin.com/in/veena-bansal-75176112a/",
           content: "HR Head at M3M India Limited · Bengaluru · Present",
         },
         "3M",

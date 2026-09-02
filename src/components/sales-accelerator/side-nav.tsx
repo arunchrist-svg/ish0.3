@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { useEffect, useState } from "react";
 import {
-  ChevronLeft, Contact, Home,
+  Bot, ChevronLeft, Contact, Home,
   Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,7 @@ const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
   { icon: Rocket, label: "Leads", href: "/leads", key: "leads" },
   { icon: Mail, label: "Outreach", href: "/email", key: "email" },
+  { icon: Bot, label: "Agent Console", href: "/agents/console", key: "agent-console" },
 ];
 
 const moreNav: NavItemEntry[] = [
@@ -177,13 +178,17 @@ export function SideNav() {
 
   useEffect(() => {
     if (pendingKey && activeKey === pendingKey) {
-      setPendingKey(null);
+      const timeout = window.setTimeout(() => setPendingKey(null), 0);
+      return () => window.clearTimeout(timeout);
     }
   }, [pathname, activeKey, pendingKey]);
 
   useEffect(() => {
-    const stored = localStorage.getItem("ish-side-nav-collapsed");
-    if (stored === "true") setCollapsed(true);
+    const timeout = window.setTimeout(() => {
+      const stored = localStorage.getItem("ish-side-nav-collapsed");
+      if (stored === "true") setCollapsed(true);
+    }, 0);
+    return () => window.clearTimeout(timeout);
   }, []);
 
   function toggleCollapsed() {
@@ -203,13 +208,13 @@ export function SideNav() {
     >
       <div
         className={cn(
-          "flex shrink-0 items-center bg-brand-black text-white",
+          "ish-brand-header flex shrink-0 items-center bg-brand-black text-white",
           collapsed ? "flex-col gap-2.5 px-2 py-4" : "justify-between gap-2 px-4 py-4",
         )}
       >
         <span
           className={cn(
-            "shrink-0 font-extrabold tracking-tight text-white",
+            "ish-brand-name shrink-0 font-extrabold tracking-tight text-white",
             collapsed ? "text-[15px]" : "text-[18px]",
           )}
         >

@@ -24,7 +24,13 @@ import {
 import { searchPeopleViaTavily } from "./people-search";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { freeCompanyFilterProvider } from "./filter-companies-llm";
-import { isTavilyQuotaError, optimizedMaxResults, TavilyQuotaError, tavilySearch } from "./tavily-client";
+import {
+  isTavilyQuotaError,
+  optimizedMaxResults,
+  TavilyQuotaError,
+  TAVILY_QUOTA_INDIA_DIRECTORIES_MSG,
+  tavilySearch,
+} from "./tavily-client";
 import { mapWithConcurrency } from "@/lib/async";
 
 const REGISTRY_SITES = ["site:zaubacorp.com", "site:zauba.com", "site:tofler.in"];
@@ -278,7 +284,7 @@ export async function indiaDirectoriesSearchCompanies(params: {
 
   if (!allResults.length) {
     if (quotaExceeded || (lastError && isTavilyQuotaError(lastError.message))) {
-      throw new TavilyQuotaError();
+      throw new TavilyQuotaError(TAVILY_QUOTA_INDIA_DIRECTORIES_MSG);
     }
     meta?.warnings.push(
       `No directory listings found for ${cityStr}. Try another city or broader industry filters.`,

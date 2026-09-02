@@ -2,6 +2,24 @@ import type { CompanyOverview } from "@/lib/company-overview";
 
 export type DataMode = "free" | "paid" | "auto";
 
+export type ScoutScaleStatus = "verified" | "estimated" | "unknown";
+export type ScoutScaleSource = "apollo" | "india_directories" | "google_places" | "internal" | "unknown";
+
+export type ScoutCoverageMetrics = {
+  citiesRequested: number;
+  citiesSearched: string[];
+  industriesRequested: number;
+  industriesSearched: string[];
+  sampled: boolean;
+};
+
+export type ScoutScaleMetrics = {
+  verified: number;
+  estimated: number;
+  unknown: number;
+  excluded: number;
+};
+
 export type ScoutCompanyResult = {
   name: string;
   domain?: string;
@@ -9,6 +27,9 @@ export type ScoutCompanyResult = {
   industry?: string;
   city?: string;
   employees?: string;
+  scaleStatus?: ScoutScaleStatus;
+  scaleSource?: ScoutScaleSource;
+  scaleEvidence?: string;
   logo?: string;
   fitScore?: number;
   budgetBand?: string;

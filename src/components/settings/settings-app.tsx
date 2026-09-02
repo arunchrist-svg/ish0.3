@@ -76,6 +76,7 @@ function SettingsAppInner() {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "enrichment");
   const [config, setConfig] = useState<EnrichmentConfig | null>(null);
+  const [apolloConfigured, setApolloConfigured] = useState(false);
   const [prospeoConfigured, setProspeoConfigured] = useState(false);
   const [zintlrConfigured, setZintlrConfigured] = useState(false);
   const [emailConfig, setEmailConfig] = useState<EmailConfigResponse | null>(null);
@@ -102,17 +103,20 @@ function SettingsAppInner() {
   }, [activeTab, session, NAV_ITEMS]);
 
   useEffect(() => {
-    fetch("/api/settings")
+    fetch("/api/settings", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         const {
+          apolloConfigured: apolloReady,
           prospeoConfigured: prospeoReady,
           zintlrConfigured: zintlrReady,
           ...rest
         } = data as EnrichmentConfig & {
+          apolloConfigured?: boolean;
           prospeoConfigured?: boolean;
           zintlrConfigured?: boolean;
         };
+        setApolloConfigured(Boolean(apolloReady));
         setProspeoConfigured(Boolean(prospeoReady));
         setZintlrConfigured(Boolean(zintlrReady));
         setConfig(rest);
@@ -468,6 +472,7 @@ function SettingsAppInner() {
           {activeTab === "enrichment" && (
             <EnrichmentTab
               config={config}
+              apolloConfigured={apolloConfigured}
               prospeoConfigured={prospeoConfigured}
               zintlrConfigured={zintlrConfigured}
               onUpdate={update}

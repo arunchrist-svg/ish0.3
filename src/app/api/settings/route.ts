@@ -3,7 +3,7 @@ import { requireTenantContext, ForbiddenError } from "@/lib/tenant";
 import { canManageSettings } from "@/lib/auth/permissions";
 import { handleApiError } from "@/lib/api-errors";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
-import { hasProspeoKey, hasZintlrKeys } from "@/lib/enrichment/config";
+import { hasApolloKey, hasProspeoKey, hasZintlrKeys } from "@/lib/enrichment/config";
 import {
   getResolvedWorkspaceEnrichmentConfig,
   saveWorkspaceEnrichmentOverrides,
@@ -16,6 +16,7 @@ export async function GET() {
     const config = await getResolvedWorkspaceEnrichmentConfig();
     return NextResponse.json({
       ...config,
+      apolloConfigured: hasApolloKey(),
       prospeoConfigured: hasProspeoKey(),
       zintlrConfigured: hasZintlrKeys(),
     });

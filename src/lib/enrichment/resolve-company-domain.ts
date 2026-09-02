@@ -92,6 +92,8 @@ export async function resolveCompanyDomain(params: {
   city?: string;
   /** When false, skip Apollo/Tavily lookups (LinkedIn name search does not need a domain). */
   allowExternal?: boolean;
+  /** Keep Apollo organization lookup available while preventing an implicit Tavily lookup. */
+  allowTavily?: boolean;
 }): Promise<ResolvedCompanyDomain> {
   const known = normalizeDomain(knownDomainForCompanyName(params.companyName));
   const naiveGuess = domainFromCompany(params.companyName);
@@ -186,7 +188,7 @@ export async function resolveCompanyDomain(params: {
     }
   }
 
-  if (hasTavilyKeys() && params.companyName.trim()) {
+  if (params.allowTavily !== false && hasTavilyKeys() && params.companyName.trim()) {
     const cityHint = params.city?.trim();
     const naiveGuessHost = normalizeDomain(domainFromCompany(params.companyName));
     const queries = [

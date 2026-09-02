@@ -92,6 +92,7 @@ type Props = {
   departments: string[];
   selectedCount: number;
   settingsLoaded?: boolean;
+  scaleVerificationAvailable?: boolean;
   scoutCompaniesLimit?: number;
   scoutLeadsLimit?: number;
   loadingCompanies?: boolean;
@@ -173,18 +174,24 @@ function industryLabel(industries: string[]): string {
   return `${industries.length} industries`;
 }
 
-function sizeLabel(employeeBands: string[]): string {
+function sizeLabel(employeeBands: string[], scaleVerificationAvailable: boolean): string {
   if (employeeBands.length === 0) return "Any scale";
-  const labels = SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) => b.label);
+  const labels = SCOUT_EMPLOYEE_BANDS.filter((b) => employeeBands.includes(b.id)).map((b) =>
+    !scaleVerificationAvailable && b.id === "large" ? "Large requested" : b.label,
+  );
   if (labels.length === 1) return labels[0];
   return `${labels.length} scales`;
 }
 
-function industryScaleLabel(industries: string[], employeeBands: string[]): string {
+function industryScaleLabel(
+  industries: string[],
+  employeeBands: string[],
+  scaleVerificationAvailable: boolean,
+): string {
   if (industries.length === 0 && employeeBands.length === 0) return "Any industry";
   if (employeeBands.length === 0) return industryLabel(industries);
-  if (industries.length === 0) return sizeLabel(employeeBands);
-  return `${industryLabel(industries)} · ${sizeLabel(employeeBands)}`;
+  if (industries.length === 0) return sizeLabel(employeeBands, scaleVerificationAvailable);
+  return `${industryLabel(industries)} · ${sizeLabel(employeeBands, scaleVerificationAvailable)}`;
 }
 
 function businessLabel(businesses: string[]): string {
@@ -198,14 +205,15 @@ function verticalScaleLabel(
   industries: string[],
   businesses: string[],
   employeeBands: string[],
+  scaleVerificationAvailable: boolean,
 ): string {
   if (verticalScope === "businesses") {
     if (businesses.length === 0 && employeeBands.length === 0) return "Any business";
     if (employeeBands.length === 0) return businessLabel(businesses);
-    if (businesses.length === 0) return sizeLabel(employeeBands);
-    return `${businessLabel(businesses)} · ${sizeLabel(employeeBands)}`;
+    if (businesses.length === 0) return sizeLabel(employeeBands, scaleVerificationAvailable);
+    return `${businessLabel(businesses)} · ${sizeLabel(employeeBands, scaleVerificationAvailable)}`;
   }
-  return industryScaleLabel(industries, employeeBands);
+  return industryScaleLabel(industries, employeeBands, scaleVerificationAvailable);
 }
 
 function peopleLabel(seniority: string[], departments: string[], verticalScope?: ScoutVerticalScope): string {
@@ -1734,6 +1742,7 @@ export function ScoutingToolbar({
   departments: _departments,
   selectedCount,
   settingsLoaded = true,
+  scaleVerificationAvailable = false,
   scoutCompaniesLimit = 1,
   scoutLeadsLimit = 1,
   loadingCompanies,
@@ -1788,7 +1797,13 @@ export function ScoutingToolbar({
   const canScout = settingsLoaded && cities.length > 0 && !searching;
   const canSearch = settingsLoaded && cities.length > 0 && companySearchQuery.trim().length > 0 && !searching;
   const volumeHint = `${scoutCompaniesLimit} cos · ${scoutLeadsLimit}/co`;
-  const verticalLabel = verticalScaleLabel(verticalScope, industries, businesses, employeeBands);
+  const verticalLabel = verticalScaleLabel(
+    verticalScope,
+    industries,
+    businesses,
+    employeeBands,
+    scaleVerificationAvailable,
+  );
   const verticalHasSelection =
     employeeBands.length + (verticalScope === "businesses" ? businesses.length : industries.length) > 0;
 
