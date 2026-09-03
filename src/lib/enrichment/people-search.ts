@@ -353,6 +353,104 @@ function dedupePeople(people: ScoutPersonResult[]): ScoutPersonResult[] {
   return out;
 }
 
+/**
+ * For LLM-extracted people without a LinkedIn URL (found from appointment news or company pages),
+ * scan existing Tavily hits for a LinkedIn profile URL that matches their name.
+ * No extra API calls — uses results already in memory.
+ */
+function resolveLinkedInFromHits(
+  people: ScoutPersonResult[],
+  hits: { title: string; url: string; content: string }[],
+): ScoutPersonResult[] {
+  const withoutLinkedIn = people.filter((p) => !p.linkedIn);
+  if (!withoutLinkedIn.length) return people;
+
+  const linkedInMap = new Map<string, string>();
+  for (const person of withoutLinkedIn) {
+    const parts = person.name.trim().toLowerCase().split(/\s+/);
+    const firstName = parts[0] ?? "";
+    const lastName = parts.at(-1) ?? "";
+    if (firstName.length < 3) continue;
+
+    for (const hit of hits) {
+      const url = hit.url.toLowerCase();
+      if (!url.includes("linkedin.com/in/")) continue;
+
+      const blob = `${hit.title}\n${hit.content}`.toLowerCase();
+      const nameMatch =
+        blob.includes(firstName) &&
+        (lastName === firstName || lastName.length < 3 || blob.includes(lastName));
+      if (!nameMatch) continue;
+
+      const match = hit.url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+      if (match?.[1]) {
+        const linkedIn = normalizeLinkedInUrl(`linkedin.com/in/${match[1]}`);
+        if (linkedIn) {
+          linkedInMap.set(person.name, linkedIn);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!linkedInMap.size) return people;
+  return people.map((p) =>
+    p.linkedIn ? p : { ...p, linkedIn: linkedInMap.get(p.name) },
+  );
+}
+
+/**
+ * For people still without a LinkedIn URL after scanning existing hits, do targeted Tavily
+ * searches (max 3 people) to find their LinkedIn profile. This covers people found only from
+ * appointment news (hrkatha.com, etc.) when no LinkedIn query returned results for them.
+ */
+async function fetchLinkedInForUnresolved(
+  people: ScoutPersonResult[],
+  company: string,
+  companyAliases: string[],
+  perQueryLimit: number,
+): Promise<ScoutPersonResult[]> {
+  const unresolved = people.filter((p) => !p.linkedIn).slice(0, 3);
+  if (!unresolved.length) return people;
+
+  const companyTokens = [company, ...companyAliases].filter(Boolean).slice(0, 2);
+
+  const linkedInMap = new Map<string, string>();
+  await Promise.all(
+    unresolved.map(async (person) => {
+      const name = person.name.trim();
+      const queries = companyTokens.map(
+        (cn) => `site:linkedin.com/in "${name}" "${cn}"`,
+      );
+      queries.push(`"${name}" linkedin ${companyTokens[0] ?? company}`);
+
+      for (const q of queries) {
+        try {
+          const hits = await tavilySearch(q, perQueryLimit);
+          for (const hit of hits) {
+            if (!hit.url.toLowerCase().includes("linkedin.com/in/")) continue;
+            const match = hit.url.match(/linkedin\.com\/in\/([^/?#]+)/i);
+            if (match?.[1]) {
+              const linkedIn = normalizeLinkedInUrl(`linkedin.com/in/${match[1]}`);
+              if (linkedIn) {
+                linkedInMap.set(person.name, linkedIn);
+                return;
+              }
+            }
+          }
+        } catch {
+          // Never let a LinkedIn lookup failure break the main discovery.
+        }
+      }
+    }),
+  );
+
+  if (!linkedInMap.size) return people;
+  return people.map((p) =>
+    p.linkedIn ? p : { ...p, linkedIn: linkedInMap.get(p.name) },
+  );
+}
+
 /** Short LinkedIn titles for plant companies whose Head of HR sits at HQ. */
 export const HQ_LINKEDIN_ROLE_TERM =
   '"Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR CHRO OR CPO OR "Chief People Officer"';
@@ -982,7 +1080,16 @@ Return up to ${limit} people.`,
         .filter((person) => isUsableScoutPerson(person, allResults, { localOperators }))
         .filter((person) => llmPersonSupportedBySearchHits(person, allResults, searchNames));
 
-      const roleMatched = parsed.filter((p) =>
+      // Resolve missing LinkedIn URLs: first from existing hits (free), then targeted search (cheap).
+      const afterHitResolve = resolveLinkedInFromHits(parsed, allResults);
+      const resolvedParsed = await fetchLinkedInForUnresolved(
+        afterHitResolve,
+        company,
+        companyAliases,
+        perQueryLimit,
+      );
+
+      const roleMatched = resolvedParsed.filter((p) =>
         localOperators
           ? titleMatchesRoleHints(
               p.title,
