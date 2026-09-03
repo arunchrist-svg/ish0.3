@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { useEffect, useState } from "react";
 import {
-  Bot, ChevronLeft, Contact, Home,
+  Bot, ChevronLeft, Contact, Flame, Home,
   Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,7 @@ const workNav: NavItemEntry[] = [
 ];
 
 const moreNav: NavItemEntry[] = [
+  { icon: Flame, label: "Season War Room", href: "/season", key: "season" },
   { icon: Radar, label: "Brand Intelligence", href: "/brand-intelligence", key: "brand-intelligence" },
   { icon: GitFork, label: "Yield Funnel", href: "/funnel", key: "funnel" },
   { icon: Pin, label: "Pinned", href: "/pinned", key: "pinned" },

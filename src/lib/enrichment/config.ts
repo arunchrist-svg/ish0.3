@@ -10,6 +10,12 @@ export type DataMode = "free" | "paid" | "auto";
 
 export type EnrichmentConfig = {
   searchProvider: SearchProvider;
+  /**
+   * How `searchProvider` was arrived at. Set by `resolveEnrichmentConfig`, which is the only
+   * place a data-mode upgrade can happen — by the time callers read `searchProvider` the
+   * original choice is gone, so the reason has to be captured here.
+   */
+  providerChoice?: ProviderChoice;
   peopleSearchProvider: PeopleSearchProvider;
   enrichProvider: EnrichProvider;
   fallbackToAI: boolean;
@@ -201,15 +207,50 @@ export function shouldFallbackToIndiaDirectories(provider: SearchProvider): bool
   return provider === "tavily_ai" || provider === "apollo";
 }
 
+/**
+ * Why the effective search provider differs from the configured one.
+ * `auto`/`paid` mode silently upgrades to Apollo whenever an Apollo key is present, which once
+ * routed every Indian tier-2 scout to a provider with no coverage there. Surfacing the reason
+ * makes that visible instead of leaving it to be discovered by debugging.
+ */
+export type ProviderChoiceReason =
+  | "configured"
+  | "auto_upgraded_apollo"
+  | "paid_upgraded_apollo";
+
+export type ProviderChoice = {
+  provider: SearchProvider;
+  configured: SearchProvider;
+  reason: ProviderChoiceReason;
+};
+
+/** Human-readable explanation for the scout panel and telemetry. */
+export function describeProviderChoice(choice: ProviderChoice): string {
+  const label = SEARCH_PROVIDER_LABELS[choice.provider]?.label ?? choice.provider;
+  if (choice.reason === "configured") return `Using ${label}.`;
+  const from = SEARCH_PROVIDER_LABELS[choice.configured]?.label ?? choice.configured;
+  const mode = choice.reason === "auto_upgraded_apollo" ? "Auto" : "Paid";
+  return `Using ${label} — upgraded from ${from} because Data Mode is ${mode} and an Apollo key is present.`;
+}
+
+/** Resolve search provider from dataMode + configured default, keeping the reason. */
+export function resolveSearchProviderWithReason(
+  dataMode: DataMode,
+  configured: SearchProvider,
+): ProviderChoice {
+  if ((dataMode === "paid" || dataMode === "auto") && hasApolloKey() && configured !== "apollo") {
+    return {
+      provider: "apollo",
+      configured,
+      reason: dataMode === "auto" ? "auto_upgraded_apollo" : "paid_upgraded_apollo",
+    };
+  }
+  return { provider: configured, configured, reason: "configured" };
+}
+
 /** Resolve search provider from dataMode + configured default */
 export function resolveSearchProvider(dataMode: DataMode, configured: SearchProvider): SearchProvider {
-  if (dataMode === "paid" || dataMode === "auto") {
-    if (hasApolloKey()) return "apollo";
-  }
-  if (configured === "apollo" && !hasApolloKey()) {
-    return configured;
-  }
-  return configured;
+  return resolveSearchProviderWithReason(dataMode, configured).provider;
 }
 
 /** Resolve the provider used only for people/contact discovery. */
@@ -274,14 +315,17 @@ export function resolveEnrichmentConfig(
 
   const giftIntel = resolveGiftIntelConfig(override ?? base);
   const scoutAreasOfFocus = normalizeScoutAreasOfFocus(base.scoutAreasOfFocus, base.scoutAreaOfFocus);
+  // A provider selected in the UI is explicit. Data-mode upgrades only apply
+  // to environment defaults, never to a user's provider choice.
+  const providerChoice: ProviderChoice = override?.searchProvider
+    ? { provider: configuredSearch, configured: configuredSearch, reason: "configured" }
+    : resolveSearchProviderWithReason(mode, configuredSearch);
+
   return {
     ...base,
     dataMode: mode,
-    // A provider selected in the UI is explicit. Data-mode upgrades only apply
-    // to environment defaults, never to a user's provider choice.
-    searchProvider: override?.searchProvider
-      ? configuredSearch
-      : resolveSearchProvider(mode, configuredSearch),
+    searchProvider: providerChoice.provider,
+    providerChoice,
     peopleSearchProvider: override?.peopleSearchProvider
       ? configuredPeopleSearch
       : resolvePeopleSearchProvider(mode, configuredPeopleSearch),

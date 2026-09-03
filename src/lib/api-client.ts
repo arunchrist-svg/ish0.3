@@ -6,6 +6,7 @@ import type {
   ScoutScaleMetrics,
   DataMode,
 } from "./enrichment/types";
+import type { StageRecord } from "@/lib/enrichment/stage-trace";
 import { cachedFetch, invalidateCached } from "@/lib/client-fetch-cache";
 
 export function isAbortError(error: unknown): boolean {
@@ -178,6 +179,10 @@ export type ScoutCompaniesResponse = {
     softCityRecover: boolean;
     coverage: ScoutCoverageMetrics;
     scale: ScoutScaleMetrics;
+    /** Per-stage in/out counts, so the UI can explain an empty result. */
+    stageTrace?: StageRecord[];
+    provider?: string;
+    providerReason?: string;
   };
 };
 
@@ -994,8 +999,8 @@ export async function sendOutreach(
     overrideQualityGate?: boolean;
     toEmails?: string[];
   },
-): Promise<{ mode: string; messageId?: string; to?: string; recipients?: string[] }> {
-  return post<{ mode: string; messageId?: string; to?: string; recipients?: string[] }>("/api/outreach/send", {
+): Promise<{ mode: string; messageId?: string; to?: string; recipients?: string[]; whatsappOpen?: { url: string; to: string } }> {
+  return post<{ mode: string; messageId?: string; to?: string; recipients?: string[]; whatsappOpen?: { url: string; to: string } }>("/api/outreach/send", {
     approvalId,
     overridePreflight: options?.overridePreflight,
     overrideQualityGate: options?.overrideQualityGate,

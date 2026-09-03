@@ -5,7 +5,8 @@ import type { LeadRecord, QueueItem } from "@/lib/data";
 import type { ContactEmailEntry, LeadDetailRecord } from "@/lib/api-client";
 import { PanelCard } from "@/design-system";
 import { cn } from "@/lib/utils";
-import { Building2, Copy, Loader2, MapPin, Pencil, Phone, Search, Sparkles, Wand2 } from "lucide-react";
+import { Building2, Copy, Loader2, MapPin, MessageCircle, Pencil, Phone, Search, Sparkles, Wand2 } from "lucide-react";
+import { toWhatsAppUserId } from "@/lib/whatsapp/click-url";
 import { Button } from "@/design-system";
 import { toast } from "sonner";
 import { EmailSuggestModal } from "@/components/sales-accelerator/email-suggest-modal";
@@ -235,12 +236,27 @@ export function ContactCard({
             />
           ) : null}
           {mobilePhone ? (
-            <ChannelChip
-              icon={<Phone className="size-3.5" />}
-              label="Mobile"
-              value={mobilePhone}
-              href={`tel:${mobilePhone.replace(/\s+/g, "")}`}
-            />
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1">
+                <ChannelChip
+                  icon={<Phone className="size-3.5" />}
+                  label="Mobile"
+                  value={mobilePhone}
+                  href={`tel:${mobilePhone.replace(/\s+/g, "")}`}
+                />
+              </div>
+              {toWhatsAppUserId(mobilePhone) ? (
+                <a
+                  href={`https://wa.me/${toWhatsAppUserId(mobilePhone)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Open WhatsApp"
+                  className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] border border-[#25D366]/30 bg-[#25D366]/8 text-[#128C40] shadow-[var(--shadow-brand-sm)] transition hover:border-[#25D366]/60 hover:bg-[#25D366]/15"
+                >
+                  <MessageCircle className="size-4" />
+                </a>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}

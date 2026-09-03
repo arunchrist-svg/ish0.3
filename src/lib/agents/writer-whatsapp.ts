@@ -5,7 +5,6 @@ import { parseJsonObjectFromLLM } from "@/lib/llm/parse-json";
 import { tierForAgentStep } from "@/lib/llm/routing-policy";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch } from "@/db";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
-import { isWhatsAppConnected } from "@/lib/settings/whatsapp-settings";
 import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { getWriterTonePersona } from "@/lib/agents/writer-tone";
 import {
@@ -17,7 +16,7 @@ import {
 } from "@/lib/agents/personalization-context";
 import { companyNameForEmail, scrubLegalEntityCopy } from "@/lib/email/company-display-name";
 import type { CompanyOverview } from "@/lib/company-overview";
-import { WhatsAppMobileRequiredError, WhatsAppNotConnectedError, shouldSetDraftReadyFromWhatsApp } from "@/lib/whatsapp/errors";
+import { WhatsAppMobileRequiredError, shouldSetDraftReadyFromWhatsApp } from "@/lib/whatsapp/errors";
 import {
   WHATSAPP_PROMPT_VERSION,
   WHATSAPP_TEMPLATE_VARIANT,
@@ -137,8 +136,6 @@ export async function runWhatsAppWriter(leadId: string): Promise<string> {
   });
   if (!lead) throw new Error(`Lead ${leadId} not found`);
 
-  const connected = await isWhatsAppConnected(lead.workspaceId);
-  if (!connected) throw new WhatsAppNotConnectedError();
 
   const contact = lead.contact as typeof contacts.$inferSelect;
   const account = lead.account as typeof accounts.$inferSelect;

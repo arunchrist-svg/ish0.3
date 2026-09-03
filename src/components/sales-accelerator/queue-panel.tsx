@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { Check, Loader2, Mail, RefreshCw } from "lucide-react";
+import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { IshAvatar, ScoreBadge, SearchBar, TruncatedText } from "@/design-system";
 import { LeadAddMenu } from "@/components/leads/lead-add-menu";
 import { cn } from "@/lib/utils";
@@ -186,6 +187,7 @@ function QueueCard({
   onClick: () => void;
 }) {
   const size = companySizeLabel(item.employees);
+  const hasWhatsApp = Boolean(sanitizePhone(item.phone));
   return (
     <button
       type="button"
@@ -218,12 +220,18 @@ function QueueCard({
         </div>
         <div
           className={cn(
-            "flex size-[30px] shrink-0 items-center justify-center rounded-full bg-white/60",
+            "relative flex size-[30px] shrink-0 items-center justify-center rounded-full bg-white/60",
             "transition-transform duration-300",
             active && "scale-110",
           )}
         >
           <Mail className="size-3.5 text-brand-ink-soft" />
+          {hasWhatsApp && (
+            <span
+              className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full bg-[#25D366] ring-1 ring-white"
+              aria-label="Has WhatsApp number"
+            />
+          )}
         </div>
       </div>
       <div className="flex items-end justify-between gap-2">

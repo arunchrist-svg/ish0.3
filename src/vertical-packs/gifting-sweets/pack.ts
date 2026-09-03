@@ -40,6 +40,14 @@ export const giftingSweetsPack: VerticalPack = {
       ctaInstruction:
         "Primary CTA: propose a 15-min in-person visit to present samples. Ask if they are open to a short visit. Do not ask for address or headcount in email #1.",
     },
+    {
+      id: "prasanth_sequence",
+      label: "Prasanth Template",
+      shortLabel: "Prasanth",
+      description: "Prasant's festive sequence — flexible sample-or-visit offer, story-led, warm tone",
+      ctaInstruction:
+        "Use Prasant's festive outreach style. Greeting: 'Namaste [Name]'. Open by naming ISH's 5-year track record and 2-3 relevant reference clients (Infosys, Biocon, Toyota, 3M, Mercedes-Benz, Landmark Group, LSEG — pick what fits the lead's sector). Primary CTA: offer BOTH options and let the recipient choose — (a) send a small sample box to their office, OR (b) a 15–20 minute in-person tasting at their office; say whichever works better for them. Do NOT ask for address, headcount, or phone in email #1. Mention that everything is handcrafted with ghee from ISH's own dairy (Karma Farm). Sign off as 'Prasant, Cluster Manager, India Sweet House'. Tone: warm, personal, no sales pressure.",
+    },
   ],
   brandIntelDefaults: {
     productCategory: "Sweets",

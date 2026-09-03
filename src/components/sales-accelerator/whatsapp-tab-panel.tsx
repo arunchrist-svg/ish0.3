@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { Loader2, MessageCircle, Sparkles } from "lucide-react";
 import { text } from "@/design-system/tokens";
 import { cn } from "@/lib/utils";
@@ -33,10 +32,9 @@ export function WhatsAppTabPanel({ lead, onDraftUpdated, onSent }: Props) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
-  const connected = lead.whatsappConnected === true;
   const displayPhone = formatWhatsAppDisplay(lead.phone);
   const hasMobile = Boolean(sanitizePhone(lead.phone));
-  const canCompose = connected && hasMobile;
+  const canCompose = hasMobile;
   const trimmed = body.trim();
 
   useEffect(() => {
@@ -105,24 +103,6 @@ export function WhatsAppTabPanel({ lead, onDraftUpdated, onSent }: Props) {
     } finally {
       setOpening(false);
     }
-  }
-
-  if (!connected) {
-    return (
-      <div className="px-4 py-10 text-center lg:px-[22px]">
-        <MessageCircle className="mx-auto mb-3 size-8 text-brand-ink-faint" />
-        <h3 className={cn(text.cardTitle, "mb-1")}>WhatsApp not connected</h3>
-        <p className="mx-auto mb-4 max-w-sm text-[13px] text-brand-ink-soft">
-          Connect WhatsApp in Settings to message leads who have a mobile number.
-        </p>
-        <Link
-          href="/settings?tab=integrations"
-          className="inline-flex h-8 items-center rounded-full bg-brand-black px-4 text-[13px] font-semibold text-white hover:bg-brand-black/90"
-        >
-          Connect WhatsApp
-        </Link>
-      </div>
-    );
   }
 
   if (!hasMobile) {

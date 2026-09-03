@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 export type AgentFlags = {
   replyAutoDraft?: boolean;
   notifyWhatsApp?: boolean;
+  whatsAppFirst?: boolean;
   searchExactMode?: boolean;
   llmTierOverride?: "fast" | "quality";
   notifyEmail?: boolean;

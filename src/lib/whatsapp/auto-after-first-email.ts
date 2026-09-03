@@ -6,49 +6,39 @@ import { getAgentFlags } from "@/lib/settings/agent-flags";
 import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { WHATSAPP_CHANNEL, WHATSAPP_TEMPLATE_VARIANT } from "@/lib/whatsapp/outreach";
 import { recordWhatsAppOpen } from "@/lib/whatsapp/record-open";
-import { CATALOG_ON_OPEN_EMAIL_KIND } from "@/lib/email/ish-festive-catalog";
+import type { WhatsAppAutoOpenPayload } from "@/lib/whatsapp/auto-after-second-email";
 
-export type WhatsAppAutoOpenPayload = {
-  url: string;
-  to: string;
-};
-
-function hasSecondEmailSent(
+function hasFirstEmailSent(
   rows: Array<{
     channel: string | null;
     status: string;
-    emailKind: string | null;
     sequenceDay: number;
   }>,
 ): boolean {
-  const emailSent = rows.filter((row) => row.channel === "email" && row.status === "sent");
-  const hasInitial = emailSent.some(
-    (row) =>
-      row.emailKind === "initial" ||
-      (row.sequenceDay === 0 && row.emailKind !== "outbound_reply"),
+  return rows.some(
+    (row) => row.channel === "email" && row.status === "sent" && row.sequenceDay === 0,
   );
-  const hasFollowUp = emailSent.some(
-    (row) =>
-      (row.emailKind === "followup" || row.sequenceDay > 0) &&
-      row.emailKind !== CATALOG_ON_OPEN_EMAIL_KIND,
-  );
-  return hasInitial && hasFollowUp;
 }
 
-export async function maybeAutoOpenWhatsAppAfterSecondEmail(params: {
+/**
+ * When whatsAppFirst is enabled, fire WhatsApp immediately after email 1
+ * instead of waiting for the second email. Designed for festive season
+ * where procurement moves on WhatsApp and timing is critical.
+ */
+export async function maybeAutoOpenWhatsAppAfterFirstEmail(params: {
   leadId: string;
   tenantId: string;
   workspaceId: string;
   actorId?: string;
 }): Promise<WhatsAppAutoOpenPayload | null> {
   const flags = await getAgentFlags(params.workspaceId);
-  if (!flags.notifyWhatsApp) return null;
+  if (!flags.whatsAppFirst) return null;
 
   const rows = await db.query.outreachSchedule.findMany({
     where: eq(outreachSchedule.leadId, params.leadId),
   });
 
-  if (!hasSecondEmailSent(rows)) return null;
+  if (!hasFirstEmailSent(rows)) return null;
   if (rows.some((row) => row.channel === WHATSAPP_CHANNEL && row.status === "sent")) return null;
   const lead = await db.query.leads.findFirst({
     where: eq(leads.id, params.leadId),
@@ -76,7 +66,7 @@ export async function maybeAutoOpenWhatsAppAfterSecondEmail(params: {
       });
       outreach = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
     } catch (e) {
-      console.warn("[whatsapp/auto-after-second-email] draft generation skipped", e);
+      console.warn("[whatsapp/auto-after-first-email] draft generation skipped", e);
       return null;
     }
   }
@@ -91,7 +81,7 @@ export async function maybeAutoOpenWhatsAppAfterSecondEmail(params: {
       actorId: params.actorId,
     });
   } catch (e) {
-    console.warn("[whatsapp/auto-after-second-email] open skipped", e);
+    console.warn("[whatsapp/auto-after-first-email] open skipped", e);
     return null;
   }
 }

@@ -457,7 +457,14 @@ export function buildGoogleStyleSeniorPeopleQueries(params: {
   const metroLead = metro?.split(/\s+OR\s+/i)[0]?.trim();
   const queries: string[] = [];
   for (const company of companies.slice(0, 2)) {
-    // Plain Google phrasing first (matches what users type and what AI Overviews cite).
+    // Appointment news first — these name the actual person confirmed by the employer.
+    // hrkatha.com and peoplematters.in are authoritative HR appointment trackers for India.
+    queries.push(`site:hrkatha.com "${company}" CHRO OR "head HR" OR "head of HR" OR "HR Director"`);
+    queries.push(`site:peoplematters.in "${company}" CHRO OR "chief human resources" OR "head of HR"`);
+    queries.push(`"${company}" CHRO appointed 2025 2026`);
+    queries.push(`"${company}" "chief human resources officer" OR "head HR" name linkedin`);
+
+    // Plain Google phrasing (matches what users type and what AI Overviews cite).
     queries.push(`${company} head hr linkedin`);
     queries.push(
       `${company} "Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR CHRO OR CPO linkedin`,
@@ -469,7 +476,7 @@ export function buildGoogleStyleSeniorPeopleQueries(params: {
     }
     queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) India`);
   }
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 8);
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 12);
 }
 
 export function buildPeopleSearchQueries(params: {
@@ -505,6 +512,12 @@ export function buildPeopleSearchQueries(params: {
     return [...new Set(queries.map(excludeOpenToWork))].slice(0, 8);
   }
 
+  // Appointment news queries — surfaces real named CHROs from India HR news trackers.
+  // Run before LinkedIn so Tavily returns verified person names even when LinkedIn is blocked.
+  queries.push(`site:hrkatha.com "${params.company}" CHRO OR "head HR" OR "head of HR" OR "HR Director"`);
+  queries.push(`site:peoplematters.in "${params.company}" CHRO OR "chief human resources" OR "head of HR"`);
+  queries.push(`"${params.company}" CHRO appointed 2025 2026`);
+
   // Query 1: LinkedIn + short Head of HR titles + plant and HQ cities (Bangalore on a Hosur fetch).
   queries.push(`site:linkedin.com/in "${params.company}" (${HQ_LINKEDIN_ROLE_TERM}) ${geoTerm}`);
   if (params.hasCityFilter) {
@@ -533,7 +546,7 @@ export function buildPeopleSearchQueries(params: {
     queries.push(`"${company}" ${params.roleTerm} ${geoTerm}`);
   }
 
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 10);
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 13);
 }
 
 const OPEN_TO_WORK_SERP_TERM = '(#OPENTOWORK OR "Open to Work" OR OPEN_TO_WORK)';
@@ -935,9 +948,11 @@ Output ONLY a valid JSON array. No markdown fences.
 Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
 Rules:
 - Only people whose CURRENT employer is the target company.
+- IMPORTANT: Also extract people named in HR appointment news articles (hrkatha.com, peoplematters.in, etc.) — these confirm the real CHRO/HR head with high confidence. A snippet like "Company appoints [Name] as CHRO" is a strong signal — include that person.
 - Format title as "Role at Company" when the source headline shows the employer (e.g. "Head of HR at Infosys", "CHRO at Titan Company", "Plant HR Manager at JSW Steel"). If the employer is not in the snippet, keep the role alone.
 - Format bio as one short sentence that always includes the employer name when the person works at the target company (e.g. "CHRO at Infosys based in Bengaluru." or "Head of Procurement at Titan Company."). Never leave bio blank.
-- Exclude former employees, Open to Work / job-seeker profiles, Team Leads, consultants at other firms, and anyone whose headline names a different company.
+- If a LinkedIn URL appears in the results for the named person, include it in the linkedIn field.
+- Exclude former employees ("exits", "leaves", "resigned"), Open to Work / job-seeker profiles, Team Leads, consultants at other firms, and anyone whose headline names a different company.
 - Never rewrite a different employer into the target company name.
 - Never invent emails, phones, or LinkedIn URLs that are not in the results.
 - Prefer people located in the target city when location is stated.`,

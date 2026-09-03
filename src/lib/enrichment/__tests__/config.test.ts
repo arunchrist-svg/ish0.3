@@ -5,6 +5,8 @@ import {
   resolvePeopleSearchProvider,
   searchProviderUsesTavily,
   shouldFallbackToIndiaDirectories,
+  resolveSearchProviderWithReason,
+  describeProviderChoice,
   SEARCH_PROVIDER_LABELS,
 } from "@/lib/enrichment/config";
 
@@ -62,6 +64,42 @@ describe("people search provider configuration", () => {
 
   it("backfills Apollo misses from India directories: Apollo has no tier-2 India coverage", () => {
     expect(shouldFallbackToIndiaDirectories("apollo")).toBe(true);
+  });
+
+  it("reports when auto mode upgrades the configured provider to Apollo", () => {
+    vi.stubEnv("APOLLO_API_KEY", "test-key");
+    const choice = resolveSearchProviderWithReason("auto", "india_directories");
+    expect(choice).toEqual({
+      provider: "apollo",
+      configured: "india_directories",
+      reason: "auto_upgraded_apollo",
+    });
+    expect(describeProviderChoice(choice)).toContain("upgraded from India + Tavily");
+  });
+
+  it("reports paid-mode upgrades separately from auto", () => {
+    vi.stubEnv("APOLLO_API_KEY", "test-key");
+    expect(resolveSearchProviderWithReason("paid", "google_places").reason).toBe(
+      "paid_upgraded_apollo",
+    );
+  });
+
+  it("leaves the provider alone in free mode, or with no Apollo key", () => {
+    vi.stubEnv("APOLLO_API_KEY", "test-key");
+    expect(resolveSearchProviderWithReason("free", "india_directories")).toEqual({
+      provider: "india_directories",
+      configured: "india_directories",
+      reason: "configured",
+    });
+    vi.stubEnv("APOLLO_API_KEY", "");
+    expect(resolveSearchProviderWithReason("auto", "india_directories").reason).toBe("configured");
+  });
+
+  it("does not claim an upgrade when Apollo was the configured provider", () => {
+    vi.stubEnv("APOLLO_API_KEY", "test-key");
+    const choice = resolveSearchProviderWithReason("auto", "apollo");
+    expect(choice.reason).toBe("configured");
+    expect(describeProviderChoice(choice)).toBe("Using Apollo.io.");
   });
 
   it("honors an explicitly disabled people provider", () => {

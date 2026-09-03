@@ -14,10 +14,11 @@ import { LinkedInIntegration } from "@/components/settings/linkedin-integration"
 import { WhatsAppIntegration } from "@/components/settings/whatsapp-integration";
 import { TeamTab } from "@/components/settings/team-tab";
 import { BillingTab } from "@/components/settings/billing-tab";
+import { FestiveTab } from "@/components/settings/festive-tab";
 import { cn } from "@/lib/utils";
 import { AppPageHeader, ListGroup, ListRow, MobileHeader, MobileStackLayout } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
-import { Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
+import { Flame, Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { clampScoutCompaniesLimit, clampScoutLeadsLimit } from "@/lib/enrichment/config";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
@@ -26,6 +27,7 @@ import { toast } from "sonner";
 const ALL_NAV_ITEMS: SettingsNavItem[] = [
   { value: "enrichment", label: "Enrichment", icon: Wrench },
   { value: "email", label: "Email", icon: Mail },
+  { value: "festive", label: "Festive Season", icon: Flame },
   { value: "billing", label: "Credits", icon: CreditCard },
   { value: "team", label: "Team", icon: Users },
   { value: "integrations", label: "Integrations", icon: Plug },
@@ -36,6 +38,7 @@ const ALL_NAV_ITEMS: SettingsNavItem[] = [
 const TAB_SUBTITLES: Record<string, string> = {
   enrichment: "Providers, geography, and scout volume",
   email: "Connect your inbox and send",
+  festive: "WhatsApp-first mode, revenue target, production capacity",
   billing: "Balance and top-ups",
   team: "Members and invites",
   integrations: "LinkedIn and WhatsApp",
@@ -484,6 +487,7 @@ function SettingsAppInner() {
             <EmailTab config={emailConfig} onUpdate={updateEmail} smtpPassDraft={smtpPassDraft} onSmtpPassChange={handleSmtpPassChange} resendApiKeyDraft={resendApiKeyDraft} onResendApiKeyChange={handleResendApiKeyChange} onVerify={verifyEmail} verifying={verifyingEmail} />
           )}
 
+          {activeTab === "festive" && <FestiveTab />}
           {activeTab === "billing" && <BillingTab />}
           {activeTab === "team" && <TeamTab />}
 

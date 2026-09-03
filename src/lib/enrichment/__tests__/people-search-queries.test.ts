@@ -34,7 +34,10 @@ describe("buildGoogleStyleSeniorPeopleQueries", () => {
       company: "Himalaya Wellness",
       metroClause: "Bengaluru OR Bangalore",
     });
-    expect(queries[0]).toContain("Himalaya Wellness head hr linkedin");
+    // Appointment news leads: it names the person the employer actually confirmed.
+    expect(queries[0]).toContain("site:hrkatha.com");
+    expect(queries[0]).toContain('"Himalaya Wellness"');
+    expect(queries.some((q) => q.includes("Himalaya Wellness head hr linkedin"))).toBe(true);
     expect(queries.some((q) => q.includes("Chief People Officer"))).toBe(true);
     expect(queries.some((q) => q.includes("CPO"))).toBe(true);
     expect(queries.some((q) => q.includes("Bengaluru"))).toBe(true);
@@ -129,7 +132,7 @@ describe("buildNaturalLinkedInPeopleQueries", () => {
 });
 
 describe("buildPeopleSearchQueries", () => {
-  it("query 1 is LinkedIn Head of HR with Bangalore on a Hosur fetch", () => {
+  it("searches LinkedIn Head of HR with Bangalore on a Hosur fetch", () => {
     const queries = buildPeopleSearchQueries({
       company: "Titan Company",
       roleTerm: "Director OR Head OR VP",
@@ -139,19 +142,20 @@ describe("buildPeopleSearchQueries", () => {
       companyAliases: ["Titan"],
     });
 
-    expect(queries[0]).toBe(
-      `site:linkedin.com/in "Titan Company" (${HQ_LINKEDIN_ROLE_TERM}) (Hosur OR Bengaluru OR Bangalore) ${OPEN_TO_WORK_EXCLUSION}`,
-    );
-    expect(queries[0]).toContain("Head of HR");
-    expect(queries[0]).toContain("HR Director");
-    expect(queries[0]).toContain("CHRO");
-    expect(queries[0]).toContain("CPO");
-    expect(queries[0]).toContain("Bengaluru");
-    expect(queries[0]).toContain("Bangalore");
-    expect(queries[0]).toContain("Hosur");
-    expect(queries[1]).toBe(
-      `site:linkedin.com/in "Titan Company" (${HQ_LINKEDIN_ROLE_TERM}) India ${OPEN_TO_WORK_EXCLUSION}`,
-    );
+    const cityQuery = `site:linkedin.com/in "Titan Company" (${HQ_LINKEDIN_ROLE_TERM}) (Hosur OR Bengaluru OR Bangalore) ${OPEN_TO_WORK_EXCLUSION}`;
+    const indiaQuery = `site:linkedin.com/in "Titan Company" (${HQ_LINKEDIN_ROLE_TERM}) India ${OPEN_TO_WORK_EXCLUSION}`;
+
+    // Appointment-news queries run ahead of LinkedIn, so assert position relatively.
+    const cityIndex = queries.indexOf(cityQuery);
+    expect(cityIndex).toBeGreaterThanOrEqual(0);
+    expect(queries[cityIndex + 1]).toBe(indiaQuery);
+    expect(cityQuery).toContain("Head of HR");
+    expect(cityQuery).toContain("HR Director");
+    expect(cityQuery).toContain("CHRO");
+    expect(cityQuery).toContain("CPO");
+    expect(cityQuery).toContain("Bengaluru");
+    expect(cityQuery).toContain("Bangalore");
+    expect(cityQuery).toContain("Hosur");
     expect(queries.some((q) => q.includes("titancompany.in"))).toBe(true);
     expect(queries.some((q) => /Director OR Head OR VP OR CEO/.test(q))).toBe(false);
   });
@@ -164,8 +168,9 @@ describe("buildPeopleSearchQueries", () => {
       hasCityFilter: false,
     });
     expect(queries.join("\n")).not.toMatch(/Director OR Head OR VP OR CEO/);
-    expect(queries[0]).toContain("site:linkedin.com/in");
-    expect(queries[0]).toContain("Head of HR");
+    expect(
+      queries.some((q) => q.includes("site:linkedin.com/in") && q.includes("Head of HR")),
+    ).toBe(true);
   });
 
   it("finds SMB HR contacts after the short LinkedIn HQ query", () => {
@@ -175,7 +180,7 @@ describe("buildPeopleSearchQueries", () => {
       cityClause: "Ramanagara OR Bengaluru OR Bangalore",
       hasCityFilter: true,
     });
-    expect(queries[0]).toBe(
+    expect(queries).toContain(
       `site:linkedin.com/in "Sansu Automotives" (${HQ_LINKEDIN_ROLE_TERM}) (Ramanagara OR Bengaluru OR Bangalore) ${OPEN_TO_WORK_EXCLUSION}`,
     );
     expect(queries).toContain(
@@ -232,7 +237,10 @@ describe("buildPeopleSearchQueries", () => {
       cityClause: "India",
       hasCityFilter: false,
     });
-    expect(queries[0]).toContain("-#OPENTOWORK");
+    // Only LinkedIn-bearing queries carry the exclusion; appointment-news queries do not.
+    const linkedInQueries = queries.filter((q) => /linkedin/i.test(q));
+    expect(linkedInQueries.length).toBeGreaterThan(0);
+    expect(linkedInQueries.every((q) => q.includes("-#OPENTOWORK"))).toBe(true);
   });
 });
 

@@ -9,14 +9,12 @@ import {
   yieldFunnel,
 } from "@/db";
 import { logAudit } from "@/lib/audit";
-import { isWhatsAppConnected } from "@/lib/settings/whatsapp-settings";
 import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { buildWhatsAppClickUrl, toWhatsAppE164 } from "@/lib/whatsapp/click-url";
 import { isWhatsAppOutreach, WHATSAPP_CHANNEL } from "@/lib/whatsapp/outreach";
 import {
   WhatsAppEmptyDraftError,
   WhatsAppMobileRequiredError,
-  WhatsAppNotConnectedError,
   shouldAdvanceLeadFromWhatsApp,
 } from "@/lib/whatsapp/errors";
 
@@ -39,10 +37,6 @@ export async function recordWhatsAppOpen(params: {
   });
   if (!lead || lead.tenantId !== params.tenantId) {
     throw new Error("Lead not found");
-  }
-
-  if (!(await isWhatsAppConnected(params.workspaceId))) {
-    throw new WhatsAppNotConnectedError();
   }
 
   const contact = lead.contact as typeof contacts.$inferSelect;

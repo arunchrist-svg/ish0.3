@@ -676,6 +676,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
           toEmails: recipientsToSend,
         }),
       );
+      handleWhatsAppAutoOpenResponse(result.whatsappOpen);
       const recipient =
         result.recipients?.length
           ? result.recipients.join(", ")

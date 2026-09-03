@@ -29,6 +29,7 @@ import {
 import { cleanEmailBatch } from "@/lib/email/list-cleaner";
 import { mergePersistedSendEmails, resolveSendRecipients, alreadySentRecipientKeys } from "@/lib/outreach/send-recipients";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
+import { maybeAutoOpenWhatsAppAfterFirstEmail } from "@/lib/whatsapp/auto-after-first-email";
 
 export async function POST(req: Request) {
   try {
@@ -496,11 +497,19 @@ export async function POST(req: Request) {
       },
     });
 
+    const whatsappOpen = await maybeAutoOpenWhatsAppAfterFirstEmail({
+      leadId: approval.leadId,
+      tenantId: ctx.tenantId,
+      workspaceId: ctx.workspaceId,
+      actorId: ctx.userId,
+    });
+
     return NextResponse.json({
       mode: result.mode,
       messageId: rfcMessageId,
       to: recipients.join(", "),
       recipients,
+      ...(whatsappOpen ? { whatsappOpen } : {}),
     });
   } catch (e) {
     return handleApiError(e, "[api/outreach/send]");

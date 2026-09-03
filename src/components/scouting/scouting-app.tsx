@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 // import { ScoutingProgressBar } from "./scouting-progress-bar";
+import type { StageRecord as ScoutStageRecord } from "@/lib/enrichment/stage-trace";
 import { ScoutingToolbar, type ScoutMode } from "./scouting-toolbar";
 import { DiscoveringLoader } from "./discovering-loader";
 import { CompaniesGrid } from "./companies-grid";
@@ -332,6 +333,7 @@ function ScoutCompaniesEmpty({
   showingSaved,
   icpHint,
   locationScope,
+  stageTrace,
 }: {
   hasFetched: boolean;
   scoutMode: ScoutMode;
@@ -339,6 +341,7 @@ function ScoutCompaniesEmpty({
   showingSaved?: boolean;
   icpHint?: string | null;
   locationScope?: ScoutLocationScope;
+  stageTrace?: ScoutStageRecord[] | null;
 }) {
   if (showingSaved) {
     return (
@@ -382,18 +385,53 @@ function ScoutCompaniesEmpty({
         <MapPin className="size-7" />
       </div>
       <EmptyState
-        title={fetchMessage ?? (scoutMode === "search" ? "No matches found" : "No companies found")}
+        title={scoutMode === "search" ? "No matches found" : "No companies found"}
         description={
-          fetchMessage?.includes("API") || fetchMessage?.includes("missing")
-            ? "Try again in a few minutes or adjust settings."
-            : scoutMode === "search"
-              ? "Try a different spelling or company name."
-              : locationScope === "focus"
-                ? "Widen the focus radius, or switch to Area of Interest to search the whole city."
-                : "Narrow to 2-3 industries, or try a nearby larger city."
+          // The server now explains which stage emptied the run; prefer it over generic advice.
+          fetchMessage ??
+          (scoutMode === "search"
+            ? "Try a different spelling or company name."
+            : locationScope === "focus"
+              ? "Widen the focus radius, or switch to Area of Interest to search the whole city."
+              : "Narrow to 2-3 industries, or try a nearby larger city.")
         }
         className="py-0"
       />
+      <ScoutStageFunnel stageTrace={stageTrace} />
+    </div>
+  );
+}
+
+/**
+ * Per-stage funnel for a run, collapsed by default.
+ * Turns "no companies found" into "apollo returned 16, all discarded as off-city" without
+ * anyone needing to reproduce the run locally.
+ */
+function ScoutStageFunnel({ stageTrace }: { stageTrace?: ScoutStageRecord[] | null }) {
+  const [open, setOpen] = useState(false);
+  if (!stageTrace?.length) return null;
+
+  return (
+    <div className="mx-auto mt-6 max-w-md text-left">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mx-auto flex items-center gap-1 text-xs font-medium text-brand-ink-soft underline underline-offset-2 hover:text-brand-ink"
+      >
+        {open ? "Hide details" : "Why?"}
+      </button>
+      {open ? (
+        <dl className="mt-3 space-y-1 rounded-2xl bg-brand-canvas px-4 py-3 font-mono text-[11px] text-brand-ink-soft">
+          {stageTrace.map((record, i) => (
+            <div key={`${record.stage}-${i}`} className="flex items-baseline justify-between gap-3">
+              <dt className="truncate">{record.stage.replace(/_/g, " ")}</dt>
+              <dd className={record.in > 0 && record.out === 0 ? "font-semibold text-brand-ink" : ""}>
+                {record.in} &rarr; {record.out}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
     </div>
   );
 }
@@ -474,6 +512,7 @@ export function ScoutingApp() {
   const [hasMore, setHasMore] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [fetchMessage, setFetchMessage] = useState<string | null>(null);
+  const [stageTrace, setStageTrace] = useState<ScoutStageRecord[] | null>(null);
   const [discoveryNotice, setDiscoveryNotice] = useState<string | null>(null);
   const [peopleNotice, setPeopleNotice] = useState<{ headline: string; detail: string } | null>(null);
   const [goldBusyId, setGoldBusyId] = useState<string | null>(null);
@@ -1075,6 +1114,7 @@ export function ScoutingApp() {
         const qualityWarnings: string[] = [];
         const coverage = response.qualityMetrics?.coverage;
         const scale = response.qualityMetrics?.scale;
+        if (!append) setStageTrace(response.qualityMetrics?.stageTrace ?? null);
         if (coverage?.sampled) {
           qualityWarnings.push(
             `Showing a sample from ${coverage.citiesSearched.length} of ${coverage.citiesRequested} cities and ${coverage.industriesSearched.length} of ${coverage.industriesRequested} industries. Load more to rotate coverage.`,
@@ -2371,6 +2411,7 @@ export function ScoutingApp() {
         hasFetched={hasFetched}
         scoutMode={scoutMode}
         fetchMessage={fetchMessage}
+        stageTrace={stageTrace}
         showingSaved={showingSaved}
         icpHint={icpHint}
         locationScope={locationScope}

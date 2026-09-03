@@ -12,6 +12,8 @@ import {
   MAX_SCOUT_LEADS_LIMIT,
   searchProviderUsesTavily,
   shouldFallbackToIndiaDirectories,
+  resolveSearchProviderWithReason,
+  describeProviderChoice,
 } from "./config";
 import { apolloSearchCompanies, apolloSearchPeople, isApolloAuthError } from "./apollo";
 import { tavilySearchCompanies } from "./tavily";
@@ -51,6 +53,20 @@ import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
 import { fetchTavilyAccountUsage } from "./tavily-account";
 import { allTavilyKeysExhausted, syncSessionKeysFromAccount, takeTavilyKeySwitchMessage } from "./tavily-usage";
+import {
+  classifyProviderError,
+  listDegradedProviders,
+  noteProviderError,
+  providerFromStepLabel,
+} from "./provider-health";
+import {
+  compactTrace,
+  createStageTrace,
+  recordStage,
+  setTraceProvider,
+  type StageRecord,
+  type StageTrace,
+} from "./stage-trace";
 import { mapWithConcurrency } from "@/lib/async";
 import { db } from "@/db";
 import { eq, and, inArray, ilike, or } from "drizzle-orm";
@@ -116,6 +132,11 @@ export type DiscoveryResult = {
     softCityRecover: boolean;
     coverage: ScoutCoverageMetrics;
     scale: ScoutScaleMetrics;
+    /** Per-stage in/out counts, so an empty result names the stage that caused it. */
+    stageTrace?: StageRecord[];
+    /** Provider actually used, and why it may differ from the configured one. */
+    provider?: string;
+    providerReason?: string;
   };
 };
 
@@ -406,6 +427,7 @@ export async function discoverCompanies(params: {
   const useAI = process.env.SCOUT_USE_AI_PROSPECTING !== "false";
   const excludeNames = params.excludeNames ?? [];
   const warnings: string[] = [];
+  const trace = createStageTrace();
   const errors: string[] = [];
   const isNameSearch = !!params.companyName?.trim();
   const excludeSavedAccounts = params.excludeSavedAccounts ?? !isNameSearch;
@@ -464,6 +486,15 @@ export async function discoverCompanies(params: {
     });
   }
   const searchKind = params.searchKind ?? "industry";
+  // Data mode can silently upgrade the configured provider (auto/paid -> Apollo). Record which
+  // provider actually ran and why, so an empty result is explainable without re-deriving it.
+  const providerChoice =
+    cfg.providerChoice ?? resolveSearchProviderWithReason(cfg.dataMode, cfg.searchProvider);
+  setTraceProvider(
+    trace,
+    cfg.searchProvider,
+    providerChoice.reason === "configured" ? undefined : describeProviderChoice(providerChoice),
+  );
   const cityWindow = cfg.searchProvider === "google_places" ? selectionLabels.slice(0, 6) : selectionLabels;
   const industryWindow =
     cfg.searchProvider === "google_places"
@@ -545,7 +576,7 @@ export async function discoverCompanies(params: {
           meta: searchMeta,
           nameQuery,
         }),
-        external, remaining, excludeNames, savedAccounts, warnings, errors,
+        external, remaining, excludeNames, savedAccounts, warnings, errors, trace,
       );
       appendTavilyKeySwitchWarning(warnings);
     }
@@ -693,11 +724,23 @@ export async function discoverCompanies(params: {
   const keepCityUsableExternal = () => {
     if (selectionLooksLikeNeighborhoods(selectionLabels)) return;
     const kept: ScoutCompanyResult[] = [];
+    const before = external.length;
     for (const row of external) {
       if (cityUsable([row]).length > 0) kept.push(row);
       else discardedByCity.push(row);
     }
     external.splice(0, external.length, ...kept);
+    // The stage that silently emptied an Apollo-routed Bellary scout: provider hits that
+    // carry no matching city are dropped here, before any of the named filter stages run.
+    if (before !== kept.length) {
+      recordStage(
+        trace,
+        "off_city_discard",
+        before,
+        kept.length,
+        `${before - kept.length} hit(s) had no city matching ${selectionLabels.slice(0, 3).join(", ")}`,
+      );
+    }
   };
 
   // ── Step 2: Primary search provider (resolved from dataMode) ─────────────
@@ -710,21 +753,21 @@ export async function discoverCompanies(params: {
           fetchSeed: params.fetchSeed,
           ...(focusCityLabels ? { focusCityLabels } : {}),
         }),
-        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors, trace,
       );
       break;
 
     case "google_places":
       await runStep("google_places", () =>
         googlePlacesSearchCompanies(providerParams),
-        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors, trace,
       );
       break;
 
     case "apollo":
       await runStep("apollo", () =>
         apolloSearchCompanies(providerParams),
-        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors, trace,
       );
       break;
 
@@ -734,7 +777,7 @@ export async function discoverCompanies(params: {
           ...providerParams,
           meta: searchMeta,
         }),
-        external, stepLimit, excludeNames, savedAccounts, warnings, errors,
+        external, stepLimit, excludeNames, savedAccounts, warnings, errors, trace,
       );
       break;
   }
@@ -757,7 +800,7 @@ export async function discoverCompanies(params: {
         excludeNames,
         savedAccounts,
         warnings,
-        errors,
+        errors, trace,
       );
     }
   }
@@ -787,7 +830,7 @@ export async function discoverCompanies(params: {
       excludeNames,
       savedAccounts,
       warnings,
-      errors,
+      errors, trace,
     );
     keepCityUsableExternal();
   }
@@ -818,7 +861,7 @@ export async function discoverCompanies(params: {
         excludeNames,
         savedAccounts,
         warnings,
-        errors,
+        errors, trace,
       );
       keepCityUsableExternal();
       if (
@@ -865,7 +908,7 @@ export async function discoverCompanies(params: {
         employeeBands,
         searchKind,
       }),
-      external, stepLimit, excludeNames, savedAccounts, warnings, errors,
+      external, stepLimit, excludeNames, savedAccounts, warnings, errors, trace,
     );
     keepCityUsableExternal();
     appendTavilyKeySwitchWarning(warnings);
@@ -876,6 +919,7 @@ export async function discoverCompanies(params: {
     .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
     .map(hydrateEmployees);
   let cityFiltered = filterBySelectedCities(merged, selectionLabels, params.searchKind ?? "industry", geoPolicy);
+  recordStage(trace, "city_filter", merged.length, cityFiltered.length);
   let softCityFail = false;
   // Plant-district scouts must not soft-recover off-city companies ("show anything").
   const allowSoftRecover =
@@ -901,7 +945,14 @@ export async function discoverCompanies(params: {
     params.searchKind === "business"
       ? filterBySelectedBusinesses(cityFiltered, params.industries)
       : filterBySelectedIndustries(cityFiltered, params.industries);
+  recordStage(
+    trace,
+    params.searchKind === "business" ? "business_filter" : "industry_filter",
+    cityFiltered.length,
+    verticalFiltered.length,
+  );
   const ranked = rankAndFilterByEmployeeBands(verticalFiltered, employeeBands);
+  recordStage(trace, "scale_filter", verticalFiltered.length, ranked.companies.length);
   // Restrictive scale filters: smaller overfetch so less work feeds the LLM gate.
   const overfetchTarget = employeeBands.length
     ? limit + 8
@@ -941,7 +992,7 @@ export async function discoverCompanies(params: {
       [...excludeNames, ...companies.map((c) => c.name)],
       savedAccounts,
       warnings,
-      errors,
+      errors, trace,
     );
     const extraRanked = rankAndFilterByEmployeeBands(
       filterBySelectedCities(
@@ -994,6 +1045,7 @@ export async function discoverCompanies(params: {
   if (runIcpGate || !shouldSkipCompaniesLlmFilter(companies, limit)) {
     const beforeLlmFilter = companies;
     companies = finalizeScoutCompanies(await filterCompaniesWithLlm(companies, icpMeta));
+    recordStage(trace, "llm_icp_gate", beforeLlmFilter.length, companies.length);
     // Backstop: never surface zero when the pipeline had candidates going in.
     if (companies.length === 0 && beforeLlmFilter.length > 0) {
       warnings.push("AI company filter returned no results. Showing unfiltered candidates.");
@@ -1002,7 +1054,9 @@ export async function discoverCompanies(params: {
   } else {
     companies = companies.slice(0, overfetchTarget);
   }
+  const beforeSellerFilter = companies.length;
   companies = applySellerPollutionFilter(companies, qualityProfile, params.searchKind);
+  recordStage(trace, "seller_pollution_filter", beforeSellerFilter, companies.length);
 
   const rankedAccounts = sortCompaniesByAccountScore(companies, {
     profile: qualityProfile,
@@ -1023,34 +1077,42 @@ export async function discoverCompanies(params: {
     warnings.push("Stopped adding lower-fit companies once gold density flattened.");
   }
 
-  // Silent-zero guard: every provider came back empty (or every hit was off-city).
-  // Without this the caller sees zero companies and an empty warnings array, so the
-  // UI can only show generic "No companies found" and the real cause stays hidden.
-  if (merged.length === 0 && companies.length === 0) {
-    if (discardedByCity.length > 0) {
+  // A zero result must always carry its reason. Before this, an empty warnings array left the
+  // UI with nothing but generic "No companies found" copy, hiding provider outages entirely.
+  if (companies.length === 0) {
+    const degradedNow = listDegradedProviders();
+    const where = selectionLabels.slice(0, 3).join(", ");
+    if (degradedNow.length) {
       warnings.push(
-        `${discardedByCity.length} companies came back from ${cfg.searchProvider}, but none were in ${selectionLabels.slice(0, 3).join(", ")}. That provider has thin coverage here — try Free data mode to search India registry directories.`,
-      );
-    } else if (!errors.length) {
-      warnings.push(
-        `No provider returned candidates for ${selectionLabels.slice(0, 3).join(", ")}. Try Free data mode, fewer industries, or a nearby larger city.`,
+        `${degradedNow.map((h) => h.message).join(" ")} Results are incomplete until that clears — switch Data Mode to Free to use India registry directories.`,
       );
     }
-  } else if (merged.length > 0 && cityFiltered.length === 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
-    warnings.push(
-      `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
-    );
-  } else if (employeeBands.length && cityFiltered.length > 0 && companies.length === 0) {
-    warnings.push(
-      `Found ${cityFiltered.length} candidate${cityFiltered.length === 1 ? "" : "s"} but none matched the selected company scale. Try a wider scale range.`,
-    );
-  } else if (companies.length < limit && companies.length > 0) {
+    if (merged.length === 0 && discardedByCity.length > 0) {
+      warnings.push(
+        `${discardedByCity.length} compan${discardedByCity.length === 1 ? "y" : "ies"} came back from ${cfg.searchProvider}, but none were in ${where}. That provider has thin coverage here — switch Data Mode to Free to search India registry directories.`,
+      );
+    } else if (merged.length === 0 && !errors.length && !degradedNow.length) {
+      warnings.push(
+        `No provider returned candidates for ${where}. Try Free data mode, fewer industries, or a nearby larger city.`,
+      );
+    } else if (cityFiltered.length === 0 && merged.length > 0 && selectionLabels.length > 0 && !nationwide && !softCityFail) {
+      warnings.push(
+        `Found ${merged.length} candidate${merged.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.join(", ")}. Try a nearby city or leave industries unselected.`,
+      );
+    } else if (employeeBands.length && cityFiltered.length > 0) {
+      warnings.push(
+        `Found ${cityFiltered.length} candidate${cityFiltered.length === 1 ? "" : "s"} but none matched the selected company scale. Try a wider scale range.`,
+      );
+    }
+  } else if (companies.length < limit) {
     warnings.push(
       `Found ${companies.length} of ${limit} companies for these filters. Load more or widen city or scale.`,
     );
   }
 
+  const beforeSavedExclusion = companies.length;
   companies = filterNewScoutCompanies(companies, savedAccounts);
+  recordStage(trace, "saved_account_exclusion", beforeSavedExclusion, companies.length);
   if (
     excludeSavedAccounts &&
     savedAccounts.length &&
@@ -1071,6 +1133,9 @@ export async function discoverCompanies(params: {
     softCityRecover: softCityFail,
     coverage,
     scale: scaleMetrics(companies, ranked.droppedKnown),
+    stageTrace: compactTrace(trace),
+    provider: trace.provider,
+    ...(trace.providerReason ? { providerReason: trace.providerReason } : {}),
   };
   void logScoutQualityEvent({
     tenantId: params.tenantId,
@@ -1202,6 +1267,7 @@ export async function discoverPeople(params: {
   // discard most raw Tavily hits, so we fetch more candidates up front.
   const fetchLimit = Math.min(18, Math.max(limit + 5, limit));
   const warnings: string[] = [];
+  const trace = createStageTrace();
   const errors: string[] = [];
   const scoutCities = params.cities ?? [];
   const hasDomainHint = Boolean(params.companyDomain || params.companyWebsite);
@@ -1436,7 +1502,7 @@ export async function discoverPeople(params: {
       [],
       [],
       warnings,
-      errors,
+      errors, trace,
     );
     appendTavilyKeySwitchWarning(warnings);
   }
@@ -1589,7 +1655,7 @@ export async function discoverPeople(params: {
           external.map((p) => p.name),
           [],
           warnings,
-          errors,
+          errors, trace,
         );
         appendTavilyKeySwitchWarning(warnings);
         if (hqHits.length) {
@@ -1842,7 +1908,11 @@ function stepFailureMessage(label: string, err: unknown): string {
     return "GOOGLE_PLACES_API_KEY is missing. Switch search provider or add a Google Places key.";
   }
   if (/tavily api quota|usage limit/i.test(msg)) return msg;
-  if (/quota|429|rate.?limit/i.test(msg)) {
+  const state = classifyProviderError(err);
+  if (state === "quota_exhausted") {
+    return `${label} has exhausted its quota. Switch Data Mode to Free, or wait for the quota to reset.`;
+  }
+  if (state === "rate_limited") {
     return `${label} hit an API rate limit. Try again shortly.`;
   }
   return `${label} failed: ${msg}`;
@@ -1858,7 +1928,9 @@ async function runStep(
   savedAccounts: AccountMatchShape[] = [],
   warnings: string[] = [],
   errors: string[] = [],
+  trace?: StageTrace,
 ): Promise<void> {
+  const accBefore = acc.length;
   try {
     const results = await fn();
     const seen = new Set([
@@ -1883,9 +1955,14 @@ async function runStep(
       acc.push(cleaned as ScoutCompanyResult & ScoutPersonResult);
       seen.add(key);
     }
+    recordStage(trace, label, accBefore, acc.length, undefined, { yielded: results.length });
   } catch (e) {
     console.error(`[waterfall:${label}] failed:`, e);
-    errors.push(stepFailureMessage(label, e));
+    const message = stepFailureMessage(label, e);
+    errors.push(message);
+    recordStage(trace, label, accBefore, acc.length, message);
+    const provider = providerFromStepLabel(label);
+    if (provider) noteProviderError(provider, e, message);
   }
 }
 

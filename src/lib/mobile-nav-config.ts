@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bot,
   Contact,
+  Flame,
   GitFork,
   Home,
   Inbox,
@@ -48,6 +49,7 @@ export const MOBILE_DRAWER_SECTIONS: MobileNavSection[] = [
   {
     title: "MORE",
     items: [
+      { key: "season", label: "Season War Room", href: "/season", icon: Flame },
       { key: "brand-intelligence", label: "Brand Intelligence", href: "/brand-intelligence", icon: Radar },
       { key: "funnel", label: "Yield Funnel", href: "/funnel", icon: GitFork },
       { key: "pinned", label: "Pinned", href: "/pinned", icon: Pin },
@@ -93,6 +95,7 @@ export function getMobilePageTitle(pathname: string): string {
   if (pathname === "/scouting" || pathname.startsWith("/scouting")) return "Scouting";
   if (pathname === "/leads" || pathname.startsWith("/leads")) return "Leads";
   if (pathname === "/email") return "Outreach";
+  if (pathname === "/season") return "Season War Room";
   if (pathname === "/brand-intelligence") return "Brand Intelligence";
   if (pathname === "/funnel") return "Yield Funnel";
   if (pathname === "/directory") return "Accounts";

@@ -10,21 +10,46 @@ import {
 } from "@/lib/settings/workspace-settings";
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
 import { MAX_SCOUT_COMPANIES_LIMIT } from "@/lib/enrichment/config";
+import { firstZeroingStage, type StageRecord } from "@/lib/enrichment/stage-trace";
 
-/** Empty-result copy that names the actual lever to pull for the mode that was run. */
+/**
+ * Empty-result copy that names the actual lever to pull.
+ * Prefers the stage that actually emptied the pipeline over generic advice — a scout that
+ * returned zero because every provider hit was off-city needs different guidance from one
+ * whose industry filter was too narrow.
+ */
 function emptyResultMessage(params: {
   cities: string[];
   industries: string[];
   locationScope?: "focus" | "interest";
+  stageTrace?: StageRecord[];
 }): string {
+  const zeroing = firstZeroingStage(
+    params.stageTrace ? { records: params.stageTrace } : undefined,
+  );
+  const where = params.cities.slice(0, 3).join(", ");
+  if (zeroing) {
+    if (zeroing.stage === "off_city_discard" || zeroing.stage === "city_filter") {
+      return `Found ${zeroing.in} compan${zeroing.in === 1 ? "y" : "ies"}, but none verified in ${where}. Try a nearby larger city, or switch Data Mode to Free for India registry coverage.`;
+    }
+    if (zeroing.stage === "industry_filter" || zeroing.stage === "business_filter") {
+      return `Found ${zeroing.in} compan${zeroing.in === 1 ? "y" : "ies"} in ${where}, but none in your selected industries. Clear industries to see everything found.`;
+    }
+    if (zeroing.stage === "scale_filter") {
+      return `Found ${zeroing.in} compan${zeroing.in === 1 ? "y" : "ies"}, but none matched the selected company scale. Widen the scale range.`;
+    }
+    if (zeroing.stage === "saved_account_exclusion") {
+      return `All ${zeroing.in} matches are companies you already saved. Load more, or try different cities or industries.`;
+    }
+  }
   if (params.locationScope === "focus") {
     return "No companies found near your focus area. Widen the focus radius, or switch to Area of Interest to search the whole city.";
   }
-  const where = params.cities.length ? ` in ${params.cities.slice(0, 3).join(", ")}` : "";
+  const suffix = where ? ` in ${where}` : "";
   if (params.industries.length > 3) {
-    return `No companies found${where}. Narrow to 2-3 industries: long industry lists dilute the search.`;
+    return `No companies found${suffix}. Narrow to 2-3 industries: long industry lists dilute the search.`;
   }
-  return `No companies found${where}. Try a nearby larger city, or switch data mode to Auto for paid providers.`;
+  return `No companies found${suffix}. Try a nearby larger city, or switch data mode to Auto for paid providers.`;
 }
 
 export async function POST(req: Request) {
@@ -138,6 +163,7 @@ export async function POST(req: Request) {
                 cities,
                 industries,
                 locationScope: discoverParams.locationScope,
+                stageTrace: result.qualityMetrics?.stageTrace,
               }),
             );
           }
@@ -195,7 +221,12 @@ export async function POST(req: Request) {
 
     if (!companies.length && !allErrors.length && !allWarnings.length) {
       allWarnings.push(
-        emptyResultMessage({ cities, industries, locationScope: discoverParams.locationScope }),
+        emptyResultMessage({
+          cities,
+          industries,
+          locationScope: discoverParams.locationScope,
+          stageTrace: qualityMetrics?.stageTrace,
+        }),
       );
     }
 
