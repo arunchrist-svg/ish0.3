@@ -114,8 +114,8 @@ describe("AUTH-UNIT-001 permissions matrix", () => {
 });
 
 describe("lead visibility roles", () => {
-  it("keeps scouted leads private per user in a slug", () => {
-    expect(leadVisibilityForRole("owner", "user")).toBe("own_plus_unassigned");
+  it("owner sees all tenant leads; admins and members see only their own", () => {
+    expect(leadVisibilityForRole("owner", "user")).toBe("all");
     expect(leadVisibilityForRole("admin", "user")).toBe("own");
     expect(leadVisibilityForRole("member", "user")).toBe("own");
     expect(leadVisibilityForRole("viewer", SUPER)).toBe("all");

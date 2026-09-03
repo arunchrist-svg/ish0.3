@@ -22,6 +22,8 @@ import { Flame, Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, Cre
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { clampScoutCompaniesLimit, clampScoutLeadsLimit } from "@/lib/enrichment/config";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
+import { fetchLeadsPage, runWriterSequence } from "@/lib/api-client";
+import { groupLeadsByPipelineStage } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 
 const ALL_NAV_ITEMS: SettingsNavItem[] = [
@@ -356,6 +358,42 @@ function SettingsAppInner() {
     }
   }
 
+  async function handleChangeAllTemplate(templateId: string) {
+    await saveEmail();
+    const toastId = toast.loading("Fetching Contact Ready leads…");
+    try {
+      const page = await fetchLeadsPage({ limit: 200 });
+      const grouped = groupLeadsByPipelineStage(page.leads);
+      const targets = grouped["Contact Ready"] ?? [];
+      if (!targets.length) {
+        toast.dismiss(toastId);
+        toast.message("No Contact Ready leads to update");
+        return;
+      }
+      toast.loading(`Writing ${targets.length} lead${targets.length === 1 ? "" : "s"}…`, { id: toastId });
+      let ok = 0;
+      let failed = 0;
+      for (const lead of targets) {
+        try {
+          await runWriterSequence(lead.id, { outreachTemplate: templateId });
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+        toast.loading(`Writing… ${ok + failed} of ${targets.length}`, { id: toastId });
+      }
+      toast.dismiss(toastId);
+      if (failed === 0) {
+        toast.success(ok === 1 ? "Rewrote email for 1 lead" : `Rewrote emails for ${ok} leads`);
+      } else {
+        toast.error(`Rewrote ${ok} of ${targets.length}. ${failed} failed.`);
+      }
+    } catch {
+      toast.dismiss(toastId);
+      toast.error("Could not rewrite leads");
+    }
+  }
+
   async function saveAndLeave() {
     const emailNeedsSave = emailDirty || Boolean(smtpPassDraft.trim()) || Boolean(resendApiKeyDraft.trim());
     if (dirty) {
@@ -484,7 +522,7 @@ function SettingsAppInner() {
           )}
 
           {activeTab === "email" && (
-            <EmailTab config={emailConfig} onUpdate={updateEmail} smtpPassDraft={smtpPassDraft} onSmtpPassChange={handleSmtpPassChange} resendApiKeyDraft={resendApiKeyDraft} onResendApiKeyChange={handleResendApiKeyChange} onVerify={verifyEmail} verifying={verifyingEmail} />
+            <EmailTab config={emailConfig} onUpdate={updateEmail} smtpPassDraft={smtpPassDraft} onSmtpPassChange={handleSmtpPassChange} resendApiKeyDraft={resendApiKeyDraft} onResendApiKeyChange={handleResendApiKeyChange} onVerify={verifyEmail} verifying={verifyingEmail} onChangeAllTemplate={handleChangeAllTemplate} />
           )}
 
           {activeTab === "festive" && <FestiveTab />}

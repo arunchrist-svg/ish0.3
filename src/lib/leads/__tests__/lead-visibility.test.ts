@@ -11,8 +11,8 @@ describe("lead visibility", () => {
     expect(leadVisibilityForRole("admin", "superadmin")).toBe("all");
   });
 
-  it("owner sees own plus unassigned", () => {
-    expect(leadVisibilityForRole("owner", "user")).toBe("own_plus_unassigned");
+  it("owner sees all tenant leads", () => {
+    expect(leadVisibilityForRole("owner", "user")).toBe("all");
     expect(
       canAccessLeadRecord(
         { userId: "owner-1", role: "owner", platformRole: "user", tenantId: "t1" },
@@ -30,7 +30,7 @@ describe("lead visibility", () => {
         { userId: "owner-1", role: "owner", platformRole: "user", tenantId: "t1" },
         { tenantId: "t1", createdByUserId: "admin-2" },
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("slug admin only sees own scouted leads", () => {

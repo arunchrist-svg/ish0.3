@@ -83,18 +83,27 @@ function resolveSendDraft(lead: Awaited<ReturnType<typeof fetchLead>>): WriterDr
   return email1 ?? lead.outreach ?? null;
 }
 
+export type WriteEmailsOptions = {
+  outreachTemplate?: string;
+  onProgress?: (progress: BoardBulkProgress) => void;
+};
+
 export async function writeEmailsForLeads(
   leads: LeadQueueItem[],
-  onProgress?: (progress: BoardBulkProgress) => void,
+  onProgressOrOptions?: ((progress: BoardBulkProgress) => void) | WriteEmailsOptions,
 ): Promise<BoardBulkResult> {
+  const options: WriteEmailsOptions =
+    typeof onProgressOrOptions === "function"
+      ? { onProgress: onProgressOrOptions }
+      : (onProgressOrOptions ?? {});
   const result: BoardBulkResult = { ok: 0, failed: 0, cancelled: 0, errors: [] };
   const total = leads.length;
 
   for (let i = 0; i < leads.length; i++) {
     const lead = leads[i];
-    onProgress?.({ current: i + 1, total, leadName: lead.name });
+    options.onProgress?.({ current: i + 1, total, leadName: lead.name });
     try {
-      await runWriterSequence(lead.id);
+      await runWriterSequence(lead.id, { outreachTemplate: options.outreachTemplate });
       result.ok += 1;
     } catch (e) {
       result.failed += 1;

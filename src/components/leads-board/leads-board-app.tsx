@@ -17,6 +17,16 @@ import {
   type BoardBulkProgress,
   type SendQueueItem,
 } from "./board-bulk-actions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "lucide-react";
+import {
+  getOutreachTemplatesForBrand,
+} from "@/lib/email/outreach-templates";
 import { OutreachComposeModal } from "@/components/email/outreach-compose-modal";
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
@@ -120,6 +130,7 @@ export function LeadsBoardApp() {
   const [addedByUserId, setAddedByUserId] = useState<string | null>(null);
   const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [writingProgress, setWritingProgress] = useState<BoardBulkProgress | null>(null);
+  const [writeTemplate, setWriteTemplate] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
   const sendAbortRef = useRef<AbortController | null>(null);
@@ -256,13 +267,16 @@ export function LeadsBoardApp() {
 
   const boardBusy = Boolean(writingProgress) || sending;
 
-  const handleWriteAll = useCallback(async () => {
+  const handleWriteAll = useCallback(async (templateOverride?: string | null) => {
     const targets = grouped["Contact Ready"] ?? [];
     if (!targets.length || writingProgress || sending) return;
 
     setWritingProgress({ current: 0, total: targets.length });
     try {
-      const result = await writeEmailsForLeads(targets, setWritingProgress);
+      const result = await writeEmailsForLeads(targets, {
+        outreachTemplate: templateOverride ?? writeTemplate ?? undefined,
+        onProgress: setWritingProgress,
+      });
       if (result.failed === 0) {
         toast.success(
           result.ok === 1
@@ -279,7 +293,7 @@ export function LeadsBoardApp() {
     } finally {
       setWritingProgress(null);
     }
-  }, [grouped, writingProgress, sending]);
+  }, [grouped, writingProgress, sending, writeTemplate]);
 
   const cancelSendAll = useCallback(() => {
     sendAbortRef.current?.abort();
@@ -454,10 +468,48 @@ export function LeadsBoardApp() {
               const columnLeads = grouped[stage] ?? [];
               const writeBusy = Boolean(writingProgress);
               const sendBusy = sending;
+
+              const writeTemplates = getOutreachTemplatesForBrand(undefined).filter(
+                (t) => t.id !== "follow_up" && t.id !== "final_reminder",
+              );
+              const activeWriteTemplate = writeTemplates.find((t) => t.id === writeTemplate);
+              const templateAccessory = (
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger
+                    disabled={writeBusy}
+                    className={cn(
+                      "flex shrink-0 items-center gap-1 rounded-full border border-brand-border/70 bg-white/80 px-2 py-1.5 text-[10px] font-semibold text-brand-ink-soft transition-all",
+                      "hover:border-brand-ink/25 hover:text-brand-ink",
+                      "disabled:cursor-not-allowed disabled:opacity-50",
+                    )}
+                    aria-label="Choose Email 1 template"
+                  >
+                    <span className="max-w-[6rem] truncate">
+                      {activeWriteTemplate?.shortLabel ?? "Template"}
+                    </span>
+                    <ChevronDown className="size-2.5 shrink-0" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" sideOffset={4} className="min-w-[11rem]">
+                    {writeTemplates.map((t) => (
+                      <DropdownMenuItem
+                        key={t.id}
+                        onSelect={() => setWriteTemplate(t.id)}
+                        className={cn(
+                          "text-[12px]",
+                          writeTemplate === t.id && "font-semibold text-brand-stratus-blue",
+                        )}
+                      >
+                        {t.shortLabel}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              );
+
               const action =
                 stage === "Contact Ready"
                   ? {
-                      label: "Email Write All",
+                      label: "Write All",
                       busyLabel:
                         writingProgress && writingProgress.current > 0
                           ? `Writing ${writingProgress.current} of ${writingProgress.total}`
@@ -465,6 +517,7 @@ export function LeadsBoardApp() {
                       busy: writeBusy,
                       disabled: boardBusy && !writeBusy,
                       onClick: () => void handleWriteAll(),
+                      accessory: templateAccessory,
                     }
                   : stage === "Email"
                     ? {

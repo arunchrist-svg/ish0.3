@@ -434,6 +434,7 @@ export function QueuePanel({
                     onClick={() => {
                       setQuick(null);
                       setPanel(new Set());
+                      setAddedByUserId(null);
                     }}
                   >
                     Clear all
@@ -485,6 +486,7 @@ export function QueuePanel({
                   onClick={() => {
                     setQuick(null);
                     setPanel(new Set());
+                    setAddedByUserId(null);
                   }}
                 >
                   Clear all

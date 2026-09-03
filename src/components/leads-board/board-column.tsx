@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Loader2 } from "lucide-react";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
@@ -19,6 +20,7 @@ type ColumnAction = {
   disabled?: boolean;
   onClick: () => void;
   onCancel?: () => void;
+  accessory?: React.ReactNode;
 };
 
 type Props = {
@@ -62,6 +64,7 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, o
         </div>
         {action ? (
           <div className="flex items-center gap-1.5">
+            {action.accessory}
             <button
               type="button"
               onClick={action.onClick}

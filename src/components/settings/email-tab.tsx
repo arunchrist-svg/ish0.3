@@ -19,6 +19,7 @@ import {
   type SmtpServerId,
   type WebsiteBrandInsights,
 } from "@/lib/email/config";
+import { getOutreachTemplatesForBrand } from "@/lib/email/outreach-templates";
 import { campaignModeOptionsForBrand, brandConfigFromPresetSelection, brandConfigFromPlatformIntent } from "@/lib/email/brand-presets";
 import {
   defaultCampaignModeForIntent,
@@ -46,7 +47,7 @@ import { HoursRangeSliders } from "@/components/settings/hours-range-sliders";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertTriangle, CheckCircle2, ChevronDown, CircleHelp, Loader2, XCircle } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type Props = {
   config: EmailConfigResponse | null;
@@ -57,6 +58,7 @@ type Props = {
   onResendApiKeyChange: (value: string) => void;
   onVerify: () => void;
   verifying: boolean;
+  onChangeAllTemplate?: (templateId: string) => Promise<void>;
 };
 
 function AppPasswordHelp({ variant }: { variant: "gmail" | "zoho" }) {
@@ -345,14 +347,23 @@ export function EmailTab({
   onResendApiKeyChange,
   onVerify,
   verifying,
+  onChangeAllTemplate,
 }: Props) {
   const [analyzingWebsite, setAnalyzingWebsite] = useState(false);
   const [analyzeMessage, setAnalyzeMessage] = useState("");
   const [keywordDraft, setKeywordDraft] = useState<string | null>(null);
   const [showWriter, setShowWriter] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [changingAll, setChangingAll] = useState(false);
+  const savedCtaRef = useRef<string | null>(null);
   const { session } = useSession();
   const operatorEmail = session?.user.email;
+
+  useEffect(() => {
+    if (config && savedCtaRef.current === null) {
+      savedCtaRef.current = config.brandConfig?.defaultOutreachCta ?? "";
+    }
+  }, [config]);
 
   useEffect(() => {
     if (!config) return;
@@ -859,6 +870,63 @@ export function EmailTab({
           </p>
         ) : null}
         <SettingsGroupDivider />
+        {(() => {
+          const email1Templates = getOutreachTemplatesForBrand(config.brandConfig).filter(
+            (t) => t.id !== "follow_up" && t.id !== "final_reminder",
+          );
+          const currentCta = config.brandConfig?.defaultOutreachCta ?? email1Templates[0]?.id ?? "";
+          const ctaChanged = savedCtaRef.current !== null && savedCtaRef.current !== currentCta;
+          if (email1Templates.length < 2) return null;
+          return (
+            <>
+              <SettingsRow className="justify-between py-2.5">
+                <div className="min-w-0 pr-3">
+                  <span className="text-[13px] font-semibold text-brand-ink">Email 1 Template</span>
+                  <p className="mt-0.5 text-[11px] text-brand-ink-faint">
+                    Default CTA used by the Writer when generating the first email.
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <SettingsSegmented
+                    value={currentCta}
+                    onChange={(next) =>
+                      onUpdate("brandConfig", {
+                        ...(config.brandConfig as BrandConfig),
+                        defaultOutreachCta: next,
+                      })
+                    }
+                    options={email1Templates.map((t) => ({
+                      value: t.id,
+                      label: t.shortLabel ?? t.label,
+                    }))}
+                  />
+                  {onChangeAllTemplate && ctaChanged ? (
+                    <button
+                      type="button"
+                      disabled={changingAll}
+                      onClick={async () => {
+                        setChangingAll(true);
+                        try {
+                          await onChangeAllTemplate(currentCta);
+                          savedCtaRef.current = currentCta;
+                        } finally {
+                          setChangingAll(false);
+                        }
+                      }}
+                      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-brand-stratus-blue px-3 text-[11px] font-semibold text-white shadow-[var(--shadow-brand-sm)] hover:bg-brand-stratus-blue/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {changingAll ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : null}
+                      {changingAll ? "Changing…" : "Change All"}
+                    </button>
+                  ) : null}
+                </div>
+              </SettingsRow>
+              <SettingsGroupDivider />
+            </>
+          );
+        })()}
         <button
           type="button"
           onClick={() => setShowWriter((open) => !open)}

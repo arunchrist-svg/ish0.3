@@ -1,4 +1,4 @@
-import { and, eq, isNull, or, type SQL } from "drizzle-orm";
+import { and, eq, type SQL } from "drizzle-orm";
 import { leads } from "@/db";
 import type { TenantContext, TenantRole } from "@/lib/tenant";
 import { isSuperadmin } from "@/lib/auth/platform";
@@ -9,15 +9,13 @@ export function canViewAllTenantLeads(platformRole?: string | null): boolean {
 }
 
 /**
- * Scouted / created leads stay with the user who added them.
- * Slug admins and members only see their own. Owner also sees legacy
- * leads with no created_by (pre-attribution). Superadmin sees all.
+ * Owners see all leads in their tenant (needed for team management and
+ * "added by" filtering across members). Admins and members only see their
+ * own. Superadmin sees all.
  */
 export function leadVisibilitySql(ctx: Pick<TenantContext, "userId" | "role" | "platformRole">): SQL | undefined {
   if (canViewAllTenantLeads(ctx.platformRole)) return undefined;
-  if (ctx.role === "owner") {
-    return or(eq(leads.createdByUserId, ctx.userId), isNull(leads.createdByUserId));
-  }
+  if (ctx.role === "owner") return undefined;
   return eq(leads.createdByUserId, ctx.userId);
 }
 
@@ -27,9 +25,7 @@ export function canAccessLeadRecord(
 ): boolean {
   if (lead.tenantId !== ctx.tenantId) return false;
   if (canViewAllTenantLeads(ctx.platformRole)) return true;
-  if (ctx.role === "owner") {
-    return !lead.createdByUserId || lead.createdByUserId === ctx.userId;
-  }
+  if (ctx.role === "owner") return true;
   return lead.createdByUserId === ctx.userId;
 }
 
@@ -43,8 +39,8 @@ export function withLeadVisibility(
   return and(...filtered)!;
 }
 
-export function leadVisibilityForRole(role: TenantRole, platformRole?: string | null): "all" | "own_plus_unassigned" | "own" {
+export function leadVisibilityForRole(role: TenantRole, platformRole?: string | null): "all" | "own" {
   if (canViewAllTenantLeads(platformRole)) return "all";
-  if (role === "owner") return "own_plus_unassigned";
+  if (role === "owner") return "all";
   return "own";
 }
