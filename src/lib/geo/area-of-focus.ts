@@ -61,6 +61,9 @@ export const LOCALITY_CATALOG: CatalogLocality[] = [
   { name: "Sarjapur", aliases: ["Sarjapur Road"], city: "Bengaluru", lat: 12.9116, lng: 77.6389 },
   { name: "Marathahalli", city: "Bengaluru", lat: 12.9591, lng: 77.6974 },
   { name: "Whitefield", city: "Bengaluru", lat: 12.9698, lng: 77.7499 },
+  { name: "Kadugodi", city: "Bengaluru", lat: 12.991, lng: 77.761 },
+  { name: "Telecom Layout", aliases: ["Telecom Lyt", "TELECOM LYT"], city: "Bengaluru", lat: 12.995, lng: 77.705 },
+  { name: "KP Agrahara", aliases: ["K P Agrahara"], city: "Bengaluru", lat: 12.965, lng: 77.56 },
   { name: "Brookefield", aliases: ["Brooke Field"], city: "Bengaluru", lat: 12.9652, lng: 77.7179 },
   { name: "Electronic City", city: "Bengaluru", lat: 12.8452, lng: 77.6602 },
   { name: "Jayanagar", city: "Bengaluru", lat: 12.925, lng: 77.5938 },
@@ -72,7 +75,7 @@ export const LOCALITY_CATALOG: CatalogLocality[] = [
   { name: "Attibele", city: "Bengaluru", lat: 12.778, lng: 77.77 },
   // Hosur
   { name: "Hosur", city: "Hosur", lat: 12.7409, lng: 77.8253 },
-  { name: "SIPCOT Hosur", aliases: ["SIPCOT"], city: "Hosur", lat: 12.736, lng: 77.851 },
+  { name: "SIPCOT Hosur", aliases: ["SIPCOT Hosur Phase", "SIPCOT Industrial Complex Hosur"], city: "Hosur", lat: 12.736, lng: 77.851 },
   { name: "Bagalur Hosur", aliases: ["Bagalur"], city: "Hosur", lat: 12.71, lng: 77.79 },
   // Mysuru
   { name: "Mysuru", aliases: ["Mysore"], city: "Mysuru", lat: 12.2958, lng: 76.6394 },

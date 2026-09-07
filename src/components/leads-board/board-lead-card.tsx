@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Check, Clock, Loader2, MapPin, X } from "lucide-react";
+import { Check, Clock, Loader2, MapPin, Pencil, Send, X } from "lucide-react";
 import { IshAvatar, ScoreBadge, TruncatedText } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
@@ -16,6 +16,8 @@ type Props = {
   sendStatus?: SendQueueItem;
   /** When set, card opens this handler instead of navigating to the lead page. */
   onOpen?: (lead: LeadQueueItem) => void;
+  onWrite?: (lead: LeadQueueItem) => void;
+  onSend?: (lead: LeadQueueItem) => void;
 };
 
 type CardSendBadge = {
@@ -56,7 +58,7 @@ function cardSendBadge(
   return null;
 }
 
-export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen }: Props) {
+export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen, onWrite, onSend }: Props) {
   const badge = cardSendBadge(lead, stage, sendStatus);
   const className =
     "ish-board-lead-card group block w-full overflow-hidden rounded-[16px] text-left transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5";
@@ -121,7 +123,23 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen }
             {badge?.tone === "failed" ? <X className="size-2.5" /> : null}
             <span className="truncate">{badge?.label ?? statusToDisplayLabel(lead.status)}</span>
           </span>
-          <IshAvatar name={lead.name} index={index} size={26} />
+          <div className="flex items-center gap-1.5">
+            {(onWrite || onSend) ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onWrite) onWrite(lead);
+                  else onSend?.(lead);
+                }}
+                className="flex size-6 items-center justify-center rounded-full border border-brand-border/70 bg-white/80 text-brand-ink-faint opacity-0 transition-opacity group-hover:opacity-100 hover:border-brand-stratus-blue/40 hover:text-brand-stratus-blue active:scale-95"
+                aria-label={onWrite ? "Write email" : "Send email"}
+              >
+                {onWrite ? <Pencil className="size-3" /> : <Send className="size-3" />}
+              </button>
+            ) : null}
+            <IshAvatar name={lead.name} index={index} size={26} />
+          </div>
         </div>
       </div>
     </>
@@ -129,9 +147,14 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen }
 
   if (onOpen) {
     return (
-      <button type="button" onClick={() => onOpen(lead)} className={className}>
+      <div onClick={() => onOpen(lead)} className={className} role="button" tabIndex={0} onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(lead);
+        }
+      }}>
         {body}
-      </button>
+      </div>
     );
   }
 

@@ -1,4 +1,10 @@
-import { searchProviderUsesTavily, type EnrichmentConfig } from "./config";
+import {
+  configUsesTavilyForCompanies,
+  hasApolloKey,
+  isAgenticSearchProvider,
+  resolveAgenticDataStack,
+  type EnrichmentConfig,
+} from "./config";
 import { friendlyLLMError } from "@/lib/llm";
 import { hasGeminiKeys } from "@/lib/llm/gemini-keys";
 import { hasAnthropicKey } from "@/lib/llm/provider-chain";
@@ -19,30 +25,47 @@ export function hasLLMKey(): boolean {
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
   const errors: string[] = [];
-  const needsTavily = searchProviderUsesTavily(cfg.searchProvider);
+
+  if (isAgenticSearchProvider(cfg.searchProvider)) {
+    const stack = resolveAgenticDataStack(cfg.agenticDataStack);
+    if (stack === "places_apollo") {
+      if (!process.env.GOOGLE_PLACES_API_KEY?.trim()) {
+        errors.push(
+          "Agentic Places + Apollo needs GOOGLE_PLACES_API_KEY. Add it, or switch Agentic data stack to Directories.",
+        );
+      }
+      if (cfg.peopleSearchProvider !== "none" && !hasApolloKey()) {
+        errors.push(
+          "Agentic Places + Apollo needs APOLLO_API_KEY for people search. Add it, turn People search Off, or switch to Directories.",
+        );
+      }
+      return errors;
+    }
+  }
+
+  const needsTavily = configUsesTavilyForCompanies(cfg);
 
   if (needsTavily && !hasTavilyKey()) {
     errors.push(
-      cfg.searchProvider === "india_directories"
-        ? "India Directories uses Tavily to search Indian directory sites. Add a Tavily key or switch Company search to Google Places."
-        : "TAVILY_API_KEY is missing. Add it in .env.local or Settings to discover companies.",
+      cfg.searchProvider === "agentic_ai"
+        ? "Agentic Directories uses Tavily to search Indian directories. Add a Tavily key, switch Agentic data stack to Places + Apollo, or use Google Places company search."
+        : cfg.searchProvider === "india_directories"
+          ? "India Directories uses Tavily to search Indian directory sites. Add a Tavily key or switch Company search to Google Places."
+          : "TAVILY_API_KEY is missing. Add it in .env.local or Settings to discover companies.",
     );
   }
 
-  if (
-    needsTavily &&
-    !hasLLMKey()
-  ) {
+  if (needsTavily && !hasLLMKey()) {
     errors.push(
       "GEMINI_API_KEY is missing. Directory search will use basic parsing only until Gemini is configured.",
     );
   }
 
-  if (cfg.searchProvider === "apollo" && !process.env.APOLLO_API_KEY) {
+  if (cfg.searchProvider === "apollo" && !hasApolloKey()) {
     errors.push("APOLLO_API_KEY is missing. Switch Data Mode to Free or add your Apollo key.");
   }
 
-  if (cfg.searchProvider === "google_places" && !process.env.GOOGLE_PLACES_API_KEY) {
+  if (cfg.searchProvider === "google_places" && !process.env.GOOGLE_PLACES_API_KEY?.trim()) {
     errors.push("GOOGLE_PLACES_API_KEY is missing. Switch search provider or add a Google Places key.");
   }
 

@@ -9,6 +9,7 @@ import { toDbEmailStatus } from "@/lib/enrichment/contact-emails";
 import { normalizeLinkedInUrl } from "@/lib/utils";
 import { logAudit } from "@/lib/audit";
 import { applyColumnMapping, mappingHasRequiredFields } from "./apply-mapping";
+import { parseFullName } from "./parse-names";
 import { planBulkImport } from "./bulk-plan";
 import {
   INLINE_ENRICH_MAX,
@@ -154,7 +155,7 @@ export async function importMappedLeads(params: {
       await insertChunks(plan.toInsert, (chunk) =>
         tx.insert(contacts).values(
           chunk.map(({ row, accountId, contactId }) => {
-            const parts = row.name.split(/\s+/);
+            const parsed = parseFullName(row.name);
             const email = sanitizeEmail(row.email);
             const emailStatus = !email
               ? "missing"
@@ -167,8 +168,8 @@ export async function importMappedLeads(params: {
               workspaceId: params.workspaceId,
               accountId,
               name: row.name,
-              firstName: parts[0] || null,
-              lastName: parts.slice(1).join(" ") || null,
+              firstName: parsed.firstName || null,
+              lastName: parsed.lastName || null,
               title: row.title?.trim() || null,
               email: email ?? null,
               emailStatus: toDbEmailStatus(emailStatus),

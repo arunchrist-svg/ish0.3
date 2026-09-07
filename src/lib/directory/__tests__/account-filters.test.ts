@@ -72,7 +72,7 @@ describe("account company filters", () => {
   it("ORs scale filters and ANDs with website", () => {
     const rows = [
       company({ name: "A", employees: "5", domain: "a.com" }),
-      company({ name: "B", employees: "100", domain: "b.com" }),
+      company({ name: "B", employees: "150", domain: "b.com" }),
       company({ name: "C", employees: "5" }),
     ];
     const filtered = applyAccountCompanyView(rows, {

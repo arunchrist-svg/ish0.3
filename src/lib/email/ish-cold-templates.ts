@@ -190,6 +190,84 @@ export function fillIshCatalogDraftVariants(params: IshFillParams) {
   return toDraftCopy(catalogFollowUp(names), catalogFollowUpB(names));
 }
 
+const PRASANTH_SIGN_OFF =
+  "Warm regards,\nPrasant\nCluster Manager, India Sweet House\n+91 92424 20101  |  prasantmishra@indiasweethouse.in";
+
+function prasanthWrap(paragraphs: string, first: string, signature?: string | null): string {
+  const sig = signature?.trim();
+  const closing = sig
+    ? /^(warmly|thanks|best|regards|warm)/i.test(sig)
+      ? sig
+      : `Warm regards,\n${sig}`
+    : PRASANTH_SIGN_OFF;
+  return `Namaste ${first},\n\n${paragraphs}\n\n${closing}`;
+}
+
+function buildPrasanthEmails(params: { first: string; company: string; step: number; signature?: string | null }): IshEmail[] {
+  const { first, company, step, signature } = params;
+
+  if (step === 1) {
+    return [
+      {
+        subject: "A small box of Diwali, on its way to you?",
+        body: prasanthWrap(
+          `I'm Prasant from India Sweet House — we've been part of Bengaluru's festive tables for five years now, working with teams like Infosys, Biocon, Toyota and 3M each Dusshera and Diwali.\n\nRather than open with a pitch, I'd love to just send ${company} a small sample box — a few of our handcrafted sweets. Because we use 100% pure ghee and fresh dairy straight from our own Karma Farm, everything is handcrafted with clean ingredients, zero varak, and no chemicals so every box carries that genuine, home-style warmth.\n\nCould you share the best delivery address (and a preferred contact) this week? No commitment needed either way — just want you to taste it for yourself.`,
+          first,
+          signature,
+        ),
+      },
+      {
+        subject: "How's the festive gifting shaping up on your end?",
+        body: prasanthWrap(
+          `Hope the run-up to Dusshera and Diwali has been smooth for your team so far. I'm Prasant from India Sweet House — over the last five years we've put together festive gifting for 5,000+ corporate teams in Karnataka, without ever cutting corners on what actually goes into the box.\n\n5 years, 55+ outlets, and one rule that hasn't moved: handcrafted with ghee, khova and paneer from our own dairy, Karma Farm — no dalda, no varak, no sugar used as a cheap filler. Even our classics are upgraded, not cost-cut — Bombay Halwa is now Cranberry Dry Fruit Halwa, plain Soan Papdi is Chocolate Soan Papdi. 100% recyclable packaging, with the grammage on every box being sweets alone, never the box's own weight.\n\nIf it's useful, I'd love to either send across a small sample box to your office, or stop by for a quick 15-minute tasting session — whichever works better for you. Do let me know, and I'll take it from there.`,
+          first,
+          signature,
+        ),
+      },
+    ];
+  }
+
+  if (step === 2) {
+    return [
+      {
+        subject: `Following up — our 2026 festive gifting range for ${company}`,
+        body: prasanthWrap(
+          `Following up on my note last week — in case a quick overview is more useful right now than a call, here's where India Sweet House stands this festive season.\n\nA few things we've never compromised on: only pure ghee from our own dairy, Karma Farm — no dalda, no shortcuts. No varak, no diluted recipes — every sweet is handcrafted and taste-tested before it earns a place in the box. Our classics are elevated, not simplified — Bombay Halwa is now Cranberry Dry Fruit Halwa, plain Soan Papdi is Chocolate Soan Papdi. Even our most accessible box, the ₹225 Manikya, carries the same handcrafted quality as our premium range. Every box comes in a 100% recyclable bag, and the grammage you see is sweets alone.\n\nThis year's collection spans nine ranges — from ₹165 everyday boxes to full luxury hampers — plus e-gift coupons (₹500/₹1,000/₹1,500) redeemable at any ISH store till March 2027.\n\nHappy to put together a shortlist based on ${company}'s headcount and budget — would a quick call this week work?`,
+          first,
+          signature,
+        ),
+      },
+      {
+        subject: "The story behind what's in our festive boxes",
+        body: prasanthWrap(
+          `Just following up on my earlier note. Thought I'd share a bit more about why teams like Infosys, Biocon and Toyota have stayed with India Sweet House for their festive gifting.\n\nFive years ago, ISH began with one simple rule: what goes into the box is exactly what we'd serve at our own family table. We're one of the few sweet brands with our own dairy, Karma Farm — so the ghee, khova and paneer in your gift box trace back to a source we know personally. No dalda, no varak, no diluted recipes to cut cost. Even our classics have been quietly elevated — Bombay Halwa became Cranberry Dry Fruit Halwa, plain Soan Papdi became Chocolate Soan Papdi. And our most accessible box, the ₹225 Manikya, still carries the same handcrafted quality as our ₹3,495 luxury hampers.\n\nThis year's range spans nine collections — from ₹165 everyday boxes to full luxury hampers with sweets, savouries and curated extras. I'd be glad to send the full catalogue and put together options for ${company}.\n\nWould a short call this week work, or should I just send the catalogue across first?`,
+          first,
+          signature,
+        ),
+      },
+    ];
+  }
+
+  return [
+    {
+      subject: "Closing the loop before the festive rush hits",
+      body: prasanthWrap(
+        `I don't want to keep following up without reason, so this will be my last note for now.\n\nProduction for Dusshera and Diwali fills up quickly on our end, and orders confirmed with an advance in the next couple of weeks get a flat minimum 10% off. If ${company}'s festive gifting is still on the table this year, this would be the ideal window to lock in your requirement and get first pick on customization and branding.\n\nIf timing doesn't work this year, that's completely fine — I'll reach out again next season. But if you'd like to move forward, even a quick "yes, let's talk" works and I'll take it from there.`,
+        first,
+        signature,
+      ),
+    },
+    {
+      subject: "One last check-in from India Sweet House",
+      body: prasanthWrap(
+        `Just a quick, final note from my end — I know festive season gets busy, and this may simply have slipped down the list.\n\nIf ${company}'s gifting plans for this year are already sorted, no worries at all — I'll check back in for next season. But if there's still a decision to be made and a sample box or a quick call would help, I'm happy to make that easy on my end, at short notice.\n\nEither way, thank you for your time, and wishing your team a warm Dusshera and Diwali.`,
+        first,
+        signature,
+      ),
+    },
+  ];
+}
+
 /** Sequences 1, 2, 3 from the ISH cold-email file. */
 export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
   const first = params.contactFirstName || "there";
@@ -197,6 +275,11 @@ export function getIshSequenceEmails(params: IshFillParams): IshEmail[] {
   const sender = params.senderFirstName?.trim() || "Team";
   const brand = params.brandName?.trim() || "India Sweet House";
   const step = params.sequencePosition >= 3 ? 3 : params.sequencePosition === 2 ? 2 : 1;
+
+  if (params.templateId === "prasanth_sequence") {
+    return buildPrasanthEmails({ first, company, step, signature: params.signature });
+  }
+
   const cta = step === 1 ? params.templateId : undefined;
   const phone = params.senderPhone;
   const fromAddress = params.fromAddress;

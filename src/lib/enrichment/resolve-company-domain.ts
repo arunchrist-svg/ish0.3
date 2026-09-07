@@ -5,6 +5,7 @@ import { isAcceptableCompanyDomain, isUnusableCompanyDomain, normalizeHost } fro
 import { domainFromCompany, domainFromWebsite } from "./provider-utils";
 import { hasTavilyKeys } from "./tavily-keys";
 import { tavilySearch } from "./tavily-client";
+import { probeCompanyWebsiteLive } from "./website-probe";
 
 export function normalizeDomain(domain?: string | null): string | undefined {
   return normalizeHost(domain);
@@ -85,6 +86,21 @@ function withAliases(
   };
 }
 
+async function acceptIfLive(
+  result: ResolvedCompanyDomain,
+  companyName: string,
+  extraDomains: Array<string | null | undefined> = [],
+  requireLive = true,
+): Promise<ResolvedCompanyDomain | null> {
+  if (!result.domain) return null;
+  // Drop clearly dead hosts (410 Gone / NXDOMAIN). Timeouts stay unknown and are kept.
+  if (requireLive) {
+    const status = await probeCompanyWebsiteLive(result.domain);
+    if (status === "dead") return null;
+  }
+  return withAliases(result, companyName, extraDomains);
+}
+
 export async function resolveCompanyDomain(params: {
   companyName: string;
   domain?: string;
@@ -95,13 +111,15 @@ export async function resolveCompanyDomain(params: {
   /** Keep Apollo organization lookup available while preventing an implicit Tavily lookup. */
   allowTavily?: boolean;
 }): Promise<ResolvedCompanyDomain> {
+  // Unit tests and offline callers pass allowExternal:false — skip live probes there.
+  const requireLive = params.allowExternal !== false;
   const known = normalizeDomain(knownDomainForCompanyName(params.companyName));
   const naiveGuess = domainFromCompany(params.companyName);
   const provided = normalizeDomain(params.domain);
   if (isKeepableProvidedHost(provided)) {
     // Prefer curated domains over naive slug guesses stored on the account.
     if (known && provided === naiveGuess && known !== naiveGuess) {
-      return withAliases(
+      const curated = await acceptIfLive(
         {
           domain: known,
           website: officialWebsiteForDomain(known, params.website, params.companyName),
@@ -109,22 +127,27 @@ export async function resolveCompanyDomain(params: {
         },
         params.companyName,
         [provided],
+        requireLive,
       );
+      if (curated) return curated;
     }
-    return withAliases(
+    const kept = await acceptIfLive(
       {
         domain: provided,
         website: officialWebsiteForDomain(provided, params.website, params.companyName),
         source: "provided",
       },
       params.companyName,
+      [],
+      requireLive,
     );
+    if (kept) return kept;
   }
 
   const fromWebsite = domainFromWebsite(params.website);
   if (isKeepableProvidedHost(fromWebsite)) {
     if (known && fromWebsite === naiveGuess && known !== naiveGuess) {
-      return withAliases(
+      const curated = await acceptIfLive(
         {
           domain: known,
           website: officialWebsiteForDomain(known, undefined, params.companyName),
@@ -132,27 +155,35 @@ export async function resolveCompanyDomain(params: {
         },
         params.companyName,
         [fromWebsite],
+        requireLive,
       );
+      if (curated) return curated;
     }
-    return withAliases(
+    const kept = await acceptIfLive(
       {
         domain: fromWebsite,
         website: officialWebsiteForDomain(fromWebsite, params.website, params.companyName),
         source: "website",
       },
       params.companyName,
+      [],
+      requireLive,
     );
+    if (kept) return kept;
   }
 
   if (isUsableForCompany(known, params.companyName)) {
-    return withAliases(
+    const curated = await acceptIfLive(
       {
         domain: known,
         website: officialWebsiteForDomain(known, params.website, params.companyName),
         source: "provided",
       },
       params.companyName,
+      [],
+      requireLive,
     );
+    if (curated) return curated;
   }
 
   if (params.allowExternal === false) {
@@ -169,7 +200,7 @@ export async function resolveCompanyDomain(params: {
       });
       const match = pickBestOrganizationMatch(orgs, params.companyName);
       if (match?.domain) {
-        return withAliases(
+        const accepted = await acceptIfLive(
           {
             domain: match.domain,
             website: officialWebsiteForDomain(
@@ -182,6 +213,7 @@ export async function resolveCompanyDomain(params: {
           params.companyName,
           orgs.map((org) => org.domain),
         );
+        if (accepted) return accepted;
       }
     } catch (e) {
       console.warn("[resolveCompanyDomain] Apollo org search failed", e);
@@ -197,7 +229,7 @@ export async function resolveCompanyDomain(params: {
       cityHint
         ? `"${params.companyName}" ${cityHint}`
         : `"${params.companyName}" India website`,
-      `"${params.companyName}" (website OR "official site") -site:zaubacorp.com -site:indiamart.com -site:linkedin.com`,
+      `"${params.companyName}" (website OR "official site") -site:zaubacorp.com -site:indiamart.com -site:linkedin.com -site:justdial.com -site:wixsite.com -site:idbf.in`,
     ];
     if (naiveGuessHost && isUsableForCompany(naiveGuessHost, params.companyName)) {
       queries.push(`site:${naiveGuessHost} "${params.companyName}"`);
@@ -207,7 +239,11 @@ export async function resolveCompanyDomain(params: {
         const hits = await tavilySearch(query, 5);
         const found = extractOfficialWebsiteFromHits(hits, params.companyName);
         if (found) {
-          return withAliases({ ...found, source: "tavily" }, params.companyName);
+          const accepted = await acceptIfLive(
+            { ...found, source: "tavily" },
+            params.companyName,
+          );
+          if (accepted) return accepted;
         }
         // Name-slug domains (aronuniversal.com) often are correct; accept when Tavily
         // actually returned a hit from that host for this company name.
@@ -216,7 +252,7 @@ export async function resolveCompanyDomain(params: {
           isUsableForCompany(naiveGuessHost, params.companyName) &&
           hits.some((hit) => domainFromWebsite(hit.url) === naiveGuessHost)
         ) {
-          return withAliases(
+          const accepted = await acceptIfLive(
             {
               domain: naiveGuessHost,
               website: officialWebsiteForDomain(naiveGuessHost, `https://www.${naiveGuessHost}`, params.companyName),
@@ -224,6 +260,7 @@ export async function resolveCompanyDomain(params: {
             },
             params.companyName,
           );
+          if (accepted) return accepted;
         }
       }
     } catch (e) {

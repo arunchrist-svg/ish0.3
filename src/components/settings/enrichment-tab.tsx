@@ -17,13 +17,16 @@ import {
   PEOPLE_SEARCH_PROVIDER_LABELS,
   ENRICH_PROVIDER_LABELS,
   DATA_MODE_OPTIONS,
+  AGENTIC_DATA_STACK_OPTIONS,
   SCOUT_VOLUME_PRESETS,
   MAX_SCOUT_COMPANIES_LIMIT,
   MAX_SCOUT_LEADS_LIMIT,
+  resolveAgenticDataStack,
   type SearchProvider,
   type EnrichProvider,
   type EnrichmentConfig,
   type DataMode,
+  type AgenticDataStack,
 } from "@/lib/enrichment/config";
 
 type Props = {
@@ -77,6 +80,14 @@ export function EnrichmentTab({
 
   return (
     <div className="pb-6">
+      <div className="mb-4 rounded-2xl border border-brand-stratus-blue/20 bg-brand-stratus-blue/5 px-4 py-3">
+        <p className="text-[13px] font-semibold text-brand-ink">Company search drives Scouting</p>
+        <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
+          Choose <span className="font-semibold">Agentic AI</span> to let the Scout agent team find companies
+          and leads in the Scouting tab (same cards and Add leads flow). Or pick India + Tavily, Places,
+          Tavily, or Apollo for classic provider search.
+        </p>
+      </div>
       <SettingsGroup
         title="Providers"
         className="mb-4"
@@ -90,16 +101,52 @@ export function EnrichmentTab({
             options={searchProviders.map(([value]) => ({
               value,
               label:
-                value === "india_directories"
-                  ? "India + Tavily"
-                  : value === "google_places"
-                    ? "Places"
-                    : value === "tavily_ai"
-                      ? "Tavily"
-                      : "Apollo",
+                value === "agentic_ai"
+                  ? "Agentic AI"
+                  : value === "india_directories"
+                    ? "India + Tavily"
+                    : value === "google_places"
+                      ? "Places"
+                      : value === "tavily_ai"
+                        ? "Tavily"
+                        : "Apollo",
             }))}
           />
         </SettingsRow>
+        {config.searchProvider === "agentic_ai" ? (
+          <>
+            <SettingsGroupDivider />
+            <SettingsRow className="justify-between py-2.5">
+              <div className="min-w-0 flex-1 pr-4">
+                <span className="text-[13px] font-semibold text-brand-ink">Agentic data stack</span>
+                <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
+                  {AGENTIC_DATA_STACK_OPTIONS.find(
+                    (o) => o.value === resolveAgenticDataStack(config.agenticDataStack),
+                  )?.desc ?? AGENTIC_DATA_STACK_OPTIONS[0].desc}
+                </p>
+              </div>
+              <SettingsSegmented
+                value={resolveAgenticDataStack(config.agenticDataStack)}
+                onChange={(v) => {
+                  const stack = v as AgenticDataStack;
+                  onUpdate("agenticDataStack", stack);
+                  if (stack === "places_apollo") {
+                    onUpdate("peopleSearchProvider", "apollo");
+                  }
+                }}
+                options={AGENTIC_DATA_STACK_OPTIONS.map((o) => ({
+                  value: o.value,
+                  label: o.label,
+                }))}
+              />
+            </SettingsRow>
+            <p className="border-t border-brand-border/50 px-4 py-2.5 text-[12px] leading-relaxed text-brand-ink-soft">
+              {resolveAgenticDataStack(config.agenticDataStack) === "places_apollo"
+                ? "Places + Apollo: companies from Google Places, people from Apollo. No Tavily credits. Needs GOOGLE_PLACES_API_KEY and APOLLO_API_KEY."
+                : "Directories: India directories via Tavily with AI fallback, then people via Tavily or Apollo. Geography and volume below still apply."}
+            </p>
+          </>
+        ) : null}
         {config.searchProvider === "india_directories" ? (
           <p className="px-4 pb-2 text-[11.5px] leading-relaxed text-brand-ink-soft">
             India Directories searches JustDial, IndiaMART, Sulekha, ZaubaCorp, and TradeIndia through Tavily credits.

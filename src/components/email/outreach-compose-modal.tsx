@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, MessageSquarePlus, Redo2, Send, Sparkles, Undo2, X } from "lucide-react";
+import { Check, ChevronDown, Loader2, MessageSquarePlus, Redo2, Send, Sparkles, Undo2, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ConversationTimeline } from "@/components/sales-accelerator/conversation-timeline";
 import {
   OutreachApprovalCard,
@@ -38,6 +44,9 @@ import {
   lastOutboundRecipientEmail,
   REPLY_EMPTY_SEND_TO_HINT,
 } from "@/lib/outreach/send-recipients";
+import { OUTREACH_TEMPLATES } from "@/lib/email/outreach-templates";
+import { getBoardTemplateOverride, setBoardTemplateOverride } from "@/lib/board-template-override";
+import { AppModal } from "@/components/ui/app-modal";
 import { showError } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -197,6 +206,10 @@ export function OutreachComposeModal({
 }: Props) {
   const [lead, setLead] = useState<LeadDetailRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateScope, setTemplateScope] = useState<"all" | "this">("all");
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(() => getBoardTemplateOverride());
   const [replyDraft, setReplyDraft] = useState<WriterDraft | null>(null);
   const [reviewSelection, setReviewSelection] = useState<{
     leadId: string;
@@ -491,6 +504,19 @@ export function OutreachComposeModal({
         : (resolvedReviewDraft.sequencePosition ?? 1) > 1 &&
           !isCatalogOnOpenDraft(resolvedReviewDraft)),
   );
+
+  const modalTemplates = (lead?.outreachTemplates?.length ? lead.outreachTemplates : OUTREACH_TEMPLATES).filter(
+    (t) => t.id !== "follow_up" && t.id !== "final_reminder",
+  );
+  const activeModalTemplate = modalTemplates.find((t) => t.id === selectedTemplate) ?? modalTemplates[0];
+
+  function handleTemplateConfirm() {
+    if (!pendingTemplate) return;
+    setSelectedTemplate(pendingTemplate);
+    if (templateScope === "all") setBoardTemplateOverride(pendingTemplate);
+    setTemplateModalOpen(false);
+    setPendingTemplate(null);
+  }
 
   const headerEyebrow = mode === "review" ? "Review draft" : "Your Reply";
   const sendButtonLabel =

@@ -10,6 +10,7 @@ import { SettingsStickySaveBar } from "@/components/settings/settings-sticky-sav
 import { EmailTab } from "@/components/settings/email-tab";
 import { AppearanceTab } from "@/components/settings/appearance-tab";
 import { AiUsageTab } from "@/components/settings/ai-usage-tab";
+import { AiTab } from "@/components/settings/ai-tab";
 import { LinkedInIntegration } from "@/components/settings/linkedin-integration";
 import { WhatsAppIntegration } from "@/components/settings/whatsapp-integration";
 import { TeamTab } from "@/components/settings/team-tab";
@@ -18,7 +19,7 @@ import { FestiveTab } from "@/components/settings/festive-tab";
 import { cn } from "@/lib/utils";
 import { AppPageHeader, ListGroup, ListRow, MobileHeader, MobileStackLayout } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
-import { Flame, Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
+import { Bot, Flame, Loader2, Mail, Palette, Plug, Save, Sparkles, Users, Wrench, CreditCard } from "lucide-react";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { clampScoutCompaniesLimit, clampScoutLeadsLimit } from "@/lib/enrichment/config";
 import type { EmailConfigResponse } from "@/lib/settings/email-settings";
@@ -27,6 +28,7 @@ import { groupLeadsByPipelineStage } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 
 const ALL_NAV_ITEMS: SettingsNavItem[] = [
+  { value: "ai", label: "AI", icon: Bot },
   { value: "enrichment", label: "Enrichment", icon: Wrench },
   { value: "email", label: "Email", icon: Mail },
   { value: "festive", label: "Festive Season", icon: Flame },
@@ -38,6 +40,7 @@ const ALL_NAV_ITEMS: SettingsNavItem[] = [
 ];
 
 const TAB_SUBTITLES: Record<string, string> = {
+  ai: "Agentic AI for lead finding",
   enrichment: "Providers, geography, and scout volume",
   email: "Connect your inbox and send",
   festive: "WhatsApp-first mode, revenue target, production capacity",
@@ -73,13 +76,13 @@ function SettingsAppInner() {
         if (item.value === "email") return session?.canManageEmail === true;
         if (item.value === "billing") return session?.canManageBilling === true;
         if (item.value === "integrations") return session?.canManageIntegrations === true;
-        if (item.value === "enrichment") return session?.canManageSettings === true;
+        if (item.value === "enrichment" || item.value === "ai") return session?.canManageSettings === true;
         return true;
       }),
     [session],
   );
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "enrichment");
+  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "ai");
   const [config, setConfig] = useState<EnrichmentConfig | null>(null);
   const [apolloConfigured, setApolloConfigured] = useState(false);
   const [prospeoConfigured, setProspeoConfigured] = useState(false);
@@ -440,7 +443,7 @@ function SettingsAppInner() {
   }, []);
 
   const saveAction =
-    activeTab === "enrichment" || activeTab === "email" ? (
+    activeTab === "ai" || activeTab === "enrichment" || activeTab === "email" ? (
       <button
         type="button"
         onClick={activeTab === "email" ? saveEmail : save}
@@ -451,7 +454,9 @@ function SettingsAppInner() {
         }
         className={cn(
           "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold shadow-[var(--shadow-brand-sm)] transition-all lg:px-4 lg:py-2",
-          (activeTab === "email" ? (emailDirty || smtpPassDraft.trim() || resendApiKeyDraft.trim()) && emailConfig : dirty && config) && !saving
+          (activeTab === "email"
+            ? (emailDirty || smtpPassDraft.trim() || resendApiKeyDraft.trim()) && emailConfig
+            : dirty && config) && !saving
             ? "bg-brand-black text-white hover:opacity-90"
             : "cursor-not-allowed bg-white/60 text-brand-ink-faint opacity-60",
         )}
@@ -510,6 +515,8 @@ function SettingsAppInner() {
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-10 lg:px-6 lg:py-6">
           <div className="mx-auto w-full max-w-2xl">
           <div key={activeTab} className="animate-brand-tab-in">
+          {activeTab === "ai" && <AiTab config={config} onUpdate={update} />}
+
           {activeTab === "enrichment" && (
             <EnrichmentTab
               config={config}
@@ -545,7 +552,7 @@ function SettingsAppInner() {
           </div>
         </div>
         <SettingsStickySaveBar
-          visible={activeTab === "enrichment" && dirty && Boolean(config)}
+          visible={(activeTab === "ai" || activeTab === "enrichment") && dirty && Boolean(config)}
           saving={saving}
           disabled={!dirty || saving || !config}
           onSave={() => void save()}

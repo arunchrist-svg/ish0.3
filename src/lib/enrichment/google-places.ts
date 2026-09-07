@@ -6,6 +6,7 @@ import { isGeographicEntity } from "./company-name-match";
 import { placesTypeForScoutBusiness } from "@/lib/scouting-data";
 import { placeTypesMatchScoutBusiness } from "./business-match";
 import { expandCityMatchTerms } from "./city-search";
+import { LOCALITY_CATALOG, normalizeLocalityKey } from "@/lib/geo/area-of-focus";
 
 const NEW_API = "https://places.googleapis.com/v1/places:searchText";
 const NEW_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete";
@@ -268,31 +269,62 @@ export async function googlePlacesGeocodePlace(placeId: string): Promise<{ lat: 
   return null;
 }
 
-function extractCityFromAddress(address?: string, queryCity?: string): string | undefined {
-  if (!address) return queryCity || undefined;
+function preferMetroLabel(label: string, address: string): string {
+  if (/^madras$/i.test(label)) return "Chennai";
+  if (/^mysore$/i.test(label)) return "Mysuru";
+  if (/^(bangalore|bengaluru)$/i.test(label)) {
+    return /bengaluru/i.test(address) ? "Bengaluru" : "Bangalore";
+  }
+  return label;
+}
+
+/** Resolve a Places address to a metro/parent city via known neighborhoods (Whitefield → Bengaluru). */
+function cityFromLocalityCatalog(address: string): string | undefined {
+  const normalized = normalizeLocalityKey(address);
+  if (!normalized) return undefined;
+  const ranked = [...LOCALITY_CATALOG].sort(
+    (a, b) => Math.max(b.name.length, ...(b.aliases ?? []).map((x) => x.length)) -
+      Math.max(a.name.length, ...(a.aliases ?? []).map((x) => x.length)),
+  );
+  for (const row of ranked) {
+    const names = [row.name, ...(row.aliases ?? [])];
+    for (const name of names) {
+      const key = normalizeLocalityKey(name);
+      if (key.length < 4) continue;
+      if (normalized.includes(key)) return row.city;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Pick a display city from a Places formatted address.
+ * Never stamp the scout query city onto an address that clearly belongs elsewhere
+ * (e.g. Kadugodi / Whitefield must not become Ramanagara).
+ */
+export function extractCityFromAddress(address?: string, queryCity?: string): string | undefined {
+  if (!address?.trim()) return undefined;
   const normalizedAddress = address.toLowerCase();
   const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
 
-  // Prefer the city we queried: Places locality tokens ("Anna Colony") often beat the metro.
+  // Prefer the city we queried only when that city (or alias) actually appears in the address.
   if (queryCity?.trim()) {
     const aliases = expandCityMatchTerms([queryCity]).filter((a) => a.trim().length >= 3);
     for (const alias of aliases) {
       const needle = alias.toLowerCase();
       if (normalizedAddress.includes(needle)) {
-        // Madras chip → Chennai on cards when the address says Chennai.
-        if (/^madras$/i.test(queryCity) && /chennai/i.test(address)) return "Chennai";
-        return alias === "Bangalore" || alias === "Bengaluru"
-          ? /bengaluru/i.test(address)
-            ? "Bengaluru"
-            : "Bangalore"
-          : alias;
+        return preferMetroLabel(/^madras$/i.test(queryCity) ? "Madras" : alias, address);
       }
     }
   }
 
+  const fromCatalog = cityFromLocalityCatalog(address);
+  if (fromCatalog) return fromCatalog;
+
   const KNOWN_CITIES = [
     "Bangalore",
     "Bengaluru",
+    "Ramanagara",
     "Hosur",
     "Mysore",
     "Mysuru",
@@ -311,22 +343,20 @@ function extractCityFromAddress(address?: string, queryCity?: string): string | 
     "Madurai",
     "Tiruppur",
     "Vellore",
+    "Tumakuru",
+    "Tumkur",
+    "Mangaluru",
+    "Mangalore",
+    "Hassan",
   ];
   for (const part of parts) {
     const match = KNOWN_CITIES.find((c) => part.toLowerCase().includes(c.toLowerCase()));
-    if (match) {
-      if (match === "Madras") return "Chennai";
-      if (match === "Bengaluru") return "Bengaluru";
-      if (match === "Mysuru") return "Mysuru";
-      return match;
-    }
+    if (match) return preferMetroLabel(match, address);
   }
 
-  // Last resort: trust the query city for unbiased text search in that city.
-  if (queryCity?.trim()) {
-    return /^madras$/i.test(queryCity) ? "Chennai" : queryCity.trim();
-  }
-  return parts.length >= 3 ? parts[parts.length - 3] : undefined;
+  // Do not fall back to queryCity. Incomplete addresses (neighborhood-only) used to inherit
+  // the plant chip and pass city filters while actually sitting in another metro.
+  return undefined;
 }
 
 function inferIndustry(types?: string[]): string | undefined {

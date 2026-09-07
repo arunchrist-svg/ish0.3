@@ -1,6 +1,6 @@
 import type { DirectoryCompany, DirectoryContact } from "@/lib/api-client";
 import { classifyLeadEmail, hasLeadMobile } from "@/lib/leads/lead-filters";
-import { formatCompanyScale } from "@/lib/enrichment/employee-size";
+import { scaleBandFromEmployees } from "@/lib/enrichment/employee-size";
 import { companyCityMatchesSelection } from "@/lib/enrichment/city-search";
 import {
   SCOUT_BUSINESSES,
@@ -31,6 +31,8 @@ export type AccountCompanyStaticPanelId =
   | "scale_small"
   | "scale_medium"
   | "scale_large"
+  | "scale_enterprise"
+  | "scale_corporate"
   | "scale_unknown";
 
 /** Static scout facets plus dynamic `city:`, `industry:`, `business:` ids. */
@@ -71,6 +73,8 @@ const SCALE_FILTERS: AccountCompanyStaticPanelId[] = [
   "scale_small",
   "scale_medium",
   "scale_large",
+  "scale_enterprise",
+  "scale_corporate",
   "scale_unknown",
 ];
 
@@ -135,8 +139,10 @@ const COMPANY_SCALE_GROUP = {
   filters: [
     { id: "scale_micro" as const, label: "Micro" },
     { id: "scale_small" as const, label: "Small scale" },
-    { id: "scale_medium" as const, label: "Medium scale" },
-    { id: "scale_large" as const, label: "Large scale" },
+    { id: "scale_medium" as const, label: "100-200" },
+    { id: "scale_large" as const, label: "200-500" },
+    { id: "scale_enterprise" as const, label: "500-2000" },
+    { id: "scale_corporate" as const, label: "2000+" },
     { id: "scale_unknown" as const, label: "Unknown scale" },
   ],
 };
@@ -356,11 +362,14 @@ function hasWebsite(company: DirectoryCompany): boolean {
 }
 
 function companyScaleId(company: DirectoryCompany): AccountCompanyStaticPanelId {
-  const label = formatCompanyScale(company.employees);
-  if (label === "Micro Industries") return "scale_micro";
-  if (label === "Small scale") return "scale_small";
-  if (label === "Medium scale") return "scale_medium";
-  if (label === "Large scale") return "scale_large";
+  const band = scaleBandFromEmployees(company.employees);
+  if (!band) return "scale_unknown";
+  if (band.id === "micro") return "scale_micro";
+  if (band.id === "small") return "scale_small";
+  if (band.id === "medium") return "scale_medium";
+  if (band.id === "large") return "scale_large";
+  if (band.id === "enterprise") return "scale_enterprise";
+  if (band.id === "corporate") return "scale_corporate";
   return "scale_unknown";
 }
 
@@ -411,6 +420,8 @@ function matchesCompanyPanel(company: DirectoryCompany, id: string): boolean {
     case "scale_small":
     case "scale_medium":
     case "scale_large":
+    case "scale_enterprise":
+    case "scale_corporate":
     case "scale_unknown":
       return companyScaleId(company) === id;
     default:

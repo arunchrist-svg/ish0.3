@@ -12,6 +12,10 @@ type Props = {
 export function LeadsViewToggle({ className }: Props) {
   const pathname = usePathname();
   const isBoard = pathname === "/leads/board" || pathname.startsWith("/leads/board/");
+  const isList =
+    pathname === "/leads/list" ||
+    pathname.startsWith("/leads/list/") ||
+    (!isBoard && (pathname === "/leads" || pathname.startsWith("/leads?")));
 
   return (
     <div
@@ -22,19 +26,6 @@ export function LeadsViewToggle({ className }: Props) {
       role="group"
       aria-label="Leads view"
     >
-      <Link
-        href="/leads"
-        aria-current={!isBoard ? "page" : undefined}
-        className={cn(
-          "inline-flex h-full items-center gap-1 rounded-full px-2.5 text-[10px] font-semibold transition-colors",
-          !isBoard
-            ? "bg-brand-stratus-blue text-white"
-            : "text-brand-ink-soft hover:text-brand-ink",
-        )}
-      >
-        <List className="size-3" />
-        List
-      </Link>
       <Link
         href="/leads/board"
         aria-current={isBoard ? "page" : undefined}
@@ -47,6 +38,19 @@ export function LeadsViewToggle({ className }: Props) {
       >
         <Columns3 className="size-3" />
         Board
+      </Link>
+      <Link
+        href="/leads/list"
+        aria-current={isList ? "page" : undefined}
+        className={cn(
+          "inline-flex h-full items-center gap-1 rounded-full px-2.5 text-[10px] font-semibold transition-colors",
+          isList
+            ? "bg-brand-stratus-blue text-white"
+            : "text-brand-ink-soft hover:text-brand-ink",
+        )}
+      >
+        <List className="size-3" />
+        List
       </Link>
     </div>
   );

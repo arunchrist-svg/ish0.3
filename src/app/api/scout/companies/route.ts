@@ -9,8 +9,9 @@ import {
   getResolvedWorkspaceEnrichmentConfig,
 } from "@/lib/settings/workspace-settings";
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
-import { MAX_SCOUT_COMPANIES_LIMIT } from "@/lib/enrichment/config";
+import { MAX_SCOUT_COMPANIES_LIMIT, isAgenticSearchProvider } from "@/lib/enrichment/config";
 import { firstZeroingStage, type StageRecord } from "@/lib/enrichment/stage-trace";
+import { discoverAgenticCompaniesForScout } from "@/lib/agents/scout-agentic";
 
 /**
  * Empty-result copy that names the actual lever to pull.
@@ -49,7 +50,7 @@ function emptyResultMessage(params: {
   if (params.industries.length > 3) {
     return `No companies found${suffix}. Narrow to 2-3 industries: long industry lists dilute the search.`;
   }
-  return `No companies found${suffix}. Try a nearby larger city, or switch data mode to Auto for paid providers.`;
+  return `No companies found${suffix}. Try a nearby larger city, or check Area of Interest and industries.`;
 }
 
 export async function POST(req: Request) {
@@ -94,7 +95,9 @@ export async function POST(req: Request) {
 
     const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);
     const blockingErrors = prerequisiteErrors.filter((e) =>
-      /TAVILY_API_KEY is missing|APOLLO_API_KEY is missing|GOOGLE_PLACES_API_KEY is missing/.test(e),
+      /TAVILY_API_KEY is missing|Add a Tavily key|APOLLO_API_KEY is missing|needs APOLLO_API_KEY|GOOGLE_PLACES_API_KEY is missing|needs GOOGLE_PLACES_API_KEY/i.test(
+        e,
+      ),
     );
 
     if (blockingErrors.length) {
@@ -111,6 +114,8 @@ export async function POST(req: Request) {
     }
 
     await assertCredits(ctx.tenantId, "scout.company", limit);
+
+    const useAgentic = isAgenticSearchProvider(cfg.searchProvider) && !companyName;
 
     const discoverParams = {
       tenantId: ctx.tenantId,
@@ -135,6 +140,33 @@ export async function POST(req: Request) {
       qualityContext: { userId: ctx.userId, sessionId: typeof body.sessionId === "string" ? body.sessionId : null },
     };
 
+    const runDiscovery = async (onPartial?: (companies: ScoutCompanyResult[]) => void | Promise<void>) => {
+      if (useAgentic) {
+        return discoverAgenticCompaniesForScout({
+          tenantId: discoverParams.tenantId,
+          workspaceId: discoverParams.workspaceId,
+          cities: discoverParams.cities,
+          industries: discoverParams.industries,
+          seniority: discoverParams.seniority,
+          departments: discoverParams.departments,
+          limit: discoverParams.limit,
+          excludeNames: discoverParams.excludeNames,
+          excludeSavedAccounts: discoverParams.excludeSavedAccounts,
+          skipInternal: discoverParams.skipInternal,
+          fetchSeed: discoverParams.fetchSeed,
+          employeeBands: discoverParams.employeeBands,
+          locationScope: discoverParams.locationScope,
+          searchKind: discoverParams.searchKind,
+          onPartial,
+          qualityContext: discoverParams.qualityContext,
+        });
+      }
+      return discoverCompanies({
+        ...discoverParams,
+        onPartial,
+      });
+    };
+
     if (stream) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
@@ -146,11 +178,8 @@ export async function POST(req: Request) {
 
       void (async () => {
         try {
-          const result = await discoverCompanies({
-            ...discoverParams,
-            onPartial: async (companies: ScoutCompanyResult[]) => {
-              await write({ type: "partial", companies, limit });
-            },
+          const result = await runDiscovery(async (companies: ScoutCompanyResult[]) => {
+            await write({ type: "partial", companies, limit });
           });
 
           const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));
@@ -163,7 +192,7 @@ export async function POST(req: Request) {
                 cities,
                 industries,
                 locationScope: discoverParams.locationScope,
-                stageTrace: result.qualityMetrics?.stageTrace,
+                stageTrace: result.qualityMetrics?.stageTrace as StageRecord[] | undefined,
               }),
             );
           }
@@ -213,7 +242,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const { companies, warnings, errors, qualityMetrics } = await discoverCompanies(discoverParams);
+    const { companies, warnings, errors, qualityMetrics } = await runDiscovery();
 
     const softPrereqWarnings = prerequisiteErrors.filter((e) => !blockingErrors.includes(e));
     const allWarnings = [...softPrereqWarnings, ...warnings];
@@ -225,7 +254,7 @@ export async function POST(req: Request) {
           cities,
           industries,
           locationScope: discoverParams.locationScope,
-          stageTrace: qualityMetrics?.stageTrace,
+          stageTrace: qualityMetrics?.stageTrace as StageRecord[] | undefined,
         }),
       );
     }

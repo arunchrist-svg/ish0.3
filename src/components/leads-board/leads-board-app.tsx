@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, Loader2, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeadsPage } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, runWriterSequence, writeAllLeadsForStage } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
+  aggregateStatusCountsByStage,
   groupLeadsByPipelineStage,
   PIPELINE_STAGES,
+  STATUSES_BY_STAGE_INDEX,
 } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
@@ -25,8 +27,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import {
-  getOutreachTemplatesForBrand,
+  getOutreachTemplatesForPack,
 } from "@/lib/email/outreach-templates";
+import { getBoardTemplateOverride, setBoardTemplateOverride } from "@/lib/board-template-override";
 import { OutreachComposeModal } from "@/components/email/outreach-compose-modal";
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
@@ -130,13 +133,14 @@ export function LeadsBoardApp() {
   const [addedByUserId, setAddedByUserId] = useState<string | null>(null);
   const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [writingProgress, setWritingProgress] = useState<BoardBulkProgress | null>(null);
-  const [writeTemplate, setWriteTemplate] = useState<string | null>(null);
+  const [writeTemplate, setWriteTemplate] = useState<string | null>(() => getBoardTemplateOverride());
   const [sending, setSending] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
   const sendAbortRef = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const queueHydrated = useRef(false);
   const [composeLeadId, setComposeLeadId] = useState<string | null>(null);
+  const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const stored = loadStoredSendQueue().filter(
@@ -197,9 +201,13 @@ export function LeadsBoardApp() {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const page = await fetchLeadsPage({ limit: 50 });
+      const [page, rawCounts] = await Promise.all([
+        fetchLeadsPage({ limit: 50 }),
+        fetchLeadStageCounts(),
+      ]);
       setLeads(page.leads);
       setNextCursor(page.nextCursor);
+      setStageCounts(aggregateStatusCountsByStage(rawCounts));
     } catch {
       toast.error("Could not load leads");
     } finally {
@@ -268,32 +276,77 @@ export function LeadsBoardApp() {
   const boardBusy = Boolean(writingProgress) || sending;
 
   const handleWriteAll = useCallback(async (templateOverride?: string | null) => {
-    const targets = grouped["Contact Ready"] ?? [];
-    if (!targets.length || writingProgress || sending) return;
+    if (writingProgress || sending) return;
+    const contactReadyStatuses = STATUSES_BY_STAGE_INDEX[0] ?? [];
+    const total = stageCounts["Contact Ready"] ?? grouped["Contact Ready"]?.length ?? 0;
+    if (!total) return;
 
-    setWritingProgress({ current: 0, total: targets.length });
+    setWritingProgress({ current: 0, total });
     try {
-      const result = await writeEmailsForLeads(targets, {
+      const result = await writeAllLeadsForStage({
+        statuses: contactReadyStatuses,
         outreachTemplate: templateOverride ?? writeTemplate ?? undefined,
-        onProgress: setWritingProgress,
       });
-      if (result.failed === 0) {
-        toast.success(
-          result.ok === 1
-            ? "Wrote email for 1 lead"
-            : `Wrote emails for ${result.ok} leads`,
-        );
-      } else {
-        toast.error(
-          `Wrote ${result.ok} of ${targets.length}. ${result.failed} failed.`,
-          { description: result.errors.slice(0, 3).join(" · ") },
-        );
-      }
+      toast.success(
+        result.enqueued === 1
+          ? "Queued email for 1 lead"
+          : `Queued emails for ${result.enqueued} leads`,
+      );
       await load({ silent: true });
+    } catch {
+      toast.error("Write All failed");
     } finally {
       setWritingProgress(null);
     }
-  }, [grouped, writingProgress, sending, writeTemplate]);
+  }, [writingProgress, sending, stageCounts, grouped, writeTemplate]);
+
+  const handleWriteLead = useCallback(async (lead: LeadQueueItem) => {
+    if (boardBusy) return;
+    setWritingProgress({ current: 1, total: 1, leadName: lead.name });
+    try {
+      await runWriterSequence(lead.id, { outreachTemplate: writeTemplate ?? undefined });
+      toast.success(`Email drafted for ${lead.name}`);
+      await load({ silent: true });
+    } catch {
+      toast.error(`Could not write email for ${lead.name}`);
+    } finally {
+      setWritingProgress(null);
+    }
+  }, [boardBusy, writeTemplate]);
+
+  const handleSendLead = useCallback(async (lead: LeadQueueItem) => {
+    if (boardBusy) return;
+    const confirmed = window.confirm(`Send the ready email to ${lead.name} now?`);
+    if (!confirmed) return;
+
+    const controller = new AbortController();
+    sendAbortRef.current?.abort();
+    sendAbortRef.current = controller;
+    setSending(true);
+    setSendQueue([{ leadId: lead.id, name: lead.name, status: "queued" }]);
+    try {
+      const result = await sendEmailsForLeads([lead], {
+        signal: controller.signal,
+        onQueueChange: setSendQueue,
+      });
+      if (result.cancelled > 0 && result.ok === 0) {
+        toast.message("Send cancelled");
+      } else if (result.failed === 0 && result.cancelled === 0) {
+        toast.success(`Sent email to ${lead.name}`);
+      } else {
+        toast.error(`Failed to send email to ${lead.name}`);
+      }
+      await load({ silent: true });
+      window.setTimeout(() => {
+        setSendQueue((prev) =>
+          prev.some((item) => item.status === "sending" || item.status === "waiting") ? prev : [],
+        );
+      }, 4000);
+    } finally {
+      sendAbortRef.current = null;
+      setSending(false);
+    }
+  }, [boardBusy]);
 
   const cancelSendAll = useCallback(() => {
     sendAbortRef.current?.abort();
@@ -387,7 +440,7 @@ export function LeadsBoardApp() {
               className="rounded-full border border-brand-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft"
             >
               {stage}
-              <span className="ml-1.5 tabular-nums text-brand-ink">{grouped[stage]?.length ?? 0}</span>
+              <span className="ml-1.5 tabular-nums text-brand-ink">{stageCounts[stage] ?? grouped[stage]?.length ?? 0}</span>
             </span>
           ))}
         </div>
@@ -441,7 +494,7 @@ export function LeadsBoardApp() {
                 className="rounded-full border border-brand-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft"
               >
                 {stage}
-                <span className="ml-1.5 tabular-nums text-brand-ink">{grouped[stage].length}</span>
+                <span className="ml-1.5 tabular-nums text-brand-ink">{stageCounts[stage] ?? grouped[stage].length}</span>
               </span>
             ))}
           </div>
@@ -469,7 +522,7 @@ export function LeadsBoardApp() {
               const writeBusy = Boolean(writingProgress);
               const sendBusy = sending;
 
-              const writeTemplates = getOutreachTemplatesForBrand(undefined).filter(
+              const writeTemplates = getOutreachTemplatesForPack("gifting-sweets").filter(
                 (t) => t.id !== "follow_up" && t.id !== "final_reminder",
               );
               const activeWriteTemplate = writeTemplates.find((t) => t.id === writeTemplate);
@@ -493,7 +546,7 @@ export function LeadsBoardApp() {
                     {writeTemplates.map((t) => (
                       <DropdownMenuItem
                         key={t.id}
-                        onSelect={() => setWriteTemplate(t.id)}
+                        onSelect={() => { setWriteTemplate(t.id); setBoardTemplateOverride(t.id); }}
                         className={cn(
                           "text-[12px]",
                           writeTemplate === t.id && "font-semibold text-brand-stratus-blue",
@@ -535,6 +588,7 @@ export function LeadsBoardApp() {
                   key={stage}
                   stage={stage}
                   leads={columnLeads}
+                  totalCount={stageCounts[stage]}
                   action={action}
                   queueByLeadId={
                     stage === "Email" || stage === "Email Sent" ? sendQueueByLeadId : undefined
@@ -551,6 +605,8 @@ export function LeadsBoardApp() {
                       ? (lead) => setComposeLeadId(lead.id)
                       : undefined
                   }
+                  onLeadWrite={stage === "Contact Ready" ? handleWriteLead : undefined}
+                  onLeadSend={stage === "Email" ? handleSendLead : undefined}
                 />
               );
             })}

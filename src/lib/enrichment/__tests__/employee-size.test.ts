@@ -21,7 +21,7 @@ describe("parseEmployeeRange", () => {
     expect(parseEmployeeRange("200-500 employees")).toEqual({ min: 200, max: 500 });
     expect(parseEmployeeRange("100+")).toEqual({ min: 100, max: Number.POSITIVE_INFINITY });
     expect(parseEmployeeRange("—")).toBeNull();
-    expect(parseEmployeeRange("Small scale")).toEqual({ min: 11, max: 50 });
+    expect(parseEmployeeRange("Small scale")).toEqual({ min: 11, max: 100 });
     expect(parseEmployeeRange("Micro Industries")).toEqual({ min: 1, max: 10 });
   });
 });
@@ -42,14 +42,7 @@ describe("employee search helpers", () => {
     expect(employeeSizeSearchClause(["medium"])).toBe("medium-sized");
     expect(employeeSizeSearchClause(["medium"])).not.toMatch(/\d{2,}-\d{2,}/);
     expect(employeeSizePlacesSearchClause(["medium"])).toBe("");
-    expect(apolloEmployeeRanges(["micro", "large"])).toEqual([
-      "1,10",
-      "201,500",
-      "501,1000",
-      "1001,5000",
-      "5001,10000",
-      "10001",
-    ]);
+    expect(apolloEmployeeRanges(["micro", "large"])).toEqual(["1,10", "201,500"]);
   });
 
   it("extracts headcount or scale from directory text", () => {
@@ -68,15 +61,15 @@ describe("employee search helpers", () => {
   it("formats card scale from a numeric headcount", () => {
     expect(formatCompanyScale("8")).toBe("Micro Industries");
     expect(formatCompanyScale("40")).toBe("Small scale");
-    expect(formatCompanyScale("180")).toBe("Medium scale");
-    expect(formatCompanyScale("8,500")).toBe("Large scale");
+    expect(formatCompanyScale("180")).toBe("100-200");
+    expect(formatCompanyScale("8,500")).toBe("2000+");
     expect(formatCompanyScale("—")).toBe("Unknown scale");
   });
 
   it("shows total employees next to scale on scout cards", () => {
     expect(formatEmployeeCount("8,500")).toBe("8,500");
     expect(formatEmployeeCount("Small scale")).toBeNull();
-    expect(formatScoutSizeLine("8,500")).toBe("Large scale · 8,500");
+    expect(formatScoutSizeLine("8,500")).toBe("2000+ · 8,500");
     expect(formatScoutSizeLine("Small scale")).toBe("Small scale");
     expect(formatScoutSizeLine("—")).toBe("Unknown scale");
   });
@@ -96,10 +89,10 @@ describe("employee search helpers", () => {
     });
     expect(formatVerifiedScoutSizeLine({ employees: "8500", scaleStatus: "unknown" })).toBe("Unknown scale");
     expect(formatVerifiedScoutSizeLine({ employees: "8500", scaleStatus: "estimated" })).toBe(
-      "Estimated · Large scale · 8,500",
+      "Estimated · 2000+ · 8,500",
     );
     expect(formatVerifiedScoutSizeLine({ employees: "8500", scaleStatus: "verified" })).toBe(
-      "Verified · Large scale · 8,500",
+      "Verified · 2000+ · 8,500",
     );
   });
 

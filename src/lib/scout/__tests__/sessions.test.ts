@@ -33,7 +33,7 @@ describe("buildScoutSessionTitle", () => {
         employeeBands: ["medium"],
         verticalScope: "industries",
       }),
-    ).toBe("Madras +2 · 18 industries · Medium scale");
+    ).toBe("Madras +2 · 18 industries · 100-200");
   });
 
   it("uses company name for search mode", () => {

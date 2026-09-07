@@ -38,7 +38,13 @@ import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { mapWithConcurrency } from "@/lib/async";
 import { isLogoUrl } from "@/lib/company-logo";
 import type { ScoutCompanyResult, ScoutPersonResult, DataMode } from "@/lib/enrichment/types";
-import type { PeopleSearchProvider, SearchProvider } from "@/lib/enrichment/config";
+import {
+  isAgenticSearchProvider,
+  resolveAgenticDataStack,
+  type AgenticDataStack,
+  type PeopleSearchProvider,
+  type SearchProvider,
+} from "@/lib/enrichment/config";
 import {
   filterCompanyNoticesForProvider,
   filterPeopleNoticesForProvider,
@@ -487,7 +493,8 @@ export function ScoutingApp() {
   const [departments, setDepartments] = useState<string[]>([]);
   const [peopleCities, setPeopleCities] = useState<string[]>([]);
   const [dataMode, setDataMode] = useState<DataMode>("free");
-  const [searchProvider, setSearchProvider] = useState<SearchProvider>("india_directories");
+  const [searchProvider, setSearchProvider] = useState<SearchProvider>("agentic_ai");
+  const [agenticDataStack, setAgenticDataStack] = useState<AgenticDataStack>("tavily_directories");
   const [peopleSearchProvider, setPeopleSearchProvider] = useState<PeopleSearchProvider>("tavily_ai");
   const [scaleVerificationAvailable, setScaleVerificationAvailable] = useState(false);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -871,6 +878,7 @@ export function ScoutingApp() {
         }
         if (data.dataMode) setDataMode(data.dataMode);
         if (data.searchProvider) setSearchProvider(data.searchProvider);
+        if (data.agenticDataStack) setAgenticDataStack(resolveAgenticDataStack(data.agenticDataStack));
         if (data.peopleSearchProvider) setPeopleSearchProvider(data.peopleSearchProvider);
         setScaleVerificationAvailable(Boolean(data.scaleVerificationAvailable));
         if (typeof data.scoutCompaniesLimit === "number") setScoutCompaniesLimit(data.scoutCompaniesLimit);
@@ -1052,7 +1060,6 @@ export function ScoutingApp() {
           ...(options?.companyName ? { companyName: options.companyName } : {}),
         };
 
-        let sawPartial = false;
         const applyCompanies = (rawCompanies: ScoutCompanyResult[], _finalize: boolean) => {
           const freshCompanies = rawCompanies.filter(
             (company) =>
@@ -1069,13 +1076,13 @@ export function ScoutingApp() {
           setCompanies((prev) => (append ? mergeCompanies(prev, shaped) : shaped));
           if (!append) {
             setSelectedCompanyIds(new Set(shaped.map((c) => c.id)));
-            if (shaped.length && !sawPartial) {
+            if (shaped.length) {
               setPrimaryCompanyId(
                 typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches
                   ? shaped[0].id
                   : null,
               );
-            } else if (!shaped.length) {
+            } else {
               setPrimaryCompanyId(null);
             }
           } else if (shaped.length) {
@@ -1085,22 +1092,15 @@ export function ScoutingApp() {
               return next;
             });
           }
-          if (shaped.length && !append) {
-            sawPartial = true;
-            // Clear full-page spinner as soon as first companies land.
-            setLoading(false);
-            setHasFetched(true);
-          }
           return shaped;
         };
 
         let response: Awaited<ReturnType<typeof scoutCompanies>>;
         try {
-          response = await scoutCompaniesStream(requestParams, (event) => {
-            if (event.type === "partial" && event.companies.length) {
-              applyCompanies(event.companies, false);
-            }
-          });
+          // Ignore stream "partial" lists. Those fire before website hydrate / ranking, so the UI
+          // used to flash 10 incomplete cards then shrink to 5 with domains. Keep the loader until
+          // the final "done" payload (handled below).
+          response = await scoutCompaniesStream(requestParams, () => {});
         } catch (streamErr) {
           console.warn("[scouting] company stream failed, falling back to JSON:", streamErr);
           response = await scoutCompanies(requestParams);
@@ -2237,6 +2237,7 @@ export function ScoutingApp() {
             })),
             dataMode,
             plantCities: cities,
+            leadSource: isAgenticSearchProvider(searchProvider) ? "scout_agentic" : "scout_wizard",
           },
           (result) => {
             totalSaved += result.saved.length;
@@ -2257,6 +2258,7 @@ export function ScoutingApp() {
             company: entry.company,
             dataMode,
             plantCities: cities,
+            leadSource: isAgenticSearchProvider(searchProvider) ? "scout_agentic" : "scout_wizard",
           });
           totalSaved += result.saved.length;
           allSkipped.push(...result.skipped);
@@ -2393,7 +2395,11 @@ export function ScoutingApp() {
           showingSaved
             ? ["Loading saved companies"]
             : [
-                cities.length ? `Scanning ${cities.join(", ")}` : "Scanning company directories",
+                cities.length
+                  ? `Scanning ${cities.join(", ")}`
+                  : isAgenticSearchProvider(searchProvider) && agenticDataStack === "places_apollo"
+                    ? "Scanning Google Places"
+                    : "Scanning company directories",
                 activeDiscoveryTerms().length
                   ? `Filtering ${activeDiscoveryTerms().join(", ")}`
                   : verticalScope === "businesses"
@@ -2420,6 +2426,14 @@ export function ScoutingApp() {
       null
     ) : (
       <>
+        {isAgenticSearchProvider(searchProvider) && !showingSaved ? (
+          <div className="mx-4 mt-2 rounded-xl border border-brand-stratus-blue/20 bg-brand-stratus-blue/5 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft lg:mx-5">
+            Agentic Scout ·{" "}
+            {agenticDataStack === "places_apollo"
+              ? "Google Places + Apollo (no Tavily). Needs Places and Apollo keys."
+              : "India directories via Tavily. Switch to Places + Apollo in Enrichment to avoid Tavily."}
+          </div>
+        ) : null}
         {discoveryNotice && !showingSaved ? (
           <div className="mx-4 mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-snug text-amber-950 lg:mx-5">
             {discoveryNotice}

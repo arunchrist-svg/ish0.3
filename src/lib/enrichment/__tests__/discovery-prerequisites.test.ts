@@ -35,4 +35,39 @@ describe("company discovery prerequisites", () => {
     expect(tavilyErrors[0]).toMatch(/TAVILY_API_KEY is missing/i);
     expect(placesErrors.some((error) => /TAVILY_API_KEY|India Directories/i.test(error))).toBe(false);
   });
+
+  it("does not require Tavily for Agentic Places + Apollo stack", () => {
+    clearTavilyEnv();
+    vi.stubEnv("GOOGLE_PLACES_API_KEY", "places-key");
+    vi.stubEnv("APOLLO_API_KEY", "apollo-key");
+
+    const errors = checkDiscoveryPrerequisites(
+      resolveEnrichmentConfig("free", {
+        searchProvider: "agentic_ai",
+        agenticDataStack: "places_apollo",
+        peopleSearchProvider: "apollo",
+      }),
+    );
+
+    expect(errors.some((error) => /Tavily/i.test(error))).toBe(false);
+    vi.unstubAllEnvs();
+  });
+
+  it("requires Places and Apollo keys for Agentic Places + Apollo", () => {
+    clearTavilyEnv();
+    vi.stubEnv("GOOGLE_PLACES_API_KEY", "");
+    vi.stubEnv("APOLLO_API_KEY", "");
+
+    const errors = checkDiscoveryPrerequisites(
+      resolveEnrichmentConfig("free", {
+        searchProvider: "agentic_ai",
+        agenticDataStack: "places_apollo",
+        peopleSearchProvider: "apollo",
+      }),
+    );
+
+    expect(errors.some((error) => /GOOGLE_PLACES_API_KEY/i.test(error))).toBe(true);
+    expect(errors.some((error) => /APOLLO_API_KEY/i.test(error))).toBe(true);
+    vi.unstubAllEnvs();
+  });
 });

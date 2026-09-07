@@ -25,7 +25,7 @@ const OFF_DEPT_TITLE =
 const BUYING_DEPTS = new Set(["HR", "Admin", "Procurement", "Facilities"]);
 
 const GIFTING_SEARCH_TITLES: Record<string, string[]> = {
-  HR: ["HR Director", "Head of HR", "Head HR", "HR Manager", "Plant HR", "CHRO", "CPO", "Chief People Officer", "People Manager"],
+  HR: ["HR Director", "Head of HR", "HR Head", "HR Manager", "Head HR", "Plant HR", "CHRO", "CPO", "Corporate HR Head", "Chief People Officer", "People Manager"],
   Procurement: ["Procurement Head", "Head of Procurement", "Procurement Manager", "Sourcing Head", "Purchase Manager"],
   Admin: ["Admin Head", "Head of Admin", "Admin Manager"],
   Facilities: ["Facilities Head", "Head of Facilities", "Facilities Manager"],

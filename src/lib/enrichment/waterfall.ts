@@ -9,6 +9,7 @@ import type { EnrichmentConfig } from "./config";
 import {
   hasApolloKey,
   resolveEnrichmentConfig,
+  materializeDiscoveryConfig,
   MAX_SCOUT_LEADS_LIMIT,
   searchProviderUsesTavily,
   shouldFallbackToIndiaDirectories,
@@ -20,6 +21,7 @@ import { tavilySearchCompanies } from "./tavily";
 import { googlePlacesSearchCompanies, type PlacesLocationBias } from "./google-places";
 import { indiaDirectoriesSearchCompanies, indiaDirectoriesSearchPeople } from "./india-directories";
 import {
+  companyCityMatchesSelection,
   companyMatchesScoutSelection,
   expandCityMatchTerms,
   expandCitySearchTerms,
@@ -94,6 +96,8 @@ import {
 import { isPlantSeatScout, selectPeoplePlantThenCorridor, corridorOnlyLabels } from "@/lib/scout/plant-seat";
 import { loadUserPreferenceProfile } from "@/lib/settings/preference-profile";
 import {
+  isOffMarketDomainForIndiaScout,
+  isUnusableCompanyDomain,
   officialWebsiteForScoutCompany,
   rankCompaniesWithOfficialSitesFirst,
 } from "./company-domain-quality";
@@ -222,22 +226,38 @@ async function loadScoutBrandIcp(workspaceId: string): Promise<{
 
 function finalizeScoutCompanies(companies: ScoutCompanyResult[]): ScoutCompanyResult[] {
   return rankCompaniesWithOfficialSitesFirst(
-    companies.map((company) => {
-      const scale = inferScaleMetadata(company);
-      return {
-        ...company,
-        ...scale,
-        scaleEvidence:
-          company.scaleEvidence ??
-          (company.employees ? `${scale.scaleSource}: ${company.employees}` : undefined),
-      };
-    }).map(officialWebsiteForScoutCompany),
+    companies
+      .filter((company) => {
+        // Drop off-market foreign sites mistaken for local Bangalore/India companies
+        // (e.g. PB Soft Tech → pbtech.co.nz).
+        if (isOffMarketDomainForIndiaScout(company.domain)) return false;
+        if (isOffMarketDomainForIndiaScout(company.website)) return false;
+        return true;
+      })
+      .map((company) => {
+        const scale = inferScaleMetadata(company);
+        const cleaned: ScoutCompanyResult = {
+          ...company,
+          ...scale,
+          scaleEvidence:
+            company.scaleEvidence ??
+            (company.employees ? `${scale.scaleSource}: ${company.employees}` : undefined),
+        };
+        // Strip directory / free-builder stamps (Mandya Directory, Wix, etc.).
+        if (isUnusableCompanyDomain(cleaned.domain) || isUnusableCompanyDomain(cleaned.website)) {
+          cleaned.domain = undefined;
+          cleaned.website = undefined;
+        }
+        return cleaned;
+      })
+      .map(officialWebsiteForScoutCompany),
   );
 }
 
 /**
  * Scout list discovery often returns Zauba names without a website. Google finds
  * aronuniversal.com in one query; resolve those here so tiles and people probe get a domain.
+ * Also drop stamped websites that are clearly dead (HTTP 410 / NXDOMAIN), e.g. cinemax.co.in.
  */
 async function hydrateMissingCompanyWebsites(
   companies: ScoutCompanyResult[],
@@ -248,7 +268,20 @@ async function hydrateMissingCompanyWebsites(
   const head = companies.slice(0, cap);
   const tail = companies.slice(cap);
   const hydrated = await mapWithConcurrency(head, concurrency, async (company) => {
-    if (company.domain?.trim() || company.website?.trim()) return company;
+    if (company.domain?.trim() || company.website?.trim()) {
+      try {
+        const { probeCompanyWebsiteLive } = await import("./website-probe");
+        const host = company.domain?.trim() || company.website?.trim();
+        const status = host ? await probeCompanyWebsiteLive(host) : "dead";
+        if (status === "dead") {
+          return { ...company, domain: undefined, website: undefined };
+        }
+        return company;
+      } catch (e) {
+        console.warn("[waterfall:verify_website] failed:", company.name, e);
+        return company;
+      }
+    }
     try {
       const resolved = await resolveCompanyDomain({
         companyName: company.name,
@@ -421,7 +454,7 @@ export async function discoverCompanies(params: {
   onPartial?: (companies: ScoutCompanyResult[]) => void | Promise<void>;
   qualityContext?: ScoutQualityContext;
 }): Promise<DiscoveryResult> {
-  const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
+  const cfg = materializeDiscoveryConfig(resolveEnrichmentConfig(params.dataMode, params.config));
   const limit = params.limit ?? parseInt(process.env.PROSPECTING_MAX_RESULTS ?? "25", 10);
   const employeeBands = normalizeEmployeeBandIds(params.employeeBands);
   const useAI = process.env.SCOUT_USE_AI_PROSPECTING !== "false";
@@ -935,11 +968,15 @@ export async function discoverCompanies(params: {
     const recovered = [...merged, ...discardedByCity]
       .map(withCleanedCompanyName)
       .filter((c): c is ScoutCompanyResult => c != null && !isGeographicEntity(c.name))
-      .map(hydrateEmployees);
+      .map(hydrateEmployees)
+      // Soft recover must still stamp a matching city — never re-admit blank-city HQ ghosts.
+      .filter((c) => companyCityMatchesSelection(c.city, selectionLabels));
     cityFiltered = rankCompaniesByLocalityMention(recovered, selectionLabels);
-    warnings.push(
-      `Found ${cityFiltered.length} candidate${cityFiltered.length === 1 ? "" : "s"} but none had a verified city matching ${selectionLabels.slice(0, 4).join(", ")}${selectionLabels.length > 4 ? ", and more" : ""}. Showing best available matches.`,
-    );
+    if (cityFiltered.length) {
+      warnings.push(
+        `Found ${cityFiltered.length} candidate${cityFiltered.length === 1 ? "" : "s"} but none had a strongly verified city matching ${selectionLabels.slice(0, 4).join(", ")}${selectionLabels.length > 4 ? ", and more" : ""}. Showing companies with a matching city stamp.`,
+      );
+    }
   }
   const verticalFiltered =
     params.searchKind === "business"
@@ -1249,7 +1286,7 @@ export async function discoverPeople(params: {
   peopleCities?: string[];
   qualityContext?: ScoutQualityContext;
 }): Promise<PeopleDiscoveryResult> {
-  const cfg = resolveEnrichmentConfig(params.dataMode, params.config);
+  const cfg = materializeDiscoveryConfig(resolveEnrichmentConfig(params.dataMode, params.config));
   const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
   if (cfg.peopleSearchProvider === "none") {
     return finishPeopleDiscovery({

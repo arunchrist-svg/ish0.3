@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { discoverCompanies, discoverPeople } from "@/lib/enrichment/waterfall";
 import { saveScoutLeads } from "@/lib/scout/save-leads";
 import { logAudit } from "@/lib/audit";
-import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/config";
+import { getScoutCompaniesLimit, getScoutLeadsLimit, isAgenticLeadFinding } from "@/lib/enrichment/config";
 import { peoplePerCompanyLimit } from "@/lib/enrichment/people-diversity";
 import {
   getResolvedEnrichmentConfigForWorkspace,
@@ -25,6 +25,8 @@ export type ScoutBatchParams = {
   maxCompaniesToProcess?: number;
   seniority?: string[];
   departments?: string[];
+  /** Force classic batch even when workspace AI mode is agentic. */
+  forceClassic?: boolean;
 };
 
 export type ScoutBatchResult = {
@@ -47,6 +49,16 @@ export type ScoutStageTrace = {
 const AGENT_COMPANY_CONCURRENCY = 4;
 
 export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
+  const workspaceCfg = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
+  if (!params.forceClassic && isAgenticLeadFinding(workspaceCfg)) {
+    const { runAgenticScoutBatch } = await import("@/lib/agents/scout-agentic");
+    return runAgenticScoutBatch(params);
+  }
+  return runClassicScoutBatch(params);
+}
+
+/** Legacy one-pass scout used only when classic is forced. */
+async function runClassicScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
   const runId = randomUUID();
   const workspaceCfg = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
   const locationOptions = scoutLocationOptions(
@@ -165,49 +177,49 @@ export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatc
 
   if (enrichmentConfig.peopleSearchProvider !== "none") {
     await mapWithConcurrency(toProcess, AGENT_COMPANY_CONCURRENCY, async (company) => {
-    try {
-      const { people, resolvedDomain, resolvedWebsite } = await discoverPeople({
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        companyName: company.name,
-        companyDomain: company.domain,
-        companyWebsite: company.website,
-        dataMode,
-        config: enrichmentConfig,
-        limit: peoplePerCompanyLimit(getScoutLeadsLimit()),
-        seniority: seniority.length ? seniority : undefined,
-        departments: departments.length ? departments : undefined,
-        cities,
-        tenantAccounts,
-      });
+      try {
+        const { people, resolvedDomain, resolvedWebsite } = await discoverPeople({
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          companyName: company.name,
+          companyDomain: company.domain,
+          companyWebsite: company.website,
+          dataMode,
+          config: enrichmentConfig,
+          limit: peoplePerCompanyLimit(getScoutLeadsLimit()),
+          seniority: seniority.length ? seniority : undefined,
+          departments: departments.length ? departments : undefined,
+          cities,
+          tenantAccounts,
+        });
 
-      const candidates = people.filter((p) => p.name?.trim());
-      if (!candidates.length) {
-        leadsSkipped += 1;
-        return;
+        const candidates = people.filter((p) => p.name?.trim());
+        if (!candidates.length) {
+          leadsSkipped += 1;
+          return;
+        }
+
+        const result = await saveScoutLeads({
+          people: candidates.slice(0, peoplePerCompanyLimit(getScoutLeadsLimit())),
+          company: {
+            ...company,
+            domain: resolvedDomain ?? company.domain,
+            website: resolvedWebsite ?? company.website,
+          },
+          dataMode,
+          leadSource: "scout_agent",
+          tenantId: params.tenantId,
+          workspaceId: params.workspaceId,
+          createdByUserId: params.userId,
+          enrichmentConfig: { ...enrichmentConfig, enrichOnImport: true },
+        });
+
+        leadsSaved += result.saved.length;
+        leadsSkipped += result.skipped.length;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        errors.push(`${company.name}: ${msg}`);
       }
-
-      const result = await saveScoutLeads({
-        people: candidates.slice(0, peoplePerCompanyLimit(getScoutLeadsLimit())),
-        company: {
-          ...company,
-          domain: resolvedDomain ?? company.domain,
-          website: resolvedWebsite ?? company.website,
-        },
-        dataMode,
-        leadSource: "scout_agent",
-        tenantId: params.tenantId,
-        workspaceId: params.workspaceId,
-        createdByUserId: params.userId,
-        enrichmentConfig: { ...enrichmentConfig, enrichOnImport: true },
-      });
-
-      leadsSaved += result.saved.length;
-      leadsSkipped += result.skipped.length;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      errors.push(`${company.name}: ${msg}`);
-    }
     });
     stageTrace.push({
       stage: "people_discovery",

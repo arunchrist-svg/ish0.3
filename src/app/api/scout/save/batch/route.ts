@@ -25,10 +25,12 @@ export async function POST(req: Request) {
       companies,
       dataMode: requestedDataMode,
       plantCities,
+      leadSource: requestedLeadSource,
     }: {
       companies: BatchCompanyInput[];
       dataMode?: DataMode;
       plantCities?: string[];
+      leadSource?: string;
     } = body;
 
     if (!Array.isArray(companies) || companies.length === 0) {
@@ -70,6 +72,12 @@ export async function POST(req: Request) {
 
     const dataMode = (requestedDataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
     const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
+    const leadSource =
+      typeof requestedLeadSource === "string" && requestedLeadSource.trim()
+        ? requestedLeadSource.trim()
+        : enrichmentConfig.searchProvider === "agentic_ai"
+          ? "scout_agentic"
+          : "scout_wizard";
     const concurrency = Math.min(
       parseInt(process.env.SCOUT_SAVE_CONCURRENCY ?? "8", 10) || 8,
       10,
@@ -84,7 +92,7 @@ export async function POST(req: Request) {
         company: entry.company,
         dataMode,
         enrichmentConfig,
-        leadSource: "scout_wizard",
+        leadSource,
         tenantId: ctx.tenantId,
         workspaceId: ctx.workspaceId,
         createdByUserId: ctx.userId,

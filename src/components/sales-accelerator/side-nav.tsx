@@ -31,7 +31,7 @@ const mainNav: NavItemEntry[] = [
 
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
-  { icon: Rocket, label: "Leads", href: "/leads", key: "leads" },
+  { icon: Rocket, label: "Leads", href: "/leads/board", key: "leads" },
   { icon: Mail, label: "Outreach", href: "/email", key: "email" },
   { icon: Bot, label: "Agent Console", href: "/agents/console", key: "agent-console" },
 ];

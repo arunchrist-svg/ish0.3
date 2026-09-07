@@ -32,7 +32,7 @@ export type MobileNavSection = {
 export const MOBILE_BOTTOM_TABS: MobileNavItem[] = [
   { key: "home", label: "Home", href: "/", icon: Home },
   { key: "inbox", label: "Inbox", href: "/inbox", icon: Inbox },
-  { key: "leads", label: "Leads", href: "/leads", icon: Rocket },
+  { key: "leads", label: "Leads", href: "/leads/board", icon: Rocket },
   { key: "scouting", label: "Scout", href: "/scouting", icon: Telescope },
   { key: "more", label: "More", href: "#more", icon: Settings },
 ];

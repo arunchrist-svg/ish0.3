@@ -133,6 +133,33 @@ describe("companyCityMatchesSelection", () => {
     expect(companyCityMatchesSelection("Hyderabad", ["Hyderabad"])).toBe(true);
   });
 
+  it("rejects empty-city HQ ghosts that only mention Bangalore in notes", () => {
+    expect(
+      companyMatchesScoutSelection(
+        {
+          city: "",
+          intelNotes: "CALDERYS INDIA REFRACTORIES LIMITED · MCA filing · Bangalore mentioned in registry text",
+        },
+        ["Bangalore"],
+      ),
+    ).toBe(false);
+    expect(
+      companyMatchesScoutSelection(
+        {
+          city: undefined,
+          intelNotes: "Corporate office references Bengaluru in a news snippet",
+        },
+        ["Bengaluru"],
+      ),
+    ).toBe(false);
+    expect(
+      companyMatchesScoutSelection(
+        { city: "Bengaluru", intelNotes: "Plant at Peenya" },
+        ["Bangalore"],
+      ),
+    ).toBe(true);
+  });
+
   it("matches Madras+6 when city is Chennai or address carries the district", () => {
     const madras6 = ["Madras", "Dharmapuri", "Erode", "Hosur", "Salem", "Krishnagiri", "Namakkal"];
     expect(companyCityMatchesSelection("Chennai", madras6)).toBe(true);

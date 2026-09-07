@@ -15,6 +15,9 @@ export function addedByCaption(opts: {
     case "scout":
     case "scout_wizard":
       return "Added by Scout";
+    case "scout_agent":
+    case "scout_agentic":
+      return "Added by Agentic Scout";
     case "manual":
       return "Added manually";
     case "linkedin":

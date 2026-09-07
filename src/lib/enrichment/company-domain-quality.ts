@@ -11,6 +11,27 @@ const UNUSABLE_COMPANY_DOMAINS = [
   "zaubacorp.com",
   "tradeindia.com",
   "tofler.in",
+  "idbf.in",
+  "indiaidbf.com",
+  "yellowpages.co.in",
+  "yellowpages.in",
+  "asklaila.com",
+  "bharatibiz.com",
+  "exportersindia.com",
+  "dial4trade.com",
+  "indianyellowpages.com",
+  "localindia.com",
+  "citydirectory.in",
+  "wixsite.com",
+  "wix.com",
+  "squarespace.com",
+  "weebly.com",
+  "godaddysites.com",
+  "myshopify.com",
+  "blogspot.com",
+  "blogger.com",
+  "wordpress.com",
+  "sites.google.com",
   "crunchbase.com",
   "zoominfo.com",
   "apollo.io",
@@ -76,6 +97,12 @@ const UNUSABLE_DOMAIN_FRAGMENTS = [
   "timesofindia",
   "news18",
   "newindianexpress",
+  "yellowpage",
+  "yellow-page",
+  "citydirectory",
+  "localdirectory",
+  "businessdirectory",
+  "idbf",
 ];
 
 export function normalizeHost(domain?: string | null): string | undefined {
@@ -93,10 +120,56 @@ export function isUnusableCompanyDomain(domain?: string | null): boolean {
   const host = normalizeHost(domain);
   if (!host) return false;
   if (!host.includes(".")) return true;
+  // Free website builders are not official company domains for scout cards.
+  if (host === "sites.google.com" || host.endsWith(".sites.google.com")) return true;
+  if (host.endsWith(".wixsite.com") || host === "wixsite.com") return true;
+  if (host.endsWith(".weebly.com") || host.endsWith(".godaddysites.com")) return true;
   if (UNUSABLE_COMPANY_DOMAINS.some((blocked) => host === blocked || host.endsWith(`.${blocked}`))) {
     return true;
   }
   return UNUSABLE_DOMAIN_FRAGMENTS.some((fragment) => host.includes(fragment));
+}
+
+/**
+ * Domains that clearly belong to another country market.
+ * India city scouts must not stamp these (e.g. pbtech.co.nz on a Bangalore card).
+ */
+const OFF_MARKET_INDIA_SUFFIXES = [
+  ".co.nz",
+  ".nz",
+  ".com.au",
+  ".net.au",
+  ".org.au",
+  ".au",
+  ".co.uk",
+  ".org.uk",
+  ".ac.uk",
+  ".uk",
+  ".com.br",
+  ".br",
+  ".co.za",
+  ".za",
+  ".de",
+  ".fr",
+  ".nl",
+  ".be",
+  ".es",
+  ".it",
+  ".pt",
+  ".ie",
+  ".jp",
+  ".kr",
+  ".cn",
+  ".ca",
+  ".mx",
+] as const;
+
+export function isOffMarketDomainForIndiaScout(domain?: string | null): boolean {
+  const host = normalizeHost(domain);
+  if (!host) return false;
+  return OFF_MARKET_INDIA_SUFFIXES.some(
+    (suffix) => host === suffix.slice(1) || host.endsWith(suffix),
+  );
 }
 
 export function domainSlug(domain?: string | null): string | undefined {
@@ -210,6 +283,8 @@ export function domainBelongsToCompany(domain: string, companyName: string): boo
 export function isAcceptableCompanyDomain(domain: string | null | undefined, companyName?: string | null): boolean {
   const host = normalizeHost(domain);
   if (!host || isUnusableCompanyDomain(host)) return false;
+  // This product scouts Indian localities — reject clearly foreign ccTLDs.
+  if (isOffMarketDomainForIndiaScout(host)) return false;
   if (!companyName?.trim()) return true;
 
   const known = normalizeHost(knownDomainForCompanyName(companyName));

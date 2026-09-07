@@ -47,6 +47,28 @@ export function statusToPipelineIndex(status: string): number {
   return STATUS_TO_PIPELINE_INDEX[status] ?? 0;
 }
 
+/** Aggregate per-status DB counts into per-stage display counts. */
+export function aggregateStatusCountsByStage(
+  counts: Record<string, number>,
+  packId?: VerticalPackId | string | null,
+): Record<string, number> {
+  const stages = pipelineStageLabels(packId);
+  const result = Object.fromEntries(stages.map((s) => [s, 0]));
+  for (const [status, n] of Object.entries(counts)) {
+    const stage = stages[statusToPipelineIndex(status)] ?? stages[0];
+    result[stage] = (result[stage] ?? 0) + n;
+  }
+  return result;
+}
+
+/** DB statuses that feed a given stage index (used for server-side bulk operations). */
+export const STATUSES_BY_STAGE_INDEX: Record<number, string[]> = Object.entries(
+  STATUS_TO_PIPELINE_INDEX,
+).reduce<Record<number, string[]>>((acc, [status, idx]) => {
+  (acc[idx] ??= []).push(status);
+  return acc;
+}, {});
+
 export function groupLeadsByPipelineStage<T extends { status: string; score?: number | null }>(
   leads: T[],
   packId?: VerticalPackId | string | null,

@@ -6,12 +6,14 @@ import {
   buildGoogleStylePlantPeopleQueries,
   buildGoogleStyleSeniorPeopleQueries,
   buildNaturalLinkedInPeopleQueries,
+  buildSimpleGoogleRolePeopleQueries,
   companyPeopleSearchNames,
   companyPeopleSearchTokens,
   dropOpenToWorkPeople,
   HQ_BUYER_ROLE_TERM,
   HQ_LINKEDIN_ROLE_TERM,
   OPEN_TO_WORK_EXCLUSION,
+  toGoogleStyleRolePhrase,
 } from "@/lib/enrichment/people-search";
 import type { ScoutPersonResult } from "@/lib/enrichment/types";
 
@@ -28,29 +30,53 @@ describe("companyPeopleSearchNames", () => {
   });
 });
 
+describe("toGoogleStyleRolePhrase", () => {
+  it("turns Head of X into X head for Google SERPs", () => {
+    expect(toGoogleStyleRolePhrase("Head of HR")).toBe("hr head");
+    expect(toGoogleStyleRolePhrase("Head of Procurement")).toBe("procurement head");
+    expect(toGoogleStyleRolePhrase("Head HR")).toBe("hr head");
+    expect(toGoogleStyleRolePhrase("HR Head")).toBe("hr head");
+    expect(toGoogleStyleRolePhrase("Admin Head")).toBe("admin head");
+    expect(toGoogleStyleRolePhrase("Procurement Manager")).toBe("procurement manager");
+  });
+});
+
+describe("buildSimpleGoogleRolePeopleQueries", () => {
+  it("builds role × company/slug queries for any dept, not only HR", () => {
+    const queries = buildSimpleGoogleRolePeopleQueries({
+      company: "Nash Industries",
+      companyAliases: ["nashindustriesinc"],
+      roleHints: ["Head of Procurement", "Admin Head", "HR Head"],
+    });
+    expect(queries.some((q) => /^procurement head nashindustriesinc/i.test(q))).toBe(true);
+    expect(queries.some((q) => /^admin head Nash Industries/i.test(q))).toBe(true);
+    expect(queries.some((q) => /^hr head nashindustriesinc/i.test(q))).toBe(true);
+  });
+});
+
 describe("buildGoogleStyleSeniorPeopleQueries", () => {
   it("mirrors what humans type in Google for Head of HR", () => {
     const queries = buildGoogleStyleSeniorPeopleQueries({
       company: "Himalaya Wellness",
       metroClause: "Bengaluru OR Bangalore",
     });
-    // Appointment news leads: it names the person the employer actually confirmed.
-    expect(queries[0]).toContain("site:hrkatha.com");
-    expect(queries[0]).toContain('"Himalaya Wellness"');
-    expect(queries.some((q) => q.includes("Himalaya Wellness head hr linkedin"))).toBe(true);
+    expect(queries.some((q) => q.includes("site:hrkatha.com"))).toBe(true);
+    expect(queries.some((q) => q.includes('"Himalaya Wellness"'))).toBe(true);
+    expect(queries.some((q) => /^hr head Himalaya Wellness/i.test(q))).toBe(true);
+    expect(queries.some((q) => q.includes("Himalaya Wellness hr head linkedin"))).toBe(true);
     expect(queries.some((q) => q.includes("Chief People Officer"))).toBe(true);
     expect(queries.some((q) => q.includes("CPO"))).toBe(true);
     expect(queries.some((q) => q.includes("Bengaluru"))).toBe(true);
     expect(queries.join("\n")).not.toContain("Kasturi Nagar");
   });
 
-  it("HQ queries include head hr plus Bengaluru, not an 8-district OR", () => {
+  it("HQ queries include role phrasing plus Bengaluru, not an 8-district OR", () => {
     const queries = buildGoogleStyleSeniorPeopleQueries({
       company: "AkzoNobel",
       metroClause: "Bengaluru OR Bangalore",
     });
     const blob = queries.join("\n");
-    expect(blob).toMatch(/head hr/i);
+    expect(blob).toMatch(/hr head/i);
     expect(blob).toContain("Bengaluru");
     expect(blob).not.toMatch(/Bellary.*Chikkaballapur|Chitradurga.*Kodagu.*Mysore/i);
   });
@@ -58,20 +84,45 @@ describe("buildGoogleStyleSeniorPeopleQueries", () => {
   it("includes Head HR LinkedIn phrasing alongside Head of HR", () => {
     expect(HQ_LINKEDIN_ROLE_TERM).toContain('"Head HR"');
     expect(HQ_LINKEDIN_ROLE_TERM).toContain('"HEAD HR"');
+    expect(HQ_LINKEDIN_ROLE_TERM).toContain('"HR Head"');
+    expect(HQ_LINKEDIN_ROLE_TERM).toContain('"Corporate HR Head"');
     expect(HQ_BUYER_ROLE_TERM).toContain('"Head HR"');
+    expect(HQ_BUYER_ROLE_TERM).toContain('"HR Head"');
+  });
+
+  it("includes domain-slug style company tokens when passed as aliases", () => {
+    const queries = buildGoogleStyleSeniorPeopleQueries({
+      company: "Nash Industries",
+      companyAliases: ["nashindustriesinc"],
+      metroClause: "Bengaluru OR Bangalore",
+    });
+    expect(queries.some((q) => /^hr head nashindustriesinc/i.test(q))).toBe(true);
+  });
+
+  it("leads with procurement head when that role is requested", () => {
+    const queries = buildGoogleStyleSeniorPeopleQueries({
+      company: "Nash Industries",
+      companyAliases: ["nashindustriesinc"],
+      metroClause: "Bengaluru OR Bangalore",
+      roleHints: ["Head of Procurement", "Procurement Manager"],
+    });
+    expect(queries.some((q) => /^procurement head nashindustriesinc/i.test(q))).toBe(true);
+    expect(queries.some((q) => /procurement manager/i.test(q))).toBe(true);
   });
 });
 
 describe("buildGoogleStylePlantPeopleQueries", () => {
-  it("leads with human Google head hr + plant city (Ashok Leyland Hosur)", () => {
+  it("leads with human Google hr head + plant city (Ashok Leyland Hosur)", () => {
     const queries = buildGoogleStylePlantPeopleQueries({
       company: "Ashok Leyland",
       plantCities: ["Hosur"],
       roleHints: ["Head of HR", "HR Director"],
     });
-    expect(queries[0]).toMatch(/^head hr Ashok Leyland Hosur/i);
-    expect(queries.some((q) => /Ashok Leyland head hr Hosur linkedin/i.test(q))).toBe(true);
-    expect(queries.some((q) => q.includes('"Head HR"') || q.includes("Head HR"))).toBe(true);
+    expect(queries.some((q) => /hr head Ashok Leyland/i.test(q))).toBe(true);
+    expect(queries.some((q) => /Ashok Leyland hr head Hosur linkedin/i.test(q))).toBe(true);
+    expect(queries.some((q) => q.includes('"Head HR"') || q.includes("Head HR") || /hr head/i.test(q))).toBe(
+      true,
+    );
     expect(queries.join("\n")).not.toMatch(/Bengaluru|Bangalore/i);
   });
 
@@ -80,7 +131,18 @@ describe("buildGoogleStylePlantPeopleQueries", () => {
       company: "Titan Company",
       plantCities: ["Hosur"],
     });
-    expect(queries.some((q) => /head hr Titan Company Hosur/i.test(q))).toBe(true);
+    expect(queries.some((q) => /hr head Titan Company Hosur/i.test(q))).toBe(true);
+  });
+
+  it("uses procurement head phrasing when that role is requested", () => {
+    const queries = buildGoogleStylePlantPeopleQueries({
+      company: "Nash Industries",
+      companyAliases: ["nashindustriesinc"],
+      plantCities: ["Bengaluru"],
+      roleHints: ["Head of Procurement", "Admin Head"],
+    });
+    expect(queries.some((q) => /procurement head nashindustriesinc/i.test(q))).toBe(true);
+    expect(queries.some((q) => /admin head Nash Industries/i.test(q))).toBe(true);
   });
 });
 

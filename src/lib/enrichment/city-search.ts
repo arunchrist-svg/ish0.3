@@ -289,6 +289,10 @@ export type CompanyScoutMatchOpts = {
  * Focus Area / neighborhood Scout: company must mention a selected locality
  * (city, intelNotes, or address). Plain Bengaluru or empty city does not pass.
  * Local businesses from a geo-biased Places search pass even when city is only Bengaluru.
+ *
+ * Metro / district Scout: require a stamped city that matches the selection, or a
+ * non-empty ward-style city whose address notes still carry the district. Empty
+ * city + Bangalore-in-notes alone is not enough (HQ/MCA ghosts like Calderys).
  */
 export function companyMatchesScoutSelection(
   company: { city?: string | null; intelNotes?: string | null },
@@ -300,6 +304,9 @@ export function companyMatchesScoutSelection(
   if (!selectionLooksLikeNeighborhoods(selectedCities)) {
     if (companyCityMatchesSelection(company.city, selectedCities)) return true;
     // Places often parses a ward ("Anna Colony") while Address still has Salem/Erode.
+    // Do not admit empty-city rows just because intelNotes mention the metro.
+    const stampedCity = company.city?.trim();
+    if (!stampedCity) return false;
     const haystack = companyHaystack(company);
     if (!haystack.trim()) return false;
     return expandCityMatchTerms(selectedCities)

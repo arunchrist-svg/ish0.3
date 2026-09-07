@@ -12,7 +12,7 @@ import {
 import { normalizeScoutAreasOfFocus } from "@/lib/geo/area-of-focus";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
-import { hasApolloKey } from "@/lib/enrichment/config";
+import { hasApolloKey, resolveAgenticDataStack } from "@/lib/enrichment/config";
 
 export const preferredRegion = ["sin1"];
 
@@ -83,6 +83,8 @@ export async function GET() {
           website: c.website ?? undefined,
         })),
         dataMode: config.dataMode,
+        aiOperatingMode: config.aiOperatingMode ?? "agentic",
+        agenticDataStack: resolveAgenticDataStack(config.agenticDataStack),
         searchProvider: config.searchProvider,
         peopleSearchProvider: config.peopleSearchProvider,
         scaleVerificationAvailable: hasApolloKey(),

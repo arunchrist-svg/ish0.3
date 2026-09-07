@@ -29,7 +29,7 @@ const GENERIC_FRAGMENT_JUNK =
   /\b(canteen|shipping\s+lines?|,?\s*etc\.?\b)\b/i;
 
 const ADMIN_UNIT_PLACE =
-  /\b(hobli|taluk|taluka|tehsil|mandal|panchayat|municipality)\b|taluk$|hobli$/i;
+  /\b(hobli|taluk|taluka|tehsil|mandal|panchayat|municipality|districts?\s+and\s+divisions?|divisions?\s+and\s+districts?)\b|taluk$|hobli$/i;
 
 const JOB_OR_DEGREE_JUNK =
   /\b(jobs?|openings?|vacancies|hiring|careers?)\s*$/i;
@@ -60,7 +60,7 @@ const STRONG_COMPANY_MARKER =
 
 /** Addresses, estates, roads, layouts, PIN codes mistaken for companies. */
 const ADDRESS_OR_PLACE_NAME =
-  /\b(sipcot|sidco|midc|gidc|rieco|ricco|riico|sez|epip|indl\.?|industrial\s+(area|estate|complex|park|zone|township)|phase[- ]*[ivx\d]+|plot\s*no\.?|survey\s*no\.?|door\s*no\.?|shed\s*no\.?|unit\s*no\.?|shop\s*no\.?|flat\s*no\.?|sector\s*\d+|block\s*[a-z0-9]|[a-z]\s+block|agraharam|village|taluk|taluka|hobli|district|pincode|pin\s*code|postal\s*code|layout|colony|extension|extn\.?|nagar|compound|bypass|highway|main\s+road|\brd\.?\b|\broad\b|\bstreet\b|\bcross\b|\bpost\b|\bestate\b|\barea\b|\bcomplex\b|\bpark\b|\bzone\b|\bphase\b)\b/i;
+  /\b(sipcot|sidco|midc|gidc|rieco|ricco|riico|sez|epip|indl\.?|industrial\s+(area|estate|complex|park|zone|township)|phase[- ]*[ivx\d]+|plot\s*no\.?|survey\s*no\.?|door\s*no\.?|shed\s*no\.?|unit\s*no\.?|shop\s*no\.?|flat\s*no\.?|sector\s*\d+|block\s*[a-z0-9]|[a-z]\s+block|agraharam|agrahara|village|taluk|taluka|hobli|district|pincode|pin\s*code|postal\s*code|layout|\blyt\b|colony|extension|extn\.?|nagar|compound|bypass|highway|main\s+road|\brd\.?\b|\broad\b|\bstreet\b|\bcross\b|\bpost\b|\bestate\b|\barea\b|\bcomplex\b|\bpark\b|\bzone\b|\bphase\b|residency|bus\s*stand|busstand|\bopp\.?\b|opposite\b)\b/i;
 
 const BUILDING_BLOCK =
   /\b(?:[a-z]\s+block|block\s*[a-z0-9]|tower[\s-]*[a-z0-9]?|wing\s*[a-z0-9]?)\b/i;
@@ -79,10 +79,10 @@ const LEGAL_ENTITY_TAIL =
 const TRAILING_IN_PLACE = /\s+in\s+[A-Za-z][A-Za-z\s.-]{2,40}$/i;
 
 const PIN_OR_PLOT_SHAPE =
-  /\b\d{6}\b|^\s*[A-Za-z][A-Za-z\s.-]{2,30}[\s-]*\d{5,6}\s*$|^\s*[A-Za-z]+\s*(no\.?\s*)?\d{1,4}[A-Za-z]?\s*$|^\s*[A-Za-z]+\d{1,4}\/\d*[A-Za-z]*\s*$|\bno\.?\s*\d{1,4}\b/i;
+  /\b\d{6}\b|\b\d{3}\s*\d{3}\b|^\s*[A-Za-z][A-Za-z\s.-]{2,30}[\s-]*\d{5,6}\s*$|^\s*[A-Za-z]+\s*(no\.?\s*)?\d{1,4}[A-Za-z]?\s*$|^\s*[A-Za-z]+\d{1,4}\/\d*[A-Za-z]*\s*$|\bno\.?\s*\d{1,4}\b/i;
 
 const PLACE_NAME_SUFFIX =
-  /(palli|halli|puram|pet|kere|nagar|layout|colony|road|rd|estate|compound|post|area|complex|park|zone|village)$/i;
+  /(palli|halli|puram|pet|kere|nagar|layout|lyt|colony|road|rd|estate|compound|post|area|complex|park|zone|village|residency|agrahara|busstand)$/i;
 
 const REGISTRY_OR_FORM_FIELD =
   /^(company\s+(subcategory|class|category|status|type|name)|indian non-government company|private company|public company|one person company|email id|e-?mail|address|tax|cin|din|roc(\s+code)?|directors?|charges?)$/i;
@@ -149,6 +149,15 @@ function looksLikeAddressOrPlace(name: string): boolean {
   if (
     /^[A-Za-z]{3,}[\s-]?(plot|phase|sector|no\.?|door|shed)?[\s-]?\d/i.test(name) &&
     !hasStrongCompany
+  ) {
+    return true;
+  }
+
+  // Landmark / school / bus-stand fragments without a company marker
+  if (
+    !hasStrongCompany &&
+    /\b(school|bus\s*stand|busstand|temple|church|mosque|hospital|clinic)\b/i.test(name) &&
+    !COMPANY_SUFFIX.test(name)
   ) {
     return true;
   }

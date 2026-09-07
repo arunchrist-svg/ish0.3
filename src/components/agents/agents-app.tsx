@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { runScoutAgent } from "@/lib/api-client";
-import type { DataMode } from "@/lib/enrichment/types";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { AppPageHeader } from "@/design-system";
 import { CitySelector } from "@/components/scouting/city-selector";
@@ -51,9 +50,6 @@ export function AgentsApp() {
   const { runs } = useAgentRuns();
   const [cities, setCities] = useState<string[]>(["Bangalore"]);
   const [industries, setIndustries] = useState<string[]>([]);
-  const [dataMode, setDataMode] = useState<DataMode>(
-    (process.env.NEXT_PUBLIC_DEFAULT_DATA_MODE as DataMode) ?? "auto",
-  );
   const [running, setRunning] = useState(false);
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof runScoutAgent>> | null>(null);
 
@@ -69,7 +65,7 @@ export function AgentsApp() {
       {
         key: "scout",
         title: "Scout",
-        body: "Batch-discover companies and decision-makers, then enrich email on save.",
+        body: "Agentic AI discovers companies and decision-makers, quality-gates, then enriches email on save.",
         href: "#scout-agent",
         icon: Telescope,
       },
@@ -77,7 +73,7 @@ export function AgentsApp() {
         key: "researcher",
         title: "Researcher",
         body: "Builds gifting briefs, order value, and decision-chain notes on each lead.",
-        href: "/leads",
+        href: "/leads/board",
         icon: Search,
       },
       {
@@ -127,11 +123,11 @@ export function AgentsApp() {
     setRunning(true);
     setLastResult(null);
     try {
-      const result = await runScoutAgent({ cities, industries, dataMode });
+      const result = await runScoutAgent({ cities, industries });
       setLastResult(result);
-      toast.success(`Scout complete — ${result.leadsSaved} leads saved`);
+      toast.success(`Agentic Scout complete — ${result.leadsSaved} leads saved`);
       if (result.leadsSaved > 0) {
-        notifyCrmRecordsChanged({ source: "scout_agent", savedLeads: result.leadsSaved });
+        notifyCrmRecordsChanged({ source: "scout_agentic", savedLeads: result.leadsSaved });
       }
     } catch (e) {
       toast.error("Scout agent failed. Check API keys.");
@@ -187,10 +183,11 @@ export function AgentsApp() {
           id="scout-agent"
           className="rounded-[20px] border border-brand-border bg-white p-6 shadow-[var(--shadow-brand-sm)]"
         >
-          <h2 className="mb-1 text-[15px] font-bold text-brand-ink">Scout Agent</h2>
+          <h2 className="mb-1 text-[15px] font-bold text-brand-ink">Agentic Scout</h2>
           <p className="mb-5 text-[12.5px] leading-relaxed text-brand-ink-soft">
-            Discovers companies, finds decision-makers, and saves leads with email automatically.
-            Best for batch volume. Use the Scouting wizard for hand-picked quality.
+            Batch auto-save path for the same Agentic AI engine. Prefer the Scouting tab when you want
+            to review company cards and leads before adding. Set Company search to Agentic AI under
+            Settings → Enrichment.
           </p>
 
           <div className="mb-4">
@@ -201,30 +198,11 @@ export function AgentsApp() {
             </p>
           </div>
 
-          <div className="mb-4">
+          <div className="mb-6">
             <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">
-              Industries (optional, leave empty for all)
+              Industries (optional, leave empty to use preference ICP)
             </div>
             <IndustrySelector industries={industries} onIndustriesChange={setIndustries} />
-          </div>
-
-          <div className="mb-6">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-brand-ink-faint">Data mode</div>
-            <div className="flex gap-2">
-              {(["free", "paid", "auto"] as DataMode[]).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setDataMode(m)}
-                  className={cn(
-                    "rounded-lg px-3 py-1.5 text-[12px] font-semibold capitalize",
-                    dataMode === m ? "bg-brand-black text-white" : "bg-brand-app text-brand-ink-soft",
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
           </div>
 
           <button
@@ -234,7 +212,7 @@ export function AgentsApp() {
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-black py-3 text-[13px] font-bold text-white shadow-[var(--shadow-brand)] hover:opacity-90 disabled:opacity-50"
           >
             <Play className="size-4" />
-            {running ? "Scouting…" : "Run Scout Agent"}
+            {running ? "Scouting…" : "Run Agentic Scout"}
           </button>
         </div>
 

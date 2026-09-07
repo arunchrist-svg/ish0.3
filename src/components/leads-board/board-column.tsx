@@ -26,10 +26,13 @@ type ColumnAction = {
 type Props = {
   stage: PipelineStageLabel;
   leads: LeadQueueItem[];
+  totalCount?: number;
   action?: ColumnAction;
   queueByLeadId?: Record<string, SendQueueItem>;
   queueItems?: SendQueueItem[];
   onLeadOpen?: (lead: LeadQueueItem) => void;
+  onLeadWrite?: (lead: LeadQueueItem) => void;
+  onLeadSend?: (lead: LeadQueueItem) => void;
 };
 
 function queueStatusLabel(item: SendQueueItem): string {
@@ -49,9 +52,10 @@ function queueStatusLabel(item: SendQueueItem): string {
   }
 }
 
-export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, onLeadOpen }: Props) {
+export function BoardColumn({ stage, leads, totalCount, action, queueByLeadId, queueItems, onLeadOpen, onLeadWrite, onLeadSend }: Props) {
   const accent = PIPELINE_STAGE_ACCENTS[stage];
   const useVirtual = leads.length > 40;
+  const displayCount = totalCount ?? leads.length;
 
   return (
     <section className="ish-board-column flex w-[280px] shrink-0 flex-col rounded-[18px]">
@@ -59,7 +63,7 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, o
         <div className="flex items-center justify-between gap-2">
           <h2 className="truncate text-[12.5px] font-bold text-brand-ink">{stage}</h2>
           <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-brand-ink-faint">
-            {leads.length}
+            {displayCount}
           </span>
         </div>
         {action ? (
@@ -68,7 +72,7 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, o
             <button
               type="button"
               onClick={action.onClick}
-              disabled={action.disabled || action.busy || leads.length === 0}
+              disabled={action.disabled || action.busy || displayCount === 0}
               className={cn(
                 "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-all",
                 "border-brand-border/70 bg-white/80 text-brand-ink",
@@ -147,6 +151,8 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, o
                 stage={stage}
                 sendStatus={queueByLeadId?.[lead.id]}
                 onOpen={onLeadOpen}
+                onWrite={onLeadWrite}
+                onSend={onLeadSend}
               />
             </div>
           )}
@@ -162,6 +168,8 @@ export function BoardColumn({ stage, leads, action, queueByLeadId, queueItems, o
               stage={stage}
               sendStatus={queueByLeadId?.[lead.id]}
               onOpen={onLeadOpen}
+              onWrite={onLeadWrite}
+              onSend={onLeadSend}
             />
           ))}
         </div>

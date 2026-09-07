@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { formatCreditCost } from "@/lib/billing/credit-costs";
 import { formatWhatsAppDisplay } from "@/lib/whatsapp/click-url";
+import { openWhatsAppClickUrl } from "@/lib/whatsapp/open-click";
 import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { usePermissions } from "@/hooks/use-permissions";
 import {
@@ -94,8 +95,7 @@ export function WhatsAppTabPanel({ lead, onDraftUpdated, onSent }: Props) {
         return;
       }
       const result = await openWhatsAppOutreach(draft.id);
-      const opened = window.open(result.url, "_blank", "noopener,noreferrer");
-      if (!opened) window.location.href = result.url;
+      openWhatsAppClickUrl(result.url);
       toast.success("Opened WhatsApp. Send from the chat to complete the message.");
       onSent?.();
     } catch (e) {

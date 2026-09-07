@@ -16,6 +16,11 @@ describe("addedByCaption", () => {
     expect(addedByCaption({ name: "  ", leadSource: "scout_wizard" })).toBe("Added by Scout");
   });
 
+  it("labels agentic scout leads", () => {
+    expect(addedByCaption({ name: null, leadSource: "scout_agentic" })).toBe("Added by Agentic Scout");
+    expect(addedByCaption({ name: null, leadSource: "scout_agent" })).toBe("Added by Agentic Scout");
+  });
+
   it("does not say unknown", () => {
     expect(addedByCaption({})).toBe("Added by team");
   });

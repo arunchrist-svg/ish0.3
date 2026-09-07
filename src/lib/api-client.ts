@@ -404,6 +404,7 @@ export async function scoutSave(params: {
   company: ScoutCompanyResult;
   dataMode?: DataMode;
   plantCities?: string[];
+  leadSource?: string;
 }): Promise<{ saved: { leadId: string; name: string; emailStatus: string }[]; skipped: { name: string; reason: string }[] }> {
   return post("/api/scout/save", params);
 }
@@ -518,9 +519,11 @@ export type ScoutBootstrapPayload = {
   leads?: { id: string; name: string; company: string }[];
   companies: ScoutBootstrapCompany[] | ScoutCompanyResult[];
   dataMode?: DataMode;
-  searchProvider?: "india_directories" | "google_places" | "tavily_ai" | "apollo";
+  searchProvider?: "agentic_ai" | "india_directories" | "google_places" | "tavily_ai" | "apollo";
   peopleSearchProvider?: "tavily_ai" | "apollo" | "none";
   scaleVerificationAvailable?: boolean;
+  aiOperatingMode?: "agentic" | "classic";
+  agenticDataStack?: "tavily_directories" | "places_apollo";
   scoutCompaniesLimit?: number;
   scoutLeadsLimit?: number;
   scoutPeopleCities?: string[];
@@ -553,6 +556,7 @@ export async function scoutSaveBatchStream(
     }[];
     dataMode?: DataMode;
     plantCities?: string[];
+    leadSource?: string;
   },
   onResult: (result: ScoutSaveBatchResult) => void,
 ): Promise<void> {
@@ -1859,6 +1863,18 @@ export async function sendFollowUp(
     overridePreflight: options?.overridePreflight,
     overrideQualityGate: options?.overrideQualityGate,
   });
+}
+
+export async function fetchLeadStageCounts(): Promise<Record<string, number>> {
+  const data = await get<{ counts: Record<string, number> }>("/api/leads/stage-counts");
+  return data.counts;
+}
+
+export async function writeAllLeadsForStage(params: {
+  statuses: string[];
+  outreachTemplate?: string;
+}): Promise<{ enqueued: number }> {
+  return post<{ enqueued: number }>("/api/agents/writer/write-all", params);
 }
 
 

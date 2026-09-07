@@ -23,5 +23,5 @@ export function buildWhatsAppClickUrl(phone: string, text: string): string {
   if (!userId) throw new Error("Invalid mobile number");
   const body = text.trim();
   if (!body) throw new Error("WhatsApp message is empty");
-  return `https://wa.me/${userId}?text=${encodeURIComponent(body)}`;
+  return `https://web.whatsapp.com/send/?phone=${userId}&text=${encodeURIComponent(body)}`;
 }

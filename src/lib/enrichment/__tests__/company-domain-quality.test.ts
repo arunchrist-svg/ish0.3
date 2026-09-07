@@ -4,6 +4,7 @@ import {
   domainBelongsToCompany,
   displayCompanyWebsite,
   isAcceptableCompanyDomain,
+  isOffMarketDomainForIndiaScout,
   isUnusableCompanyDomain,
   mergeResolvedWebsite,
   persistableCompanyWebsite,
@@ -29,6 +30,20 @@ describe("company domain quality", () => {
     expect(isUnusableCompanyDomain("www.tracxn.com")).toBe(true);
     expect(isUnusableCompanyDomain("goto")).toBe(true);
     expect(isUnusableCompanyDomain("pavna.in")).toBe(false);
+    expect(isUnusableCompanyDomain("mandya.idbf.in")).toBe(true);
+    expect(isUnusableCompanyDomain("idbf.in")).toBe(true);
+    expect(isUnusableCompanyDomain("sarathitrisha.wixsite.com")).toBe(true);
+    expect(isUnusableCompanyDomain("sites.google.com")).toBe(true);
+  });
+
+  it("rejects foreign-market domains on India scouts", () => {
+    expect(isOffMarketDomainForIndiaScout("pbtech.co.nz")).toBe(true);
+    expect(isOffMarketDomainForIndiaScout("https://www.pbtech.co.nz")).toBe(true);
+    expect(isOffMarketDomainForIndiaScout("example.com.au")).toBe(true);
+    expect(isOffMarketDomainForIndiaScout("acme.co.uk")).toBe(true);
+    expect(isOffMarketDomainForIndiaScout("pavna.in")).toBe(false);
+    expect(isOffMarketDomainForIndiaScout("tatasteel.com")).toBe(false);
+    expect(isAcceptableCompanyDomain("pbtech.co.nz", "PB Soft Tech")).toBe(false);
   });
 
   it("requires the domain slug to match the company brand", () => {

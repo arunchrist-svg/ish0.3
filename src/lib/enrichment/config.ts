@@ -3,10 +3,23 @@ import { resolveGiftIntelConfig } from "@/lib/brand-intel/config";
 import { DEFAULT_SCOUT_GEO, normalizeScoutGeo, type ScoutGeoSelection } from "@/lib/geo/india";
 import { normalizeScoutAreasOfFocus, type ScoutAreaOfFocus } from "@/lib/geo/area-of-focus";
 
-export type SearchProvider = "india_directories" | "google_places" | "tavily_ai" | "apollo";
+export type SearchProvider =
+  | "agentic_ai"
+  | "india_directories"
+  | "google_places"
+  | "tavily_ai"
+  | "apollo";
 export type PeopleSearchProvider = "tavily_ai" | "apollo" | "none";
 export type EnrichProvider = "website_email" | "prospeo" | "apollo" | "hunter" | "none";
 export type DataMode = "free" | "paid" | "auto";
+/** How lead finding is operated when Company search is Agentic AI. */
+export type AiOperatingMode = "agentic" | "classic";
+/**
+ * Data stack for Agentic AI Scout.
+ * - tavily_directories: India directories via Tavily (default)
+ * - places_apollo: Google Places companies + Apollo people (no Tavily)
+ */
+export type AgenticDataStack = "tavily_directories" | "places_apollo";
 
 export type EnrichmentConfig = {
   searchProvider: SearchProvider;
@@ -21,6 +34,12 @@ export type EnrichmentConfig = {
   fallbackToAI: boolean;
   enrichOnImport: boolean;
   dataMode: DataMode;
+  /**
+   * Mirrors Company search when Agentic AI is selected. Classic providers set this to classic.
+   */
+  aiOperatingMode?: AiOperatingMode;
+  /** Only applies when searchProvider is agentic_ai. */
+  agenticDataStack?: AgenticDataStack;
   scoutCompaniesLimit: number;
   scoutLeadsLimit: number;
   /**
@@ -76,6 +95,11 @@ export function getScoutLeadsLimit(): number {
 }
 
 export const SEARCH_PROVIDER_LABELS: Record<SearchProvider, { label: string; desc: string; badge: string }> = {
+  agentic_ai: {
+    label: "Agentic AI",
+    desc: "Scout agent team in Scouting. Choose Directories (Tavily) or Places + Apollo under Agentic data stack",
+    badge: "AI team",
+  },
   india_directories: {
     label: "India + Tavily",
     desc: "Tavily searches JustDial, IndiaMART, Sulekha, ZaubaCorp, and TradeIndia for Indian companies",
@@ -97,6 +121,143 @@ export const SEARCH_PROVIDER_LABELS: Record<SearchProvider, { label: string; des
     badge: "Paid",
   },
 };
+
+export const AI_OPERATING_MODE_OPTIONS: {
+  value: AiOperatingMode;
+  label: string;
+  title: string;
+  desc: string;
+}[] = [
+  {
+    value: "agentic",
+    label: "Agentic AI",
+    title: "Scout agent team in the Scouting tab",
+    desc: "Same Scouting UI: companies then leads. The agent team plans ICP, discovers with India-friendly defaults, retries thin passes, and quality-gates before you add leads.",
+  },
+  {
+    value: "classic",
+    label: "Classic",
+    title: "Manual provider (Tavily, Places, Apollo)",
+    desc: "Pick India directories, Places, Tavily, or Apollo yourself under Enrichment → Company search.",
+  },
+];
+
+export const AGENTIC_DATA_STACK_OPTIONS: {
+  value: AgenticDataStack;
+  label: string;
+  title: string;
+  desc: string;
+}[] = [
+  {
+    value: "tavily_directories",
+    label: "Directories",
+    title: "India directories via Tavily",
+    desc: "Tavily searches JustDial, IndiaMART, and related directories, then finds people via Tavily or Apollo.",
+  },
+  {
+    value: "places_apollo",
+    label: "Places + Apollo",
+    title: "No Tavily",
+    desc: "Companies from Google Places; decision-makers from Apollo. Best for local plants when Apollo is keyed.",
+  },
+];
+
+export function resolveAgenticDataStack(
+  value: AgenticDataStack | string | null | undefined,
+): AgenticDataStack {
+  return value === "places_apollo" ? "places_apollo" : "tavily_directories";
+}
+
+export function isAgenticSearchProvider(
+  provider: SearchProvider | string | null | undefined,
+): boolean {
+  return provider === "agentic_ai";
+}
+
+export function resolveAiOperatingMode(
+  value: AiOperatingMode | string | null | undefined,
+  searchProvider?: SearchProvider | string | null,
+): AiOperatingMode {
+  if (isAgenticSearchProvider(searchProvider)) return "agentic";
+  if (value === "classic" || value === "agentic") return value;
+  return "classic";
+}
+
+export function isAgenticLeadFinding(
+  config: Pick<EnrichmentConfig, "aiOperatingMode" | "searchProvider"> | null | undefined,
+): boolean {
+  return isAgenticSearchProvider(config?.searchProvider);
+}
+
+/** True when this config (or Agentic stack) will spend Tavily credits on company search. */
+export function configUsesTavilyForCompanies(
+  config: Pick<EnrichmentConfig, "searchProvider" | "agenticDataStack">,
+): boolean {
+  if (isAgenticSearchProvider(config.searchProvider)) {
+    return resolveAgenticDataStack(config.agenticDataStack) === "tavily_directories";
+  }
+  return searchProviderUsesTavily(config.searchProvider);
+}
+
+/**
+ * Quality defaults for Agentic Scout discovery.
+ * Directories stack → India directories + Tavily people.
+ * Places + Apollo stack → Google Places + Apollo people, no Tavily.
+ */
+export function applyAgenticScoutDefaults(
+  config: EnrichmentConfig,
+): EnrichmentConfig {
+  const stack = resolveAgenticDataStack(config.agenticDataStack);
+
+  if (stack === "places_apollo") {
+    const people =
+      config.peopleSearchProvider === "tavily_ai" ? "apollo" : config.peopleSearchProvider;
+    return {
+      ...config,
+      agenticDataStack: "places_apollo",
+      aiOperatingMode: "agentic",
+      dataMode: "auto",
+      searchProvider: "google_places",
+      peopleSearchProvider: people,
+      fallbackToAI: false,
+      enrichOnImport: true,
+      // Do not force strict AND filters; plant seats need empty-result broaden.
+      strictPeopleFilters: false,
+      providerChoice: {
+        provider: "google_places",
+        configured: "agentic_ai",
+        reason: "configured",
+      },
+    };
+  }
+
+  const people =
+    config.peopleSearchProvider === "none" ? "tavily_ai" : config.peopleSearchProvider;
+  return {
+    ...config,
+    agenticDataStack: "tavily_directories",
+    aiOperatingMode: "agentic",
+    dataMode: "auto",
+    searchProvider: "india_directories",
+    peopleSearchProvider: people,
+    fallbackToAI: true,
+    enrichOnImport: true,
+    strictPeopleFilters: false,
+    providerChoice: {
+      provider: "india_directories",
+      configured: isAgenticSearchProvider(config.searchProvider)
+        ? "agentic_ai"
+        : config.searchProvider,
+      reason: "configured",
+    },
+  };
+}
+
+/** Expand Agentic AI into concrete providers before waterfall discovery. */
+export function materializeDiscoveryConfig(config: EnrichmentConfig): EnrichmentConfig {
+  if (!isAgenticSearchProvider(config.searchProvider)) return config;
+  return applyAgenticScoutDefaults(config);
+}
 
 export const DATA_MODE_OPTIONS: { value: DataMode; label: string; title: string; desc: string }[] = [
   {
@@ -188,7 +349,11 @@ export function hasZintlrKeys(): boolean {
 
 /** Company providers that spend Tavily credits during discovery. */
 export function searchProviderUsesTavily(provider: SearchProvider): boolean {
-  return provider === "india_directories" || provider === "tavily_ai";
+  return (
+    provider === "agentic_ai" ||
+    provider === "india_directories" ||
+    provider === "tavily_ai"
+  );
 }
 
 /**
@@ -202,6 +367,7 @@ export function searchProviderUsesTavily(provider: SearchProvider): boolean {
  * Tavily AI fallback is skipped for Apollo — so the scout returned zero with no warning.
  *
  * Google Places stays out on purpose: its misses should not spend Tavily quota.
+ * Agentic AI materializes to directories or Places depending on agenticDataStack.
  */
 export function shouldFallbackToIndiaDirectories(provider: SearchProvider): boolean {
   return provider === "tavily_ai" || provider === "apollo";
@@ -238,6 +404,10 @@ export function resolveSearchProviderWithReason(
   dataMode: DataMode,
   configured: SearchProvider,
 ): ProviderChoice {
+  // Agentic AI owns its own India-friendly waterfall; never silent-upgrade to Apollo.
+  if (isAgenticSearchProvider(configured)) {
+    return { provider: "agentic_ai", configured: "agentic_ai", reason: "configured" };
+  }
   if ((dataMode === "paid" || dataMode === "auto") && hasApolloKey() && configured !== "apollo") {
     return {
       provider: "apollo",
@@ -265,7 +435,8 @@ export function resolvePeopleSearchProvider(
 }
 
 export function defaultPeopleSearchProvider(searchProvider: SearchProvider): PeopleSearchProvider {
-  return searchProvider === "apollo" ? "apollo" : "tavily_ai";
+  if (searchProvider === "apollo") return "apollo";
+  return "tavily_ai";
 }
 
 /** Resolve enrich provider from dataMode + configured default */
@@ -280,17 +451,22 @@ export function resolveEnrichProvider(dataMode: DataMode, configured: EnrichProv
 
 /** Load from env — used server-side at runtime */
 export function getEnrichmentConfig(): EnrichmentConfig {
+  const envProvider = (process.env.ENRICHMENT_SEARCH_PROVIDER as SearchProvider) ?? "agentic_ai";
+  const agentic = isAgenticSearchProvider(envProvider);
+  const agenticDataStack = agentic
+    ? resolveAgenticDataStack(process.env.ENRICHMENT_AGENTIC_DATA_STACK)
+    : undefined;
   return {
-    searchProvider: (process.env.ENRICHMENT_SEARCH_PROVIDER as SearchProvider) ?? "india_directories",
+    searchProvider: envProvider,
     peopleSearchProvider:
       (process.env.ENRICHMENT_PEOPLE_SEARCH_PROVIDER as PeopleSearchProvider) ??
-      defaultPeopleSearchProvider(
-        (process.env.ENRICHMENT_SEARCH_PROVIDER as SearchProvider) ?? "india_directories",
-      ),
+      defaultPeopleSearchProvider(envProvider),
     enrichProvider: (process.env.ENRICHMENT_ENRICH_PROVIDER as EnrichProvider) ?? "website_email",
     fallbackToAI: process.env.ENRICHMENT_FALLBACK_TO_AI !== "false",
     enrichOnImport: process.env.ENRICHMENT_ENRICH_ON_IMPORT !== "false",
     dataMode: (process.env.DEFAULT_DATA_MODE as DataMode) ?? "free",
+    aiOperatingMode: agentic ? "agentic" : "classic",
+    agenticDataStack,
     scoutCompaniesLimit: getScoutCompaniesLimit(),
     scoutLeadsLimit: getScoutLeadsLimit(),
     strictPeopleFilters: false,
@@ -321,16 +497,40 @@ export function resolveEnrichmentConfig(
     ? { provider: configuredSearch, configured: configuredSearch, reason: "configured" }
     : resolveSearchProviderWithReason(mode, configuredSearch);
 
+  const agentic = isAgenticSearchProvider(providerChoice.provider);
+  const agenticDataStack = agentic
+    ? resolveAgenticDataStack(override?.agenticDataStack ?? base.agenticDataStack)
+    : undefined;
+  const placesApollo = agentic && agenticDataStack === "places_apollo";
+
+  let peopleSearchProvider: PeopleSearchProvider;
+  if (agentic && placesApollo) {
+    peopleSearchProvider =
+      configuredPeopleSearch === "tavily_ai" ? "apollo" : configuredPeopleSearch;
+  } else if (agentic) {
+    peopleSearchProvider =
+      configuredPeopleSearch === "none"
+        ? "tavily_ai"
+        : override?.peopleSearchProvider
+          ? configuredPeopleSearch
+          : resolvePeopleSearchProvider("auto", configuredPeopleSearch);
+  } else if (override?.peopleSearchProvider) {
+    peopleSearchProvider = configuredPeopleSearch;
+  } else {
+    peopleSearchProvider = resolvePeopleSearchProvider(mode, configuredPeopleSearch);
+  }
+
   return {
     ...base,
-    dataMode: mode,
+    dataMode: agentic ? "auto" : mode,
+    aiOperatingMode: agentic ? "agentic" : "classic",
+    agenticDataStack,
     searchProvider: providerChoice.provider,
     providerChoice,
-    peopleSearchProvider: override?.peopleSearchProvider
-      ? configuredPeopleSearch
-      : resolvePeopleSearchProvider(mode, configuredPeopleSearch),
-    enrichProvider: resolveEnrichProvider(mode, configuredEnrich),
-    fallbackToAI,
+    peopleSearchProvider,
+    enrichProvider: resolveEnrichProvider(agentic ? "auto" : mode, configuredEnrich),
+    fallbackToAI: agentic ? !placesApollo : fallbackToAI,
+    enrichOnImport: agentic ? true : Boolean(base.enrichOnImport),
     giftIntelProductCategory: giftIntel.productCategory || undefined,
     giftIntelCompetitorBrands: giftIntel.competitorBrands.length ? giftIntel.competitorBrands : undefined,
     brandIntelProductCategory: giftIntel.productCategory || undefined,

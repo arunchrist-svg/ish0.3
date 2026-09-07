@@ -407,12 +407,12 @@ export function HomeApp() {
             actions.push({ href: "/email", label: "Ready to send", detail: `${draftReady} drafts` });
           } else if (researched > 0) {
             actions.push({
-              href: "/leads",
+              href: "/leads/board",
               label: "Write outreach",
               detail: `${researched} researched · ${getCreditCost("writer.draft") * 3} credits per sequence`,
             });
           } else if (scouted > 0) {
-            actions.push({ href: "/leads", label: "Research contacts", detail: `${scouted} waiting` });
+            actions.push({ href: "/leads/board", label: "Research contacts", detail: `${scouted} waiting` });
           }
           if (unreplied > 0) {
             actions.push({ href: "/email?tab=active", label: "Awaiting reply", detail: `${unreplied} sent` });
@@ -588,7 +588,7 @@ export function HomeApp() {
                   label="Leads"
                   description="Review and action your leads"
                   icon={Rocket}
-                  href="/leads"
+                  href="/leads/board"
                   iconBg="bg-brand-pink"
                   iconColor="text-brand-ink"
                   hoverBorder="hover:border-pink-300"

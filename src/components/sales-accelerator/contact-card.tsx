@@ -7,6 +7,7 @@ import { PanelCard } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { Building2, Copy, Loader2, MapPin, MessageCircle, Pencil, Phone, Search, Sparkles, Wand2 } from "lucide-react";
 import { toWhatsAppUserId } from "@/lib/whatsapp/click-url";
+import { openWhatsAppClickUrl } from "@/lib/whatsapp/open-click";
 import { Button } from "@/design-system";
 import { toast } from "sonner";
 import { EmailSuggestModal } from "@/components/sales-accelerator/email-suggest-modal";
@@ -246,15 +247,14 @@ export function ContactCard({
                 />
               </div>
               {toWhatsAppUserId(mobilePhone) ? (
-                <a
-                  href={`https://wa.me/${toWhatsAppUserId(mobilePhone)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
                   title="Open WhatsApp"
+                  onClick={() => openWhatsAppClickUrl(`https://web.whatsapp.com/send/?phone=${toWhatsAppUserId(mobilePhone)}`)}
                   className="flex size-[52px] shrink-0 items-center justify-center rounded-[14px] border border-[#25D366]/30 bg-[#25D366]/8 text-[#128C40] shadow-[var(--shadow-brand-sm)] transition hover:border-[#25D366]/60 hover:bg-[#25D366]/15"
                 >
                   <MessageCircle className="size-4" />
-                </a>
+                </button>
               ) : null}
             </div>
           ) : null}

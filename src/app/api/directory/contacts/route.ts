@@ -7,7 +7,7 @@ import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 
 export const preferredRegion = ["sin1"];
 
-const SCOUT_SOURCES = ["scout", "scout_wizard", "scout_agent"];
+const SCOUT_SOURCES = ["scout", "scout_wizard", "scout_agent", "scout_agentic"];
 
 function blankLabel(value: string | null | undefined, fallback = "Unknown"): string {
   const t = value?.trim() ?? "";

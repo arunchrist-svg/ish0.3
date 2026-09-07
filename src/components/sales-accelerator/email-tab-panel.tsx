@@ -24,6 +24,8 @@ import type { LeadDetailRecord, WriterDraft } from "@/lib/api-client";
 import { isContactReadyStage } from "@/lib/pipeline-status";
 import { asVariantKey, isSequenceFollowUpDraft, type VariantKey } from "@/lib/email/draft-variants";
 import { OUTREACH_TEMPLATES, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { getBoardTemplateOverride, setBoardTemplateOverride } from "@/lib/board-template-override";
+import { AppModal } from "@/components/ui/app-modal";
 import { WRITE_THEME_OCCASIONS, FESTIVE_OCCASION_SENTINEL, occasionIdFromTags } from "@/lib/occasions/catalog";
 import { latestDetectedOccasion } from "@/lib/occasions/resolve";
 import { CREDIT_COSTS } from "@/lib/billing/credit-costs";
@@ -87,9 +89,20 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
     lead.defaultOutreachCta && templates.some((t) => t.id === lead.defaultOutreachCta)
       ? (lead.defaultOutreachCta as OutreachTemplateId)
       : templates[0]?.id ?? OUTREACH_TEMPLATES[0].id;
-  const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplateId>(
-    (draft?.templateVariant as OutreachTemplateId) ?? defaultTemplateId,
-  );
+  const isEmailStageLead = lead.status === "draft_ready" || lead.status === "approved";
+  const [selectedTemplate, setSelectedTemplate] = useState<OutreachTemplateId>(() => {
+    if (draft?.templateVariant && draft.templateVariant !== "reply") {
+      return draft.templateVariant as OutreachTemplateId;
+    }
+    const override = getBoardTemplateOverride();
+    if (isEmailStageLead && override && templates.some((t) => t.id === override)) {
+      return override as OutreachTemplateId;
+    }
+    return defaultTemplateId;
+  });
+  const [pendingTemplate, setPendingTemplate] = useState<string | null>(null);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateScope, setTemplateScope] = useState<"all" | "this">("all");
   const [writerMode, setWriterMode] = useState<WriterMode>("standard");
   const [writeOptionsOpen, setWriteOptionsOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -169,11 +182,16 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   useEffect(() => {
     if (draft?.templateVariant && draft.templateVariant !== "reply") return;
+    const override = getBoardTemplateOverride();
+    if (isEmailStageLead && override && templates.some((t) => t.id === override)) {
+      setSelectedTemplate(override as OutreachTemplateId);
+      return;
+    }
     const preferred = lead.defaultOutreachCta as OutreachTemplateId | undefined;
     if (preferred && templates.some((t) => t.id === preferred)) {
       setSelectedTemplate(preferred);
     }
-  }, [lead.id, lead.defaultOutreachCta, templates, draft?.templateVariant]);
+  }, [lead.id, lead.defaultOutreachCta, templates, draft?.templateVariant, isEmailStageLead]);
 
   useEffect(() => {
     if (!templates.some((t) => t.id === selectedTemplate)) {
@@ -560,6 +578,14 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
 
   const showWriterControl = showRegenerate || (isReplyLead && phase !== "reply_sent");
 
+  function handleTemplateConfirm() {
+    if (!pendingTemplate) return;
+    setSelectedTemplate(pendingTemplate as OutreachTemplateId);
+    if (templateScope === "all") setBoardTemplateOverride(pendingTemplate);
+    setTemplateModalOpen(false);
+    setPendingTemplate(null);
+  }
+
   const showProcessBar = (showComposeZone && isEditableNode && !generating) || (isEmptyCompose && !generating);
 
   const writeOptionsSummary = [
@@ -879,7 +905,15 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                           className={writeOptionClass(selectedTemplate === template.id)}
                           title={template.description}
                           closeOnClick={false}
-                          onClick={() => setSelectedTemplate(template.id)}
+                          onClick={() => {
+                            if (isEmailStageLead && template.id !== selectedTemplate) {
+                              setPendingTemplate(template.id);
+                              setTemplateScope("all");
+                              setTemplateModalOpen(true);
+                            } else {
+                              setSelectedTemplate(template.id);
+                            }
+                          }}
                         >
                           <span className="flex w-3 shrink-0 justify-center">
                             {selectedTemplate === template.id ? (
@@ -1154,7 +1188,15 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
                             key={template.id}
                             className={writeOptionClass(selectedTemplate === template.id)}
                             title={template.description}
-                            onClick={() => setSelectedTemplate(template.id)}
+                            onClick={() => {
+                              if (isEmailStageLead && template.id !== selectedTemplate) {
+                                setPendingTemplate(template.id);
+                                setTemplateScope("all");
+                                setTemplateModalOpen(true);
+                              } else {
+                                setSelectedTemplate(template.id);
+                              }
+                            }}
                           >
                             <span className="flex w-3 shrink-0 justify-center">
                               {selectedTemplate === template.id ? (
@@ -1357,6 +1399,67 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
           ) : null}
         </>
       )}
+
+      <AppModal
+        open={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+        panelClassName="max-w-sm"
+      >
+        <div className="pt-1">
+          <h3 className="mb-1 text-base font-semibold text-brand-ink">Apply template change to…</h3>
+          <p className="mb-5 text-[13px] text-brand-ink-soft">
+            {templates.find((t) => t.id === pendingTemplate)?.label ?? "New template"}
+          </p>
+          <div className="mb-6 space-y-3">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="radio"
+                name="template-scope"
+                value="all"
+                checked={templateScope === "all"}
+                onChange={() => setTemplateScope("all")}
+                className="mt-0.5 accent-brand-stratus-blue"
+              />
+              <span className="text-[14px] text-brand-ink">
+                All leads in Email column
+                <span className="mt-0.5 block text-[12px] text-brand-ink-faint">
+                  Every lead currently in the Email stage will use this template
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="radio"
+                name="template-scope"
+                value="this"
+                checked={templateScope === "this"}
+                onChange={() => setTemplateScope("this")}
+                className="mt-0.5 accent-brand-stratus-blue"
+              />
+              <span className="text-[14px] text-brand-ink">
+                This lead only
+              </span>
+            </label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setTemplateModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleTemplateConfirm}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      </AppModal>
     </div>
   );
 }

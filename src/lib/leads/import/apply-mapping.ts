@@ -1,4 +1,5 @@
 import { pickBestEmail, extractEmailsFromCell } from "@/lib/enrichment/validate-contact";
+import { parseFullName, guessNameSplit, splitCamelCase } from "./parse-names";
 import type { ColumnMapping, NormalizedImportRow } from "./types";
 
 const GENERIC_EMAIL_LOCALS = new Set([
@@ -90,13 +91,24 @@ export function applyColumnMapping(
 
   rows.forEach((row, index) => {
     const rowIndex = index + 2; // 1-based sheet row including header
-    const firstName = cell(row, mapping, "firstName");
-    const lastName = cell(row, mapping, "lastName");
-    const fullName = cell(row, mapping, "name");
+    const firstNameRaw = cell(row, mapping, "firstName");
+    const lastNameRaw = cell(row, mapping, "lastName");
+    const fullNameRaw = cell(row, mapping, "name");
     const company = cell(row, mapping, "company");
     const emailRaw = cell(row, mapping, "email");
     const extractedEmails = extractEmailsFromCell(emailRaw);
     const email = pickBestEmail(extractedEmails) ?? extractedEmails[0] ?? "";
+
+    let firstName = firstNameRaw;
+    let lastName = lastNameRaw;
+    let fullName = fullNameRaw;
+
+    if (fullName && !firstName && !lastName) {
+      const parsed = guessNameSplit(fullName);
+      firstName = parsed.firstName;
+      lastName = parsed.lastName;
+    }
+
     const named =
       fullName ||
       [firstName, lastName].filter(Boolean).join(" ") ||

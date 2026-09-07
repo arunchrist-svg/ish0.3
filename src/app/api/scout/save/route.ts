@@ -16,11 +16,13 @@ export async function POST(req: Request) {
       company,
       dataMode: requestedDataMode,
       plantCities,
+      leadSource: requestedLeadSource,
     }: {
       people?: ScoutPersonResult[];
       company: ScoutCompanyResult;
       dataMode?: DataMode;
       plantCities?: string[];
+      leadSource?: string;
     } = body;
 
     if (!company?.name) {
@@ -44,13 +46,19 @@ export async function POST(req: Request) {
 
     const dataMode = (requestedDataMode ?? process.env.DEFAULT_DATA_MODE ?? "free") as DataMode;
     const enrichmentConfig = await getResolvedWorkspaceEnrichmentConfig({ dataMode });
+    const leadSource =
+      typeof requestedLeadSource === "string" && requestedLeadSource.trim()
+        ? requestedLeadSource.trim()
+        : enrichmentConfig.searchProvider === "agentic_ai"
+          ? "scout_agentic"
+          : "scout_wizard";
 
     const result = await saveScoutLeads({
       people: peopleList,
       company,
       dataMode,
       enrichmentConfig,
-      leadSource: "scout_wizard",
+      leadSource,
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
       createdByUserId: ctx.userId,

@@ -41,7 +41,8 @@ import {
   textMentionsCompany,
 } from "@/lib/enrichment/person-company-match";
 import { sanitizeJobTitle } from "@/lib/enrichment/job-title";
-import { normalizeCompanyName } from "@/lib/enrichment/company-name-match";
+import { compactCompanyName, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
+import { domainSlug } from "@/lib/enrichment/company-domain-quality";
 
 /** Short scout names → LinkedIn-friendly employer strings. */
 const BRAND_SEARCH_NAMES: Record<string, string[]> = {
@@ -130,6 +131,58 @@ function excludeOpenToWork(query: string): string {
 
 function normalizeRoleLabel(role: string): string {
   return role.replace(/^"+|"+$/g, "").trim();
+}
+
+/**
+ * Google SERP phrasing: "Head of Procurement" → "procurement head", "Head HR" → "hr head".
+ * Matches what users type (e.g. "hr head nashindustriesinc").
+ */
+export function toGoogleStyleRolePhrase(role: string): string {
+  const cleaned = normalizeRoleLabel(role).replace(/\s+/g, " ").trim();
+  if (!cleaned) return "";
+  const headOf = cleaned.match(/^head\s+of\s+(.+)$/i);
+  if (headOf?.[1]) return `${headOf[1].trim()} head`.toLowerCase();
+  const headFirst = cleaned.match(/^head\s+(.+)$/i);
+  if (headFirst?.[1]) return `${headFirst[1].trim()} head`.toLowerCase();
+  return cleaned.toLowerCase();
+}
+
+/**
+ * Simple Google queries for any role + company/domain slug.
+ * Used up front and as an empty-result fallback (not HR-only).
+ */
+export function buildSimpleGoogleRolePeopleQueries(params: {
+  company: string;
+  companyAliases?: string[];
+  roleHints: string[];
+  locality?: string;
+}): string[] {
+  const companies = [params.company, ...(params.companyAliases ?? [])].filter(
+    (name, index, all) => name && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === index,
+  );
+  const phrases = [
+    ...new Set(
+      params.roleHints
+        .map(toGoogleStyleRolePhrase)
+        .map((p) => p.replace(/\s+/g, " ").trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, 5);
+  if (!companies.length || !phrases.length) return [];
+
+  const locality = params.locality?.trim();
+  const queries: string[] = [];
+  for (const phrase of phrases) {
+    for (const company of companies.slice(0, 3)) {
+      queries.push(`${phrase} ${company}`);
+      queries.push(`${company} ${phrase} linkedin`);
+      if (locality) {
+        queries.push(`${phrase} ${company} ${locality}`);
+        queries.push(`${company} ${phrase} ${locality} linkedin`);
+      }
+    }
+  }
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 12);
 }
 
 /**
@@ -453,14 +506,14 @@ async function fetchLinkedInForUnresolved(
 
 /** Short LinkedIn titles for plant companies whose Head of HR sits at HQ. */
 export const HQ_LINKEDIN_ROLE_TERM =
-  '"Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR CHRO OR CPO OR "Chief People Officer"';
+  '"Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Head" OR "Corporate HR Head" OR "Group Head HR" OR "HR Director" OR CHRO OR CPO OR "Chief People Officer"';
 
 /** Broader public-web titles: plant HR is often "HR", payroll, or Head of HR, not only Director. */
 export const HQ_BUYER_ROLE_TERM =
-  'HR OR "Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR "HR Manager" OR payroll OR CHRO OR CPO OR "Chief People Officer" OR Admin OR Purchase OR "Head of Procurement"';
+  'HR OR "Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Head" OR "Corporate HR Head" OR "Group Head HR" OR "HR Director" OR "HR Manager" OR payroll OR CHRO OR CPO OR "Chief People Officer" OR Admin OR Purchase OR "Head of Procurement"';
 
 /**
- * Human Google phrasing for plant-city Head HR, e.g. "head hr ashok leyland hosur".
+ * Human Google phrasing for plant-city roles, e.g. "hr head ashok leyland hosur".
  * Runs before site:/Director templates so Tavily mirrors what works in Google.
  */
 export function buildGoogleStylePlantPeopleQueries(params: {
@@ -475,38 +528,34 @@ export function buildGoogleStylePlantPeopleQueries(params: {
   const cities = params.plantCities.map((c) => c.trim()).filter(Boolean).slice(0, 2);
   if (!companies.length || !cities.length) return [];
 
-  const rolePhrases = (
+  const roleHints =
     params.roleHints?.length
       ? params.roleHints
-      : ["Head of HR", "Head HR", "HR Director", "Head of Procurement"]
-  )
-    .map(normalizeRoleLabel)
-    .filter(Boolean)
-    .slice(0, 4)
-    .map((role) =>
-      role
-        .replace(/\bHead of\b/gi, "head")
-        .replace(/\s+/g, " ")
-        .trim()
-        .toLowerCase(),
-    )
-    .filter(Boolean);
+      : ["Head of HR", "Head HR", "HR Director", "Head of Procurement"];
+  const rolePhrases = [
+    ...new Set(roleHints.map(toGoogleStyleRolePhrase).filter(Boolean)),
+  ].slice(0, 4);
 
   const queries: string[] = [];
+  // Simple Google order first for every role + company/slug token.
+  queries.push(
+    ...buildSimpleGoogleRolePeopleQueries({
+      company: params.company,
+      companyAliases: params.companyAliases,
+      roleHints,
+      locality: cities[0],
+    }),
+  );
   for (const company of companies.slice(0, 2)) {
     for (const city of cities) {
-      // Plain Google order first (matches user SERPs).
-      queries.push(`head hr ${company} ${city}`);
-      queries.push(`${company} head hr ${city} linkedin`);
-      for (const phrase of rolePhrases.slice(0, 2)) {
-        if (phrase === "head hr") continue;
+      for (const phrase of rolePhrases.slice(0, 3)) {
         queries.push(`${phrase} ${company} ${city}`);
         queries.push(`${company} ${phrase} ${city} linkedin`);
       }
       queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) ${city}`);
     }
   }
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 10);
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 14);
 }
 
 /**
@@ -545,6 +594,8 @@ export function buildGoogleStyleSeniorPeopleQueries(params: {
   companyAliases?: string[];
   /** Parent metro only, e.g. "Bengaluru OR Bangalore". Omit ward names. */
   metroClause?: string;
+  /** When set, lead with simple Google phrasing for these roles (any dept). */
+  roleHints?: string[];
 }): string[] {
   const companies = [params.company, ...(params.companyAliases ?? [])].filter(
     (name, index, all) => name && all.findIndex((n) => n.toLowerCase() === name.toLowerCase()) === index,
@@ -553,28 +604,43 @@ export function buildGoogleStyleSeniorPeopleQueries(params: {
 
   const metro = params.metroClause?.trim();
   const metroLead = metro?.split(/\s+OR\s+/i)[0]?.trim();
+  const roleHints =
+    params.roleHints?.length
+      ? params.roleHints
+      : ["Head of HR", "HR Head", "Head of Procurement", "Admin Head"];
   const queries: string[] = [];
+
+  // Human Google phrasing first for every role + company/slug token.
+  queries.push(
+    ...buildSimpleGoogleRolePeopleQueries({
+      company: params.company,
+      companyAliases: params.companyAliases,
+      roleHints,
+      locality: metroLead,
+    }),
+  );
+
+  // Keep LinkedIn role OR near the front so CHRO/CPO survive the query cap.
   for (const company of companies.slice(0, 2)) {
-    // Appointment news first — these name the actual person confirmed by the employer.
-    // hrkatha.com and peoplematters.in are authoritative HR appointment trackers for India.
+    queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM})`);
+    if (metro) {
+      queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) (${metro})`);
+    }
+  }
+
+  for (const company of companies.slice(0, 2)) {
+    // Appointment news — names the person the employer actually confirmed.
     queries.push(`site:hrkatha.com "${company}" CHRO OR "head HR" OR "head of HR" OR "HR Director"`);
     queries.push(`site:peoplematters.in "${company}" CHRO OR "chief human resources" OR "head of HR"`);
     queries.push(`"${company}" CHRO appointed 2025 2026`);
     queries.push(`"${company}" "chief human resources officer" OR "head HR" name linkedin`);
 
-    // Plain Google phrasing (matches what users type and what AI Overviews cite).
-    queries.push(`${company} head hr linkedin`);
     queries.push(
-      `${company} "Head of HR" OR "Head HR" OR "HEAD HR" OR "HR Director" OR CHRO OR CPO linkedin`,
+      `${company} "Head of HR" OR "Head HR" OR "HR Head" OR "Corporate HR Head" OR "HR Director" OR CHRO OR CPO linkedin`,
     );
-    queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM})`);
-    if (metro) {
-      queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) (${metro})`);
-      if (metroLead) queries.push(`${company} head hr ${metroLead} linkedin`);
-    }
     queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) India`);
   }
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 12);
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 18);
 }
 
 export function buildPeopleSearchQueries(params: {
@@ -729,7 +795,20 @@ export async function searchPeopleViaTavily(params: {
   const dataSource = params.dataSource ?? "tavily+llm";
   const searchNames = companyPeopleSearchNames(params.companyName);
   const company = searchNames[0] ?? cleanCompanyName(params.companyName);
-  const companyAliases = searchNames.slice(1);
+  // Query-only aliases (e.g. nashindustriesinc). Keep out of searchNames so employer match
+  // still uses the display company name, not the bare domain slug.
+  const companyAliases = [...searchNames.slice(1)];
+  const pushQueryAlias = (value?: string | null) => {
+    const trimmed = value?.trim();
+    if (!trimmed || trimmed.length < 4) return;
+    const lower = trimmed.toLowerCase();
+    if (lower === company.toLowerCase()) return;
+    if (companyAliases.some((alias) => alias.toLowerCase() === lower)) return;
+    if (searchNames.some((name) => name.toLowerCase() === lower)) return;
+    companyAliases.push(trimmed);
+  };
+  pushQueryAlias(domainSlug(params.companyDomain));
+  pushQueryAlias(compactCompanyName(params.companyName));
   const roleHints = params.roleHints ?? [];
   const indiaOnly = Boolean(params.indiaOnly);
   const localOperators = Boolean(params.localOperators);
@@ -794,7 +873,7 @@ export async function searchPeopleViaTavily(params: {
       ? roleHints
       : localOperators
         ? DEFAULT_LOCAL_OPERATOR_ROLES
-        : ["HR Director", "Head of HR", "Head HR", "HR Manager"];
+        : ["HR Director", "Head of HR", "HR Head", "Head HR", "HR Manager"];
 
   let queries = baseQueries;
   // Skip LLM query gen on multi-city plant stage: that call hits OpenRouter before LinkedIn search.
@@ -828,6 +907,21 @@ export async function searchPeopleViaTavily(params: {
     queries = [...new Set([...naturalQueries, ...baseQueries])];
   }
 
+  // Always lead with simple Google phrasing for the requested roles (any dept).
+  if (!localOperators && roleLabels.length) {
+    const simpleLocality =
+      (plantPhase ? searchCities[0] : undefined) ||
+      cityClause.split(/\s+OR\s+/i)[0]?.trim() ||
+      undefined;
+    const simpleGoogle = buildSimpleGoogleRolePeopleQueries({
+      company,
+      companyAliases,
+      roleHints: roleLabels,
+      locality: simpleLocality && simpleLocality !== "India" ? simpleLocality : undefined,
+    });
+    queries = [...new Set([...simpleGoogle, ...queries])];
+  }
+
   // Plant-first: human Google phrasing before site:/Director templates.
   if (plantPhase && searchCities.length > 0 && !localOperators) {
     const plantGoogle = buildGoogleStylePlantPeopleQueries({
@@ -841,7 +935,7 @@ export async function searchPeopleViaTavily(params: {
 
   const deferGoogleMetro = plantPhase;
 
-  // Industry scouts: Google-style "Company head hr" (metro). Skip on plant-first stage;
+  // Industry scouts: Google-style metro seniors. Skip on plant-first stage;
   // run only on explicit HQ corridor fallback after the plant returned nobody.
   if (!localOperators && !deferGoogleMetro) {
     const scoutCities = params.cities ?? [];
@@ -865,6 +959,7 @@ export async function searchPeopleViaTavily(params: {
       company,
       companyAliases,
       metroClause: metroClause && metroClause !== "India" ? metroClause : "Bengaluru OR Bangalore",
+      roleHints: roleLabels,
     });
     const metroNatural =
       metroForQuery.length > 0
@@ -872,10 +967,10 @@ export async function searchPeopleViaTavily(params: {
             company,
             companyAliases,
             localities: metroForQuery.slice(0, 3),
-            roleHints: ["Head of HR", "Head HR", "HR Director", "CHRO", "CPO"],
+            roleHints: roleLabels.slice(0, 5),
           })
         : [];
-    // Google-style first on HQ stage so Tavily hits Head of HR before broad role OR.
+    // Google-style first on HQ stage so Tavily hits role matches before broad OR.
     queries = [...new Set([...googleStyle, ...metroNatural, ...queries])];
   }
 
@@ -1118,28 +1213,27 @@ Return up to ${limit} people.`,
   const buyerHeuristic = heuristic.filter((p) => isFestivalBuyerRole(p.title));
   if (buyerHeuristic.length) return finalize(buyerHeuristic.slice(0, limit));
 
-  // Light agentic retry: plant stage still empty after match/filters → one Google-style rewrite.
-  if (plantPhase && searchCities.length > 0) {
-    const rewriteBase = buildGoogleStylePlantPeopleQueries({
+  // Empty-result fallback: simple Google phrasing for whatever roles were requested
+  // (HR, Procurement, Admin, branch managers, etc.), including domain-slug tokens.
+  if (!localOperators && roleLabels.length) {
+    const executed = new Set(queries.slice(0, 6));
+    const fallbackLocality =
+      (plantPhase || hqCorridorPhase
+        ? searchCities[0] || cityClause.split(/\s+OR\s+/i)[0]
+        : cityClause.split(/\s+OR\s+/i)[0]
+      )?.trim();
+    const simpleFallback = buildSimpleGoogleRolePeopleQueries({
       company,
       companyAliases,
-      plantCities: searchCities.slice(0, 2),
       roleHints: roleLabels,
+      locality:
+        fallbackLocality && fallbackLocality !== "India" ? fallbackLocality : undefined,
     });
-    const executed = new Set(queries.slice(0, 6));
-    const pendingRewrite = rewriteBase.filter((q) => !executed.has(q));
-    const altPhrases = searchCities.slice(0, 2).flatMap((city) => [
-      excludeOpenToWork(`"${company}" head hr ${city}`),
-      excludeOpenToWork(`head of hr ${company} ${city} linkedin`),
-      excludeOpenToWork(`${company} "Head HR" OR "HEAD HR" ${city} linkedin`),
-    ]);
-    const rewriteBatch = [...new Set([...pendingRewrite, ...altPhrases])]
-      .filter((q) => !executed.has(q))
-      .slice(0, 4);
+    const rewriteBatch = simpleFallback.filter((q) => !executed.has(q)).slice(0, 6);
     if (rewriteBatch.length) {
       console.info(
-        "[people-search] Plant stage empty after filters; Google-style rewrite pass",
-        { company, cities: searchCities.slice(0, 2), queries: rewriteBatch.length },
+        "[people-search] Empty after filters; simple Google role fallback",
+        { company, roles: roleLabels.slice(0, 4), queries: rewriteBatch.length },
       );
       await runQueryBatch(rewriteBatch);
       const afterRewrite = keepableFromHits();
