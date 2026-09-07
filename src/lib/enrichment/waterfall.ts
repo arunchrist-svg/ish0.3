@@ -108,6 +108,7 @@ import {
   normalizeEmployeeField,
   rankAndFilterByEmployeeBands,
 } from "./employee-size";
+import { enrichMissingCompanyScale } from "./enrich-company-scale";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { isSweetsGiftingSlug } from "@/lib/brand/vertical-catalog";
 import {
@@ -1160,6 +1161,18 @@ export async function discoverCompanies(params: {
     warnings.push(
       "All matches were companies you already saved. Load more or try different cities or industries.",
     );
+  }
+
+  // Fill Unknown scale from Apollo (verified) or Tavily public listings (Estimated).
+  if (companies.length && !tavilyQuotaHit([...warnings, ...errors])) {
+    const beforeScale = companies.filter((c) => !normalizeEmployeeField(c.employees)).length;
+    companies = await enrichMissingCompanyScale(companies, {
+      limit: Math.min(companies.length, Math.max(limit, 10)),
+      concurrency: 3,
+      preferApollo: hasApolloKey() && (params.dataMode === "paid" || params.dataMode === "auto"),
+    });
+    const afterScale = companies.filter((c) => !normalizeEmployeeField(c.employees)).length;
+    recordStage(trace, "scale_enrichment", beforeScale, Math.max(0, beforeScale - afterScale));
   }
 
   const qualityMetrics = {
