@@ -30,6 +30,7 @@ import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
 import { WritingLoader } from "@/components/sales-accelerator/writing-loader";
 import { WriteAllModal, type WriteAllPhase } from "@/components/leads-board/write-all-modal";
+import { SendAllModal, type SendAllPhase } from "@/components/leads-board/send-all-modal";
 import { useLoadMoreOnScroll } from "@/hooks/use-load-more-on-scroll";
 import {
   applyLeadListView,
@@ -138,6 +139,14 @@ export function LeadsBoardApp() {
     failed: number;
     cancelled: number;
     queued?: boolean;
+  } | null>(null);
+  const [sendAllOpen, setSendAllOpen] = useState(false);
+  const [sendAllPhase, setSendAllPhase] = useState<SendAllPhase>("confirm");
+  const [sendAllResult, setSendAllResult] = useState<{
+    ok: number;
+    failed: number;
+    cancelled: number;
+    planSpanDays?: number;
   } | null>(null);
   const [sending, setSending] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
@@ -678,20 +687,37 @@ export function LeadsBoardApp() {
     }
   }, [queuedLeads, sending, sendQueueActive, activeSendQueue, cancelSendAll]);
 
-  const handleSendAll = useCallback(async () => {
+  const openSendAllModal = useCallback(() => {
+    if (writingProgress || sending) return;
+    if (sendAllPhase === "sending") {
+      setSendAllOpen(true);
+      return;
+    }
+    const total = stageCounts.Email ?? grouped.Email?.length ?? 0;
+    if (!total) {
+      toast.message("No ready emails in Email to send");
+      return;
+    }
+    setSendAllPhase("confirm");
+    setSendAllResult(null);
+    setSendAllOpen(true);
+  }, [writingProgress, sending, sendAllPhase, stageCounts, grouped]);
+
+  const closeSendAllModal = useCallback(() => {
+    if (sendAllPhase === "sending") return;
+    setSendAllOpen(false);
+    setSendAllPhase("confirm");
+    setSendAllResult(null);
+  }, [sendAllPhase]);
+
+  const runSendAllFromModal = useCallback(async () => {
     const targets = grouped.Email ?? [];
     if (!targets.length || writingProgress || sending) return;
-
-    const confirmed = window.confirm(
-      targets.length === 1
-        ? "Queue this email for the next slot in your Settings send window (respects daily cap)?"
-        : `Queue all ${targets.length} ready emails? They will be scheduled across your Settings send hours and daily cap (~3 min apart within each day).`,
-    );
-    if (!confirmed) return;
 
     const controller = new AbortController();
     sendAbortRef.current?.abort();
     sendAbortRef.current = controller;
+    setSendAllPhase("sending");
     setSending(true);
     setSendQueue(targets.map((lead) => ({ leadId: lead.id, name: lead.name, status: "queued" })));
     cancelledLeadIdsRef.current = new Set();
@@ -702,8 +728,15 @@ export function LeadsBoardApp() {
         onQueueChange: setSendQueue,
         isLeadCancelled: (id) => cancelledLeadIdsRef.current.has(id),
       });
+      setSendAllResult({
+        ok: result.ok,
+        failed: result.failed,
+        cancelled: result.cancelled,
+        planSpanDays: result.planSpanDays,
+      });
+      setSendAllPhase("done");
       if (result.cancelled > 0 && result.ok === 0 && result.failed === 0) {
-        toast.message("Send queue cancelled");
+        toast.message("Send cancelled");
       } else if (result.failed === 0 && result.cancelled === 0) {
         const spanNote =
           result.planSpanDays && result.planSpanDays > 1
@@ -728,9 +761,13 @@ export function LeadsBoardApp() {
         setSendQueue((prev) => prev.filter((item) => item.status === "failed"));
       } else {
         window.setTimeout(() => {
-          setSendQueue((prev) => (prev.some((item) => item.status === "sending" || item.status === "waiting") ? prev : []));
+          setSendQueue((prev) =>
+            prev.some((item) => item.status === "sending" || item.status === "waiting") ? prev : [],
+          );
         }, 4000);
       }
+    } catch {
+      setSendAllPhase("confirm");
     } finally {
       sendAbortRef.current = null;
       setSending(false);
@@ -883,7 +920,7 @@ export function LeadsBoardApp() {
                           busyLabel: sendBusyLabel(sendQueue),
                           busy: sendBusy,
                           disabled: boardBusy && !sendBusy,
-                          onClick: () => void handleSendAll(),
+                          onClick: () => openSendAllModal(),
                         },
                       ]
                     : isQueuedStage && queuedLeads.length > 0
@@ -967,6 +1004,19 @@ export function LeadsBoardApp() {
           </div>
         </div>
       ) : null}
+      <SendAllModal
+        open={sendAllOpen}
+        leadCount={stageCounts.Email ?? grouped.Email?.length ?? 0}
+        phase={sendAllPhase}
+        sendQueue={sendQueue}
+        result={sendAllResult}
+        onSend={() => void runSendAllFromModal()}
+        onCancelSend={() => {
+          cancelSendAll();
+          sendAbortRef.current?.abort();
+        }}
+        onClose={closeSendAllModal}
+      />
       <WriteAllModal
         open={writeAllOpen}
         mode={writeAllMode}
