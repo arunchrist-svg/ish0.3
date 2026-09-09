@@ -26,9 +26,8 @@ type Props = {
   leadCount: number;
   phase: WriteAllPhase;
   progress: BoardBulkProgress | null;
-  result?: { ok: number; failed: number; cancelled: number } | null;
+  result?: { ok: number; failed: number; cancelled: number; queued?: boolean } | null;
   onWrite: () => void;
-  onCancelWrite: () => void;
   onClose: () => void;
 };
 
@@ -43,12 +42,14 @@ export function WriteAllModal({
   progress,
   result,
   onWrite,
-  onCancelWrite,
   onClose,
 }: Props) {
   const writing = phase === "writing";
   const title = mode === "rewrite" ? "Rewrite all emails" : "Write all emails";
   const verb = mode === "rewrite" ? "Rewrite" : "Write";
+  const progressVerb = mode === "rewrite" ? "Rewriting" : "Writing";
+  const starting =
+    writing && progress && progress.current === 0 && progress.total > 0;
   const selected = templates.find((t) => t.id === selectedTemplateId);
   const freeTemplate = isZeroCostTemplateWrite(selectedTemplateId);
   const creditsPer = freeTemplate ? 0 : getCreditCost("writer.draft") * 3;
@@ -119,10 +120,8 @@ export function WriteAllModal({
 
           <p className="mt-4 text-[12px] text-brand-ink-soft">
             {freeTemplate
-              ? "Prasant Template uses fixed copy (no AI credits)."
-              : `About ${creditsEstimate.toLocaleString()} credits for ${leadCount.toLocaleString()} ${
-                  leadCount === 1 ? "lead" : "leads"
-                }.`}
+              ? "Prasant Template fills all leads from one shared copy (company name only). No AI credits."
+              : `Fills all ${leadCount.toLocaleString()} leads from one shared template, then swaps company names. About ${creditsEstimate.toLocaleString()} credits.`}
             {mode === "rewrite" ? " Existing drafts will be replaced." : ""}
           </p>
 
@@ -153,33 +152,35 @@ export function WriteAllModal({
       {phase === "writing" ? (
         <div className="mt-2">
           <WritingLoader
-            contactName={progress?.leadName}
+            contactName={undefined}
             sequenceLabel={
               progress && progress.total > 0
-                ? `${verb}ing ${progress.current} of ${progress.total}${
-                    progress.leadName ? ` · ${progress.leadName}` : ""
-                  }`
-                : `${verb}ing emails`
+                ? starting
+                  ? `Starting ${progress.total.toLocaleString()} ${progressVerb.toLowerCase()}s`
+                  : `${progressVerb} ${progress.current.toLocaleString()} of ${progress.total.toLocaleString()}`
+                : `${progressVerb} emails`
             }
           />
           {progress && progress.total > 0 ? (
             <div className="mx-auto mb-2 h-1.5 w-44 overflow-hidden rounded-full bg-brand-border">
               <div
                 className="h-full rounded-full bg-brand-stratus-blue transition-[width] duration-300"
-                style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }}
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.max(2, (progress.current / progress.total) * 100),
+                  )}%`,
+                }}
               />
             </div>
           ) : null}
           <p className="px-2 pb-2 text-center text-[12px] text-brand-ink-soft">
-            Using {selected?.shortLabel ?? "the selected template"}. Stay on this page until it finishes.
+            {starting
+              ? `Filling ${progress!.total.toLocaleString()} leads from one ${
+                  selected?.shortLabel ?? "template"
+                } reference (batch write).`
+              : `Shared template fill in progress. ${progress!.current.toLocaleString()} of ${progress!.total.toLocaleString()} done.`}
           </p>
-          <button
-            type="button"
-            onClick={onCancelWrite}
-            className="mx-auto mt-1 mb-1 block rounded-full border border-red-200 bg-red-50/80 px-4 py-2 text-[12px] font-semibold text-red-700 transition-colors hover:border-red-300"
-          >
-            Cancel
-          </button>
         </div>
       ) : null}
 
@@ -189,9 +190,11 @@ export function WriteAllModal({
             {result && result.cancelled > 0 && result.ok === 0
               ? "Write cancelled"
               : result && result.failed === 0 && result.cancelled === 0
-                ? `Wrote ${result.ok.toLocaleString()} ${result.ok === 1 ? "email" : "emails"}`
+                ? `${mode === "rewrite" ? "Rewrote" : "Wrote"} ${result.ok.toLocaleString()} ${
+                    result.ok === 1 ? "email" : "emails"
+                  }`
                 : `Finished: ${result?.ok ?? 0} written${
-                    result?.failed ? `, ${result.failed} failed` : ""
+                    result?.failed ? `, ${result.failed} failed or still running` : ""
                   }${result?.cancelled ? `, ${result.cancelled} cancelled` : ""}`}
           </p>
           <button

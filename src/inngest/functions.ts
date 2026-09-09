@@ -1,4 +1,5 @@
 import { inngest } from "@/inngest/client";
+import { writerJobConcurrency } from "@/lib/jobs/writer-concurrency";
 import { runResearcherLite } from "@/lib/agents/researcher-lite";
 import { processPendingResearch } from "@/lib/agents/research-processor";
 import { runSequencer } from "@/lib/agents/sequencer";
@@ -61,7 +62,7 @@ export const writerLeadFunction = inngest.createFunction(
   {
     id: "writer-lead",
     retries: 2,
-    concurrency: [{ limit: 5, key: "event.data.tenantId" }],
+    concurrency: [{ limit: writerJobConcurrency(), key: "event.data.tenantId" }],
     // batchId lets Rewrite All re-run the same lead; omit falls back to leadId only.
     idempotency: "event.data.batchId + '-' + event.data.leadId",
   },

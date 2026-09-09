@@ -1,5 +1,6 @@
 import { inngest } from "@/inngest/client";
 import { processPendingResearch, triggerPendingResearchAsync } from "@/lib/agents/research-processor";
+import { writerJobConcurrency } from "@/lib/jobs/writer-concurrency";
 
 export function inngestJobsEnabled(): boolean {
   return Boolean(process.env.INNGEST_EVENT_KEY?.trim());
@@ -86,7 +87,7 @@ export async function enqueueWriterRun(params: {
 }
 
 const WRITER_ENQUEUE_CHUNK = 100;
-const WRITER_SYNC_CONCURRENCY = 2;
+const WRITER_SYNC_CONCURRENCY = writerJobConcurrency();
 
 /**
  * Enqueue sequence writes for many leads (thousands-safe).

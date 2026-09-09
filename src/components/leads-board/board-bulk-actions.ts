@@ -99,28 +99,42 @@ export async function writeEmailsForLeads(
       : (onProgressOrOptions ?? {});
   const result: BoardBulkResult = { ok: 0, failed: 0, cancelled: 0, errors: [] };
   const total = leads.length;
+  if (!total) return result;
 
-  for (let i = 0; i < leads.length; i++) {
-    if (options.signal?.aborted) {
-      result.cancelled += leads.length - i;
-      break;
-    }
-    const lead = leads[i];
-    options.onProgress?.({ current: i + 1, total, leadName: lead.name });
-    try {
-      await runWriterSequence(lead.id, { outreachTemplate: options.outreachTemplate });
-      result.ok += 1;
-    } catch (e) {
-      if (options.signal?.aborted) {
-        result.cancelled += leads.length - i;
-        break;
-      }
-      result.failed += 1;
-      result.errors.push(
-        `${lead.name}: ${e instanceof Error ? e.message : "Write failed"}`,
-      );
-    }
+  if (options.signal?.aborted) {
+    result.cancelled = total;
+    return result;
   }
+
+  let completed = 0;
+  const bumpProgress = (leadName?: string) => {
+    completed += 1;
+    options.onProgress?.({ current: completed, total, leadName });
+  };
+
+  await Promise.all(
+    leads.map(async (lead) => {
+      if (options.signal?.aborted) {
+        result.cancelled += 1;
+        return;
+      }
+      try {
+        await runWriterSequence(lead.id, { outreachTemplate: options.outreachTemplate });
+        result.ok += 1;
+        bumpProgress(lead.name);
+      } catch (e) {
+        if (options.signal?.aborted) {
+          result.cancelled += 1;
+          return;
+        }
+        result.failed += 1;
+        result.errors.push(
+          `${lead.name}: ${e instanceof Error ? e.message : "Write failed"}`,
+        );
+        bumpProgress(lead.name);
+      }
+    }),
+  );
 
   return result;
 }

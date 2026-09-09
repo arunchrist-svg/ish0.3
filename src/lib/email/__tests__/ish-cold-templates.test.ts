@@ -233,7 +233,7 @@ describe("ISH cold email templates", () => {
     expect(e1.emailBodyB).toMatch(/Mercedes-Benz/);
     expect(e1.emailBodyC).toMatch(/5,000\+ corporate teams/);
     expect(e1.emailBodyC).toMatch(/sample box to your office, or stop by/);
-    expect(e1.emailBody).toMatch(/contact@indiasweethouse\.in/);
+    expect(e1.emailBody).toMatch(/prasantmishra@indiasweethouse\.in/);
     expect(e1.emailBody).not.toContain("\u2014");
     expect(e1.emailBodyB).not.toContain("\u2014");
     expect(e1.emailBodyC).not.toContain("\u2014");

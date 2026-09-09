@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, leads } from "@/db";
@@ -6,11 +6,16 @@ import { eq, inArray } from "drizzle-orm";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { enqueueWriterForLeads } from "@/lib/jobs/enqueue";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
-import { assertCredits, creditActorFrom } from "@/lib/billing/credits";
+import { assertCredits, creditActorFrom, deductCredits } from "@/lib/billing/credits";
 import { getCreditCost } from "@/lib/billing/credit-costs";
 import { isZeroCostTemplateWrite } from "@/lib/email/outreach-templates";
+import {
+  bulkFillIshTemplateSequences,
+  canBulkFillIshTemplate,
+} from "@/lib/agents/writer-bulk-template";
 
 export const preferredRegion = ["sin1"];
+export const maxDuration = 300;
 
 /** Max leads per write-all request (chunked enqueue still applies inside). */
 const MAX_WRITE_ALL = 5000;
@@ -65,6 +70,12 @@ export async function POST(req: Request) {
     const freeTemplate = isZeroCostTemplateWrite(body.outreachTemplate);
     const draftsPerLead = 3;
     const creditsPerSequence = freeTemplate ? 0 : getCreditCost("writer.draft") * draftsPerLead;
+    const useBulkFill =
+      Boolean(body.outreachTemplate) &&
+      canBulkFillIshTemplate({
+        outreachTemplate: body.outreachTemplate,
+        writerMode: body.writerMode,
+      });
 
     if (!leadIds.length) {
       return NextResponse.json({
@@ -85,6 +96,46 @@ export async function POST(req: Request) {
     }
 
     const batchId = crypto.randomUUID();
+
+    // Same template for every lead: one shared reference, company swap, batch DB writes.
+    if (useBulkFill && body.outreachTemplate) {
+      const templateId = body.outreachTemplate;
+      const occasionTheme = body.occasionTheme;
+      const actor = creditActorFrom(ctx);
+
+      after(async () => {
+        try {
+          const result = await bulkFillIshTemplateSequences({
+            leadIds,
+            tenantId: ctx.tenantId,
+            outreachTemplate: templateId,
+            occasionTheme,
+          });
+          if (!freeTemplate && result.written > 0) {
+            await deductCredits({
+              tenantId: ctx.tenantId,
+              action: "writer.draft",
+              quantity: result.written * draftsPerLead,
+              referenceId: batchId,
+              idempotencyKey: `writer-bulk:${batchId}`,
+              ...actor,
+            });
+          }
+        } catch (e) {
+          console.error("[write-all] bulk fill failed", e);
+        }
+      });
+
+      return NextResponse.json({
+        enqueued: leadIds.length,
+        mode: "sync" as const,
+        batchId,
+        bulkFill: true,
+        creditsRequired: leadIds.length * creditsPerSequence,
+        creditsPerSequence,
+      });
+    }
+
     const mode = await enqueueWriterForLeads({
       leadIds,
       tenantId: ctx.tenantId,

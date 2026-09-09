@@ -1952,10 +1952,20 @@ export async function writeAllLeadsForStage(params: {
   enqueued: number;
   mode: "queued" | "sync";
   batchId?: string;
+  leadIds?: string[];
   creditsRequired: number;
   creditsPerSequence: number;
 }> {
   return post("/api/agents/writer/write-all", params);
+}
+
+export async function fetchWriteAllProgress(params: {
+  leadIds?: string[];
+  statuses?: string[];
+  startedAt: string;
+  total?: number;
+}): Promise<{ completed: number; total: number }> {
+  return post<{ completed: number; total: number }>("/api/agents/writer/write-all/progress", params);
 }
 
 

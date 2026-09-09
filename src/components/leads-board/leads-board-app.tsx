@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, Loader2, Pencil, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, runWriterSequence, cancelQueuedOutreach, sendQueuedOutreachNow } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   aggregateStatusCountsByStage,
@@ -11,12 +11,12 @@ import {
   boardPipelineStages,
   groupLeadsByPipelineStage,
   PIPELINE_STAGES,
+  STATUSES_BY_STAGE_INDEX,
 } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
 import {
   sendEmailsForLeads,
-  writeEmailsForLeads,
   type BoardBulkProgress,
   type SendQueueItem,
 } from "./board-bulk-actions";
@@ -133,7 +133,12 @@ export function LeadsBoardApp() {
   const [writeAllOpen, setWriteAllOpen] = useState(false);
   const [writeAllMode, setWriteAllMode] = useState<"write" | "rewrite">("write");
   const [writeAllPhase, setWriteAllPhase] = useState<WriteAllPhase>("pick");
-  const [writeAllResult, setWriteAllResult] = useState<{ ok: number; failed: number; cancelled: number } | null>(null);
+  const [writeAllResult, setWriteAllResult] = useState<{
+    ok: number;
+    failed: number;
+    cancelled: number;
+    queued?: boolean;
+  } | null>(null);
   const [sending, setSending] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
   const [cancellingLeadId, setCancellingLeadId] = useState<string | null>(null);
@@ -380,43 +385,98 @@ export function LeadsBoardApp() {
   const runBulkWriteFromModal = useCallback(async () => {
     if (writingProgress || sending) return;
     const stageLabel = writeAllMode === "rewrite" ? "Email" : "Contact Ready";
+    const stageIndex = writeAllMode === "rewrite" ? 1 : 0;
     const label = writeAllMode === "rewrite" ? "Rewrite" : "Write";
-    const stageLeads = grouped[stageLabel] ?? [];
-    if (!stageLeads.length) {
+    const statuses = STATUSES_BY_STAGE_INDEX[stageIndex] ?? [];
+    const total = stageCounts[stageLabel] ?? grouped[stageLabel]?.length ?? 0;
+    if (!total || !statuses.length) {
       toast.message(`No leads in ${stageLabel} to ${label.toLowerCase()}`);
       return;
     }
 
-    const controller = new AbortController();
     writeAbortRef.current?.abort();
+    const controller = new AbortController();
     writeAbortRef.current = controller;
+    const startedAt = new Date().toISOString();
     setWriteAllPhase("writing");
-    setWritingProgress({ current: 0, total: stageLeads.length });
+    setWritingProgress({ current: 0, total });
     try {
-      const result = await writeEmailsForLeads(stageLeads, {
+      const queued = await writeAllLeadsForStage({
+        statuses,
         outreachTemplate: writeTemplate ?? undefined,
-        onProgress: setWritingProgress,
-        signal: controller.signal,
       });
-      setWriteAllResult(result);
-      setWriteAllPhase("done");
-      if (result.cancelled > 0 && result.ok === 0) {
-        toast.message("Write cancelled");
-      } else if (result.failed === 0 && result.cancelled === 0) {
-        toast.success(
-          `${label === "Rewrite" ? "Rewrote" : "Wrote"} ${result.ok.toLocaleString()} ${
-            result.ok === 1 ? "email" : "emails"
-          }`,
-        );
-      } else {
-        toast.error(
-          `${result.ok} written, ${result.failed} failed${
-            result.cancelled ? `, ${result.cancelled} cancelled` : ""
-          }`,
-        );
+
+      if (queued.enqueued === 0) {
+        toast.message(`No leads queued to ${label.toLowerCase()}`);
+        setWriteAllPhase("pick");
+        return;
       }
-      await load({ silent: true });
+
+      const batchTotal = queued.enqueued;
+      setWritingProgress({ current: 0, total: batchTotal });
+
+      let completed = 0;
+      let lastCompleted = -1;
+      let stallPolls = 0;
+      const pollIntervalMs = 1500;
+      const stallLimit = 60;
+
+      while (!controller.signal.aborted) {
+        const progress = await fetchWriteAllProgress({
+          statuses,
+          startedAt,
+          total: batchTotal,
+        });
+        completed = progress.completed;
+        setWritingProgress({ current: completed, total: batchTotal });
+        void load({ silent: true });
+
+        if (completed >= batchTotal) {
+          setWriteAllResult({ ok: completed, failed: 0, cancelled: 0 });
+          setWriteAllPhase("done");
+          toast.success(
+            `${label === "Rewrite" ? "Rewrote" : "Wrote"} ${completed.toLocaleString()} ${
+              completed === 1 ? "email" : "emails"
+            }`,
+          );
+          return;
+        }
+
+        if (completed === lastCompleted) stallPolls += 1;
+        else {
+          stallPolls = 0;
+          lastCompleted = completed;
+        }
+        if (stallPolls >= stallLimit) {
+          const failed = batchTotal - completed;
+          setWriteAllResult({ ok: completed, failed, cancelled: 0 });
+          setWriteAllPhase("done");
+          toast.message(
+            `${label} finished with ${completed.toLocaleString()} done${
+              failed > 0 ? `, ${failed.toLocaleString()} still running or failed` : ""
+            }`,
+          );
+          return;
+        }
+
+        await new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(resolve, pollIntervalMs);
+          controller.signal.addEventListener(
+            "abort",
+            () => {
+              window.clearTimeout(timer);
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        });
+      }
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") {
+        setWriteAllResult({ ok: 0, failed: 0, cancelled: 1 });
+        setWriteAllPhase("done");
+        return;
+      }
       const message = e instanceof Error ? e.message : `${label} All failed`;
       toast.error(message);
       setWriteAllPhase("pick");
@@ -424,11 +484,7 @@ export function LeadsBoardApp() {
       writeAbortRef.current = null;
       setWritingProgress(null);
     }
-  }, [writingProgress, sending, writeAllMode, grouped, writeTemplate]);
-
-  const cancelBulkWrite = useCallback(() => {
-    writeAbortRef.current?.abort();
-  }, []);
+  }, [writingProgress, sending, writeAllMode, grouped, stageCounts, writeTemplate]);
 
   const handleWriteLead = useCallback(async (lead: LeadQueueItem) => {
     if (boardBusy) return;
@@ -791,11 +847,14 @@ export function LeadsBoardApp() {
                   </button>
                 ) : null;
 
-              const writeBusyLabel = writingProgress
-                ? writingProgress.total > 0
-                  ? `Writing ${writingProgress.current} of ${writingProgress.total}`
-                  : "Writing…"
-                : "Writing…";
+              const writeBusyLabel =
+                writingProgress && writingProgress.current === 0 && writingProgress.total > 0
+                  ? "Queuing…"
+                  : writingProgress && writingProgress.total > 0
+                    ? `${writeAllMode === "rewrite" ? "Rewriting" : "Writing"} ${writingProgress.current} of ${writingProgress.total}`
+                    : writeAllMode === "rewrite"
+                      ? "Rewriting…"
+                      : "Writing…";
 
               const actions =
                 stage === "Contact Ready"
@@ -910,14 +969,13 @@ export function LeadsBoardApp() {
         }}
         leadCount={
           writeAllMode === "rewrite"
-            ? (grouped.Email?.length ?? 0)
-            : (grouped["Contact Ready"]?.length ?? 0)
+            ? (stageCounts.Email ?? grouped.Email?.length ?? 0)
+            : (stageCounts["Contact Ready"] ?? grouped["Contact Ready"]?.length ?? 0)
         }
         phase={writeAllPhase}
         progress={writingProgress}
         result={writeAllResult}
         onWrite={() => void runBulkWriteFromModal()}
-        onCancelWrite={cancelBulkWrite}
         onClose={closeWriteAllModal}
       />
       {composeLeadId ? (
