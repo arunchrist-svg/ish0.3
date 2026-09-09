@@ -8,10 +8,10 @@ import { LOW_CREDIT_THRESHOLD } from "@/lib/billing/credit-costs";
 export function CreditBalanceBanner() {
   const { session, loading } = useSession();
 
-  if (loading || !session || !session.permissions.canManageBilling) return null;
+  if (loading || !session) return null;
 
   const credits = session.credits;
-  const plan = session.tenant.plan ?? "";
+  const canManage = session.permissions.canManageBilling;
 
   if (credits > LOW_CREDIT_THRESHOLD) return null;
 
@@ -23,9 +23,11 @@ export function CreditBalanceBanner() {
           ? "You're out of credits. Scout and outreach are blocked until you top up."
           : `Only ${credits} credits left. Consider topping up before your next scout.`}
       </span>
-      <Link href="/settings?tab=billing" className="shrink-0 font-semibold underline">
-        Credits
-      </Link>
+      {canManage ? (
+        <Link href="/settings?tab=billing" className="shrink-0 font-semibold underline">
+          Credits
+        </Link>
+      ) : null}
     </div>
   );
 }

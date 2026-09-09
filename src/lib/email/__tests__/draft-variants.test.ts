@@ -4,11 +4,14 @@ import {
   draftBodyOptions,
   draftSubjectOptions,
   followUpThreadSubject,
+  isAllowedInitialSequenceDraft,
   isDerivedReSubject,
   isFollowUpSubjectSyncPosition,
+  isNonInitialSequenceDraft,
   isSequenceFollowUpDraft,
   resolveDraftBody,
   resolveDraftSubject,
+  resolveInitialSequenceSendDraft,
   syncFollowUpSubjectsFromEmail1,
 } from "@/lib/email/draft-variants";
 
@@ -25,8 +28,8 @@ const draft = {
 
 describe("draft copy variants", () => {
   it("lists two subject and two body options", () => {
-    expect(draftSubjectOptions(draft).map((s) => s.key)).toEqual(["A", "B"]);
-    expect(draftBodyOptions(draft).map((b) => b.key)).toEqual(["A", "B"]);
+    expect(draftSubjectOptions(draft).map((s) => s.key)).toEqual(["A", "B", "C"]);
+    expect(draftBodyOptions(draft).map((b) => b.key)).toEqual(["A", "B", "C"]);
   });
 
   it("resolves the chosen subject and body", () => {
@@ -41,9 +44,14 @@ describe("draft copy variants", () => {
 
   it("hides empty variants and normalizes keys", () => {
     expect(draftSubjectOptions({ subjectA: "One" })).toHaveLength(1);
-    expect(asVariantKey("C")).toBe("A");
+    expect(asVariantKey("C")).toBe("C");
     expect(asVariantKey("Z")).toBe("A");
     expect(asVariantKey("B")).toBe("B");
+  });
+
+  it("resolves Option C subject and body", () => {
+    expect(resolveDraftSubject(draft, "C")).toBe(draft.subjectC);
+    expect(resolveDraftBody(draft, "C")).toBe(draft.emailBodyC);
   });
 
   it("treats only Email 2 and 3 as follow-up drafts", () => {
@@ -128,5 +136,62 @@ describe("draft copy variants", () => {
     expect(isFollowUpSubjectSyncPosition(3)).toBe(true);
     expect(isFollowUpSubjectSyncPosition(5)).toBe(true);
     expect(isFollowUpSubjectSyncPosition(4)).toBe(false);
+  });
+
+  it("treats Email 2/3 and If Opened as non-initial sequence drafts", () => {
+    expect(isNonInitialSequenceDraft({ sequencePosition: 1 })).toBe(false);
+    expect(isNonInitialSequenceDraft({ sequencePosition: 2 })).toBe(true);
+    expect(isNonInitialSequenceDraft({ sequencePosition: 3 })).toBe(true);
+    expect(isNonInitialSequenceDraft({ sequencePosition: 5, templateVariant: "catalog_on_open" })).toBe(
+      true,
+    );
+    expect(isAllowedInitialSequenceDraft({ sequencePosition: 1 })).toBe(true);
+    expect(isAllowedInitialSequenceDraft({ sequencePosition: 3 })).toBe(false);
+  });
+
+  it("resolves Send from Email 3 to Email 1 before the sequence starts", () => {
+    const email1 = { id: "e1", sequencePosition: 1 };
+    const email3 = { id: "e3", sequencePosition: 3 };
+    expect(
+      resolveInitialSequenceSendDraft({
+        viewingDraft: email3,
+        email1Draft: email1,
+        sequenceNotStarted: true,
+      }),
+    ).toEqual({ draft: email1 });
+    expect(
+      resolveInitialSequenceSendDraft({
+        viewingDraft: email3,
+        email1Draft: email1,
+        sequenceNotStarted: false,
+      }),
+    ).toMatchObject({ error: expect.stringMatching(/scheduled step/i) });
+    expect(
+      resolveInitialSequenceSendDraft({
+        viewingDraft: email3,
+        email1Draft: email1,
+        sequenceNotStarted: false,
+        isFollowUpReview: true,
+      }),
+    ).toEqual({ draft: email3 });
+    expect(
+      resolveInitialSequenceSendDraft({
+        viewingDraft: email3,
+        email1Draft: null,
+        sequenceNotStarted: true,
+      }),
+    ).toMatchObject({ error: expect.stringMatching(/Email 1 draft is required/i) });
+  });
+
+  it("still starts with Email 1 when a later step already went out", () => {
+    const email1 = { id: "e1", sequencePosition: 1 };
+    const ifOpened = { id: "cat", sequencePosition: 5, templateVariant: "catalog_on_open" };
+    expect(
+      resolveInitialSequenceSendDraft({
+        viewingDraft: ifOpened,
+        email1Draft: email1,
+        sequenceNotStarted: true,
+      }),
+    ).toEqual({ draft: email1 });
   });
 });

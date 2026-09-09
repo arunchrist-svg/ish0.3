@@ -91,6 +91,7 @@ export function groupLeadsByPipelineStage<T extends { status: string; score?: nu
 export const PIPELINE_STAGE_ACCENTS: Record<string, (typeof ACCENTS_BY_INDEX)[number]> = {
   "Contact Ready": "blue",
   Email: "yellow",
+  Queued: "yellow",
   "Email Sent": "yellow",
   Replied: "salmon",
   Meeting: "yellow",
@@ -99,6 +100,17 @@ export const PIPELINE_STAGE_ACCENTS: Record<string, (typeof ACCENTS_BY_INDEX)[nu
   Negotiate: "salmon",
   Closed: "muted",
 };
+
+/** Board-only column for in-flight Send All items, inserted before Email Sent. */
+export const BOARD_QUEUED_STAGE = "Queued";
+
+/** Pipeline stages for the leads board, including the Queued column before Email Sent. */
+export function boardPipelineStages(packId?: VerticalPackId | string | null): string[] {
+  const stages = pipelineStageLabels(packId);
+  const emailSentIdx = stages.findIndex((stage) => stage === "Email Sent");
+  if (emailSentIdx < 0) return stages;
+  return [...stages.slice(0, emailSentIdx), BOARD_QUEUED_STAGE, ...stages.slice(emailSentIdx)];
+}
 
 export type PipelineStageAccent = (typeof ACCENTS_BY_INDEX)[number];
 

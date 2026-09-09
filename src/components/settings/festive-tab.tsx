@@ -50,7 +50,7 @@ export function FestiveTab() {
 
   return (
     <div className="relative pb-24">
-      <SettingsGroup title="Outreach channel">
+      <SettingsGroup title="Outbox channel">
         <SettingsToggleRow
           label="WhatsApp-first mode"
           desc="Send WhatsApp immediately after email 1, not after email 2. Activate during the festive window when procurement moves to WhatsApp."

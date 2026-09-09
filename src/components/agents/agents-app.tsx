@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { runScoutAgent } from "@/lib/api-client";
+import { runScoutAgent, runSequencerNow } from "@/lib/api-client";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { AppPageHeader } from "@/design-system";
 import { CitySelector } from "@/components/scouting/city-selector";
@@ -51,6 +51,7 @@ export function AgentsApp() {
   const [cities, setCities] = useState<string[]>(["Bangalore"]);
   const [industries, setIndustries] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
+  const [sequencerRunning, setSequencerRunning] = useState(false);
   const [lastResult, setLastResult] = useState<Awaited<ReturnType<typeof runScoutAgent>> | null>(null);
 
   const catalog = useMemo(
@@ -86,8 +87,8 @@ export function AgentsApp() {
       {
         key: "sequencer",
         title: "Sequencer",
-        body: "Sends Email 2 and Email 3 on cadence after Email 1 goes out.",
-        href: "/email?tab=active",
+        body: "Sends deferred Email 1 plus Email 2 and Email 3 on cadence after Email 1 goes out.",
+        href: "#sequencer-agent",
         icon: Mail,
       },
       {
@@ -125,7 +126,7 @@ export function AgentsApp() {
     try {
       const result = await runScoutAgent({ cities, industries });
       setLastResult(result);
-      toast.success(`Agentic Scout complete — ${result.leadsSaved} leads saved`);
+      toast.success(`Agentic Scout complete: ${result.leadsSaved} leads saved`);
       if (result.leadsSaved > 0) {
         notifyCrmRecordsChanged({ source: "scout_agentic", savedLeads: result.leadsSaved });
       }
@@ -134,6 +135,21 @@ export function AgentsApp() {
       console.error(e);
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function handleRunSequencer() {
+    setSequencerRunning(true);
+    try {
+      const result = await runSequencerNow();
+      toast.success(
+        `Sequencer finished: ${result.processed} sent, ${result.skipped} skipped, ${result.failed} failed, ${result.pendingReview} pending review`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Sequencer failed");
+      console.error(e);
+    } finally {
+      setSequencerRunning(false);
     }
   }
 
@@ -213,6 +229,26 @@ export function AgentsApp() {
           >
             <Play className="size-4" />
             {running ? "Scouting…" : "Run Agentic Scout"}
+          </button>
+        </div>
+
+        <div
+          id="sequencer-agent"
+          className="mt-4 rounded-[20px] border border-brand-border bg-white p-6 shadow-[var(--shadow-brand-sm)]"
+        >
+          <h2 className="mb-1 text-[15px] font-bold text-brand-ink">Sequencer</h2>
+          <p className="mb-5 text-[12.5px] leading-relaxed text-brand-ink-soft">
+            Process due deferred Email 1 sends and follow-ups now. Respects send window, pause, and
+            sender preflight. Hourly cron also runs this path.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleRunSequencer()}
+            disabled={sequencerRunning}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-black py-3 text-[13px] font-bold text-white shadow-[var(--shadow-brand)] hover:opacity-90 disabled:opacity-50"
+          >
+            <Play className="size-4" />
+            {sequencerRunning ? "Running…" : "Run sequencer now"}
           </button>
         </div>
 

@@ -808,6 +808,33 @@ export async function controlLeadSequence(
   return { state: data.state, updated: data.updated };
 }
 
+/** Cancel queued Email 1 sends (send-window deferred). Pass leadIds, or omit to cancel all in workspace. */
+export async function cancelQueuedOutreach(leadIds?: string[]): Promise<{ cancelled: number; leadIds: string[] }> {
+  return post<{ ok: boolean; cancelled: number; leadIds: string[] }>("/api/outreach/queue/cancel", {
+    ...(leadIds ? { leadIds } : {}),
+  });
+}
+
+/** Send a queued Email 1 now (authenticated, with sender preflight). */
+export async function sendQueuedOutreachNow(params: {
+  scheduleId?: string;
+  leadId?: string;
+  overridePreflight?: boolean;
+}): Promise<{ ok: boolean; scheduleId: string; messageId: string; mode: string }> {
+  return post("/api/outreach/queue/send", params);
+}
+
+/** Run the outreach sequencer once (session auth). */
+export async function runSequencerNow(): Promise<{
+  ok: boolean;
+  processed: number;
+  failed: number;
+  skipped: number;
+  pendingReview: number;
+}> {
+  return post("/api/sequencer/run-now", {});
+}
+
 export async function setOutreachSendingPaused(paused: boolean): Promise<{ outreachPaused: boolean }> {
   const data = await post<{ ok: boolean; outreachPaused: boolean }>("/api/settings/email/sending", { paused });
   return { outreachPaused: data.outreachPaused };
@@ -824,7 +851,7 @@ export async function fetchEmailOverview(tabs?: EmailOverviewTab | EmailOverview
     params.set("tabs", "all");
   }
   const res = await fetch(`/api/email/overview?${params.toString()}`);
-  if (!res.ok) throw new Error("Failed to load outreach queue");
+  if (!res.ok) throw new Error("Failed to load Outbox queue");
   return res.json();
 }
 
@@ -996,19 +1023,39 @@ export async function approveOutreach(params: {
   return post<{ approvalId: string }>("/api/outreach/approve", params);
 }
 
+export type OutreachDeliveryMode = "now" | "scheduled";
+
 export async function sendOutreach(
   approvalId: string,
   options?: {
     overridePreflight?: boolean;
     overrideQualityGate?: boolean;
     toEmails?: string[];
+    deliveryMode?: OutreachDeliveryMode;
   },
-): Promise<{ mode: string; messageId?: string; to?: string; recipients?: string[]; whatsappOpen?: { url: string; to: string } }> {
-  return post<{ mode: string; messageId?: string; to?: string; recipients?: string[]; whatsappOpen?: { url: string; to: string } }>("/api/outreach/send", {
+): Promise<{
+  mode: string;
+  messageId?: string;
+  to?: string;
+  recipients?: string[];
+  scheduledFor?: string;
+  scheduledForLabel?: string;
+  whatsappOpen?: { url: string; to: string };
+}> {
+  return post<{
+    mode: string;
+    messageId?: string;
+    to?: string;
+    recipients?: string[];
+    scheduledFor?: string;
+    scheduledForLabel?: string;
+    whatsappOpen?: { url: string; to: string };
+  }>("/api/outreach/send", {
     approvalId,
     overridePreflight: options?.overridePreflight,
     overrideQualityGate: options?.overrideQualityGate,
     toEmails: options?.toEmails,
+    deliveryMode: options?.deliveryMode,
   });
 }
 
@@ -1182,6 +1229,21 @@ export async function mergeLeadDuplicates(input?: {
   return post<MergeLeadDuplicatesResult>("/api/leads/duplicates", input ?? {});
 }
 
+export type FixLeadNamesResult = {
+  scanned: number;
+  contactsUpdated: number;
+  accountsUpdated: number;
+  titlesCleared: number;
+  namesFixed: number;
+  companiesFixed: number;
+};
+
+export async function fixLeadNames(): Promise<FixLeadNamesResult> {
+  const result = await post<FixLeadNamesResult>("/api/leads/fix-names", {});
+  invalidateLeadCaches();
+  return result;
+}
+
 export async function updateLead(leadId: string, input: Partial<LeadFormInput>): Promise<void> {
   await patch(`/api/leads/${leadId}`, input);
   invalidateLeadCaches(leadId);
@@ -1260,6 +1322,16 @@ export type LeadQueueItem = {
   createdByUserId?: string;
   createdByName?: string;
   nextActionDate?: string;
+  /** ISO time when Email 1 is scheduled to send (settings send window). */
+  pendingSendScheduledFor?: string;
+  /** outreach_schedule id for the queued Email 1 row. */
+  pendingSendScheduleId?: string;
+  /** scheduled | sending for the queued Email 1 row. */
+  pendingSendStatus?: string;
+  /** Last sequencer skip/fail reason, if any. */
+  pendingSendLastError?: string;
+  /** ISO time when Email 1 was actually sent. */
+  lastEmailSentAt?: string;
   createdAt?: string;
 };
 
@@ -1871,10 +1943,19 @@ export async function fetchLeadStageCounts(): Promise<Record<string, number>> {
 }
 
 export async function writeAllLeadsForStage(params: {
-  statuses: string[];
+  statuses?: string[];
+  leadIds?: string[];
   outreachTemplate?: string;
-}): Promise<{ enqueued: number }> {
-  return post<{ enqueued: number }>("/api/agents/writer/write-all", params);
+  writerMode?: string;
+  occasionTheme?: string | null;
+}): Promise<{
+  enqueued: number;
+  mode: "queued" | "sync";
+  batchId?: string;
+  creditsRequired: number;
+  creditsPerSequence: number;
+}> {
+  return post("/api/agents/writer/write-all", params);
 }
 
 

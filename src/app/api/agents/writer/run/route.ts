@@ -5,6 +5,7 @@ import { db, leadOutreach, leads, accounts } from "@/db";
 import { eq } from "drizzle-orm";
 import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { isZeroCostTemplateWrite } from "@/lib/email/outreach-templates";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
@@ -57,34 +58,40 @@ export async function POST(req: Request) {
       await prepareLeadForOccasionWrite(leadId, occasionId);
     }
 
+    const requestedTemplate = outreachTemplate as OutreachTemplateId | undefined;
+    const freeTemplate = isZeroCostTemplateWrite(requestedTemplate);
+
     if (mode === "single" && sequencePosition && [2, 3].includes(sequencePosition)) {
-      await assertCredits(ctx.tenantId, "writer.draft", 1);
+      if (!freeTemplate) await assertCredits(ctx.tenantId, "writer.draft", 1);
       const outreachId = await regenerateSequenceStep(leadId, sequencePosition as 2 | 3, {
-        outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
+        outreachTemplate: requestedTemplate,
         writerMode: resolvedWriterMode,
         occasionTheme,
       });
-      await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
-      void checkLowBalanceAlerts(ctx.tenantId);
+      if (!freeTemplate) {
+        await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
+        void checkLowBalanceAlerts(ctx.tenantId);
+      }
       const draft = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
       if (!draft) return NextResponse.json({ error: "Draft not found after write" }, { status: 500 });
       return NextResponse.json({ draft: toWriterDraft(draft, { sequencePosition: draft.sequencePosition ?? undefined }) });
     }
 
-    const requestedTemplate = outreachTemplate as OutreachTemplateId | undefined;
     const useSequence = mode !== "single";
 
     if (useSequence) {
-      await assertCredits(ctx.tenantId, "writer.draft", 3);
+      if (!freeTemplate) await assertCredits(ctx.tenantId, "writer.draft", 3);
       const ids = await runWriterSequence(leadId, {
         outreachTemplate: requestedTemplate,
         writerMode: resolvedWriterMode,
         occasionTheme,
       });
-      for (const id of ids) {
-        await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: id });
+      if (!freeTemplate) {
+        for (const id of ids) {
+          await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: id });
+        }
+        void checkLowBalanceAlerts(ctx.tenantId);
       }
-      void checkLowBalanceAlerts(ctx.tenantId);
 
       const rows = await db.query.leadOutreach.findMany({
         where: eq(leadOutreach.leadId, leadId),
@@ -95,14 +102,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ drafts, draft: drafts[0] });
     }
 
-    await assertCredits(ctx.tenantId, "writer.draft", 1);
+    if (!freeTemplate) await assertCredits(ctx.tenantId, "writer.draft", 1);
     const outreachId = await runWriter(leadId, {
       outreachTemplate: requestedTemplate,
       writerMode: resolvedWriterMode,
       occasionTheme,
     });
-    await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
-    void checkLowBalanceAlerts(ctx.tenantId);
+    if (!freeTemplate) {
+      await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
+      void checkLowBalanceAlerts(ctx.tenantId);
+    }
 
     const draft = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
     if (!draft) return NextResponse.json({ error: "Draft not found after write" }, { status: 500 });

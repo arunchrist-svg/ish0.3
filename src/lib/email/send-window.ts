@@ -387,6 +387,17 @@ export function nextSendWindowStart(now: Date, windowInput?: Partial<SendWindow>
 }
 
 /**
+ * Next queued slot when the user explicitly chooses Schedule Send.
+ * Outside the window: earliest allowed slot. Inside the window: defer to the next day in-window.
+ */
+export function deferredSendWindowSlot(now: Date, windowInput?: Partial<SendWindow> | null): Date {
+  if (!isWithinSendWindow(now, windowInput)) {
+    return nextSendWindowStart(now, windowInput);
+  }
+  return computeFollowUpScheduledFor(now, 1, windowInput);
+}
+
+/**
  * Schedule a follow-up `daysAfter` calendar days after `anchor`, then snap into the send window.
  * Rolling forward never sends earlier than the cadence offset, and never outside days/hours.
  */
@@ -423,6 +434,17 @@ function formatClockPart(hour: number): { h12: number; minutes: string; suffix: 
 export function formatHourLabel(hour: number): string {
   const { h12, minutes, suffix } = formatClockPart(hour);
   return `${h12}:${minutes} ${suffix}`;
+}
+
+/** Human label for a queued send instant in the window timezone (e.g. "Wed 10 Sep, 9:00 AM"). */
+export function formatQueuedSendLabel(at: Date, windowInput?: Partial<SendWindow> | null): string {
+  const window = resolveSendWindow(windowInput);
+  const parts = getZonedParts(at, window.timezone);
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parts.weekday] ?? "";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[parts.month - 1] ?? "";
+  const decimalHour = parts.hour + (parts.minute >= 30 ? 0.5 : 0);
+  return `${weekday} ${parts.day} ${month}, ${formatHourLabel(decimalHour)}`;
 }
 
 /** Compact label for axis ticks (e.g. 12a, 4a, 12p). */

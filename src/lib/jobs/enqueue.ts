@@ -74,38 +74,116 @@ export async function enqueueWriterRun(params: {
   outreachTemplate?: string;
   writerMode?: string;
   occasionTheme?: string | null;
+  batchId?: string;
 }): Promise<"queued" | "sync"> {
+  const data = { ...params, batchId: params.batchId ?? crypto.randomUUID() };
   if (inngestJobsEnabled()) {
-    await inngest.send({ name: "writer/lead.requested", data: params });
+    await inngest.send({ name: "writer/lead.requested", data });
     return "queued";
   }
-  void runWriterSafe(params);
+  void runWriterSafe(data);
   return "sync";
 }
 
-async function runWriterSafe(params: {
-  leadId: string;
+const WRITER_ENQUEUE_CHUNK = 100;
+const WRITER_SYNC_CONCURRENCY = 2;
+
+/**
+ * Enqueue sequence writes for many leads (thousands-safe).
+ * Chunks Inngest sends; without Inngest, runs a capped background pool.
+ */
+export async function enqueueWriterForLeads(params: {
+  leadIds: string[];
+  tenantId: string;
   mode?: "single" | "sequence";
   outreachTemplate?: string;
   writerMode?: string;
   occasionTheme?: string | null;
+  batchId?: string;
+}): Promise<"queued" | "sync"> {
+  const uniqueIds = [...new Set(params.leadIds.filter(Boolean))];
+  if (!uniqueIds.length) return inngestJobsEnabled() ? "queued" : "sync";
+
+  const batchId = params.batchId ?? crypto.randomUUID();
+  const mode = params.mode ?? "sequence";
+
+  if (inngestJobsEnabled()) {
+    for (let i = 0; i < uniqueIds.length; i += WRITER_ENQUEUE_CHUNK) {
+      const chunk = uniqueIds.slice(i, i + WRITER_ENQUEUE_CHUNK);
+      await inngest.send(
+        chunk.map((leadId) => ({
+          name: "writer/lead.requested" as const,
+          data: {
+            leadId,
+            tenantId: params.tenantId,
+            mode,
+            outreachTemplate: params.outreachTemplate,
+            writerMode: params.writerMode,
+            occasionTheme: params.occasionTheme,
+            batchId,
+          },
+        })),
+      );
+    }
+    return "queued";
+  }
+
+  void runWriterPool(uniqueIds, {
+    tenantId: params.tenantId,
+    mode,
+    outreachTemplate: params.outreachTemplate,
+    writerMode: params.writerMode,
+    occasionTheme: params.occasionTheme,
+    batchId,
+  });
+  return "sync";
+}
+
+async function runWriterPool(
+  leadIds: string[],
+  opts: {
+    tenantId: string;
+    mode: "single" | "sequence";
+    outreachTemplate?: string;
+    writerMode?: string;
+    occasionTheme?: string | null;
+    batchId: string;
+  },
+): Promise<void> {
+  let cursor = 0;
+  async function worker() {
+    while (cursor < leadIds.length) {
+      const leadId = leadIds[cursor++];
+      await runWriterSafe({
+        leadId,
+        mode: opts.mode,
+        outreachTemplate: opts.outreachTemplate,
+        writerMode: opts.writerMode,
+        occasionTheme: opts.occasionTheme,
+        tenantId: opts.tenantId,
+        batchId: opts.batchId,
+      });
+    }
+  }
+  const workers = Array.from(
+    { length: Math.min(WRITER_SYNC_CONCURRENCY, leadIds.length) },
+    () => worker(),
+  );
+  await Promise.all(workers);
+}
+
+async function runWriterSafe(params: {
+  leadId: string;
+  tenantId: string;
+  mode?: "single" | "sequence";
+  outreachTemplate?: string;
+  writerMode?: string;
+  occasionTheme?: string | null;
+  batchId?: string;
 }): Promise<void> {
   try {
-    if (params.mode === "single") {
-      const { runWriter } = await import("@/lib/agents/writer");
-      await runWriter(params.leadId, {
-        outreachTemplate: params.outreachTemplate as never,
-        writerMode: params.writerMode as never,
-        occasionTheme: params.occasionTheme,
-      });
-      return;
-    }
-    const { runWriterSequence } = await import("@/lib/agents/writer-sequence");
-    await runWriterSequence(params.leadId, {
-      outreachTemplate: params.outreachTemplate as never,
-      writerMode: params.writerMode as never,
-      occasionTheme: params.occasionTheme,
-    });
+    const { writeOutreachForJob } = await import("@/lib/agents/writer-job");
+    await writeOutreachForJob(params);
   } catch (e) {
     console.error("[enqueue] writer failed for", params.leadId, e);
   }

@@ -20,7 +20,7 @@ vi.mock("@/lib/outreach/send-with-gate-confirm", () => ({
   sendWithGateConfirm: vi.fn(async (send: (overrides: object) => Promise<unknown>) => send({})),
 }));
 
-import { approveOutreach, fetchLead } from "@/lib/api-client";
+import { approveOutreach, fetchLead, sendOutreach } from "@/lib/api-client";
 
 function lead(id: string, name: string): LeadQueueItem {
   return {
@@ -70,6 +70,7 @@ describe("sendEmailsForLeads spaced loop", () => {
     vi.mocked(approveOutreach).mockResolvedValue({ approvalId: "appr-1" } as Awaited<
       ReturnType<typeof approveOutreach>
     >);
+    vi.mocked(sendOutreach).mockResolvedValue({ mode: "live" } as Awaited<ReturnType<typeof sendOutreach>>);
   });
 
   it("sends the first lead immediately and waits a gap before later leads", async () => {

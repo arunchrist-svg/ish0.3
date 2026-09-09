@@ -164,6 +164,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         ? db
             .select({
               approvalId: outreachApprovals.id,
+              leadOutreachId: outreachApprovals.leadOutreachId,
               emailBody: leadOutreach.emailBody,
             })
             .from(outreachApprovals)
@@ -182,6 +183,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .filter((r) => r.emailBody)
         .map((r) => [r.approvalId, r.emailBody as string]),
     );
+    const draftIdByApprovalId = Object.fromEntries(
+      approvalOutreachRows.map((r) => [r.approvalId, r.leadOutreachId]),
+    );
 
     const replyDraftSent = Boolean(replySentRow);
     const outreachSequence = sequenceDraftRows.map((d) => toWriterDraft(d, { sequencePosition: d.sequencePosition ?? undefined }));
@@ -192,6 +196,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       latestOutreach: activeOutreach ?? null,
       replyDraftSent,
       outreachBodiesByApprovalId,
+      draftIdByApprovalId,
       inboundReplyAt: repliedFunnel?.enteredAt?.toISOString() ?? null,
       cadenceDays: emailConfig.cadenceDays,
     });

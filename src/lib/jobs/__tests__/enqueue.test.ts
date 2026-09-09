@@ -53,7 +53,27 @@ describe("enqueue", () => {
     expect(queued).toBe("queued");
     expect(sendMock).toHaveBeenCalledWith({
       name: "writer/lead.requested",
-      data: expect.objectContaining({ leadId: "w2", tenantId: "t1", mode: "single" }),
+      data: expect.objectContaining({ leadId: "w2", tenantId: "t1", mode: "single", batchId: expect.any(String) }),
+    });
+  });
+
+  it("chunk-enqueues writer batches when Inngest is configured", async () => {
+    process.env.INNGEST_EVENT_KEY = "test-key";
+    const { enqueueWriterForLeads } = await import("@/lib/jobs/enqueue");
+    const ids = Array.from({ length: 3 }, (_, i) => `lead-${i}`);
+    const mode = await enqueueWriterForLeads({
+      leadIds: ids,
+      tenantId: "t1",
+      outreachTemplate: "prasanth_sequence",
+      batchId: "batch-1",
+    });
+    expect(mode).toBe("queued");
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    const payload = sendMock.mock.calls[0][0] as Array<{ name: string; data: { leadId: string; batchId: string } }>;
+    expect(payload).toHaveLength(3);
+    expect(payload[0]).toEqual({
+      name: "writer/lead.requested",
+      data: expect.objectContaining({ leadId: "lead-0", tenantId: "t1", batchId: "batch-1" }),
     });
   });
 

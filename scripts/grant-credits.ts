@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 import { grantCredits, getCreditBalance } from "../src/lib/billing/credits";
 
 const EMAIL = "srilaksha.ish@gmail.com";
-const AMOUNT = 1000;
+const AMOUNT = 10000;
 
 async function main() {
   const { db, users, orgMembers, tenants } = await import("../src/db");

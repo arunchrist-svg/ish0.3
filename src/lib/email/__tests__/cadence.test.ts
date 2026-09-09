@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   cadenceSummary,
+  emailLabelForDraftPosition,
   emailStepLabel,
   isEmailSentForStep,
   normalizeCadenceDays,
+  sequenceDayForDraftPosition,
   sequenceStepDays,
 } from "@/lib/email/cadence";
 
@@ -31,5 +33,14 @@ describe("cadence", () => {
   it("tracks sent steps", () => {
     expect(isEmailSentForStep(4, 4)).toBe(true);
     expect(isEmailSentForStep(0, 4)).toBe(false);
+  });
+
+  it("maps draft positions to sequence days and labels", () => {
+    expect(sequenceDayForDraftPosition(1, [3, 7])).toBe(0);
+    expect(sequenceDayForDraftPosition(2, [3, 7])).toBe(3);
+    expect(sequenceDayForDraftPosition(3, [4, 8])).toBe(8);
+    expect(sequenceDayForDraftPosition(5)).toBe(5);
+    expect(emailLabelForDraftPosition(3)).toBe("Email 3");
+    expect(emailLabelForDraftPosition(5)).toBe("If Opened");
   });
 });

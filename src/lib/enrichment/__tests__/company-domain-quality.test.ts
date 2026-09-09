@@ -58,6 +58,11 @@ describe("company domain quality", () => {
     expect(isAcceptableCompanyDomain("jindalsteel.in", "Jindal Steel")).toBe(true);
     expect(usableStoredDomain("jindalsteel.in", "Hosur Steel Industries")).toBeNull();
     expect(usableStoredDomain("tatasteel.com", "Tata Steel")).toBe("tatasteel.com");
+    expect(isAcceptableCompanyDomain("va.com", "VA DESIGNBUILD PRIVATE LIMITED")).toBe(false);
+    expect(isAcceptableCompanyDomain("vagroup.com", "VA DESIGNBUILD PRIVATE LIMITED")).toBe(false);
+    expect(isAcceptableCompanyDomain("early.com", "EARLYSTAGE MARKETING PRIVATE LIMITED")).toBe(false);
+    expect(isAcceptableCompanyDomain("early.partners", "EARLYSTAGE MARKETING PRIVATE LIMITED")).toBe(false);
+    expect(domainBelongsToCompany("earlystage.com", "EARLYSTAGE MARKETING PRIVATE LIMITED")).toBe(true);
   });
 
   it("accepts a pasted company website and rejects directory pages", () => {

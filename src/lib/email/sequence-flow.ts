@@ -229,9 +229,10 @@ export function buildSequenceFlow(thread?: EmailThread | null): SequenceFlowMode
 
   let mode: SequenceFlowMode = "plan";
   if (replied) mode = "replied";
-  else if (catalogActive) mode = "catalog";
+  else if (catalogActive || e1Opened || e2Opened) mode = "catalog";
   else if (emailNodes[0]?.state === "done" && !e1Opened) mode = "waiting";
   else if (thread.barMode === "drafts") mode = "plan";
+  else if (thread.barMode === "sequence") mode = "waiting";
 
   const nodes: SequenceFlowNode[] = emailNodes.map((node, index) => {
     const slot = slotFromNode(node, index);

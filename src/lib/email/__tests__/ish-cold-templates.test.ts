@@ -217,6 +217,68 @@ describe("ISH cold email templates", () => {
     expect(inPerson.emailBody).not.toMatch(/best delivery address to ship it to/);
   });
 
+  it("fills Prasant Template Email 1–3 with all three doc versions", () => {
+    const e1 = fillIshDraftVariants({
+      ...names,
+      sequencePosition: 1,
+      templateId: "prasanth_sequence",
+    });
+    expect(e1.subjectA).toBe("A small box of Diwali, on its way to you?");
+    expect(e1.subjectB).toBe("15 minutes, and a box of sweets, this festive season?");
+    expect(e1.subjectC).toBe("How's the festive gifting shaping up on your end?");
+    expect(e1.emailBody).toMatch(/^Namaste,/);
+    expect(e1.emailBody).toMatch(/sample box consisting a few of our handcrafted sweets/);
+    expect(e1.emailBody).toMatch(/best delivery address/);
+    expect(e1.emailBodyB).toMatch(/15-20 minutes at your office/);
+    expect(e1.emailBodyB).toMatch(/Mercedes-Benz/);
+    expect(e1.emailBodyC).toMatch(/5,000\+ corporate teams/);
+    expect(e1.emailBodyC).toMatch(/sample box to your office, or stop by/);
+    expect(e1.emailBody).toMatch(/contact@indiasweethouse\.in/);
+    expect(e1.emailBody).not.toContain("\u2014");
+    expect(e1.emailBodyB).not.toContain("\u2014");
+    expect(e1.emailBodyC).not.toContain("\u2014");
+
+    const e2 = fillIshDraftVariants({
+      ...names,
+      sequencePosition: 2,
+      templateId: "prasanth_sequence",
+    });
+    expect(e2.subjectA).toBe("Following up: our 2026 festive gifting range for Acme Auto");
+    expect(e2.subjectB).toBe("The story behind what's in our festive boxes");
+    expect(e2.subjectC).toBe("A few gifting options for Acme Auto this Diwali");
+    expect(e2.emailBody).toMatch(/^Namaste,/);
+    expect(e2.emailBody).toMatch(/Manikya & Neelam/);
+    expect(e2.emailBody).toMatch(/e-gift coupons/);
+    expect(e2.emailBodyB).toMatch(/Karma Farm \(it grew out of a gaushala\)/);
+    expect(e2.emailBodyC).toMatch(/Under ₹300\/head/);
+    expect(e2.emailBody).not.toContain("\u2014");
+
+    const e3 = fillIshDraftVariants({
+      ...names,
+      sequencePosition: 3,
+      templateId: "prasanth_sequence",
+    });
+    expect(e3.subjectA).toBe("Closing the loop before the festive rush hits");
+    expect(e3.subjectB).toBe("One last check-in from India Sweet House");
+    expect(e3.subjectC).toBe("Shall we finalise Acme Auto's festive gifting?");
+    expect(e3.emailBody).toMatch(/flat minimum 10% off/);
+    expect(e3.emailBodyB).toMatch(/warm Dusshera and Diwali/);
+    expect(e3.emailBodyC).toMatch(/by \[date\]/);
+    expect(e3.emailBodyC).toMatch(/e-gift coupons/);
+  });
+
+  it("uses Settings signature for Prasant Template when set", () => {
+    const draft = fillIshDraftVariants({
+      ...names,
+      sequencePosition: 1,
+      templateId: "prasanth_sequence",
+      signature: "Anuj\nManager\nIndia Sweet House",
+    });
+    expect(draft.emailBody).toMatch(/Warm regards,\nAnuj\nManager\nIndia Sweet House$/);
+    expect(draft.emailBody).not.toMatch(/contact@indiasweethouse/);
+    expect(draft.emailBodyC).toMatch(/Warm regards,\nAnuj\nManager\nIndia Sweet House$/);
+  });
+
   it("uses store opening copy without Diwali subjects", () => {
     const opening = fillIshDraftVariants({ ...names, sequencePosition: 1, occasionId: "store_opening" });
     expect(opening.subjectA).toMatch(/store coming up|store launch/i);

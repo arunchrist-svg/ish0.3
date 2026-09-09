@@ -86,6 +86,7 @@ function resolveSendDraft(lead: Awaited<ReturnType<typeof fetchLead>>): WriterDr
 export type WriteEmailsOptions = {
   outreachTemplate?: string;
   onProgress?: (progress: BoardBulkProgress) => void;
+  signal?: AbortSignal;
 };
 
 export async function writeEmailsForLeads(
@@ -100,12 +101,20 @@ export async function writeEmailsForLeads(
   const total = leads.length;
 
   for (let i = 0; i < leads.length; i++) {
+    if (options.signal?.aborted) {
+      result.cancelled += leads.length - i;
+      break;
+    }
     const lead = leads[i];
     options.onProgress?.({ current: i + 1, total, leadName: lead.name });
     try {
       await runWriterSequence(lead.id, { outreachTemplate: options.outreachTemplate });
       result.ok += 1;
     } catch (e) {
+      if (options.signal?.aborted) {
+        result.cancelled += leads.length - i;
+        break;
+      }
       result.failed += 1;
       result.errors.push(
         `${lead.name}: ${e instanceof Error ? e.message : "Write failed"}`,
@@ -116,7 +125,7 @@ export async function writeEmailsForLeads(
   return result;
 }
 
-async function sendOneLead(lead: LeadQueueItem): Promise<void> {
+async function sendOneLead(lead: LeadQueueItem): Promise<{ mode: string; scheduledFor?: string }> {
   const detail = await fetchLead(lead.id);
   const draft = resolveSendDraft(detail);
   if (!draft?.id) {
@@ -137,7 +146,8 @@ async function sendOneLead(lead: LeadQueueItem): Promise<void> {
     bodyUsed: body,
   });
 
-  await sendWithGateConfirm((overrides) => sendOutreach(approvalId, overrides));
+  const result = await sendWithGateConfirm((overrides) => sendOutreach(approvalId, overrides));
+  return { mode: result.mode, scheduledFor: result.scheduledFor };
 }
 
 export type SendEmailsOptions = {
@@ -146,6 +156,8 @@ export type SendEmailsOptions = {
   /** Injectable for tests. */
   gapMinutes?: () => number;
   wait?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Skip a lead that was cancelled individually while the batch is running. */
+  isLeadCancelled?: (leadId: string) => boolean;
 };
 
 /**
@@ -184,6 +196,15 @@ export async function sendEmailsForLeads(
       break;
     }
 
+    if (options?.isLeadCancelled?.(lead.id) || queue[i].status === "cancelled") {
+      if (queue[i].status !== "cancelled") {
+        queue[i] = { ...queue[i], status: "cancelled", gapMinutes: undefined, waitUntil: undefined };
+      }
+      result.cancelled += 1;
+      publish();
+      continue;
+    }
+
     if (i > 0) {
       const gap = nextGap();
       queue[i] = {
@@ -205,12 +226,24 @@ export async function sendEmailsForLeads(
       }
     }
 
+    if (options?.isLeadCancelled?.(lead.id)) {
+      queue[i] = { ...queue[i], status: "cancelled", gapMinutes: undefined, waitUntil: undefined };
+      result.cancelled += 1;
+      publish();
+      continue;
+    }
+
     queue[i] = { ...queue[i], status: "sending", gapMinutes: undefined, waitUntil: undefined };
     publish();
 
     try {
-      await sendOneLead(lead);
-      queue[i] = { ...queue[i], status: "sent", waitUntil: undefined };
+      const sendResult = await sendOneLead(lead);
+      if (sendResult.mode === "queued") {
+        // Stay visible under Queued until the board reloads with pendingSendScheduledFor.
+        queue[i] = { ...queue[i], status: "queued", waitUntil: undefined };
+      } else {
+        queue[i] = { ...queue[i], status: "sent", waitUntil: undefined };
+      }
       result.ok += 1;
     } catch (e) {
       const message = e instanceof Error ? e.message : "Send failed";

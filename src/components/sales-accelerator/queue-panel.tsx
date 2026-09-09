@@ -62,6 +62,8 @@ type Props = {
   addedByUsers?: LeadAddedByUserOption[];
   onMergeDuplicates?: () => void | Promise<void>;
   mergingDuplicates?: boolean;
+  onFixNames?: () => void | Promise<void>;
+  fixingNames?: boolean;
   hasMore?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void | Promise<void>;
@@ -83,7 +85,7 @@ function MergeDuplicatesButton({
       onClick={onMerge}
       disabled={merging}
       aria-busy={merging}
-      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-stratus-blue/25 bg-brand-stratus-blue/8 px-3 py-2 text-[12px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/12 disabled:pointer-events-none disabled:opacity-60"
+      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-stratus-blue/25 bg-brand-stratus-blue/8 px-3 py-2 text-[12px] font-semibold text-brand-stratus-blue transition-colors hover:bg-brand-stratus-blue/12 disabled:pointer-events-none disabled:opacity-60"
     >
       {merging ? <Loader2 className="size-3.5 animate-spin" /> : null}
       {merging ? "Merging duplicates…" : `Merge ${count} duplicate${count === 1 ? "" : "s"}`}
@@ -91,7 +93,30 @@ function MergeDuplicatesButton({
   );
 }
 
-function MergingDuplicatesOverlay() {
+function FixNamesButton({
+  fixing,
+  disabled,
+  onFix,
+}: {
+  fixing: boolean;
+  disabled?: boolean;
+  onFix: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onFix}
+      disabled={fixing || disabled}
+      aria-busy={fixing}
+      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-brand-border/50 bg-white px-3 py-2 text-[12px] font-semibold text-brand-ink transition-colors hover:bg-brand-app disabled:pointer-events-none disabled:opacity-60"
+    >
+      {fixing ? <Loader2 className="size-3.5 animate-spin" /> : null}
+      {fixing ? "Fixing names…" : "Fix names"}
+    </button>
+  );
+}
+
+function QueueBusyOverlay({ label }: { label: string }) {
   return (
     <div
       className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 backdrop-blur-[2px]"
@@ -100,7 +125,7 @@ function MergingDuplicatesOverlay() {
     >
       <div className="inline-flex items-center gap-2 rounded-full border border-brand-stratus-blue/20 bg-white px-3 py-1.5 text-[12px] font-semibold text-brand-stratus-blue shadow-[var(--shadow-brand-sm)]">
         <Loader2 className="size-3.5 animate-spin" />
-        Merging duplicates…
+        {label}
       </div>
     </div>
   );
@@ -267,6 +292,8 @@ export function QueuePanel({
   addedByUsers = [],
   onMergeDuplicates,
   mergingDuplicates,
+  onFixNames,
+  fixingNames,
   hasMore,
   loadingMore,
   onLoadMore,
@@ -284,6 +311,8 @@ export function QueuePanel({
   const quick = controlledQuick ?? internalQuick;
   const panel = controlledPanel ?? internalPanel;
   const addedByUserId = controlledAddedByUserId ?? internalAddedByUserId;
+  const queueBusy = Boolean(mergingDuplicates || fixingNames);
+  const busyLabel = mergingDuplicates ? "Merging duplicates…" : fixingNames ? "Fixing names…" : "";
 
   function setSort(next: LeadQueueSort) {
     if (onSortChange) onSortChange(next);
@@ -344,8 +373,28 @@ export function QueuePanel({
     </div>
   ) : null;
 
+  const maintenanceActions =
+    canWrite && (onMergeDuplicates || onFixNames) ? (
+      <div className="flex flex-col gap-2">
+        {onMergeDuplicates && duplicateExtra > 0 ? (
+          <MergeDuplicatesButton
+            count={duplicateExtra}
+            merging={!!mergingDuplicates}
+            onMerge={() => void onMergeDuplicates()}
+          />
+        ) : null}
+        {onFixNames ? (
+          <FixNamesButton
+            fixing={!!fixingNames}
+            disabled={queueBusy && !fixingNames}
+            onFix={() => void onFixNames()}
+          />
+        ) : null}
+      </div>
+    ) : null;
+
   async function handleRefresh() {
-    if (!onRefresh || refreshing || mergingDuplicates) return;
+    if (!onRefresh || refreshing || queueBusy) return;
     setRefreshing(true);
     try {
       await onRefresh();
@@ -372,7 +421,7 @@ export function QueuePanel({
               <button
                 type="button"
                 onClick={() => void handleRefresh()}
-                disabled={refreshing || mergingDuplicates}
+                disabled={refreshing || queueBusy}
                 className="flex size-10 items-center justify-center rounded-full bg-white text-brand-ink shadow-brand-sm ring-1 ring-brand-border/40 active:scale-95 disabled:pointer-events-none disabled:opacity-50"
                 aria-label="Refresh leads"
               >
@@ -404,22 +453,14 @@ export function QueuePanel({
             {canWrite && onAddLead && onLinkedInLead && onImportLeads ? (
               <LeadAddMenu
                 size={40}
-                disabled={mergingDuplicates}
+                disabled={queueBusy}
                 onAddLead={onAddLead}
                 onLinkedIn={onLinkedInLead}
                 onUpload={onImportLeads}
               />
             ) : null}
           </div>
-          {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
-            <div className="mt-2.5">
-              <MergeDuplicatesButton
-                count={duplicateExtra}
-                merging={!!mergingDuplicates}
-                onMerge={() => void onMergeDuplicates()}
-              />
-            </div>
-          ) : null}
+          {maintenanceActions ? <div className="mt-2.5">{maintenanceActions}</div> : null}
         </div>
 
         <div className="relative min-h-0 flex-1">
@@ -456,7 +497,7 @@ export function QueuePanel({
             )}
             {lazyLoadFooter}
           </div>
-          {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
+          {queueBusy && busyLabel ? <QueueBusyOverlay label={busyLabel} /> : null}
         </div>
       </div>
     );
@@ -464,15 +505,7 @@ export function QueuePanel({
 
   return (
     <div className="flex h-full w-full min-w-0 shrink-0 flex-col overflow-hidden border-r border-white/50 ish-glass-sidebar p-4 lg:w-[330px] lg:p-[22px_18px]">
-      {canWrite && onMergeDuplicates && duplicateExtra > 0 ? (
-        <div className="mb-3">
-          <MergeDuplicatesButton
-            count={duplicateExtra}
-            merging={!!mergingDuplicates}
-            onMerge={() => void onMergeDuplicates()}
-          />
-        </div>
-      ) : null}
+      {maintenanceActions ? <div className="mb-3">{maintenanceActions}</div> : null}
 
       <div className="relative min-h-0 flex-1">
         <div ref={desktopScrollRef} className="h-full overflow-y-auto scrollbar-none px-3 py-1">
@@ -506,7 +539,7 @@ export function QueuePanel({
           )}
           {lazyLoadFooter}
         </div>
-        {mergingDuplicates ? <MergingDuplicatesOverlay /> : null}
+        {queueBusy && busyLabel ? <QueueBusyOverlay label={busyLabel} /> : null}
       </div>
     </div>
   );

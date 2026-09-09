@@ -18,6 +18,8 @@ type Props = {
   onOpen?: (lead: LeadQueueItem) => void;
   onWrite?: (lead: LeadQueueItem) => void;
   onSend?: (lead: LeadQueueItem) => void;
+  onCancel?: (lead: LeadQueueItem) => void;
+  cancelBusy?: boolean;
 };
 
 type CardSendBadge = {
@@ -45,20 +47,88 @@ function queueBadge(item: SendQueueItem): CardSendBadge {
   }
 }
 
+function formatBoardDateTime(iso: string): string | null {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return null;
+  const now = new Date();
+  const sameYear = at.getFullYear() === now.getFullYear();
+  const datePart = at.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+  const timePart = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${datePart}, ${timePart}`;
+}
+
+function formatPendingSendLabel(iso: string): string {
+  const at = new Date(iso);
+  if (!Number.isNaN(at.getTime()) && at.getTime() < Date.now()) {
+    return "Overdue";
+  }
+  const formatted = formatBoardDateTime(iso);
+  return formatted ? `Sends ${formatted}` : "Queued";
+}
+
+function formatSentAtLabel(iso: string): string {
+  const formatted = formatBoardDateTime(iso);
+  return formatted ? `Sent ${formatted}` : "Sent";
+}
+
 function cardSendBadge(
   lead: LeadQueueItem,
   stage: string | undefined,
   sendStatus?: SendQueueItem,
 ): CardSendBadge | null {
-  if (sendStatus) return queueBadge(sendStatus);
+  if (sendStatus) {
+    if (sendStatus.status === "sent" && lead.lastEmailSentAt) {
+      return { label: formatSentAtLabel(lead.lastEmailSentAt), tone: "sent" };
+    }
+    return queueBadge(sendStatus);
+  }
+  if (lead.pendingSendLastError) {
+    const reason = lead.pendingSendLastError.trim();
+    return {
+      label: reason ? `Blocked: ${reason}` : "Blocked",
+      tone: "failed",
+    };
+  }
+  if (lead.pendingSendStatus === "sending") {
+    return { label: "Sending", tone: "sending" };
+  }
+  if (lead.pendingSendScheduledFor) {
+    const overdue =
+      !Number.isNaN(new Date(lead.pendingSendScheduledFor).getTime()) &&
+      new Date(lead.pendingSendScheduledFor).getTime() < Date.now();
+    return {
+      label: formatPendingSendLabel(lead.pendingSendScheduledFor),
+      tone: overdue ? "failed" : "waiting",
+    };
+  }
+  if (stage === "Queued") return { label: "Queued", tone: "queued" };
   if (stage === "Email") return { label: "Not sent", tone: "idle" };
   if (stage === "Email Sent" || lead.status === "outreached") {
+    if (lead.lastEmailSentAt) {
+      return { label: formatSentAtLabel(lead.lastEmailSentAt), tone: "sent" };
+    }
     return { label: "Sent", tone: "sent" };
   }
   return null;
 }
 
-export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen, onWrite, onSend }: Props) {
+export function BoardLeadCard({
+  lead,
+  index,
+  accent,
+  stage,
+  sendStatus,
+  onOpen,
+  onWrite,
+  onSend,
+  onCancel,
+  cancelBusy,
+}: Props) {
   const badge = cardSendBadge(lead, stage, sendStatus);
   const className =
     "ish-board-lead-card group block w-full overflow-hidden rounded-[16px] text-left transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5";
@@ -115,7 +185,7 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen, 
               (badge?.tone === "queued" || badge?.tone === "idle" || !badge) &&
                 "bg-brand-canvas text-brand-ink-soft",
             )}
-            title={sendStatus?.error}
+            title={sendStatus?.error ?? lead.pendingSendLastError ?? badge?.label}
           >
             {badge?.tone === "sending" ? <Loader2 className="size-2.5 animate-spin" /> : null}
             {badge?.tone === "waiting" ? <Clock className="size-2.5" /> : null}
@@ -124,18 +194,47 @@ export function BoardLeadCard({ lead, index, accent, stage, sendStatus, onOpen, 
             <span className="truncate">{badge?.label ?? statusToDisplayLabel(lead.status)}</span>
           </span>
           <div className="flex items-center gap-1.5">
-            {(onWrite || onSend) ? (
+            {onCancel ? (
+              <button
+                type="button"
+                disabled={cancelBusy || sendStatus?.status === "sending"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCancel(lead);
+                }}
+                className="flex size-6 items-center justify-center rounded-full border border-red-200/80 bg-white/80 text-red-500 opacity-0 transition-opacity group-hover:opacity-100 hover:border-red-300 hover:bg-red-50 hover:text-red-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Cancel queued send"
+                title="Cancel queued send"
+              >
+                {cancelBusy ? <Loader2 className="size-3 animate-spin" /> : <X className="size-3" />}
+              </button>
+            ) : null}
+            {onSend && !onWrite ? (
+              <button
+                type="button"
+                disabled={sendStatus?.status === "sending"}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSend(lead);
+                }}
+                className="flex size-6 items-center justify-center rounded-full border border-brand-border/70 bg-white/80 text-brand-ink-faint opacity-0 transition-opacity group-hover:opacity-100 hover:border-brand-stratus-blue/40 hover:text-brand-stratus-blue active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Send now"
+                title="Send now"
+              >
+                <Send className="size-3" />
+              </button>
+            ) : null}
+            {onWrite ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (onWrite) onWrite(lead);
-                  else onSend?.(lead);
+                  onWrite(lead);
                 }}
                 className="flex size-6 items-center justify-center rounded-full border border-brand-border/70 bg-white/80 text-brand-ink-faint opacity-0 transition-opacity group-hover:opacity-100 hover:border-brand-stratus-blue/40 hover:text-brand-stratus-blue active:scale-95"
-                aria-label={onWrite ? "Write email" : "Send email"}
+                aria-label="Write email"
               >
-                {onWrite ? <Pencil className="size-3" /> : <Send className="size-3" />}
+                <Pencil className="size-3" />
               </button>
             ) : null}
             <IshAvatar name={lead.name} index={index} size={26} />

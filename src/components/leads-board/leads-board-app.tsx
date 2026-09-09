@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Columns3, Loader2, RefreshCw, Search } from "lucide-react";
+import { Columns3, Loader2, Pencil, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, runWriterSequence, writeAllLeadsForStage } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, runWriterSequence, cancelQueuedOutreach, sendQueuedOutreachNow } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   aggregateStatusCountsByStage,
+  BOARD_QUEUED_STAGE,
+  boardPipelineStages,
   groupLeadsByPipelineStage,
   PIPELINE_STAGES,
-  STATUSES_BY_STAGE_INDEX,
 } from "@/lib/pipeline-status";
 import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
@@ -20,13 +21,6 @@ import {
   type SendQueueItem,
 } from "./board-bulk-actions";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown } from "lucide-react";
-import {
   getOutreachTemplatesForPack,
 } from "@/lib/email/outreach-templates";
 import { getBoardTemplateOverride, setBoardTemplateOverride } from "@/lib/board-template-override";
@@ -34,6 +28,8 @@ import { OutreachComposeModal } from "@/components/email/outreach-compose-modal"
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
+import { WritingLoader } from "@/components/sales-accelerator/writing-loader";
+import { WriteAllModal, type WriteAllPhase } from "@/components/leads-board/write-all-modal";
 import { useLoadMoreOnScroll } from "@/hooks/use-load-more-on-scroll";
 import {
   applyLeadListView,
@@ -134,9 +130,17 @@ export function LeadsBoardApp() {
   const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [writingProgress, setWritingProgress] = useState<BoardBulkProgress | null>(null);
   const [writeTemplate, setWriteTemplate] = useState<string | null>(() => getBoardTemplateOverride());
+  const [writeAllOpen, setWriteAllOpen] = useState(false);
+  const [writeAllMode, setWriteAllMode] = useState<"write" | "rewrite">("write");
+  const [writeAllPhase, setWriteAllPhase] = useState<WriteAllPhase>("pick");
+  const [writeAllResult, setWriteAllResult] = useState<{ ok: number; failed: number; cancelled: number } | null>(null);
   const [sending, setSending] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
+  const [cancellingLeadId, setCancellingLeadId] = useState<string | null>(null);
+  const [cancellingAllQueued, setCancellingAllQueued] = useState(false);
   const sendAbortRef = useRef<AbortController | null>(null);
+  const cancelledLeadIdsRef = useRef<Set<string>>(new Set());
+  const writeAbortRef = useRef<AbortController | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const queueHydrated = useRef(false);
   const [composeLeadId, setComposeLeadId] = useState<string | null>(null);
@@ -194,7 +198,10 @@ export function LeadsBoardApp() {
   }, [sendQueue]);
 
   useEffect(() => {
-    return () => sendAbortRef.current?.abort();
+    return () => {
+      sendAbortRef.current?.abort();
+      writeAbortRef.current?.abort();
+    };
   }, []);
 
   async function load(opts?: { silent?: boolean }) {
@@ -242,6 +249,8 @@ export function LeadsBoardApp() {
     load();
   }, []);
 
+  const boardStages = useMemo(() => boardPipelineStages(), []);
+
   const filteredLeads = useMemo(
     () =>
       applyLeadListView(leads, {
@@ -251,14 +260,6 @@ export function LeadsBoardApp() {
       }),
     [leads, search, quickFilter, panelFilters, addedByUserId, queueSort],
   );
-
-  const grouped = useMemo(() => {
-    const groups = groupLeadsByPipelineStage(filteredLeads);
-    for (const stage of PIPELINE_STAGES) {
-      groups[stage] = sortLeadsQueue(groups[stage] ?? [], queueSort);
-    }
-    return groups;
-  }, [filteredLeads, queueSort]);
 
   const sendQueueByLeadId = useMemo(
     () =>
@@ -273,43 +274,182 @@ export function LeadsBoardApp() {
     [sendQueue, now],
   );
 
-  const boardBusy = Boolean(writingProgress) || sending;
+  const activeSendQueue = useMemo(
+    () =>
+      sendQueue
+        .filter((item) =>
+          item.status === "queued" ||
+          item.status === "waiting" ||
+          item.status === "sending" ||
+          (sending && (item.status === "sent" || item.status === "failed")),
+        )
+        .map((item) =>
+          item.status === "waiting"
+            ? { ...item, gapMinutes: remainingGapMinutes(item, now) }
+            : item,
+        ),
+    [sendQueue, sending, now],
+  );
 
-  const handleWriteAll = useCallback(async (templateOverride?: string | null) => {
-    if (writingProgress || sending) return;
-    const contactReadyStatuses = STATUSES_BY_STAGE_INDEX[0] ?? [];
-    const total = stageCounts["Contact Ready"] ?? grouped["Contact Ready"]?.length ?? 0;
-    if (!total) return;
+  const leadsById = useMemo(
+    () => new Map(leads.map((lead) => [lead.id, lead])),
+    [leads],
+  );
 
-    setWritingProgress({ current: 0, total });
-    try {
-      const result = await writeAllLeadsForStage({
-        statuses: contactReadyStatuses,
-        outreachTemplate: templateOverride ?? writeTemplate ?? undefined,
+  const queuedLeads = useMemo((): LeadQueueItem[] => {
+    const byId = new Map<string, LeadQueueItem>();
+
+    for (const lead of filteredLeads) {
+      if (lead.pendingSendScheduledFor) byId.set(lead.id, lead);
+    }
+
+    for (const item of activeSendQueue) {
+      const existing = leadsById.get(item.leadId) ?? byId.get(item.leadId);
+      if (existing) {
+        byId.set(item.leadId, existing);
+        continue;
+      }
+      byId.set(item.leadId, {
+        id: item.leadId,
+        name: item.name,
+        title: "—",
+        company: "—",
+        city: "—",
+        score: 0,
+        status: "approved",
+        action: "Sending",
+        emailStatus: "unverified",
       });
-      toast.success(
-        result.enqueued === 1
-          ? "Queued email for 1 lead"
-          : `Queued emails for ${result.enqueued} leads`,
-      );
+    }
+
+    return Array.from(byId.values());
+  }, [activeSendQueue, filteredLeads, leadsById]);
+
+  const grouped = useMemo(() => {
+    const groups = groupLeadsByPipelineStage(filteredLeads);
+    for (const stage of PIPELINE_STAGES) {
+      groups[stage] = sortLeadsQueue(groups[stage] ?? [], queueSort);
+    }
+    const queuedIds = new Set(queuedLeads.map((lead) => lead.id));
+    // Keep in-flight and send-window deferred sends out of Email so they only appear under Queued.
+    groups.Email = (groups.Email ?? []).filter((lead) => !queuedIds.has(lead.id));
+    groups[BOARD_QUEUED_STAGE] = queuedLeads;
+    return groups;
+  }, [filteredLeads, queueSort, queuedLeads]);
+
+  const boardBusy = Boolean(writingProgress) || sending;
+  const sendQueueActive = activeSendQueue.some(
+    (item) => item.status === "queued" || item.status === "waiting" || item.status === "sending",
+  );
+
+  const writeTemplates = useMemo(
+    () =>
+      getOutreachTemplatesForPack("gifting-sweets").filter(
+        (t) => t.id !== "follow_up" && t.id !== "final_reminder",
+      ),
+    [],
+  );
+
+  const openWriteAllModal = useCallback(
+    (mode: "write" | "rewrite") => {
+      if (sending) return;
+      if (writeAllPhase === "writing") {
+        setWriteAllOpen(true);
+        return;
+      }
+      const nextTemplate = writeTemplate ?? writeTemplates[0]?.id ?? null;
+      if (nextTemplate && nextTemplate !== writeTemplate) {
+        setWriteTemplate(nextTemplate);
+        setBoardTemplateOverride(nextTemplate);
+      }
+      setWriteAllMode(mode);
+      setWriteAllPhase("pick");
+      setWriteAllResult(null);
+      setWriteAllOpen(true);
+    },
+    [sending, writeAllPhase, writeTemplate, writeTemplates],
+  );
+
+  const closeWriteAllModal = useCallback(() => {
+    if (writeAllPhase === "writing") return;
+    setWriteAllOpen(false);
+    setWriteAllPhase("pick");
+    setWriteAllResult(null);
+  }, [writeAllPhase]);
+
+  const runBulkWriteFromModal = useCallback(async () => {
+    if (writingProgress || sending) return;
+    const stageLabel = writeAllMode === "rewrite" ? "Email" : "Contact Ready";
+    const label = writeAllMode === "rewrite" ? "Rewrite" : "Write";
+    const stageLeads = grouped[stageLabel] ?? [];
+    if (!stageLeads.length) {
+      toast.message(`No leads in ${stageLabel} to ${label.toLowerCase()}`);
+      return;
+    }
+
+    const controller = new AbortController();
+    writeAbortRef.current?.abort();
+    writeAbortRef.current = controller;
+    setWriteAllPhase("writing");
+    setWritingProgress({ current: 0, total: stageLeads.length });
+    try {
+      const result = await writeEmailsForLeads(stageLeads, {
+        outreachTemplate: writeTemplate ?? undefined,
+        onProgress: setWritingProgress,
+        signal: controller.signal,
+      });
+      setWriteAllResult(result);
+      setWriteAllPhase("done");
+      if (result.cancelled > 0 && result.ok === 0) {
+        toast.message("Write cancelled");
+      } else if (result.failed === 0 && result.cancelled === 0) {
+        toast.success(
+          `${label === "Rewrite" ? "Rewrote" : "Wrote"} ${result.ok.toLocaleString()} ${
+            result.ok === 1 ? "email" : "emails"
+          }`,
+        );
+      } else {
+        toast.error(
+          `${result.ok} written, ${result.failed} failed${
+            result.cancelled ? `, ${result.cancelled} cancelled` : ""
+          }`,
+        );
+      }
       await load({ silent: true });
-    } catch {
-      toast.error("Write All failed");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : `${label} All failed`;
+      toast.error(message);
+      setWriteAllPhase("pick");
     } finally {
+      writeAbortRef.current = null;
       setWritingProgress(null);
     }
-  }, [writingProgress, sending, stageCounts, grouped, writeTemplate]);
+  }, [writingProgress, sending, writeAllMode, grouped, writeTemplate]);
+
+  const cancelBulkWrite = useCallback(() => {
+    writeAbortRef.current?.abort();
+  }, []);
 
   const handleWriteLead = useCallback(async (lead: LeadQueueItem) => {
     if (boardBusy) return;
+    const controller = new AbortController();
+    writeAbortRef.current?.abort();
+    writeAbortRef.current = controller;
     setWritingProgress({ current: 1, total: 1, leadName: lead.name });
     try {
       await runWriterSequence(lead.id, { outreachTemplate: writeTemplate ?? undefined });
+      if (controller.signal.aborted) {
+        toast.message("Write cancelled");
+        return;
+      }
       toast.success(`Email drafted for ${lead.name}`);
       await load({ silent: true });
     } catch {
-      toast.error(`Could not write email for ${lead.name}`);
+      if (!controller.signal.aborted) {
+        toast.error(`Could not write email for ${lead.name}`);
+      }
     } finally {
+      writeAbortRef.current = null;
       setWritingProgress(null);
     }
   }, [boardBusy, writeTemplate]);
@@ -324,10 +464,12 @@ export function LeadsBoardApp() {
     sendAbortRef.current = controller;
     setSending(true);
     setSendQueue([{ leadId: lead.id, name: lead.name, status: "queued" }]);
+    cancelledLeadIdsRef.current = new Set();
     try {
       const result = await sendEmailsForLeads([lead], {
         signal: controller.signal,
         onQueueChange: setSendQueue,
+        isLeadCancelled: (id) => cancelledLeadIdsRef.current.has(id),
       });
       if (result.cancelled > 0 && result.ok === 0) {
         toast.message("Send cancelled");
@@ -348,9 +490,135 @@ export function LeadsBoardApp() {
     }
   }, [boardBusy]);
 
+  const handleSendQueuedLead = useCallback(
+    async (lead: LeadQueueItem) => {
+      if (boardBusy) return;
+      if (!lead.pendingSendScheduleId && !lead.pendingSendScheduledFor) {
+        toast.message("No queued Email 1 for this lead");
+        return;
+      }
+      const confirmed = window.confirm(`Send the queued email to ${lead.name} now?`);
+      if (!confirmed) return;
+
+      setCancellingLeadId(lead.id);
+      try {
+        await sendQueuedOutreachNow({
+          scheduleId: lead.pendingSendScheduleId,
+          leadId: lead.id,
+        });
+        toast.success(`Sent email to ${lead.name}`);
+        await load({ silent: true });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not send queued email");
+      } finally {
+        setCancellingLeadId(null);
+      }
+    },
+    [boardBusy],
+  );
+
   const cancelSendAll = useCallback(() => {
     sendAbortRef.current?.abort();
+    setSendQueue((prev) =>
+      prev.map((item) =>
+        item.status === "queued" || item.status === "waiting" || item.status === "sending"
+          ? { ...item, status: "cancelled" as const, gapMinutes: undefined, waitUntil: undefined }
+          : item,
+      ),
+    );
   }, []);
+
+  const handleCancelQueuedLead = useCallback(
+    async (lead: LeadQueueItem) => {
+      const inFlight = sendQueue.find(
+        (item) =>
+          item.leadId === lead.id &&
+          (item.status === "queued" || item.status === "waiting" || item.status === "sending"),
+      );
+      if (inFlight?.status === "sending") {
+        toast.message("This email is already sending and cannot be cancelled");
+        return;
+      }
+
+      const confirmed = window.confirm(`Cancel the queued email for ${lead.name}?`);
+      if (!confirmed) return;
+
+      setCancellingLeadId(lead.id);
+      try {
+        if (inFlight) {
+          cancelledLeadIdsRef.current.add(lead.id);
+          setSendQueue((prev) =>
+            prev.map((item) =>
+              item.leadId === lead.id
+                ? { ...item, status: "cancelled" as const, gapMinutes: undefined, waitUntil: undefined }
+                : item,
+            ),
+          );
+        }
+
+        if (lead.pendingSendScheduledFor) {
+          const result = await cancelQueuedOutreach([lead.id]);
+          if (result.cancelled === 0 && !inFlight) {
+            toast.message("Nothing left to cancel for this lead");
+          } else {
+            toast.success(`Cancelled queued email for ${lead.name}`);
+          }
+        } else if (inFlight) {
+          toast.success(`Cancelled queued email for ${lead.name}`);
+        } else {
+          toast.message("Nothing left to cancel for this lead");
+        }
+        await load({ silent: true });
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Could not cancel queued email");
+      } finally {
+        setCancellingLeadId(null);
+      }
+    },
+    [sendQueue],
+  );
+
+  const handleCancelAllQueued = useCallback(async () => {
+    const persistedIds = queuedLeads
+      .filter((lead) => lead.pendingSendScheduledFor)
+      .map((lead) => lead.id);
+    const hasInFlight = sending || sendQueueActive;
+
+    if (!persistedIds.length && !hasInFlight) return;
+
+    const confirmed = window.confirm(
+      queuedLeads.length <= 1
+        ? "Cancel this queued email?"
+        : "Cancel all queued emails?",
+    );
+    if (!confirmed) return;
+
+    setCancellingAllQueued(true);
+    try {
+      if (hasInFlight) {
+        for (const item of activeSendQueue) {
+          cancelledLeadIdsRef.current.add(item.leadId);
+        }
+        cancelSendAll();
+      }
+
+      if (persistedIds.length) {
+        const result = await cancelQueuedOutreach(persistedIds);
+        toast.success(
+          result.leadIds.length === 1
+            ? "Cancelled 1 queued email"
+            : `Cancelled ${result.leadIds.length || result.cancelled} queued emails`,
+        );
+      } else {
+        toast.message("Send queue cancelled");
+      }
+      await load({ silent: true });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not cancel queued emails");
+    } finally {
+      setCancellingAllQueued(false);
+    }
+  }, [queuedLeads, sending, sendQueueActive, activeSendQueue, cancelSendAll]);
 
   const handleSendAll = useCallback(async () => {
     const targets = grouped.Email ?? [];
@@ -368,11 +636,13 @@ export function LeadsBoardApp() {
     sendAbortRef.current = controller;
     setSending(true);
     setSendQueue(targets.map((lead) => ({ leadId: lead.id, name: lead.name, status: "queued" })));
+    cancelledLeadIdsRef.current = new Set();
 
     try {
       const result = await sendEmailsForLeads(targets, {
         signal: controller.signal,
         onQueueChange: setSendQueue,
+        isLeadCancelled: (id) => cancelledLeadIdsRef.current.has(id),
       });
       if (result.cancelled > 0 && result.ok === 0 && result.failed === 0) {
         toast.message("Send queue cancelled");
@@ -432,19 +702,6 @@ export function LeadsBoardApp() {
           size={40}
         />
       </div>
-      {!loading && !isEmpty ? (
-        <div className="flex flex-wrap gap-2 px-4 pb-2 lg:hidden">
-          {PIPELINE_STAGES.map((stage) => (
-            <span
-              key={stage}
-              className="rounded-full border border-brand-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft"
-            >
-              {stage}
-              <span className="ml-1.5 tabular-nums text-brand-ink">{stageCounts[stage] ?? grouped[stage]?.length ?? 0}</span>
-            </span>
-          ))}
-        </div>
-      ) : null}
       <AppPageHeader
         compact
         icon={Columns3}
@@ -485,21 +742,7 @@ export function LeadsBoardApp() {
             </button>
           </>
         }
-      >
-        {!loading && !isEmpty ? (
-          <div className="flex flex-wrap gap-2">
-            {PIPELINE_STAGES.map((stage) => (
-              <span
-                key={stage}
-                className="rounded-full border border-brand-border/60 bg-white/60 px-2.5 py-1 text-[10.5px] font-semibold text-brand-ink-soft"
-              >
-                {stage}
-                <span className="ml-1.5 tabular-nums text-brand-ink">{stageCounts[stage] ?? grouped[stage].length}</span>
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </AppPageHeader>
+      />
 
       <div
         ref={boardScrollRef}
@@ -517,96 +760,109 @@ export function LeadsBoardApp() {
           </div>
         ) : (
           <div className="flex h-full min-h-[min(100%,520px)] gap-4 pb-2 scrollbar-none">
-            {PIPELINE_STAGES.map((stage) => {
+            {boardStages.map((stage) => {
               const columnLeads = grouped[stage] ?? [];
               const writeBusy = Boolean(writingProgress);
               const sendBusy = sending;
+              const isQueuedStage = stage === BOARD_QUEUED_STAGE;
 
-              const writeTemplates = getOutreachTemplatesForPack("gifting-sweets").filter(
-                (t) => t.id !== "follow_up" && t.id !== "final_reminder",
-              );
-              const activeWriteTemplate = writeTemplates.find((t) => t.id === writeTemplate);
-              const templateAccessory = (
-                <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger
-                    disabled={writeBusy}
+              const emailRewriteButton =
+                stage === "Email" ? (
+                  <button
+                    type="button"
+                    disabled={boardBusy && !writeBusy}
+                    onClick={() => openWriteAllModal("rewrite")}
                     className={cn(
-                      "flex shrink-0 items-center gap-1 rounded-full border border-brand-border/70 bg-white/80 px-2 py-1.5 text-[10px] font-semibold text-brand-ink-soft transition-all",
+                      "flex size-6 items-center justify-center rounded-full border border-brand-border/70 bg-white/80 text-brand-ink-soft transition-all",
                       "hover:border-brand-ink/25 hover:text-brand-ink",
                       "disabled:cursor-not-allowed disabled:opacity-50",
+                      (writeAllOpen && writeAllMode === "rewrite") || writeBusy
+                        ? "border-brand-stratus-blue/30 text-brand-stratus-blue"
+                        : null,
                     )}
-                    aria-label="Choose Email 1 template"
+                    aria-label="Rewrite emails"
+                    title="Rewrite emails"
                   >
-                    <span className="max-w-[6rem] truncate">
-                      {activeWriteTemplate?.shortLabel ?? "Template"}
-                    </span>
-                    <ChevronDown className="size-2.5 shrink-0" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" sideOffset={4} className="min-w-[11rem]">
-                    {writeTemplates.map((t) => (
-                      <DropdownMenuItem
-                        key={t.id}
-                        onSelect={() => { setWriteTemplate(t.id); setBoardTemplateOverride(t.id); }}
-                        className={cn(
-                          "text-[12px]",
-                          writeTemplate === t.id && "font-semibold text-brand-stratus-blue",
-                        )}
-                      >
-                        {t.shortLabel}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              );
+                    {writeBusy && writeAllMode === "rewrite" ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <Pencil className="size-3" />
+                    )}
+                  </button>
+                ) : null;
 
-              const action =
+              const writeBusyLabel = writingProgress
+                ? writingProgress.total > 0
+                  ? `Writing ${writingProgress.current} of ${writingProgress.total}`
+                  : "Writing…"
+                : "Writing…";
+
+              const actions =
                 stage === "Contact Ready"
-                  ? {
-                      label: "Write All",
-                      busyLabel:
-                        writingProgress && writingProgress.current > 0
-                          ? `Writing ${writingProgress.current} of ${writingProgress.total}`
-                          : "Writing…",
-                      busy: writeBusy,
-                      disabled: boardBusy && !writeBusy,
-                      onClick: () => void handleWriteAll(),
-                      accessory: templateAccessory,
-                    }
+                  ? [
+                      {
+                        label: "Write All",
+                        busyLabel: writeBusyLabel,
+                        busy: writeBusy && writeAllMode === "write",
+                        disabled: boardBusy && !writeBusy,
+                        onClick: () => openWriteAllModal("write"),
+                      },
+                    ]
                   : stage === "Email"
-                    ? {
-                        label: "Send All",
-                        busyLabel: sendBusyLabel(sendQueue),
-                        busy: sendBusy,
-                        disabled: boardBusy && !sendBusy,
-                        onClick: () => void handleSendAll(),
-                        onCancel: cancelSendAll,
-                      }
-                    : undefined;
+                    ? [
+                        {
+                          label: "Send All",
+                          busyLabel: sendBusyLabel(sendQueue),
+                          busy: sendBusy,
+                          disabled: boardBusy && !sendBusy,
+                          onClick: () => void handleSendAll(),
+                        },
+                      ]
+                    : isQueuedStage && queuedLeads.length > 0
+                      ? [
+                          {
+                            label: "Cancel All",
+                            busyLabel: "Cancelling…",
+                            busy: cancellingAllQueued,
+                            tone: "danger" as const,
+                            disabled: cancellingAllQueued || Boolean(cancellingLeadId),
+                            onClick: () => void handleCancelAllQueued(),
+                          },
+                        ]
+                      : undefined;
+
+              const columnCount = isQueuedStage
+                ? queuedLeads.length
+                : stageCounts[stage];
 
               return (
                 <BoardColumn
                   key={stage}
                   stage={stage}
                   leads={columnLeads}
-                  totalCount={stageCounts[stage]}
-                  action={action}
+                  totalCount={columnCount}
+                  actions={actions}
+                  headerAccessory={emailRewriteButton}
                   queueByLeadId={
-                    stage === "Email" || stage === "Email Sent" ? sendQueueByLeadId : undefined
+                    isQueuedStage || stage === "Email Sent" ? sendQueueByLeadId : undefined
                   }
-                  queueItems={stage === "Email" && sendQueue.length > 0
-                    ? sendQueue.map((item) =>
-                        item.status === "waiting"
-                          ? { ...item, gapMinutes: remainingGapMinutes(item, now) }
-                          : item,
-                      )
-                    : undefined}
                   onLeadOpen={
-                    stage === "Email" || stage === "Email Sent"
+                    stage === "Email" || isQueuedStage || stage === "Email Sent"
                       ? (lead) => setComposeLeadId(lead.id)
                       : undefined
                   }
-                  onLeadWrite={stage === "Contact Ready" ? handleWriteLead : undefined}
-                  onLeadSend={stage === "Email" ? handleSendLead : undefined}
+                  onLeadWrite={
+                    stage === "Contact Ready" || stage === "Email" ? handleWriteLead : undefined
+                  }
+                  onLeadSend={
+                    stage === "Email"
+                      ? handleSendLead
+                      : isQueuedStage
+                        ? handleSendQueuedLead
+                        : undefined
+                  }
+                  onLeadCancel={isQueuedStage ? handleCancelQueuedLead : undefined}
+                  cancellingLeadId={isQueuedStage ? cancellingLeadId : null}
                 />
               );
             })}
@@ -624,6 +880,46 @@ export function LeadsBoardApp() {
           </div>
         ) : null}
       </div>
+      {writingProgress && !writeAllOpen ? (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-white/70 px-4 backdrop-blur-[2px]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Writing email"
+        >
+          <div className="w-full max-w-sm rounded-[24px] border border-brand-border/60 bg-white p-2 shadow-[var(--shadow-brand-lg)]">
+            <WritingLoader
+              contactName={writingProgress.leadName}
+              sequenceLabel={
+                writingProgress.leadName
+                  ? `Writing smart emails for ${writingProgress.leadName}`
+                  : "Writing smart emails"
+              }
+            />
+          </div>
+        </div>
+      ) : null}
+      <WriteAllModal
+        open={writeAllOpen}
+        mode={writeAllMode}
+        templates={writeTemplates}
+        selectedTemplateId={writeTemplate ?? writeTemplates[0]?.id ?? null}
+        onSelectTemplate={(id) => {
+          setWriteTemplate(id);
+          setBoardTemplateOverride(id);
+        }}
+        leadCount={
+          writeAllMode === "rewrite"
+            ? (grouped.Email?.length ?? 0)
+            : (grouped["Contact Ready"]?.length ?? 0)
+        }
+        phase={writeAllPhase}
+        progress={writingProgress}
+        result={writeAllResult}
+        onWrite={() => void runBulkWriteFromModal()}
+        onCancelWrite={cancelBulkWrite}
+        onClose={closeWriteAllModal}
+      />
       {composeLeadId ? (
         <OutreachComposeModal
           leadId={composeLeadId}
@@ -639,7 +935,7 @@ export function LeadsBoardApp() {
 function BoardSkeleton() {
   return (
     <div className="flex h-full gap-4 overflow-x-auto pb-2">
-      {PIPELINE_STAGES.map((stage) => (
+      {boardPipelineStages().map((stage) => (
         <div key={stage} className="flex w-[280px] shrink-0 flex-col gap-3">
           <div className="h-6 w-32 animate-pulse rounded-lg bg-brand-border/50" />
           <div className="h-[120px] animate-pulse rounded-[16px] bg-brand-border/40" />

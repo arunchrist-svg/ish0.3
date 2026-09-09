@@ -11,6 +11,7 @@ import {
   deriveQueueAction,
   parseDealAmount,
   PIPELINE_STAGES,
+  boardPipelineStages,
 } from "@/lib/pipeline-status";
 
 describe("FUNNEL-UNIT-001 pipeline status mapping", () => {
@@ -107,6 +108,29 @@ describe("FUNNEL-UNIT-003 stage helpers", () => {
       "Email Sent",
       "Replied",
       "Meeting",
+      "Negotiate",
+      "Closed",
+    ]);
+  });
+
+  it("inserts Queued before Email Sent on the board", () => {
+    expect(boardPipelineStages()).toEqual([
+      "Contact Ready",
+      "Email",
+      "Queued",
+      "Email Sent",
+      "Replied",
+      "Meeting",
+      "Negotiate",
+      "Closed",
+    ]);
+    expect(boardPipelineStages("gifting-sweets")).toEqual([
+      "Contact Ready",
+      "Email",
+      "Queued",
+      "Email Sent",
+      "Replied",
+      "Tasting Sent",
       "Negotiate",
       "Closed",
     ]);

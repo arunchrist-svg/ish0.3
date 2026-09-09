@@ -1,8 +1,13 @@
 import type { leads, leadOutreach, outreachSchedule } from "@/db/schema";
 import { normalizeReplySubject } from "@/lib/email/threading";
-import { resolveDraftSubject } from "@/lib/email/draft-variants";
+import { isNonInitialSequenceDraft, resolveDraftSubject } from "@/lib/email/draft-variants";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control-shared";
-import { emailStepLabel, normalizeCadenceDays } from "@/lib/email/cadence";
+import {
+  emailLabelForDraftPosition,
+  emailStepLabel,
+  normalizeCadenceDays,
+  sequenceDayForDraftPosition,
+} from "@/lib/email/cadence";
 import {
   CATALOG_ON_OPEN_EMAIL_KIND,
   CATALOG_ON_OPEN_SEQUENCE_POSITION,
@@ -141,6 +146,34 @@ export type BarNode = {
   action?: "draft_reply";
 };
 
+/** True when the rail has a real Email 1 send, not a later step stored as the opener. */
+export function isEmail1SentInThread(thread?: {
+  barNodes?: Array<{ id: string; kind?: BarNodeKind; state?: BarNodeState }>;
+} | null): boolean {
+  const e1 = thread?.barNodes?.find((n) => n.id === "e1" || n.id === "draft-1");
+  if (!e1) return false;
+  return e1.kind === "sent" || e1.state === "done";
+}
+
+/** Schedule id to send-now for Email 2/3 / If Opened. Ignores sent, skipped, and cancelled rows. */
+export function pendingFollowUpScheduleIdFromNode(node?: {
+  scheduleId?: string;
+  kind?: BarNodeKind;
+  state?: BarNodeState;
+} | null): string | undefined {
+  if (!node?.scheduleId) return undefined;
+  if (node.state === "done" || node.state === "skipped") return undefined;
+  if (node.kind === "sent") return undefined;
+  if (
+    node.state === "scheduled" ||
+    node.state === "paused" ||
+    node.kind === "scheduled"
+  ) {
+    return node.scheduleId;
+  }
+  return undefined;
+}
+
 export type ThreadEvent = {
   id: string;
   kind: ThreadEventKind;
@@ -212,28 +245,99 @@ function daysUntil(scheduledFor: Date | string): number {
   return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
 }
 
-function inferKind(row: ScheduleRow): ThreadEventKind {
-  const k = row.emailKind as ThreadEventKind | null;
-  if (k === "initial" || k === "followup" || k === "outbound_reply" || k === "inbound_reply") return k;
-  if (row.sequenceDay === 0) return "initial";
-  if (row.sequenceDay === -1) return "outbound_reply";
-  if (row.sequenceDay === -2) return "inbound_reply";
-  if (row.sequenceDay > 0) return "followup";
-  return "initial";
+/**
+ * Resolve the draft that actually drove a schedule row. Prefer draftLeadOutreachId;
+ * fall back to the approval's outreach when the opener was saved without a draft link
+ * (legacy bug: Email 3 body stored as sequenceDay 0).
+ */
+export function resolveScheduleLinkedDraft<T extends { id: string }>(
+  row: { draftLeadOutreachId?: string | null; approvalId?: string | null },
+  draftsById: Map<string, T>,
+  draftIdByApprovalId?: Record<string, string>,
+): T | undefined {
+  if (row.draftLeadOutreachId) {
+    const direct = draftsById.get(row.draftLeadOutreachId);
+    if (direct) return direct;
+  }
+  const viaApproval =
+    row.approvalId && draftIdByApprovalId ? draftIdByApprovalId[row.approvalId] : undefined;
+  if (viaApproval) return draftsById.get(viaApproval);
+  return undefined;
 }
 
-function eventLabelForRow(
-  kind: ThreadEventKind,
-  sequenceDay: number,
-  cadenceDays: number[],
-  emailKind?: string | null,
-): string {
-  if (emailKind === CATALOG_ON_OPEN_EMAIL_KIND) {
-    return "If Opened";
+/**
+ * When a day-0 / initial row was wrongly sent from Email 2/3 / If Opened, recover the
+ * real step from the linked draft so Conversation and the sequence rail stay truthful.
+ */
+export function effectiveScheduleStep(params: {
+  sequenceDay: number;
+  emailKind?: string | null;
+  linkedDraft?: {
+    sequencePosition?: number | null;
+    templateVariant?: string | null;
+  } | null;
+  cadenceDays?: number[];
+}): {
+  sequenceDay: number;
+  emailKind: string | null | undefined;
+  label: string;
+  kind: ThreadEventKind;
+  recoveredFromDraft: boolean;
+} {
+  const cadence = normalizeCadenceDays(params.cadenceDays);
+  const draft = params.linkedDraft;
+  const storedLooksLikeOpener =
+    params.sequenceDay === 0 || params.emailKind === "initial" || params.emailKind == null;
+  const mislabeled =
+    storedLooksLikeOpener && isNonInitialSequenceDraft(draft) && draft?.sequencePosition != null;
+
+  if (mislabeled) {
+    const pos = draft.sequencePosition!;
+    const day = sequenceDayForDraftPosition(pos, cadence) ?? params.sequenceDay;
+    const label = emailLabelForDraftPosition(pos) ?? emailStepLabel(day, cadence);
+    const emailKind = isCatalogOnOpenDraft(draft)
+      ? CATALOG_ON_OPEN_EMAIL_KIND
+      : "followup";
+    return {
+      sequenceDay: day,
+      emailKind,
+      label,
+      kind: "followup",
+      recoveredFromDraft: true,
+    };
   }
-  if (kind === "inbound_reply") return "Their reply";
-  if (kind === "outbound_reply") return "Your reply";
-  return emailStepLabel(sequenceDay, normalizeCadenceDays(cadenceDays));
+
+  const kind = (() => {
+    const k = params.emailKind as ThreadEventKind | null | undefined;
+    if (k === "initial" || k === "followup" || k === "outbound_reply" || k === "inbound_reply") return k;
+    if (params.sequenceDay === 0) return "initial" as const;
+    if (params.sequenceDay === -1) return "outbound_reply" as const;
+    if (params.sequenceDay === -2) return "inbound_reply" as const;
+    if (params.sequenceDay > 0) return "followup" as const;
+    return "initial" as const;
+  })();
+
+  return {
+    sequenceDay: params.sequenceDay,
+    emailKind: params.emailKind,
+    label: (() => {
+      if (params.emailKind === CATALOG_ON_OPEN_EMAIL_KIND) return "If Opened";
+      if (kind === "inbound_reply") return "Their reply";
+      if (kind === "outbound_reply") return "Your reply";
+      return emailStepLabel(params.sequenceDay, cadence);
+    })(),
+    kind,
+    recoveredFromDraft: false,
+  };
+}
+
+function isTrueInitialSentRow(
+  row: ScheduleRow,
+  linkedDraft?: { sequencePosition?: number | null; templateVariant?: string | null } | null,
+): boolean {
+  if (row.status !== "sent") return false;
+  if (!(row.sequenceDay === 0 || row.emailKind === "initial")) return false;
+  return !isNonInitialSequenceDraft(linkedDraft);
 }
 
 export function buildEmailThread(params: {
@@ -243,6 +347,8 @@ export function buildEmailThread(params: {
   latestOutreach?: OutreachRow | null;
   replyDraftSent?: boolean;
   outreachBodiesByApprovalId?: Record<string, string>;
+  /** approvalId → lead_outreach.id when schedule.draftLeadOutreachId is missing */
+  draftIdByApprovalId?: Record<string, string>;
   inboundReplyAt?: string | null;
   cadenceDays?: number[];
 }): EmailThread {
@@ -253,6 +359,7 @@ export function buildEmailThread(params: {
     latestOutreach,
     replyDraftSent = false,
     outreachBodiesByApprovalId = {},
+    draftIdByApprovalId = {},
     inboundReplyAt,
     cadenceDays = [3, 7],
   } = params;
@@ -263,29 +370,37 @@ export function buildEmailThread(params: {
     const tb = b.sentAt ?? b.scheduledFor;
     return new Date(ta).getTime() - new Date(tb).getTime();
   });
-
-  const bodyForRow = (row: ScheduleRow) =>
-    row.bodySnippet ??
-    (row.approvalId ? outreachBodiesByApprovalId[row.approvalId] : undefined);
+  const draftsById = new Map(sequenceDrafts.map((d) => [d.id, d]));
 
   for (const row of sorted) {
-    const kind = inferKind(row);
     if (row.status === "cancelled") continue;
     const isScheduled = row.status === "scheduled";
-    const body = bodyForRow(row);
+    const linkedDraft = resolveScheduleLinkedDraft(row, draftsById, draftIdByApprovalId);
+    const step = effectiveScheduleStep({
+      sequenceDay: row.sequenceDay,
+      emailKind: row.emailKind,
+      linkedDraft,
+      cadenceDays,
+    });
+    const kind = isScheduled ? ("scheduled" as const) : step.kind;
+    const body = bodyForScheduleRow(row, outreachBodiesByApprovalId, linkedDraft);
     const openedAt = row.openedAt?.toISOString();
     const bounce = bounceFields(row);
+    const subject =
+      row.subjectSent?.trim() ||
+      (linkedDraft ? resolveDraftSubject(linkedDraft) : undefined) ||
+      undefined;
     events.push({
       id: row.id,
-      kind: isScheduled ? "scheduled" : kind,
-      label: eventLabelForRow(kind, row.sequenceDay, cadenceDays, row.emailKind),
-      subject: row.subjectSent ?? undefined,
-      snippet: kind === "inbound_reply" ? preview(lead.lastReplyContent) : preview(body),
-      body: kind === "inbound_reply" ? clip(lead.lastReplyContent) : clip(body),
+      kind,
+      label: step.label,
+      subject,
+      snippet: step.kind === "inbound_reply" ? preview(lead.lastReplyContent) : preview(body),
+      body: step.kind === "inbound_reply" ? clip(lead.lastReplyContent) : clip(body),
       at: (row.sentAt ?? (isScheduled ? row.scheduledFor : undefined))?.toISOString(),
       status: bounce.bouncedAt ? "bounced" : openedAt ? "opened" : isScheduled ? "scheduled" : "sent",
       openedAt,
-      sequenceDay: row.sequenceDay,
+      sequenceDay: step.sequenceDay,
       ...bounce,
     });
   }
@@ -293,7 +408,9 @@ export function buildEmailThread(params: {
   const hasInboundRow = scheduleRows.some((r) => r.emailKind === "inbound_reply" || r.sequenceDay === -2);
   const hasInbound = hasInboundRow || lead.status === "replied" || Boolean(lead.lastReplyContent);
   const hasOutboundReply = scheduleRows.some((r) => r.emailKind === "outbound_reply" || r.sequenceDay === -1);
-  const initialSent = scheduleRows.some((r) => r.status === "sent" && (r.sequenceDay === 0 || r.emailKind === "initial"));
+  const initialSent = scheduleRows.some((r) =>
+    isTrueInitialSentRow(r, resolveScheduleLinkedDraft(r, draftsById, draftIdByApprovalId)),
+  );
   const pendingFollowup = scheduleRows.some((r) => r.status === "scheduled" && r.sequenceDay > 0);
   const sequenceState = deriveSequenceState(lead.status, scheduleRows);
   const isReplyDraft = latestOutreach?.templateVariant === "reply";
@@ -314,7 +431,10 @@ export function buildEmailThread(params: {
   const coveredPositions = new Set<number>();
   for (const ev of events) {
     if (ev.kind === "inbound_reply" || ev.kind === "outbound_reply") continue;
-    if (ev.label === "If Opened") continue;
+    if (ev.label === "If Opened") {
+      coveredPositions.add(CATALOG_ON_OPEN_SEQUENCE_POSITION);
+      continue;
+    }
     if (ev.sequenceDay === 0) coveredPositions.add(1);
     else if (ev.sequenceDay === cadenceDays[0]) coveredPositions.add(2);
     else if (ev.sequenceDay === cadenceDays[1]) coveredPositions.add(3);
@@ -353,9 +473,12 @@ export function buildEmailThread(params: {
     sequenceDrafts.find((d) => d.sequencePosition === 1) ??
     (latestOutreach?.sequencePosition === 1 ? latestOutreach : undefined);
   const email1Subject = email1Draft ? resolveDraftSubject(email1Draft) : "";
+  const trueInitialRow = sorted.find((r) =>
+    isTrueInitialSentRow(r, resolveScheduleLinkedDraft(r, draftsById, draftIdByApprovalId)),
+  );
   const threadRootSubject =
     lead.threadRootSubject ??
-    sorted.find((r) => r.sequenceDay === 0)?.subjectSent ??
+    trueInitialRow?.subjectSent ??
     (email1Subject || (latestOutreach ? resolveDraftSubject(latestOutreach) : undefined) || undefined);
 
   let phase: ThreadPhase = "compose";
@@ -407,6 +530,7 @@ export function buildEmailThread(params: {
     replyDraftSent,
     cadenceDays,
     outreachBodiesByApprovalId,
+    draftIdByApprovalId,
   });
 
   let selectedNodeId =
@@ -444,6 +568,7 @@ function buildBarNodes(params: {
   replyDraftSent: boolean;
   cadenceDays: number[];
   outreachBodiesByApprovalId: Record<string, string>;
+  draftIdByApprovalId: Record<string, string>;
 }): { barMode: BarMode; barNodes: BarNode[] } {
   const {
     lead,
@@ -456,25 +581,34 @@ function buildBarNodes(params: {
     replyDraftSent,
     cadenceDays,
     outreachBodiesByApprovalId,
+    draftIdByApprovalId,
   } = params;
 
   const sortedDrafts = [...sequenceDrafts].sort(
     (a, b) => (a.sequencePosition ?? 99) - (b.sequencePosition ?? 99),
   );
+  const draftsById = new Map(sequenceDrafts.map((d) => [d.id, d]));
 
   // Progress strip always shows Email 1–3 when the sequence has started or drafts exist.
   // Conversation history (including replies) lives in `events`, not this strip.
   if (initialSent || hasInbound || lead.status === "replied" || lead.status === "outreached") {
     const nodes: BarNode[] = [];
-    const e1Row = scheduleRows.find((r) => r.sequenceDay === 0 && r.status === "sent");
-    const e1Body = e1Row?.bodySnippet ?? (e1Row?.approvalId ? outreachBodiesByApprovalId[e1Row.approvalId] : undefined);
+    const e1Row = scheduleRows.find((r) =>
+      isTrueInitialSentRow(r, resolveScheduleLinkedDraft(r, draftsById, draftIdByApprovalId)),
+    );
+    const email1Draft = sortedDrafts.find((d) => d.sequencePosition === 1);
+    const e1Body =
+      e1Row?.bodySnippet ??
+      (e1Row?.approvalId ? outreachBodiesByApprovalId[e1Row.approvalId] : undefined) ??
+      email1Draft?.emailBody;
     nodes.push({
       id: "e1",
       label: "Email 1",
       state: e1Row ? "done" : "upcoming",
-      kind: e1Row ? "sent" : "scheduled",
+      kind: e1Row ? "sent" : email1Draft ? "draft" : "scheduled",
       scheduleId: e1Row?.id,
-      subject: e1Row?.subjectSent ?? undefined,
+      outreachId: e1Row?.draftLeadOutreachId ?? email1Draft?.id,
+      subject: e1Row?.subjectSent ?? (email1Draft ? resolveDraftSubject(email1Draft) : undefined) ?? undefined,
       body: clip(e1Body),
       snippet: preview(e1Body),
       at: e1Row?.sentAt?.toISOString(),
@@ -484,13 +618,50 @@ function buildBarNodes(params: {
 
     const catalogDraft = sortedDrafts.find((d) => isCatalogOnOpenDraft(d));
     const followupSchedules = scheduleRows
-      .filter((r) => r.sequenceDay > 0 && !isCatalogOnOpenSchedule(r, catalogDraft?.id))
-      .sort((a, b) => a.sequenceDay - b.sequenceDay);
+      .filter((r) => {
+        const linked = resolveScheduleLinkedDraft(r, draftsById, draftIdByApprovalId);
+        const step = effectiveScheduleStep({
+          sequenceDay: r.sequenceDay,
+          emailKind: r.emailKind,
+          linkedDraft: linked,
+          cadenceDays,
+        });
+        if (step.emailKind === CATALOG_ON_OPEN_EMAIL_KIND || isCatalogOnOpenSchedule(r, catalogDraft?.id)) {
+          return false;
+        }
+        return step.sequenceDay > 0;
+      })
+      .sort((a, b) => {
+        const dayA = effectiveScheduleStep({
+          sequenceDay: a.sequenceDay,
+          emailKind: a.emailKind,
+          linkedDraft: resolveScheduleLinkedDraft(a, draftsById, draftIdByApprovalId),
+          cadenceDays,
+        }).sequenceDay;
+        const dayB = effectiveScheduleStep({
+          sequenceDay: b.sequenceDay,
+          emailKind: b.emailKind,
+          linkedDraft: resolveScheduleLinkedDraft(b, draftsById, draftIdByApprovalId),
+          cadenceDays,
+        }).sequenceDay;
+        return dayA - dayB;
+      });
 
     const cadence = cadenceDays.length >= 2 ? cadenceDays : [3, 7];
     for (let i = 0; i < cadence.length; i++) {
       const day = cadence[i];
-      const row = followupSchedules.find((r) => r.sequenceDay === day) ?? followupSchedules[i];
+      const row =
+        followupSchedules.find((r) => {
+          const linked = resolveScheduleLinkedDraft(r, draftsById, draftIdByApprovalId);
+          return (
+            effectiveScheduleStep({
+              sequenceDay: r.sequenceDay,
+              emailKind: r.emailKind,
+              linkedDraft: linked,
+              cadenceDays,
+            }).sequenceDay === day
+          );
+        }) ?? followupSchedules[i];
       const emailNum = i + 2;
       const isSent = row?.status === "sent";
       const isScheduled = row?.status === "scheduled";
@@ -498,9 +669,13 @@ function buildBarNodes(params: {
       const isCancelled = row?.status === "cancelled";
       const repliedStops = hasInbound || lead.status === "replied";
       const skipped = !isSent && (isCancelled || repliedStops);
-      const body = row ? bodyForScheduleRow(row, outreachBodiesByApprovalId) : undefined;
+      const linkedDraft = sortedDrafts.find(
+        (d) => d.id === row?.draftLeadOutreachId || d.sequencePosition === emailNum,
+      ) ?? (row ? resolveScheduleLinkedDraft(row, draftsById, draftIdByApprovalId) : undefined);
+      const body = row
+        ? bodyForScheduleRow(row, outreachBodiesByApprovalId, linkedDraft)
+        : linkedDraft?.emailBody;
       const days = row && isScheduled && !skipped ? daysUntil(row.scheduledFor) : undefined;
-      const linkedDraft = sortedDrafts.find((d) => d.sequencePosition === emailNum);
 
       nodes.push({
         id: `e${emailNum}`,
@@ -518,7 +693,7 @@ function buildBarNodes(params: {
         scheduleId: row?.id,
         outreachId: row?.draftLeadOutreachId ?? linkedDraft?.id,
         daysUntil: days,
-        subject: row?.subjectSent ?? linkedDraft?.subjectA ?? undefined,
+        subject: row?.subjectSent ?? (linkedDraft ? resolveDraftSubject(linkedDraft) : undefined) ?? undefined,
         body: clip(body ?? linkedDraft?.emailBody),
         snippet: preview(body ?? linkedDraft?.emailBody),
         at: row?.sentAt?.toISOString() ?? (isScheduled ? row?.scheduledFor?.toISOString() : undefined),
@@ -527,7 +702,18 @@ function buildBarNodes(params: {
       });
     }
 
-    const catalogSched = scheduleRows.find((r) => isCatalogOnOpenSchedule(r, catalogDraft?.id));
+    const catalogSched = scheduleRows.find((r) => {
+      if (isCatalogOnOpenSchedule(r, catalogDraft?.id)) return true;
+      const linked = resolveScheduleLinkedDraft(r, draftsById, draftIdByApprovalId);
+      return (
+        effectiveScheduleStep({
+          sequenceDay: r.sequenceDay,
+          emailKind: r.emailKind,
+          linkedDraft: linked,
+          cadenceDays,
+        }).emailKind === CATALOG_ON_OPEN_EMAIL_KIND
+      );
+    });
     if (catalogDraft || catalogSched) {
       const isSent = catalogSched?.status === "sent";
       const isScheduled = catalogSched?.status === "scheduled";
@@ -553,15 +739,15 @@ function buildBarNodes(params: {
         scheduleId: catalogSched?.id,
         outreachId: catalogSched?.draftLeadOutreachId ?? catalogDraft?.id,
         daysUntil: days,
-        subject: catalogSched?.subjectSent ?? catalogDraft?.subjectA ?? undefined,
+        subject: catalogSched?.subjectSent ?? (catalogDraft ? resolveDraftSubject(catalogDraft) : undefined) ?? undefined,
         body: clip(
           catalogSched
-            ? bodyForScheduleRow(catalogSched, outreachBodiesByApprovalId)
+            ? bodyForScheduleRow(catalogSched, outreachBodiesByApprovalId, catalogDraft)
             : catalogDraft?.emailBody,
         ),
         snippet: preview(
           catalogSched
-            ? bodyForScheduleRow(catalogSched, outreachBodiesByApprovalId)
+            ? bodyForScheduleRow(catalogSched, outreachBodiesByApprovalId, catalogDraft)
             : catalogDraft?.emailBody,
         ),
         at:
@@ -610,8 +796,21 @@ function buildBarNodes(params: {
   return { barMode: "hidden", barNodes: [] };
 }
 
-function bodyForScheduleRow(row: ScheduleRow, outreachBodiesByApprovalId: Record<string, string>) {
-  return row.bodySnippet ?? (row.approvalId ? outreachBodiesByApprovalId[row.approvalId] : undefined);
+function bodyForScheduleRow(
+  row: ScheduleRow,
+  outreachBodiesByApprovalId: Record<string, string>,
+  linkedDraft?: OutreachRow | null,
+) {
+  if (row.bodySnippet?.trim()) return row.bodySnippet;
+  if (linkedDraft?.emailBody?.trim()) return linkedDraft.emailBody;
+  // Follow-up / catalog rows reuse Email 1's approvalId for bookkeeping. Never use that
+  // approval body as the follow-up preview or the conversation shows Email 1 twice.
+  const isFollowUpRow =
+    row.emailKind === "followup" ||
+    row.emailKind === CATALOG_ON_OPEN_EMAIL_KIND ||
+    row.sequenceDay > 0;
+  if (isFollowUpRow) return undefined;
+  return row.approvalId ? outreachBodiesByApprovalId[row.approvalId] : undefined;
 }
 
 function buildNextStep(

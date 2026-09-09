@@ -4,7 +4,7 @@ import { handleApiError } from "@/lib/api-errors";
 import { getOutreachAttentionCounts } from "@/lib/email/outreach-attention-counts";
 
 /**
- * Lightweight Outreach badge counts for the sidebar.
+ * Lightweight Outbox badge counts for the sidebar.
  * Same visibility + needs-attention rules as `/api/email/overview` and `/api/hub/badge`.
  */
 export async function GET() {

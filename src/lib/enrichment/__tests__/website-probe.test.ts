@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { clearWebsiteProbeCache, probeCompanyWebsiteLive } from "@/lib/enrichment/website-probe";
+import {
+  clearWebsiteProbeCache,
+  probeCompanyWebsiteLive,
+  rejectNonIndianWebsiteStamp,
+  websiteTextLooksForeignOnly,
+  websiteTextLooksIndian,
+} from "@/lib/enrichment/website-probe";
 
 describe("probeCompanyWebsiteLive", () => {
   afterEach(() => {
@@ -54,5 +60,35 @@ describe("probeCompanyWebsiteLive", () => {
       }),
     );
     await expect(probeCompanyWebsiteLive("slow.example")).resolves.toBe("unknown");
+  });
+});
+
+describe("India website stamps", () => {
+  it("keeps Indian copy and drops US-only homepages", () => {
+    expect(websiteTextLooksIndian("Based in Bengaluru, India. GSTIN 29AAAAA0000A1Z5")).toBe(true);
+    expect(
+      websiteTextLooksForeignOnly("Early Stage is a venture firm in New York, United States."),
+    ).toBe(true);
+    expect(
+      rejectNonIndianWebsiteStamp({
+        host: "earlystage.com",
+        companyName: "EARLYSTAGE MARKETING PRIVATE LIMITED",
+        snippet: "We invest in startups from our New York office in the United States. ".repeat(8),
+      }),
+    ).toBe(true);
+    expect(
+      rejectNonIndianWebsiteStamp({
+        host: "early.partners",
+        companyName: "EARLYSTAGE MARKETING PRIVATE LIMITED",
+        snippet: "We're building a company of the best start-up marketers for hire in India, from Bengaluru.",
+      }),
+    ).toBe(false);
+    expect(
+      rejectNonIndianWebsiteStamp({
+        host: "pavna.in",
+        companyName: "Pavna Industries",
+        snippet: "Welcome to our factory",
+      }),
+    ).toBe(false);
   });
 });

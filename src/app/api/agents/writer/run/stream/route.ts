@@ -3,6 +3,7 @@ import { db, leads, leadOutreach } from "@/db";
 import { eq } from "drizzle-orm";
 import { friendlyLLMError, llmErrorHttpStatus } from "@/lib/llm";
 import type { OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { isZeroCostTemplateWrite } from "@/lib/email/outreach-templates";
 import { toWriterDraft } from "@/lib/agents/writer-draft";
 import { requireTenantContext } from "@/lib/tenant";
 import { assertCredits, deductCredits } from "@/lib/billing/credits";
@@ -28,13 +29,18 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ error: "Lead not found" }), { status: 404 });
     }
 
+    const freeTemplate = isZeroCostTemplateWrite(outreachTemplate);
+
     const stream = new ReadableStream({
       async start(controller) {
         const send = (payload: Record<string, unknown>) => controller.enqueue(sse(payload));
         try {
           send({ type: "progress", message: "Loading lead context..." });
-          await assertCredits(ctx.tenantId, "writer.draft", 1);
-          send({ type: "progress", message: "Drafting email with AI..." });
+          if (!freeTemplate) await assertCredits(ctx.tenantId, "writer.draft", 1);
+          send({
+            type: "progress",
+            message: freeTemplate ? "Filling fixed template…" : "Drafting email with AI...",
+          });
 
           const outreachId = await runWriter(leadId, {
             outreachTemplate: outreachTemplate as OutreachTemplateId | undefined,
@@ -42,9 +48,11 @@ export async function POST(req: Request) {
             occasionTheme,
           });
 
-          send({ type: "progress", message: "Scoring deliverability..." });
-          await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
-          void checkLowBalanceAlerts(ctx.tenantId);
+          if (!freeTemplate) {
+            send({ type: "progress", message: "Scoring deliverability..." });
+            await deductCredits({ tenantId: ctx.tenantId, action: "writer.draft", referenceId: outreachId });
+            void checkLowBalanceAlerts(ctx.tenantId);
+          }
 
           const draft = await db.query.leadOutreach.findFirst({ where: eq(leadOutreach.id, outreachId) });
           if (!draft) {

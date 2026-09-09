@@ -569,4 +569,4 @@ export function isOutreachSendingPaused(config: Pick<EmailConfig, "outreachPause
 }
 
 export const OUTREACH_PAUSED_MESSAGE =
-  "Outreach sending is paused. Resume sending in Settings or the Email queue to send emails.";
+  "Outbox sending is paused. Resume sending in Settings or the Outbox queue to send emails.";

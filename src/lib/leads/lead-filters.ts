@@ -99,7 +99,7 @@ export const LEAD_PANEL_FILTER_GROUPS: {
   },
   {
     id: "outreach",
-    label: "Outreach",
+    label: "Outbox",
     filters: [
       { id: "email_sent", label: "Email sent" },
       { id: "not_sent", label: "Not sent" },

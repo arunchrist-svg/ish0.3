@@ -1,15 +1,33 @@
-import type { EmailThread, ThreadEvent } from "@/lib/email/email-thread";
+import type { BarNodeKind, EmailThread, ThreadEvent, ThreadPhase } from "@/lib/email/email-thread";
 
 export type ConversationSide = "them" | "us";
 
 /**
- * Conversation stack is for two-sided history only.
- * While awaiting a reply, sequence progress lives on the rail chips, not this list.
+ * Two-sided conversation stack (inbound present).
+ * Sent-only Email 1 preview on the Leads Email tab uses showOutboundHistory instead.
  */
 export function shouldShowConversationTimeline(
   thread: Pick<EmailThread, "events"> | null | undefined,
 ): boolean {
   return (thread?.events ?? []).some((e) => e.kind === "inbound_reply");
+}
+
+/**
+ * After Email 1 is sent/opened, the Email tab still needs a read-only body when that
+ * step is selected. Compose covers draft/scheduled steps; this covers sent steps.
+ */
+export function shouldShowSentOutboundPreview(params: {
+  composeEditorVisible: boolean;
+  selectedNodeKind?: BarNodeKind;
+  phase?: ThreadPhase;
+}): boolean {
+  if (params.composeEditorVisible) return false;
+  if (params.selectedNodeKind === "sent") return true;
+  return (
+    params.phase === "awaiting_reply" ||
+    params.phase === "complete" ||
+    params.phase === "reply_sent"
+  );
 }
 
 export function conversationSide(event: ThreadEvent): ConversationSide {

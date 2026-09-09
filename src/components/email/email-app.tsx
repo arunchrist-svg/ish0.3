@@ -291,6 +291,12 @@ function inboxStatus(row: LeadEmailRow, tab: QueueTab): { label: string; accent?
   if (row.openedAt) return { label: `Opened ${timeAgo(row.openedAt)}`, accent: true };
   if (row.sequenceState === "paused") return { label: "Paused" };
   if (row.nextEmailDue) {
+    if (row.emailsSent === 0) {
+      return {
+        label: isDueToday(row.nextEmailDue) ? "Queued · today" : `Queued · ${formatDate(row.nextEmailDue)}`,
+        accent: true,
+      };
+    }
     return { label: isDueToday(row.nextEmailDue) ? "Due today" : formatDate(row.nextEmailDue) };
   }
   if (tab === "done") return { label: "Done" };
@@ -660,7 +666,7 @@ export function EmailApp() {
 
   return (
     <MobilePageLayout
-      title="Outreach Queue"
+      title="Outbox Queue"
       largeTitle
       className="ish-email-page"
       contentClassName="flex flex-col !overflow-hidden"
@@ -697,7 +703,7 @@ export function EmailApp() {
     >
       <AppPageHeader
         icon={ListChecks}
-        title="Outreach Queue"
+        title="Outbox Queue"
         actions={
           <>
             <SyncRepliesButton compact onSynced={load} />
@@ -742,7 +748,7 @@ export function EmailApp() {
       <div className="ish-page-padding min-h-0 flex-1 overflow-y-auto py-4 lg:px-6 lg:py-5">
         {data?.outreachPaused && (
           <div className="mb-4 rounded-[16px] border border-brand-stratus-salmon/30 bg-white/70 px-4 py-2.5 shadow-[var(--shadow-brand-sm)] backdrop-blur-sm">
-            <p className="text-[12px] font-semibold text-brand-ink">Outreach sending is paused</p>
+            <p className="text-[12px] font-semibold text-brand-ink">Outbox sending is paused</p>
             <p className="text-[11px] leading-snug text-brand-ink-soft">
               No Email 1 sends or automated follow-ups will go out until you click Start sending.
             </p>
@@ -821,7 +827,7 @@ export function EmailApp() {
           </>
         ) : (
           <PanelCard className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-[14px] font-semibold text-brand-ink">Could not load outreach queue</p>
+            <p className="text-[14px] font-semibold text-brand-ink">Could not load Outbox queue</p>
             <button
               type="button"
               onClick={() => void load()}

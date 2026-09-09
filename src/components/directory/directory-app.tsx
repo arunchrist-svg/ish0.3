@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AppPageHeader, MobileHeader, SegmentedTabs } from "@/design-system";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
@@ -39,7 +40,7 @@ import {
   type AccountContactQuickId,
   type AccountContactSort,
 } from "@/lib/directory/account-filters";
-import { Building2, Users, Search } from "lucide-react";
+import { Building2, Loader2, Users, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AccountsFetchLeads } from "@/components/directory/accounts-fetch-leads";
 
@@ -70,6 +71,7 @@ function writeLocal(key: string, value: string) {
 }
 
 export function DirectoryApp() {
+  const router = useRouter();
   const isMobileLayout = useIsMobileLayout();
   const [tab, setTab] = useState<Tab>("companies");
   const [companies, setCompanies] = useState<DirectoryCompany[]>([]);
@@ -77,6 +79,8 @@ export function DirectoryApp() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [selectedCompanyContacts, setSelectedCompanyContacts] = useState<DirectoryContact[]>([]);
+  const [loadingCompanyContacts, setLoadingCompanyContacts] = useState(false);
 
   const [companyQuick, setCompanyQuick] = useState<AccountCompanyQuickId | null>(null);
   const [companyPanel, setCompanyPanel] = useState<Set<string>>(new Set());
@@ -121,6 +125,19 @@ export function DirectoryApp() {
   const [nextContactCursor, setNextContactCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const loadCompanyContacts = useCallback(async (companyId: string) => {
+    setLoadingCompanyContacts(true);
+    try {
+      const page = await fetchDirectoryContacts({ companyId, limit: 100 });
+      setSelectedCompanyContacts(page.contacts);
+    } catch {
+      setSelectedCompanyContacts([]);
+      toast.error("Could not load company leads");
+    } finally {
+      setLoadingCompanyContacts(false);
+    }
+  }, []);
+
   async function load() {
     setLoading(true);
     try {
@@ -132,8 +149,14 @@ export function DirectoryApp() {
       setContacts(contactsPage.contacts);
       setNextCompanyCursor(companiesPage.nextCursor ?? null);
       setNextContactCursor(contactsPage.nextCursor ?? null);
-      if (companiesPage.companies[0] && !selectedCompanyId) {
-        setSelectedCompanyId(companiesPage.companies[0].id);
+      const nextSelected =
+        selectedCompanyId && companiesPage.companies.some((c) => c.id === selectedCompanyId)
+          ? selectedCompanyId
+          : companiesPage.companies[0]?.id ?? null;
+      if (nextSelected !== selectedCompanyId) {
+        setSelectedCompanyId(nextSelected);
+      } else if (nextSelected) {
+        void loadCompanyContacts(nextSelected);
       }
     } catch {
       toast.error("Could not load scout directory");
@@ -177,6 +200,14 @@ export function DirectoryApp() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!selectedCompanyId) {
+      setSelectedCompanyContacts([]);
+      return;
+    }
+    void loadCompanyContacts(selectedCompanyId);
+  }, [selectedCompanyId, loadCompanyContacts]);
 
   const filteredCompanies = useMemo(
     () =>
@@ -236,27 +267,27 @@ export function DirectoryApp() {
   const selectedCompanyDecisionMaker = useMemo(() => {
     if (!selectedCompany) return undefined;
     const key =
-      selectedCompany.contacts.find((c) => c.isKeyDM) ?? selectedCompany.contacts[0];
+      selectedCompanyContacts.find((c) => c.isKeyDM) ?? selectedCompanyContacts[0];
     if (!key) return undefined;
     return key.title && key.title !== "-" && key.title !== "—" && key.title !== "Unknown"
       ? `${key.name}: ${key.title}`
       : key.name;
-  }, [selectedCompany]);
+  }, [selectedCompany, selectedCompanyContacts]);
   const selectedCompanyDecisionMakerLeadId = useMemo(() => {
     if (!selectedCompany) return undefined;
     const key =
-      selectedCompany.contacts.find((c) => c.isKeyDM) ?? selectedCompany.contacts[0];
+      selectedCompanyContacts.find((c) => c.isKeyDM) ?? selectedCompanyContacts[0];
     return key?.leadId;
-  }, [selectedCompany]);
+  }, [selectedCompany, selectedCompanyContacts]);
 
   const selectedCompanyPeople = useMemo(
     () =>
       selectedCompany
-        ? selectedCompany.contacts.map((c) =>
-            directoryContactToPerson({ ...c, companyId: selectedCompany.id }, selectedCompany.id, selectedCompany.name),
+        ? selectedCompanyContacts.map((c) =>
+            directoryContactToPerson(c, selectedCompany.id, selectedCompany.name),
           )
         : [],
-    [selectedCompany],
+    [selectedCompany, selectedCompanyContacts],
   );
 
   const companyCities = useMemo(() => collectAccountCities(companies), [companies]);
@@ -414,19 +445,31 @@ export function DirectoryApp() {
                         }}
                         decisionMakerLeadId={selectedCompanyDecisionMakerLeadId}
                       />
-                      <AccountsFetchLeads company={selectedCompany} onSaved={() => void load()} />
-                      {selectedCompanyPeople.length > 0 ? (
+                      <AccountsFetchLeads
+                        company={selectedCompany}
+                        onSaved={() => {
+                          void load();
+                          void loadCompanyContacts(selectedCompany.id);
+                        }}
+                      />
+                      {loadingCompanyContacts ? (
+                        <div className="flex items-center gap-2 border-t border-brand-border p-5 text-[13px] text-brand-ink-faint">
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Loading leads…
+                        </div>
+                      ) : selectedCompanyPeople.length > 0 ? (
                         <div className="border-t border-brand-border p-4">
                           <div className="mb-2 text-[11px] font-bold uppercase tracking-wide text-brand-ink-faint">
-                            Lead Contacts ({selectedCompany.contacts.length})
+                            Lead Contacts ({selectedCompanyContacts.length})
                           </div>
                           <PeopleList
                             people={selectedCompanyPeople}
                             selectedIds={EMPTY_SET}
                             primaryId={null}
                             onToggleSelect={() => {}}
-                            onSetPrimary={() => {}}
+                            onSetPrimary={(id) => router.push(`/leads?lead=${id}`)}
                             selectable={false}
+                            compact
                           />
                         </div>
                       ) : (

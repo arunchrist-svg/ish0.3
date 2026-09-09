@@ -1,4 +1,4 @@
-import { compactCompanyName, nameMatchesQuery, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
+import { compactCompanyName, normalizeCompanyName } from "@/lib/enrichment/company-name-match";
 import { knownDomainForCompanyName } from "@/lib/company-logo";
 import { domainFromCompany } from "@/lib/enrichment/provider-utils";
 import { isPersonalInboxDomain } from "@/lib/email/sender-domain";
@@ -263,19 +263,39 @@ export function distinctiveBrandTokens(name: string): string[] {
     .filter((token) => token.length >= 3 && !GENERIC_BRAND_TOKENS.has(token));
 }
 
+function registrableSlug(domain: string): string | undefined {
+  const raw = domainSlug(domain);
+  if (!raw) return undefined;
+  return raw.replace(/-/g, "");
+}
+
+/**
+ * True when this host is the company's site, not a short foreign slug that happens
+ * to appear inside the legal name (va.com on "VA Designbuild", early.com on "Earlystage Marketing").
+ */
 export function domainBelongsToCompany(domain: string, companyName: string): boolean {
-  const slug = domainSlug(domain);
+  const slug = registrableSlug(domain);
   if (!slug || !companyName.trim()) return false;
-  if (nameMatchesQuery(slug, companyName)) return true;
 
   const tokens = distinctiveBrandTokens(companyName);
+  if (tokens.some((token) => token === slug)) return true;
+
   for (const token of tokens) {
-    if (token.length >= 4 && (slug.includes(token) || token.includes(slug))) return true;
-    if (token.length === 3 && (slug === token || slug.startsWith(token))) return true;
+    if (token.length < 4) continue;
+    // pavna → pavnagroup.com, avtec → psa-avtec.com
+    if (slug.startsWith(token) || slug.endsWith(token) || slug.includes(token)) return true;
+    // Allow a slightly shortened slug only when it is almost the whole token
+    // (autoaxle vs axles is handled via known domains; do not let "early" match "earlystage").
+    if (token.length >= 8 && slug.length >= 6 && token.startsWith(slug) && slug.length / token.length >= 0.75) {
+      return true;
+    }
   }
 
   const compact = compactCompanyName(companyName);
-  if (compact.length >= 5 && (slug.includes(compact) || compact.includes(slug))) return true;
+  if (compact.length >= 6 && slug === compact) return true;
+  if (compact.length >= 8 && slug.length >= 8 && (slug.includes(compact) || compact.includes(slug))) {
+    return true;
+  }
 
   return false;
 }

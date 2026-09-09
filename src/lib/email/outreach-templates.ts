@@ -46,6 +46,13 @@ export const OUTREACH_TEMPLATES = getOutreachTemplatesForPack("general");
 
 export type OutreachTemplateId = string;
 
+/** Fixed-copy templates that fill placeholders only (no LLM, no writer.draft credits). */
+export const ZERO_COST_TEMPLATE_IDS = new Set<string>(["prasanth_sequence"]);
+
+export function isZeroCostTemplateWrite(templateId?: string | null): boolean {
+  return Boolean(templateId && ZERO_COST_TEMPLATE_IDS.has(templateId));
+}
+
 export type OutreachTemplateOption = Pick<PackOutreachCta, "id" | "label" | "shortLabel" | "description">;
 
 export const REPLY_SEQUENCE_POSITION = 4;
@@ -92,6 +99,12 @@ export function getReplyCtaInstruction(
         return "They agreed to an in-person visit. Thank them briefly. Ask for office address and a preferred day/time.";
       }
       return "Move toward scheduling the in-person visit. Ask for address and preferred timing if not yet provided.";
+
+    case "prasanth_sequence":
+      if (intent === "affirmative") {
+        return "They agreed to a sample box and/or tasting visit. Thank them briefly. Ask for the one detail needed next (delivery address, preferred contact, or a day/time for the visit). Do NOT re-pitch USPs.";
+      }
+      return "Offer either a sample box or a short tasting visit, whichever they prefer. Ask for only the detail needed to proceed.";
 
     default:
       return "Thank them for replying. Ask for the one detail needed to move forward. Do NOT repeat a question they already answered affirmatively.";

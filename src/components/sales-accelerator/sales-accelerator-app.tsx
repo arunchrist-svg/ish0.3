@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QueuePanel } from "@/components/sales-accelerator/queue-panel";
 import { LeadSwitcherRail } from "@/components/sales-accelerator/lead-switcher-rail";
 import { RecordWorkspace } from "@/components/sales-accelerator/record-workspace";
-import { createLead, deleteLead, fetchLeadAddedByUsers, fetchLeadsPage, fetchLead, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
+import { createLead, deleteLead, fetchLeadAddedByUsers, fetchLeadsPage, fetchLead, fixLeadNames, mergeLeadDuplicates, updateLead } from "@/lib/api-client";
 import type { LeadDetailRecord, LeadFormInput, LeadQueueItem } from "@/lib/api-client";
 import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { deriveQueueAction } from "@/lib/pipeline-status";
@@ -103,6 +103,7 @@ export function SalesAcceleratorApp() {
   const [addedByUserId, setAddedByUserId] = useState<string | null>(null);
   const [addedByUsers, setAddedByUsers] = useState<LeadAddedByUserOption[]>([]);
   const [mergingDuplicates, setMergingDuplicates] = useState(false);
+  const [fixingNames, setFixingNames] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const listScrollRef = useRef<HTMLDivElement>(null);
@@ -263,7 +264,7 @@ export function SalesAcceleratorApp() {
 
 
   async function handleMergeDuplicates() {
-    if (mergingDuplicates) return;
+    if (mergingDuplicates || fixingNames) return;
     if (!window.confirm("Merge duplicate leads? We will keep the furthest-along record for each person and copy missing contact details onto it.")) {
       return;
     }
@@ -290,6 +291,57 @@ export function SalesAcceleratorApp() {
       toast.error(e instanceof Error ? e.message : "Could not merge duplicates");
     } finally {
       setMergingDuplicates(false);
+    }
+  }
+
+  async function handleFixNames() {
+    if (mergingDuplicates || fixingNames) return;
+    if (
+      !window.confirm(
+        "Fix names on your leads? This clears bad job titles and corrects ALL CAPS or all-lowercase person and company names.",
+      )
+    ) {
+      return;
+    }
+    setFixingNames(true);
+    try {
+      const result = await fixLeadNames();
+      const changed = result.contactsUpdated + result.accountsUpdated;
+      if (changed === 0) {
+        toast.success("No name fixes needed");
+        return;
+      }
+      const parts: string[] = [];
+      if (result.titlesCleared) {
+        parts.push(
+          result.titlesCleared === 1
+            ? "1 title cleared"
+            : `${result.titlesCleared} titles cleared`,
+        );
+      }
+      if (result.namesFixed) {
+        parts.push(
+          result.namesFixed === 1 ? "1 person name fixed" : `${result.namesFixed} person names fixed`,
+        );
+      }
+      if (result.companiesFixed) {
+        parts.push(
+          result.companiesFixed === 1
+            ? "1 company name fixed"
+            : `${result.companiesFixed} company names fixed`,
+        );
+      }
+      toast.success(parts.length ? parts.join(", ") : `Updated ${changed} records`);
+      await refreshLeadList({ silent: true });
+      const current = activeLeadIdRef.current;
+      if (current) {
+        const detail = await fetchLead(current).catch(() => null);
+        if (detail) setPrefetchedLead(detail);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not fix names");
+    } finally {
+      setFixingNames(false);
     }
   }
 
@@ -347,7 +399,7 @@ export function SalesAcceleratorApp() {
   }, [nextCursor, loadingMore]);
 
   async function handleQueueRefresh() {
-    if (queueRefreshing || mergingDuplicates) return;
+    if (queueRefreshing || mergingDuplicates || fixingNames) return;
     setQueueRefreshing(true);
     try {
       await refreshLeadList({ silent: true });
@@ -538,6 +590,8 @@ export function SalesAcceleratorApp() {
       addedByUsers={addedByUsers}
       onMergeDuplicates={canWritePipeline ? handleMergeDuplicates : undefined}
       mergingDuplicates={mergingDuplicates}
+      onFixNames={canWritePipeline ? handleFixNames : undefined}
+      fixingNames={fixingNames}
       hasMore={Boolean(nextCursor)}
       loadingMore={loadingMore}
       onLoadMore={loadMoreLeads}
@@ -583,7 +637,7 @@ export function SalesAcceleratorApp() {
             <>
               {canWritePipeline ? (
                 <LeadAddMenu
-                  disabled={mergingDuplicates}
+                  disabled={mergingDuplicates || fixingNames}
                   onAddLead={openCreateLead}
                   onLinkedIn={openLinkedInLead}
                   onUpload={() => setImportOpen(true)}
@@ -591,8 +645,11 @@ export function SalesAcceleratorApp() {
               ) : null}
               <CircleButton
                 size={32}
-                onClick={mergingDuplicates ? undefined : () => void handleQueueRefresh()}
-                className={cn("bg-white/80 backdrop-blur-sm", mergingDuplicates && "pointer-events-none opacity-50")}
+                onClick={mergingDuplicates || fixingNames ? undefined : () => void handleQueueRefresh()}
+                className={cn(
+                  "bg-white/80 backdrop-blur-sm",
+                  (mergingDuplicates || fixingNames) && "pointer-events-none opacity-50",
+                )}
                 aria-label="Refresh leads"
               >
                 <RefreshCw className={cn("size-3.5", queueRefreshing && "animate-spin")} />

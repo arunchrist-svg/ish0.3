@@ -4,7 +4,14 @@ import { eq, and } from "drizzle-orm";
 import { isManualStage, isPastReplyStage } from "@/lib/pipeline-status";
 import { sendEmail } from "@/lib/email/email-sender";
 import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE, resolveOutreachEmailStyle } from "@/lib/email/config";
-import { computeFollowUpScheduledFor, sendWindowFromEmailFields } from "@/lib/email/send-window";
+import {
+  computeFollowUpScheduledFor,
+  deferredSendWindowSlot,
+  formatQueuedSendLabel,
+  isWithinSendWindow,
+  nextSendWindowStart,
+  sendWindowFromEmailFields,
+} from "@/lib/email/send-window";
 import { buildEmailHtml } from "@/lib/email/templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { assertResourceTenant, requireTenantContext } from "@/lib/tenant";
@@ -21,6 +28,7 @@ import { scoreSpamMeter } from "@/lib/agents/writer-scoring";
 import { generateRfcMessageId } from "@/lib/email/threading";
 import { loadThreadContext, resolveOutboundSubject, resolveThreadHeaders } from "@/lib/email/thread-context";
 import { loadSequenceDrafts } from "@/lib/agents/writer-sequence";
+import { resolveDraftSubject, isAllowedInitialSequenceDraft } from "@/lib/email/draft-variants";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import {
   applySendRejectionUpdates,
@@ -30,12 +38,16 @@ import { cleanEmailBatch } from "@/lib/email/list-cleaner";
 import { mergePersistedSendEmails, resolveSendRecipients, alreadySentRecipientKeys } from "@/lib/outreach/send-recipients";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { maybeAutoOpenWhatsAppAfterFirstEmail } from "@/lib/whatsapp/auto-after-first-email";
+import { cancelQueuedInitialEmails } from "@/lib/outreach/send-scheduled-initial";
 
 export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { approvalId, overridePreflight, overrideQualityGate, toEmails } = await req.json();
+    const { approvalId, overridePreflight, overrideQualityGate, toEmails, deliveryMode } =
+      await req.json();
+    const sendDeliveryMode =
+      deliveryMode === "scheduled" ? "scheduled" : deliveryMode === "now" ? "now" : undefined;
     if (!approvalId) return NextResponse.json({ error: "approvalId required" }, { status: 400 });
 
     const approval = await db.query.outreachApprovals.findFirst({
@@ -61,6 +73,42 @@ export async function POST(req: Request) {
 
     if (!isReplySend && (isManualStage(leadRow.status) || isPastReplyStage(leadRow.status))) {
       return NextResponse.json({ error: "Lead is past outreach stage" }, { status: 400 });
+    }
+
+    const priorSchedule = await db
+      .select({
+        recipientEmail: outreachSchedule.recipientEmail,
+        status: outreachSchedule.status,
+      })
+      .from(outreachSchedule)
+      .where(and(eq(outreachSchedule.leadId, approval.leadId), eq(outreachSchedule.channel, "email")));
+    const sentKeys = alreadySentRecipientKeys(priorSchedule);
+    const isAdditionalSend = !isReplySend && (leadRow.status === "outreached" || sentKeys.size > 0);
+
+    // First outbound must be Email 1. Approving Email 2/3 / If Opened as the opener
+    // used to store breakup/catalogue copy under sequenceDay 0 while Conversation still
+    // labeled the row Email 1.
+    if (!isReplySend && !isAdditionalSend && !isAllowedInitialSequenceDraft(outreach)) {
+      return NextResponse.json(
+        {
+          error:
+            "Start the sequence with Email 1. Follow-ups and If Opened send after Email 1 is out.",
+        },
+        { status: 400 },
+      );
+    }
+
+    // After Email 1 is out, main /send is only for extra Email 1 recipients.
+    // Email 2/3 / If Opened must go through send-followup with their schedule row.
+    // Without this check, Approve+Send from a later draft still wrote sequenceDay 0.
+    if (!isReplySend && isAdditionalSend && !isAllowedInitialSequenceDraft(outreach)) {
+      return NextResponse.json(
+        {
+          error:
+            "Send Email 2, Email 3, or If Opened from the scheduled step, not as another Email 1.",
+        },
+        { status: 400 },
+      );
     }
 
     const contact = leadRow.contact as typeof contacts.$inferSelect;
@@ -91,15 +139,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: recipientError ?? "No recipients selected" }, { status: 400 });
     }
 
-    const priorSchedule = await db
-      .select({
-        recipientEmail: outreachSchedule.recipientEmail,
-        status: outreachSchedule.status,
-      })
-      .from(outreachSchedule)
-      .where(and(eq(outreachSchedule.leadId, approval.leadId), eq(outreachSchedule.channel, "email")));
-    const sentKeys = alreadySentRecipientKeys(priorSchedule);
-    const isAdditionalSend = !isReplySend && (leadRow.status === "outreached" || sentKeys.size > 0);
     const unsentRecipients = rawRecipients.filter((email) => !sentKeys.has(email.trim().toLowerCase()));
     if (isAdditionalSend && unsentRecipients.length === 0) {
       return NextResponse.json(
@@ -238,6 +277,65 @@ export async function POST(req: Request) {
 
     const fromAddress = emailConfig.fromAddress ?? emailConfig.smtpUser ?? "noreply@localhost";
     const primaryRecipient = recipients[0];
+    const sendWindow = sendWindowFromEmailFields(emailConfig);
+    const now = new Date();
+
+    const shouldQueueInitial =
+      !isReplySend &&
+      !isAdditionalSend &&
+      (sendDeliveryMode === "scheduled" ||
+        (sendDeliveryMode !== "now" && !isWithinSendWindow(now, sendWindow)));
+
+    // Email 1: queue on Schedule Send or when outside the send window (replies stay immediate).
+    if (shouldQueueInitial) {
+      const scheduledFor =
+        sendDeliveryMode === "scheduled" && isWithinSendWindow(now, sendWindow)
+          ? deferredSendWindowSlot(now, sendWindow)
+          : nextSendWindowStart(now, sendWindow);
+      const bodySnippet = (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null;
+      await cancelQueuedInitialEmails(approval.leadId);
+      for (const to of recipients) {
+        await db.insert(outreachSchedule).values({
+          leadId: approval.leadId,
+          approvalId,
+          channel: "email",
+          sequenceDay: 0,
+          scheduledFor,
+          status: "scheduled",
+          sendMode: emailConfig.sendMode,
+          recipientEmail: to,
+          subjectSent: subject,
+          bodySnippet,
+          trackingToken: crypto.randomUUID(),
+          emailKind: "initial",
+          draftLeadOutreachId: outreach.id,
+        });
+      }
+
+      await logAudit({
+        tenantId: ctx.tenantId,
+        workspaceId: ctx.workspaceId,
+        action: "outreach.queued",
+        entityType: "lead",
+        entityId: approval.leadId,
+        metadata: {
+          approvalId,
+          scheduledFor: scheduledFor.toISOString(),
+          recipients,
+          primaryRecipient,
+          reason: "outside_send_window",
+        },
+      });
+
+      return NextResponse.json({
+        mode: "queued",
+        scheduledFor: scheduledFor.toISOString(),
+        scheduledForLabel: formatQueuedSendLabel(scheduledFor, sendWindow),
+        to: recipients.join(", "),
+        recipients,
+      });
+    }
+
     const rfcMessageId = generateRfcMessageId(fromAddress);
     const email1TrackingToken = crypto.randomUUID();
 
@@ -352,8 +450,9 @@ export async function POST(req: Request) {
       inReplyTo: threadHeaders.inReplyTo ?? null,
       referencesChain: threadHeaders.references ?? null,
       subjectSent: subject,
-      bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
+      bodySnippet: (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null,
       trackingToken: email1TrackingToken,
+      draftLeadOutreachId: outreach.id,
     };
 
     if (isReplySend) {
@@ -382,9 +481,10 @@ export async function POST(req: Request) {
           rfcMessageId: extra.messageId ?? null,
           recipientEmail: extra.to,
           subjectSent: subject,
-          bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
+          bodySnippet: (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null,
           trackingToken: extra.trackingToken,
           emailKind: "initial",
+          draftLeadOutreachId: outreach.id,
         });
       }
     } else {
@@ -421,20 +521,20 @@ export async function POST(req: Request) {
           rfcMessageId: extra.messageId ?? null,
           recipientEmail: extra.to,
           subjectSent: subject,
-          bodySnippet: (outreach.emailBody ?? "").slice(0, 500) || null,
+          bodySnippet: (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null,
           trackingToken: extra.trackingToken,
           emailKind: "initial",
+          draftLeadOutreachId: outreach.id,
         });
       }
 
       const cadence = emailConfig.cadenceDays;
-      const now = new Date();
-      const sendWindow = sendWindowFromEmailFields(emailConfig);
       const sequenceDrafts = await loadSequenceDrafts(approval.leadId);
       for (let i = 0; i < cadence.length; i++) {
         const day = cadence[i];
         const scheduledFor = computeFollowUpScheduledFor(now, day, sendWindow);
         const linkedDraft = sequenceDrafts.find((d) => d.sequencePosition === i + 2);
+        const followUpSubject = linkedDraft ? resolveDraftSubject(linkedDraft) : "";
         await db.insert(outreachSchedule).values({
           leadId: approval.leadId,
           approvalId,
@@ -446,6 +546,8 @@ export async function POST(req: Request) {
           status: "scheduled",
           emailKind: "followup",
           draftLeadOutreachId: linkedDraft?.id ?? null,
+          subjectSent: followUpSubject || null,
+          bodySnippet: linkedDraft?.emailBody?.slice(0, 500) || null,
         });
       }
     }

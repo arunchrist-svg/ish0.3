@@ -18,7 +18,8 @@ export const IF_OPENED_NODE_ID = "if-opened";
 export function isCatalogOnOpenDraft(row: {
   sequencePosition?: number | null;
   templateVariant?: string | null;
-}): boolean {
+} | null | undefined): boolean {
+  if (!row) return false;
   return (
     row.sequencePosition === CATALOG_ON_OPEN_SEQUENCE_POSITION ||
     row.templateVariant === CATALOG_ON_OPEN_VARIANT

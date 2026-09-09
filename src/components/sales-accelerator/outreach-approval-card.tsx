@@ -34,8 +34,11 @@ import {
   isSequenceFollowUpDraft,
   resolveDraftBody,
   resolveDraftSubject,
+  resolveInitialSequenceSendDraft,
   type VariantKey,
 } from "@/lib/email/draft-variants";
+import { isCatalogOnOpenDraft } from "@/lib/email/ish-festive-catalog";
+import { isEmail1SentInThread } from "@/lib/email/email-thread";
 import { appendEmailSignature } from "@/lib/email/templates";
 import {
   applyComposeSnapshot,
@@ -52,13 +55,17 @@ export type ComposeActionState = {
   canUndo: boolean;
   canRedo: boolean;
   showSave: boolean;
-  sendLabel: string;
+  showDualSend: boolean;
+  sendNowLabel: string;
+  scheduleSendLabel: string;
   viewInEmailOnly: boolean;
 };
 
 export type OutreachApprovalHandle = {
   save: () => void;
   send: () => Promise<void>;
+  sendNow: () => Promise<void>;
+  scheduleSend: () => Promise<void>;
   undo: () => void;
   redo: () => void;
 };
@@ -292,11 +299,24 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
 
   const isFollowUpReview = Boolean(scheduleIdForFollowUp);
   const isSequenceFollowUp = isSequenceFollowUpDraft(draft.sequencePosition);
-  /** Reply + Email 2/3 / pending follow-up: same To as last outbound, not "send to a new inbox". */
-  const reusesPriorTo = isReplyDraft || isSequenceFollowUp || isFollowUpReview;
+  const isCatalogDraft = isCatalogOnOpenDraft(draft);
+  const email1Sent = isEmail1SentInThread(emailThread);
+  /** Email 1 not sent yet but a later step already went out: reuse the thread To for the opener. */
+  const repairingSequenceOpener =
+    !email1Sent &&
+    !isReplyDraft &&
+    !isFollowUpReview &&
+    (sentEmailKeys.size > 0 || Boolean(lastSentRecipient));
+  /** Reply + Email 2/3 / If Opened / pending follow-up / opener repair: same To as last outbound. */
+  const reusesPriorTo =
+    isReplyDraft ||
+    isSequenceFollowUp ||
+    isFollowUpReview ||
+    isCatalogDraft ||
+    repairingSequenceOpener;
   const recipientSendMode: SendRecipientMode = isReplyDraft
     ? "reply"
-    : isSequenceFollowUp || isFollowUpReview
+    : isSequenceFollowUp || isFollowUpReview || isCatalogDraft || repairingSequenceOpener
       ? "follow_up"
       : "outbound";
 
@@ -312,10 +332,10 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     else setSelectedEmailsLocal(resolved);
   }
   // Reply drafts stay editable until sent, even when the lead is already outreached.
-  // Email 2/3 and pending follow-up review stay editable so board / Needs Review can edit before send.
+  // Email 2/3, If Opened, and pending follow-up review stay editable before send.
   const isDraftLocked = isReplyDraft
     ? Boolean(draft.replySent)
-    : isSequenceFollowUp || isFollowUpReview
+    : isSequenceFollowUp || isFollowUpReview || isCatalogDraft
       ? false
       : ["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(leadStatus);
   const canSendToAdditional =
@@ -341,27 +361,41 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
 
   const subjectOptions = draftSubjectOptions(displayDraft);
   const bodyOptions = draftBodyOptions(displayDraft);
-  /** Keep A|B sticky while editing. Do not re-derive from trimmed/filtered options. */
+  /** Keep A|B|C sticky while editing. Do not re-derive from trimmed/filtered options. */
   const activeVariant: VariantKey = asVariantKey(
     subjectKey === bodyKey ? subjectKey : bodyKey,
   );
   // Raw field values only. Never trim or fall back to the other variant in the editor,
   // or the caret jumps to the end on every keystroke.
   const bodyText =
-    activeVariant === "B"
-      ? (displayDraft.emailBodyB ?? "")
-      : (displayDraft.emailBody ?? "");
+    activeVariant === "C"
+      ? (displayDraft.emailBodyC ?? "")
+      : activeVariant === "B"
+        ? (displayDraft.emailBodyB ?? "")
+        : (displayDraft.emailBody ?? "");
   const activeSubject =
-    activeVariant === "B"
-      ? (displayDraft.subjectB ?? "")
-      : (displayDraft.subjectA ?? "");
+    activeVariant === "C"
+      ? (displayDraft.subjectC ?? "")
+      : activeVariant === "B"
+        ? (displayDraft.subjectB ?? "")
+        : (displayDraft.subjectA ?? "");
   const hasVariantB =
     activeVariant === "B" ||
     Boolean(displayDraft.emailBodyB?.trim()) ||
     Boolean(displayDraft.subjectB?.trim()) ||
     bodyOptions.some((o) => o.key === "B") ||
     subjectOptions.some((o) => o.key === "B");
-  const variantOptions: VariantKey[] = hasVariantB ? ["A", "B"] : ["A"];
+  const hasVariantC =
+    activeVariant === "C" ||
+    Boolean(displayDraft.emailBodyC?.trim()) ||
+    Boolean(displayDraft.subjectC?.trim()) ||
+    bodyOptions.some((o) => o.key === "C") ||
+    subjectOptions.some((o) => o.key === "C");
+  const variantOptions: VariantKey[] = hasVariantC
+    ? ["A", "B", "C"]
+    : hasVariantB
+      ? ["A", "B"]
+      : ["A"];
 
   function selectVariant(key: VariantKey) {
     if (isDraftLocked) return;
@@ -462,8 +496,10 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         const stillDirty =
           latest.emailBody !== snapshot.emailBody ||
           latest.emailBodyB !== snapshot.emailBodyB ||
+          latest.emailBodyC !== snapshot.emailBodyC ||
           latest.subjectA !== snapshot.subjectA ||
-          latest.subjectB !== snapshot.subjectB;
+          latest.subjectB !== snapshot.subjectB ||
+          latest.subjectC !== snapshot.subjectC;
         setDirty(stillDirty);
         return true;
       } catch (e) {
@@ -529,7 +565,8 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   const showReRow = Boolean(isReplyDraft && threadSubject);
 
   function handleSubjectChange(value: string) {
-    const field = activeVariant === "B" ? "subjectB" : "subjectA";
+    const field =
+      activeVariant === "C" ? "subjectC" : activeVariant === "B" ? "subjectB" : "subjectA";
     setDisplayDraft((prev) => {
       const next = { ...prev, [field]: value };
       recordChange(snapshotFromDraft(next));
@@ -539,7 +576,8 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
   }
 
   function handleBodyChange(value: string) {
-    const field = activeVariant === "B" ? "emailBodyB" : "emailBody";
+    const field =
+      activeVariant === "C" ? "emailBodyC" : activeVariant === "B" ? "emailBodyB" : "emailBody";
     setDisplayDraft((prev) => {
       const next = { ...prev, [field]: value };
       recordChange(snapshotFromDraft(next));
@@ -572,9 +610,9 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     if (ok) toast.success("Draft saved");
   }
 
-  async function handleSendToOutreach() {
+  async function handleSendToOutreach(deliveryMode: "now" | "scheduled" = "now") {
     if (outreachPaused) {
-      toast.error("Outreach sending is paused. Resume in Email queue or Settings.");
+      toast.error("Outbox sending is paused. Resume in Outbox queue or Settings.");
       return;
     }
     if (!selectedEmails.length) {
@@ -582,21 +620,27 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
       return;
     }
 
-    // Before any outbound: starting the sequence from Draft 2/3 still sends Email 1 first.
+    // Before any outbound: starting the sequence from Draft 2/3 / If Opened still sends Email 1.
     // After Email 1 is out: Email 2/3 send the follow-up draft itself (same To as last outbound).
-    const sequenceNotStarted =
-      sentEmailKeys.size === 0 &&
-      !["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(
-        leadStatus,
-      );
-    const sendDraft =
-      !isReplyDraft &&
-      !isFollowUpReview &&
-      sequenceNotStarted &&
-      startSequenceDraft &&
-      isSequenceFollowUp
-        ? startSequenceDraft
-        : displayDraft;
+    const sequenceNotStarted = emailThread?.barNodes?.length
+      ? !email1Sent
+      : sentEmailKeys.size === 0 &&
+        !["outreached", "meeting", "po_closed", "tasting_sent", "negotiate", "closed"].includes(
+          leadStatus,
+        );
+    const sendingScheduledFollowUp = Boolean(scheduleIdForFollowUp) && email1Sent;
+    const resolvedSend = resolveInitialSequenceSendDraft({
+      viewingDraft: displayDraft,
+      email1Draft: startSequenceDraft,
+      sequenceNotStarted,
+      isReplyDraft,
+      isFollowUpReview: sendingScheduledFollowUp,
+    });
+    if ("error" in resolvedSend) {
+      toast.error(resolvedSend.error);
+      return;
+    }
+    const sendDraft = resolvedSend.draft;
 
     const sendSubjectKey = activeVariant;
     const sendBodyKey =
@@ -635,7 +679,21 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         }
       }
 
-      if (isFollowUpReview && scheduleIdForFollowUp) {
+      if (sendingScheduledFollowUp && scheduleIdForFollowUp) {
+        if (deliveryMode === "scheduled") {
+          const scheduledNode = emailThread?.barNodes.find((n) => n.scheduleId === scheduleIdForFollowUp);
+          const whenLabel = scheduledNode?.at
+            ? new Date(scheduledNode.at).toLocaleString("en-IN", {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })
+            : "the scheduled time";
+          toast.success(`Follow-up saved. Sends ${whenLabel}.`);
+          onSent?.();
+          return;
+        }
         const result = await sendWithGateConfirm((overrides) =>
           sendFollowUp(scheduleIdForFollowUp, overrides),
         );
@@ -674,6 +732,7 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         sendOutreach(approvalId, {
           ...overrides,
           toEmails: recipientsToSend,
+          deliveryMode,
         }),
       );
       handleWhatsAppAutoOpenResponse(result.whatsappOpen);
@@ -681,14 +740,28 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
         result.recipients?.length
           ? result.recipients.join(", ")
           : result.to ?? selectedEmails.join(", ");
-      const modeLabel =
-        result.mode === "dry_run" ? "logged (dry run, not sent)" : `sent to ${recipient}`;
-      toast.success(`Email ${modeLabel}`, {
-        action: {
-          label: "Open queue",
-          onClick: () => window.location.assign("/email?tab=active"),
-        },
-      });
+      if (result.mode === "queued") {
+        toast.success(
+          result.scheduledForLabel
+            ? `Email queued for ${result.scheduledForLabel}`
+            : "Email queued for the next send window",
+          {
+            action: {
+              label: "Open queue",
+              onClick: () => window.location.assign("/email?tab=active"),
+            },
+          },
+        );
+      } else {
+        const modeLabel =
+          result.mode === "dry_run" ? "logged (dry run, not sent)" : `sent to ${recipient}`;
+        toast.success(`Email ${modeLabel}`, {
+          action: {
+            label: "Open queue",
+            onClick: () => window.location.assign("/email?tab=active"),
+          },
+        });
+      }
       onSent?.();
     } catch (e) {
       if (e instanceof EmailSendRejectedError) {
@@ -709,27 +782,36 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     }
   }
 
-  const sendLabel = isFollowUpReview
-    ? "Send follow-up"
+  const sendNowLabel = isFollowUpReview
+    ? "Send Now"
     : isReplyDraft
       ? "Send Reply"
       : canSendToAdditional
         ? "Send to new"
-        : "Send";
+        : "Send Now";
+  const scheduleSendLabel = isFollowUpReview ? "Keep scheduled" : "Schedule Send";
+  const showDualSend = !isReplyDraft && !canSendToAdditional;
+
+  const sendNowRef = useRef(() => handleSendToOutreach("now"));
+  const scheduleSendRef = useRef(() => handleSendToOutreach("scheduled"));
+  const saveActionRef = useRef(handleSave);
+  sendNowRef.current = () => handleSendToOutreach("now");
+  scheduleSendRef.current = () => handleSendToOutreach("scheduled");
+  saveActionRef.current = handleSave;
 
   useImperativeHandle(
     ref,
     () => ({
       save: () => {
-        void handleSave();
+        void saveActionRef.current();
       },
-      send: () => handleSendToOutreach(),
+      send: () => sendNowRef.current(),
+      sendNow: () => sendNowRef.current(),
+      scheduleSend: () => scheduleSendRef.current(),
       undo: () => handleUndo(),
       redo: () => handleRedo(),
     }),
-    // Handlers close over latest state each render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dirty, saving, sending, selectedEmails, displayDraft, activeVariant, outreachPaused, canUndo, canRedo],
+    [handleUndo, handleRedo],
   );
 
   useEffect(() => {
@@ -742,7 +824,9 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
       canUndo,
       canRedo,
       showSave: !canSendToAdditional && !(isDraftLocked && !canSendToAdditional),
-      sendLabel,
+      showDualSend,
+      sendNowLabel,
+      scheduleSendLabel,
       viewInEmailOnly: isDraftLocked && !canSendToAdditional,
     });
     return () => onComposeActionsChange?.(null);
@@ -756,7 +840,9 @@ export const OutreachApprovalCard = forwardRef<OutreachApprovalHandle, Props>(fu
     isDraftLocked,
     outreachPaused,
     selectedEmails.length,
-    sendLabel,
+    showDualSend,
+    sendNowLabel,
+    scheduleSendLabel,
     onComposeActionsChange,
   ]);
 

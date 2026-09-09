@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { buildEmailThread, buildDraftsEmailThread } from "@/lib/email/email-thread";
+import {
+  buildEmailThread,
+  buildDraftsEmailThread,
+  effectiveScheduleStep,
+  isEmail1SentInThread,
+  pendingFollowUpScheduleIdFromNode,
+} from "@/lib/email/email-thread";
 import {
   conversationSide,
   conversationStatusChip,
   shouldShowConversationTimeline,
+  shouldShowSentOutboundPreview,
 } from "@/lib/email/conversation-view";
 
 const baseLead = {
@@ -251,8 +258,81 @@ describe("buildEmailThread", () => {
     expect(thread.barNodes[1].state).toBe("scheduled");
     expect(thread.events[0].label).toBe("Email 1");
     expect(thread.events[1].label).toBe("Email 2");
-    // Sequence events exist for the rail/preview, but conversation UI stays hidden until a reply.
+    // Two-sided conversation stack stays gated until a reply.
     expect(shouldShowConversationTimeline(thread)).toBe(false);
+    // Email tab still shows sent Email 1 via showOutboundHistory when that step is selected.
+    expect(
+      shouldShowSentOutboundPreview({
+        composeEditorVisible: false,
+        selectedNodeKind: "sent",
+        phase: "awaiting_reply",
+      }),
+    ).toBe(true);
+    expect(
+      shouldShowSentOutboundPreview({
+        composeEditorVisible: true,
+        selectedNodeKind: "scheduled",
+        phase: "awaiting_reply",
+      }),
+    ).toBe(false);
+  });
+
+  it("does not show Email 1 body on a scheduled Email 2 that reuses Email 1 approvalId", () => {
+    const thread = buildEmailThread({
+      lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s1",
+          leadId: "lead-1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          approvalId: "appr-e1",
+          scheduledFor: new Date("2026-09-07T17:36:00Z"),
+          sentAt: new Date("2026-09-07T17:36:00Z"),
+          subjectSent: "A festive sample for Genesis Technologies",
+          bodySnippet: "Hi Seetanjali,\n\nEmail 1 body about a sample box.",
+        },
+        {
+          id: "s2",
+          leadId: "lead-1",
+          sequenceDay: 3,
+          emailKind: "followup",
+          status: "scheduled",
+          approvalId: "appr-e1",
+          draftLeadOutreachId: "d2",
+          scheduledFor: new Date("2026-09-11T02:00:00Z"),
+        },
+      ] as unknown as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      sequenceDrafts: [
+        {
+          id: "d1",
+          sequencePosition: 1,
+          subjectA: "A festive sample for Genesis Technologies",
+          emailBody: "Hi Seetanjali,\n\nEmail 1 body about a sample box.",
+        },
+        {
+          id: "d2",
+          sequencePosition: 2,
+          subjectA: "Re: A festive sample for Genesis Technologies",
+          emailBody: "Hi Seetanjali,\n\nEmail 2 short urgency follow-up.",
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["sequenceDrafts"],
+      outreachBodiesByApprovalId: {
+        "appr-e1": "Hi Seetanjali,\n\nEmail 1 body about a sample box.",
+      },
+      cadenceDays: [3, 7],
+    });
+
+    const e1 = thread.events.find((e) => e.label === "Email 1");
+    const e2 = thread.events.find((e) => e.label === "Email 2");
+    expect(e1?.body).toContain("Email 1 body");
+    expect(e1?.subject).toBe("A festive sample for Genesis Technologies");
+    expect(e2?.status).toBe("scheduled");
+    expect(e2?.body).toContain("Email 2 short urgency");
+    expect(e2?.body).not.toContain("Email 1 body");
+    expect(e2?.subject).toBe("Re: A festive sample for Genesis Technologies");
+    expect(thread.barNodes[1].body).toContain("Email 2 short urgency");
   });
 
   it("marks opened emails on bar nodes and thread events", () => {
@@ -434,5 +514,140 @@ describe("buildEmailThread", () => {
     const outbound = thread.events.find((e) => e.kind === "outbound_reply");
     expect(outbound?.label).toBe("Your reply");
     expect(conversationStatusChip(outbound!).label).toBe("Your reply");
+  });
+
+  it("relabels a day-0 breakup send as Email 3 when approval draft is position 3", () => {
+    expect(
+      effectiveScheduleStep({
+        sequenceDay: 0,
+        emailKind: "initial",
+        linkedDraft: { sequencePosition: 3, templateVariant: "final_reminder" },
+        cadenceDays: [3, 7],
+      }),
+    ).toMatchObject({
+      sequenceDay: 7,
+      emailKind: "followup",
+      label: "Email 3",
+      recoveredFromDraft: true,
+    });
+
+    const thread = buildEmailThread({
+      lead: {
+        ...baseLead,
+        threadRootSubject: "Re: A festive sample for Genesis Technologies",
+      } as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s-breakup",
+          leadId: "lead-1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          approvalId: "appr-e3",
+          draftLeadOutreachId: null,
+          scheduledFor: new Date("2026-09-07T12:06:00Z"),
+          sentAt: new Date("2026-09-07T12:06:00Z"),
+          openedAt: new Date("2026-09-08T04:42:00Z"),
+          subjectSent: "Re: A festive sample for Genesis Technologies",
+          bodySnippet:
+            "Hi Seetanjali,\n\nI don't want to keep filling your inbox, so I'll leave it here.",
+        },
+        {
+          id: "s2",
+          leadId: "lead-1",
+          sequenceDay: 3,
+          emailKind: "followup",
+          status: "cancelled",
+          draftLeadOutreachId: "d2",
+          scheduledFor: new Date("2026-09-10T20:30:00Z"),
+        },
+        {
+          id: "s3",
+          leadId: "lead-1",
+          sequenceDay: 7,
+          emailKind: "followup",
+          status: "scheduled",
+          draftLeadOutreachId: "d3",
+          scheduledFor: new Date("2026-09-14T20:30:00Z"),
+        },
+      ] as unknown as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      sequenceDrafts: [
+        {
+          id: "d1",
+          sequencePosition: 1,
+          templateVariant: "gift_sampling",
+          subjectA: "A festive sample for Genesis Technologies",
+          emailBody: "Hi Seetanjali,\n\nEmail 1 intro about a sample box.",
+        },
+        {
+          id: "d2",
+          sequencePosition: 2,
+          templateVariant: "follow_up",
+          subjectA: "Re: A festive sample for Genesis",
+          emailBody: "Hi Seetanjali,\n\nEmail 2 follow-up.",
+        },
+        {
+          id: "d3",
+          sequencePosition: 3,
+          templateVariant: "final_reminder",
+          subjectA: "Re: A festive sample for Genesis Technologies",
+          emailBody:
+            "Hi Seetanjali,\n\nI don't want to keep filling your inbox, so I'll leave it here.",
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["sequenceDrafts"],
+      draftIdByApprovalId: { "appr-e3": "d3" },
+      cadenceDays: [3, 7],
+    });
+
+    const sentBreakup = thread.events.find((e) => e.id === "s-breakup");
+    expect(sentBreakup?.label).toBe("Email 3");
+    expect(sentBreakup?.sequenceDay).toBe(7);
+    expect(sentBreakup?.body).toContain("leave it here");
+
+    expect(thread.barNodes[0].label).toBe("Email 1");
+    expect(thread.barNodes[0].state).toBe("upcoming");
+    expect(thread.barNodes[0].kind).toBe("draft");
+    expect(thread.barNodes[0].body ?? "").toContain("Email 1 intro");
+    expect(thread.barNodes[0].body ?? "").not.toContain("leave it here");
+    expect(thread.barNodes[2].label).toBe("Email 3");
+    expect(thread.barNodes[2].state).toBe("done");
+    expect(thread.barNodes[2].body).toContain("leave it here");
+
+    const email1DraftEvent = thread.events.find((e) => e.label === "Email 1" && e.status === "draft");
+    expect(email1DraftEvent?.body).toContain("Email 1 intro");
+    expect(isEmail1SentInThread(thread)).toBe(false);
+  });
+});
+
+describe("pendingFollowUpScheduleIdFromNode", () => {
+  it("returns a live scheduled follow-up id and ignores skipped or sent nodes", () => {
+    expect(
+      pendingFollowUpScheduleIdFromNode({
+        scheduleId: "s2",
+        kind: "scheduled",
+        state: "scheduled",
+      }),
+    ).toBe("s2");
+    expect(
+      pendingFollowUpScheduleIdFromNode({
+        scheduleId: "s-open",
+        kind: "draft",
+        state: "scheduled",
+      }),
+    ).toBe("s-open");
+    expect(
+      pendingFollowUpScheduleIdFromNode({
+        scheduleId: "s3",
+        kind: "sent",
+        state: "done",
+      }),
+    ).toBeUndefined();
+    expect(
+      pendingFollowUpScheduleIdFromNode({
+        scheduleId: "s-cancelled",
+        kind: "scheduled",
+        state: "skipped",
+      }),
+    ).toBeUndefined();
   });
 });

@@ -41,7 +41,7 @@ export const MOBILE_DRAWER_SECTIONS: MobileNavSection[] = [
   {
     title: "MY WORK",
     items: [
-      { key: "email", label: "Outreach", href: "/email", icon: Mail },
+      { key: "email", label: "Outbox", href: "/email", icon: Mail },
       { key: "scouting", label: "Scout", href: "/scouting", icon: Telescope },
       { key: "agent-console", label: "Agent Console", href: "/agents/console", icon: Bot },
     ],
@@ -94,7 +94,7 @@ export function getMobilePageTitle(pathname: string): string {
   if (pathname === "/pinned") return "Pinned";
   if (pathname === "/scouting" || pathname.startsWith("/scouting")) return "Scouting";
   if (pathname === "/leads" || pathname.startsWith("/leads")) return "Leads";
-  if (pathname === "/email") return "Outreach";
+  if (pathname === "/email") return "Outbox";
   if (pathname === "/season") return "Season War Room";
   if (pathname === "/brand-intelligence") return "Brand Intelligence";
   if (pathname === "/funnel") return "Yield Funnel";

@@ -15,7 +15,7 @@ export default function ProfilePage() {
   const [orgName, setOrgName] = useState("");
   const [role, setRole] = useState("");
   const [credits, setCredits] = useState<number | null>(null);
-  const [canViewCredits, setCanViewCredits] = useState(false);
+  const [canManageBilling, setCanManageBilling] = useState(false);
   const [isSuperadmin, setIsSuperadmin] = useState(false);
 
   useEffect(() => {
@@ -28,9 +28,11 @@ export default function ProfilePage() {
         }
         if (data.tenant) setOrgName(data.tenant.name);
         if (typeof data.role === "string") setRole(data.role);
-        if (data.permissions?.canManageBilling && typeof data.credits === "number") {
+        if (typeof data.credits === "number") {
           setCredits(data.credits);
-          setCanViewCredits(true);
+        }
+        if (data.permissions?.canManageBilling) {
+          setCanManageBilling(true);
         }
         if (data.isSuperadmin) setIsSuperadmin(true);
       });
@@ -74,7 +76,7 @@ export default function ProfilePage() {
               ) : null}
             </div>
           </SettingsRow>
-          {canViewCredits && credits !== null ? (
+          {credits !== null ? (
             <>
               <SettingsGroupDivider />
               <SettingsRow className="justify-between">
@@ -82,9 +84,15 @@ export default function ProfilePage() {
                   <Coins className="size-4 text-brand-stratus-yellow" />
                   <span className="text-[13px] text-brand-ink-soft">Credits remaining</span>
                 </div>
-                <a href="/settings?tab=billing" className="text-[14px] font-semibold text-brand-ink hover:underline">
-                  {credits.toLocaleString()} →
-                </a>
+                {canManageBilling ? (
+                  <a href="/settings?tab=billing" className="text-[14px] font-semibold text-brand-ink hover:underline">
+                    {credits.toLocaleString()} →
+                  </a>
+                ) : (
+                  <span className="text-[14px] font-semibold text-brand-ink">
+                    {credits.toLocaleString()}
+                  </span>
+                )}
               </SettingsRow>
             </>
           ) : null}

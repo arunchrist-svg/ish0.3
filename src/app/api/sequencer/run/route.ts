@@ -1,22 +1,32 @@
 import { NextResponse } from "next/server";
 import { runSequencer } from "@/lib/agents/sequencer";
-import { inngestJobsEnabled } from "@/lib/jobs/enqueue";
 
-export async function POST(req: Request) {
-  const auth = req.headers.get("authorization");
+function authorizeCron(req: Request): boolean {
   const secret = process.env.CRON_SECRET;
-  if (!secret || auth !== `Bearer ${secret}`) {
+  if (!secret) return false;
+  return req.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+async function handleSequencerCron(req: Request) {
+  if (!authorizeCron(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    if (inngestJobsEnabled()) {
-      return NextResponse.json({ skipped: true, reason: "inngest_enabled" });
-    }
+    // Always run. Inngest may also fire hourly; claim locking prevents double-send.
     const result = await runSequencer();
     return NextResponse.json(result);
   } catch (e) {
     console.error("[api/sequencer/run]", e);
     return NextResponse.json({ error: "Sequencer failed" }, { status: 500 });
   }
+}
+
+/** Vercel Cron uses GET. */
+export async function GET(req: Request) {
+  return handleSequencerCron(req);
+}
+
+export async function POST(req: Request) {
+  return handleSequencerCron(req);
 }

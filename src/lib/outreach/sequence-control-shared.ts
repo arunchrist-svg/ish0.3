@@ -18,7 +18,12 @@ export function deriveSequenceState(leadStatus: string, scheduleRows: ScheduleRo
   const initialSent = scheduleRows.some((r) => r.sequenceDay === 0 && r.status === "sent");
   const followups = scheduleRows.filter((r) => r.sequenceDay > 0);
 
-  if (!initialSent) return "not_started";
+  if (!initialSent) {
+    // Queued Email 1 (deferred to settings send window) counts as an active sequence.
+    if (scheduleRows.some((r) => r.sequenceDay === 0 && r.status === "scheduled")) return "active";
+    if (scheduleRows.some((r) => r.sequenceDay === 0 && r.status === "paused")) return "paused";
+    return "not_started";
+  }
   if (followups.some((r) => r.status === "scheduled" || r.status === "pending_review")) return "active";
   if (followups.some((r) => r.status === "paused")) return "paused";
 

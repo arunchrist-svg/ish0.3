@@ -4,7 +4,7 @@ import { retrieveRelevantRules } from "@/lib/rag";
 import { db, leadOutreach, leads, contacts, accounts, leadResearch, yieldFunnel } from "@/db";
 import { eq } from "drizzle-orm";
 import { isManualStage } from "@/lib/pipeline-status";
-import { getOutreachTemplate, packIdFromBrand, type OutreachTemplateId } from "@/lib/email/outreach-templates";
+import { getOutreachTemplate, isZeroCostTemplateWrite, packIdFromBrand, type OutreachTemplateId } from "@/lib/email/outreach-templates";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { resolveOutreachEmailStyle } from "@/lib/email/config";
 import { notifyLeadEvent } from "@/lib/push/notify-workspace";
@@ -109,7 +109,14 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
       campaignMode: emailConfig.campaignMode,
     }) ?? FESTIVE_OCCASION_SENTINEL;
 
-  if (writerMode !== "ai" && packIdFromBrand(brandConfig) === "gifting-sweets") {
+  const templateIdForWrite =
+    options?.followUpMode ?? options?.outreachTemplate ?? defaultOutreachTemplate;
+  // Fixed-copy templates (e.g. Prasant) always fill placeholders; never call the LLM.
+  const useIshTemplateFill =
+    packIdFromBrand(brandConfig) === "gifting-sweets" &&
+    (writerMode !== "ai" || isZeroCostTemplateWrite(templateIdForWrite));
+
+  if (useIshTemplateFill) {
     return persistIshTemplateDraft({
       lead,
       leadId,
@@ -120,7 +127,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
       contactFirstName,
       companyDisplayName,
       sequencePosition,
-      templateId: options?.followUpMode ?? options?.outreachTemplate ?? defaultOutreachTemplate,
+      templateId: templateIdForWrite,
       isFollowUp,
       skipStatusUpdate: options?.skipStatusUpdate,
       occasionId,
@@ -536,6 +543,7 @@ async function persistIshTemplateDraft(params: {
   });
   const emailBody = normalizeEmailBody(copy.emailBody);
   const emailBodyB = copy.emailBodyB ? normalizeEmailBody(copy.emailBodyB) : null;
+  const emailBodyC = copy.emailBodyC ? normalizeEmailBody(copy.emailBodyC) : null;
   const isCatalog = isIshFestiveCatalogBody(emailBody);
   const delivOpts = {
     emailStyle,
@@ -554,7 +562,9 @@ async function persistIshTemplateDraft(params: {
   const spamResult = isCatalog
     ? { inboxScore: 100, ruleHits: [] as import("@/lib/email/content-rules").ContentRuleHit[] }
     : scoreSpamMeter(emailBody, copy.subjectA, delivOpts);
-  const rubric = isCatalog
+  // Fixed-copy templates: no LLM rubric (no tokens). Local spam meter only.
+  const skipLlmRubric = isCatalog || isZeroCostTemplateWrite(templateId);
+  const rubric = skipLlmRubric
     ? {
         spam_signal_risk: 25,
         personalization_depth: 25,
@@ -589,11 +599,11 @@ async function persistIshTemplateDraft(params: {
       promptVersion: isCatalog ? "v2.8-ish-catalog-on-open" : ISH_TEMPLATE_PROMPT_VERSION,
       draftSource: "template",
       subjectA: copy.subjectA,
-      subjectB: copy.subjectB,
-      subjectC: null,
+      subjectB: copy.subjectB || null,
+      subjectC: copy.subjectC || null,
       emailBody,
       emailBodyB,
-      emailBodyC: null,
+      emailBodyC,
       chosenSubjectKey: "A",
       chosenBodyKey: "A",
       deliverabilityScore: delivScore,

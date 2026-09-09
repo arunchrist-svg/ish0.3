@@ -10,8 +10,6 @@ import { SessionProvider, useSession } from "@/components/providers/session-prov
 import { HubPollingProvider } from "@/components/providers/hub-polling-provider";
 import { useMobileNav } from "@/hooks/use-mobile-nav";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
-import { useAgentRuns } from "@/hooks/use-agent-runs";
-import { AgentStatusBar } from "@/design-system";
 import { cn } from "@/lib/utils";
 import { space } from "@/design-system/tokens";
 
@@ -20,7 +18,6 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
   const { session } = useSession();
   const { drawerOpen, closeDrawer, toggleDrawer } = useMobileNav();
   const { count: inboxBadge } = useInboxBadge();
-  const { runs: agentRuns } = useAgentRuns();
 
   return (
     <>
@@ -29,7 +26,6 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <DemoBanner />
           <ReadOnlyBanner />
-          <AgentStatusBar runs={agentRuns} />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <SideNav />
             <div
@@ -49,7 +45,7 @@ function HubShellInner({ children }: { children: React.ReactNode }) {
         open={drawerOpen}
         pathname={pathname}
         isSuperadmin={session?.isSuperadmin ?? false}
-        credits={session?.permissions.canManageBilling ? (session?.credits ?? null) : null}
+        credits={session?.credits ?? null}
         onClose={closeDrawer}
       />
     </>

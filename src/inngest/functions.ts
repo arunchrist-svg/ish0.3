@@ -61,27 +61,23 @@ export const writerLeadFunction = inngest.createFunction(
   {
     id: "writer-lead",
     retries: 2,
-    concurrency: [{ limit: 3, key: "event.data.tenantId" }],
+    concurrency: [{ limit: 5, key: "event.data.tenantId" }],
+    // batchId lets Rewrite All re-run the same lead; omit falls back to leadId only.
+    idempotency: "event.data.batchId + '-' + event.data.leadId",
   },
   { event: "writer/lead.requested" },
   async ({ event, step }) => {
-    const { runWriter } = await import("@/lib/agents/writer");
-    const { runWriterSequence } = await import("@/lib/agents/writer-sequence");
     const result = await step.run("write-outreach", async () => {
-      if (event.data.mode === "single") {
-        const outreachId = await runWriter(event.data.leadId, {
-          outreachTemplate: event.data.outreachTemplate,
-          writerMode: event.data.writerMode,
-          occasionTheme: event.data.occasionTheme,
-        });
-        return { outreachIds: [outreachId] };
-      }
-      const ids = await runWriterSequence(event.data.leadId, {
+      const { writeOutreachForJob } = await import("@/lib/agents/writer-job");
+      return writeOutreachForJob({
+        leadId: event.data.leadId,
+        tenantId: event.data.tenantId,
+        mode: event.data.mode,
         outreachTemplate: event.data.outreachTemplate,
         writerMode: event.data.writerMode,
         occasionTheme: event.data.occasionTheme,
+        batchId: event.data.batchId,
       });
-      return { outreachIds: ids };
     });
     return { leadId: event.data.leadId, ...result };
   },

@@ -18,14 +18,19 @@ export {
 
 const LONG_BODY_CHARS = 420;
 
-function formatWhen(at?: string): string | null {
+function formatWhen(at?: string, status?: ThreadEvent["status"], kind?: ThreadEvent["kind"]): string | null {
   if (!at) return null;
-  return new Date(at).toLocaleString("en-IN", {
+  const stamp = new Date(at).toLocaleString("en-IN", {
     month: "short",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
+  if (status === "scheduled" || kind === "scheduled") return `Sends ${stamp}`;
+  if (status === "opened") return `Opened ${stamp}`;
+  if (status === "bounced") return `Bounced ${stamp}`;
+  if (status === "draft" || kind === "draft") return stamp;
+  return `Sent ${stamp}`;
 }
 
 function chipClass(tone: ReturnType<typeof conversationStatusChip>["tone"]): string {
@@ -62,7 +67,13 @@ function MessageBubble({
   const isLong = body.length > LONG_BODY_CHARS;
   const [expanded, setExpanded] = useState(false);
   const shown = isLong && !expanded ? `${body.slice(0, LONG_BODY_CHARS).trimEnd()}…` : body;
-  const when = formatWhen(event.at ?? event.openedAt);
+  const when = formatWhen(
+    event.status === "opened" || event.status === "bounced"
+      ? event.openedAt ?? event.bouncedAt ?? event.at
+      : event.at,
+    event.status,
+    event.kind,
+  );
 
   return (
     <button
@@ -168,6 +179,20 @@ type Props = {
    * Default keeps the two-sided conversation stack only.
    */
   showOutboundHistory?: boolean;
+  /** Hide scheduled follow-ups when previewing a sent step (e.g. Email 1 Opened). */
+  hideScheduledEvents?: boolean;
+  /** Section title. Defaults to Conversation. */
+  heading?: string;
+  /**
+   * Quieter strip for review-draft context so it does not look like the send target.
+   * Collapsible when true; starts collapsed when defaultCollapsed is also set.
+   */
+  variant?: "default" | "context";
+  defaultCollapsed?: boolean;
+  /** Hide events for the sequence step currently open in the compose editor. */
+  excludeSequenceDays?: number[];
+  /** Hide events whose label matches the selected draft tab (e.g. Email 3). */
+  excludeLabels?: string[];
 };
 
 export function ConversationTimeline({
@@ -176,14 +201,43 @@ export function ConversationTimeline({
   onSelect,
   hideDraftEvents,
   showOutboundHistory,
+  hideScheduledEvents,
+  heading = "Conversation",
+  variant = "default",
+  defaultCollapsed = false,
+  excludeSequenceDays,
+  excludeLabels,
 }: Props) {
+  const [collapsed, setCollapsed] = useState(defaultCollapsed && variant === "context");
+
   const events = useMemo(() => {
     if (!thread) return [];
     if (!showOutboundHistory && !shouldShowConversationTimeline(thread)) return [];
+    const excludeDays = new Set(excludeSequenceDays ?? []);
+    const excludeLabelSet = new Set(
+      (excludeLabels ?? []).map((label) => label.trim().toLowerCase()),
+    );
     const list = [...(thread.events ?? [])].filter((e) => {
-      if (!hideDraftEvents) return true;
-      if (e.status === "draft") return false;
-      if (e.id === "reply-draft") return false;
+      if (hideDraftEvents) {
+        if (e.status === "draft") return false;
+        if (e.id === "reply-draft") return false;
+      }
+      if (hideScheduledEvents && (e.status === "scheduled" || e.kind === "scheduled")) {
+        return false;
+      }
+      if (excludeDays.size > 0 && e.sequenceDay != null && excludeDays.has(e.sequenceDay)) {
+        return false;
+      }
+      if (excludeLabelSet.size > 0) {
+        const label = e.label?.trim().toLowerCase() ?? "";
+        if (label && excludeLabelSet.has(label)) return false;
+        // "Email 2 (+3d)" style labels still match Email 2.
+        for (const excluded of excludeLabelSet) {
+          if (label === excluded || label.startsWith(`${excluded} `) || label.startsWith(`${excluded}(`)) {
+            return false;
+          }
+        }
+      }
       return true;
     });
     list.sort((a, b) => {
@@ -200,28 +254,72 @@ export function ConversationTimeline({
       return order(a) - order(b);
     });
     return list;
-  }, [thread, hideDraftEvents, showOutboundHistory]);
+  }, [
+    thread,
+    hideDraftEvents,
+    showOutboundHistory,
+    hideScheduledEvents,
+    excludeSequenceDays,
+    excludeLabels,
+  ]);
 
   if (!thread || events.length === 0) return null;
 
+  const isContext = variant === "context";
+  const summary = `${events.length} earlier email${events.length === 1 ? "" : "s"}`;
+
   return (
-    <div className="space-y-2 rounded-[14px] border border-brand-stratus-blue/12 bg-gradient-to-b from-brand-canvas/50 to-white px-3 py-2.5 lg:px-3.5 lg:py-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-ink-faint">Conversation</p>
-        {thread.threadRootSubject ? (
-          <p className="truncate text-[11px] font-medium text-brand-ink-soft">{thread.threadRootSubject}</p>
-        ) : null}
-      </div>
-      <div className="flex flex-col gap-2.5">
-        {events.map((event) => (
-          <MessageBubble
-            key={event.id}
-            event={event}
-            selected={selectedEventId === event.id}
-            onSelect={onSelect}
-          />
-        ))}
-      </div>
+    <div
+      className={cn(
+        "space-y-2 rounded-[14px] px-3 py-2.5 lg:px-3.5 lg:py-3",
+        isContext
+          ? "border border-black/[0.06] bg-brand-app/40"
+          : "border border-brand-stratus-blue/12 bg-gradient-to-b from-brand-canvas/50 to-white",
+      )}
+    >
+      {isContext ? (
+        <button
+          type="button"
+          onClick={() => setCollapsed((v) => !v)}
+          className="flex w-full items-center justify-between gap-2 text-left"
+          aria-expanded={!collapsed}
+        >
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-ink-faint">
+              {heading}
+            </p>
+            <p className="truncate text-[11px] font-medium text-brand-ink-soft">{summary}</p>
+          </div>
+          {collapsed ? (
+            <ChevronDown className="size-3.5 shrink-0 text-brand-ink-faint" />
+          ) : (
+            <ChevronUp className="size-3.5 shrink-0 text-brand-ink-faint" />
+          )}
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-ink-faint">
+            {heading}
+          </p>
+          {thread.threadRootSubject ? (
+            <p className="truncate text-[11px] font-medium text-brand-ink-soft">
+              {thread.threadRootSubject}
+            </p>
+          ) : null}
+        </div>
+      )}
+      {!collapsed || !isContext ? (
+        <div className={cn("flex flex-col gap-2.5", isContext && "opacity-90")}>
+          {events.map((event) => (
+            <MessageBubble
+              key={event.id}
+              event={event}
+              selected={selectedEventId === event.id}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

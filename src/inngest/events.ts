@@ -17,6 +17,8 @@ export type WriterLeadRequested = {
     outreachTemplate?: string;
     writerMode?: string;
     occasionTheme?: string | null;
+    /** Distinguishes Rewrite All batches so Inngest idempotency does not block rewrites. */
+    batchId?: string;
   };
 };
 

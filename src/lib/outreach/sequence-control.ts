@@ -30,8 +30,15 @@ export async function controlLeadSequence(params: {
     .where(eq(outreachSchedule.leadId, leadId));
 
   const state = deriveSequenceState(lead.status, rows);
-  const followupIds = (statuses: string[]) =>
-    rows.filter((r) => r.sequenceDay > 0 && statuses.includes(r.status)).map((r) => r.id);
+  const controllableIds = (statuses: string[]) =>
+    rows
+      .filter((r) => {
+        if (!statuses.includes(r.status)) return false;
+        if (r.sequenceDay > 0) return true;
+        // Queued Email 1 (not yet sent)
+        return r.sequenceDay === 0;
+      })
+      .map((r) => r.id);
 
   let updated = 0;
   let nextState: SequenceControlState = state;
@@ -52,9 +59,9 @@ export async function controlLeadSequence(params: {
     if (state === "complete" || state === "cancelled") {
       return { ok: false, error: "Sequence is no longer active" };
     }
-    const ids = followupIds(["paused"]);
+    const ids = controllableIds(["paused"]);
     if (ids.length === 0) {
-      return { ok: false, error: "No paused follow-ups to resume" };
+      return { ok: false, error: "No paused emails to resume" };
     }
     await db.update(outreachSchedule).set({ status: "scheduled" }).where(inArray(outreachSchedule.id, ids));
     updated = ids.length;
@@ -63,9 +70,9 @@ export async function controlLeadSequence(params: {
     if (state !== "active") {
       return { ok: false, error: "Sequence is not running" };
     }
-    const ids = followupIds(["scheduled", "pending_review"]);
+    const ids = controllableIds(["scheduled", "pending_review"]);
     if (ids.length === 0) {
-      return { ok: false, error: "No scheduled follow-ups to pause" };
+      return { ok: false, error: "No scheduled emails to pause" };
     }
     await db.update(outreachSchedule).set({ status: "paused" }).where(inArray(outreachSchedule.id, ids));
     updated = ids.length;
@@ -74,13 +81,16 @@ export async function controlLeadSequence(params: {
     if (state === "not_started" || state === "complete") {
       return { ok: false, error: "Nothing to cancel" };
     }
-    const ids = followupIds(["scheduled", "paused", "pending_review"]);
+    const ids = controllableIds(["scheduled", "paused", "pending_review"]);
     if (ids.length === 0) {
-      return { ok: false, error: "No pending follow-ups to cancel" };
+      return { ok: false, error: "No pending emails to cancel" };
     }
     await db.update(outreachSchedule).set({ status: "cancelled" }).where(inArray(outreachSchedule.id, ids));
     updated = ids.length;
-    nextState = "cancelled";
+    const remaining = rows.map((r) =>
+      ids.includes(r.id) ? { sequenceDay: r.sequenceDay, status: "cancelled" } : { sequenceDay: r.sequenceDay, status: r.status },
+    );
+    nextState = deriveSequenceState(lead.status, remaining);
   }
 
   await logAudit({

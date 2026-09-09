@@ -6,6 +6,18 @@ describe("deriveSequenceState", () => {
     expect(deriveSequenceState("draft_ready", [{ sequenceDay: 1, status: "scheduled" }])).toBe("not_started");
   });
 
+  it("returns active when Email 1 is queued for the send window", () => {
+    expect(
+      deriveSequenceState("draft_ready", [{ sequenceDay: 0, status: "scheduled" }]),
+    ).toBe("active");
+  });
+
+  it("returns paused when queued Email 1 is paused", () => {
+    expect(
+      deriveSequenceState("draft_ready", [{ sequenceDay: 0, status: "paused" }]),
+    ).toBe("paused");
+  });
+
   it("returns active when follow-ups are scheduled", () => {
     expect(
       deriveSequenceState("outreached", [

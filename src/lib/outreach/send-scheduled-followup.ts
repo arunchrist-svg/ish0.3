@@ -50,7 +50,7 @@ export async function sendScheduledFollowUp(params: {
     .limit(1);
   const sched = row?.schedule;
   if (!sched) throw new Error("Schedule not found");
-  if (sched.status !== "scheduled" && sched.status !== "pending_review") {
+  if (sched.status !== "scheduled" && sched.status !== "pending_review" && sched.status !== "sending") {
     throw new Error("Schedule is not sendable");
   }
   if (sched.sequenceDay <= 0) throw new Error("Not a follow-up schedule row");
@@ -75,7 +75,7 @@ export async function sendScheduledFollowUp(params: {
 
   const senderUserId = lead.createdByUserId ?? params.actorId ?? null;
   const emailConfig = await getResolvedEmailConfig(params.workspaceId, senderUserId);
-  if (isOutreachSendingPaused(emailConfig)) throw new Error("Outreach sending is paused");
+  if (isOutreachSendingPaused(emailConfig)) throw new Error("Outbox sending is paused");
   if (emailConfig.sendMode === "live") {
     await assertPlanEntitlement(params.tenantId, "live_send");
   }
@@ -203,6 +203,7 @@ export async function sendScheduledFollowUp(params: {
       bodySnippet: body.slice(0, 500) || null,
       emailKind: sched.emailKind === CATALOG_ON_OPEN_EMAIL_KIND ? CATALOG_ON_OPEN_EMAIL_KIND : "followup",
       draftLeadOutreachId: generatedOutreach.id,
+      lastError: null,
     })
     .where(eq(outreachSchedule.id, sched.id));
 

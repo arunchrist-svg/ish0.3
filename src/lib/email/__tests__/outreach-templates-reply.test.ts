@@ -3,6 +3,7 @@ import {
   getOutreachTemplate,
   getOutreachTemplatesForBrand,
   getReplyCtaInstruction,
+  isZeroCostTemplateWrite,
   packIdFromBrand,
 } from "@/lib/email/outreach-templates";
 
@@ -31,8 +32,20 @@ describe("brand outreach templates", () => {
       brandSlug: "ish",
     });
     expect(templates[0]?.label).toMatch(/gift sampling|mithai|tasting/i);
+    expect(templates.some((t) => t.id === "prasanth_sequence" && t.label === "Prasant Template")).toBe(true);
     expect(templates.some((t) => /demo or trial/i.test(t.label))).toBe(false);
     expect(getOutreachTemplate("gift_sampling", "gifting-sweets").ctaInstruction).toMatch(/tasting|Diwali|sample/i);
+  });
+
+  it("treats Prasant Template as zero-cost fixed copy", () => {
+    expect(isZeroCostTemplateWrite("prasanth_sequence")).toBe(true);
+    expect(isZeroCostTemplateWrite("gift_sampling")).toBe(false);
+  });
+
+  it("asks for next detail after affirmative Prasant reply", () => {
+    const instruction = getReplyCtaInstruction("prasanth_sequence", "affirmative");
+    expect(instruction).toMatch(/sample box|tasting visit/i);
+    expect(instruction).toMatch(/Do NOT re-pitch/i);
   });
 
   it("falls back to intent when pack id is missing", () => {

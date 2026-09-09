@@ -10,7 +10,7 @@ function isCronAuthorized(req: Request): boolean {
   return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
-export async function POST(req: Request) {
+async function handlePoll(req: Request) {
   try {
     if (isCronAuthorized(req)) {
       const results = await pollRepliesForAllWorkspaces();
@@ -28,4 +28,13 @@ export async function POST(req: Request) {
     }
     return handleApiError(e, "[api/replies/poll]");
   }
+}
+
+/** Vercel Cron uses GET. */
+export async function GET(req: Request) {
+  return handlePoll(req);
+}
+
+export async function POST(req: Request) {
+  return handlePoll(req);
 }

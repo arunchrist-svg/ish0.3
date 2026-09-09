@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   computeFollowUpScheduledFor,
+  formatQueuedSendLabel,
+  deferredSendWindowSlot,
   isWithinSendWindow,
   nextSendWindowStart,
   normalizeSendDays,
@@ -190,6 +192,15 @@ describe("isWithinSendWindow + nextSendWindowStart", () => {
     expect(parts.day).toBe("24");
     expect(parts.hour).toBe("09");
   });
+
+  it("deferredSendWindowSlot defers to the next day when already inside the window", () => {
+    const now = zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 10, minute: 30 }, IST);
+    const deferred = deferredSendWindowSlot(now, window);
+    expect(deferred.getTime()).toBeGreaterThan(now.getTime());
+    const parts = localParts(deferred, IST);
+    expect(parts.day).toBe("25");
+    expect(isWithinSendWindow(deferred, window)).toBe(true);
+  });
 });
 
 describe("computeFollowUpScheduledFor", () => {
@@ -270,5 +281,12 @@ describe("multi-range hour windows", () => {
     const parts = localParts(snapped, IST);
     expect(parts.hour).toBe("09");
     expect(parts.minute).toBe("30");
+  });
+});
+
+describe("formatQueuedSendLabel", () => {
+  it("formats a queued send instant in the window timezone", () => {
+    const at = zonedLocalToUtc({ year: 2026, month: 9, day: 10, hour: 9, minute: 0 }, IST);
+    expect(formatQueuedSendLabel(at, { timezone: IST })).toBe("Thu 10 Sep, 9:00 AM");
   });
 });

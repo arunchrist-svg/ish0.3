@@ -203,7 +203,7 @@ const CONTACT_FIELDS_GROUP = {
 
 const CONTACT_OUTREACH_GROUP = {
   id: "outreach",
-  label: "Outreach",
+  label: "Outbox",
   filters: [
     { id: "email_sent" as const, label: "Email sent" },
     { id: "not_sent" as const, label: "Not sent" },

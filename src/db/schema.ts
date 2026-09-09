@@ -407,11 +407,15 @@ export const outreachSchedule = pgTable("outreach_schedule", {
   bodySnippet:   text("body_snippet"),
   draftLeadOutreachId: uuid("draft_lead_outreach_id").references(() => leadOutreach.id, { onDelete: "set null" }),
   trackingToken: text("tracking_token"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  attemptCount:  integer("attempt_count").notNull().default(0),
+  lastError:     text("last_error"),
   createdAt:     timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   leadIdx: index("outreach_schedule_lead_idx").on(table.leadId),
   channelStatusIdx: index("outreach_schedule_channel_status_idx").on(table.channel, table.status),
   emailKindStatusIdx: index("outreach_schedule_email_kind_status_idx").on(table.emailKind, table.status),
+  statusScheduledForIdx: index("outreach_schedule_status_scheduled_for_idx").on(table.status, table.scheduledFor),
 }));
 
 // ─── Yield Funnel ─────────────────────────────────────────────────────────────

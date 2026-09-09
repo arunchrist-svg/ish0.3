@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
-import { db, leads, contacts, accounts, users } from "@/db";
-import { eq, desc, inArray, and, sql } from "drizzle-orm";
+import { db, leads, contacts, accounts, users, outreachSchedule } from "@/db";
+import { eq, desc, inArray, and, sql, asc } from "drizzle-orm";
 import type { LeadQueueItem } from "@/lib/api-client";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
@@ -83,30 +83,87 @@ export async function GET(req: Request) {
             .then((r) => r[0]?.n ?? 0)
         : Promise.resolve(undefined),
     ]);
+
+    const leadIds = rows.map((r) => r.id);
+    const pendingByLead = new Map<
+      string,
+      { scheduledFor: Date; scheduleId: string; status: string; lastError: string | null }
+    >();
+    const sentByLead = new Map<string, Date>();
+    if (leadIds.length > 0) {
+      const scheduleMeta = await db
+        .select({
+          id: outreachSchedule.id,
+          leadId: outreachSchedule.leadId,
+          status: outreachSchedule.status,
+          scheduledFor: outreachSchedule.scheduledFor,
+          sentAt: outreachSchedule.sentAt,
+          lastError: outreachSchedule.lastError,
+        })
+        .from(outreachSchedule)
+        .where(
+          and(
+            inArray(outreachSchedule.leadId, leadIds),
+            eq(outreachSchedule.channel, "email"),
+            eq(outreachSchedule.sequenceDay, 0),
+            inArray(outreachSchedule.status, ["scheduled", "sending", "sent"]),
+          ),
+        )
+        .orderBy(asc(outreachSchedule.scheduledFor));
+
+      for (const row of scheduleMeta) {
+        if (row.status === "scheduled" || row.status === "sending") {
+          if (!pendingByLead.has(row.leadId)) {
+            pendingByLead.set(row.leadId, {
+              scheduledFor: row.scheduledFor,
+              scheduleId: row.id,
+              status: row.status,
+              lastError: row.lastError ?? null,
+            });
+          }
+          continue;
+        }
+        if (row.status === "sent" && row.sentAt) {
+          const prev = sentByLead.get(row.leadId);
+          if (!prev || row.sentAt.getTime() > prev.getTime()) {
+            sentByLead.set(row.leadId, row.sentAt);
+          }
+        }
+      }
+    }
     mark(marks, "db", dbStart);
 
-    const queue: LeadQueueItem[] = rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      title: r.title ?? "—",
-      company: r.company,
-      companyDomain: r.companyDomain ?? undefined,
-      employees: r.employees ?? undefined,
-      city: r.city ?? "—",
-      score: r.score ?? 60,
-      status: r.status,
-      action: deriveQueueAction(r.status),
-      emailStatus: r.emailStatus ?? "missing",
-      email: r.email ?? undefined,
-      phone: r.phone ?? undefined,
-      linkedIn: r.linkedIn ?? undefined,
-      leadSource: r.leadSource ?? undefined,
-      isPinned: r.isPinned ?? false,
-      createdByUserId: r.createdByUserId ?? undefined,
-      createdByName: r.createdByName?.trim() || undefined,
-      nextActionDate: undefined,
-      createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt ?? undefined,
-    }));
+    const queue: LeadQueueItem[] = rows.map((r) => {
+      const pending = pendingByLead.get(r.id);
+      const sentAt = sentByLead.get(r.id);
+      return {
+        id: r.id,
+        name: r.name,
+        title: r.title ?? "—",
+        company: r.company,
+        companyDomain: r.companyDomain ?? undefined,
+        employees: r.employees ?? undefined,
+        city: r.city ?? "—",
+        score: r.score ?? 60,
+        status: r.status,
+        action: pending ? "Queued to send" : deriveQueueAction(r.status),
+        emailStatus: r.emailStatus ?? "missing",
+        email: r.email ?? undefined,
+        phone: r.phone ?? undefined,
+        linkedIn: r.linkedIn ?? undefined,
+        leadSource: r.leadSource ?? undefined,
+        isPinned: r.isPinned ?? false,
+        createdByUserId: r.createdByUserId ?? undefined,
+        createdByName: r.createdByName?.trim() || undefined,
+        nextActionDate: undefined,
+        pendingSendScheduledFor: pending ? pending.scheduledFor.toISOString() : undefined,
+        pendingSendScheduleId: pending?.scheduleId,
+        pendingSendStatus: pending?.status,
+        pendingSendLastError: pending?.lastError ?? undefined,
+        lastEmailSentAt: sentAt ? sentAt.toISOString() : undefined,
+        createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt ?? undefined,
+      };
+    });
 
     const nextCursor = nextCursorFromRows(
       rows.map((r) => ({

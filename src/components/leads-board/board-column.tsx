@@ -13,11 +13,13 @@ import { BoardLeadCard } from "./board-lead-card";
 import type { SendQueueItem } from "./board-bulk-actions";
 import { VirtualList } from "@/components/ui/virtual-list";
 
-type ColumnAction = {
+export type ColumnAction = {
   label: string;
   busyLabel: string;
   busy: boolean;
   disabled?: boolean;
+  /** Soft / destructive styling for secondary actions like Cancel All. */
+  tone?: "default" | "danger";
   onClick: () => void;
   onCancel?: () => void;
   accessory?: React.ReactNode;
@@ -27,12 +29,18 @@ type Props = {
   stage: PipelineStageLabel;
   leads: LeadQueueItem[];
   totalCount?: number;
+  actions?: ColumnAction[];
+  /** @deprecated Prefer `actions`. */
   action?: ColumnAction;
+  /** Compact control shown before the column count (e.g. Email rewrite menu). */
+  headerAccessory?: React.ReactNode;
   queueByLeadId?: Record<string, SendQueueItem>;
   queueItems?: SendQueueItem[];
   onLeadOpen?: (lead: LeadQueueItem) => void;
   onLeadWrite?: (lead: LeadQueueItem) => void;
   onLeadSend?: (lead: LeadQueueItem) => void;
+  onLeadCancel?: (lead: LeadQueueItem) => void;
+  cancellingLeadId?: string | null;
 };
 
 function queueStatusLabel(item: SendQueueItem): string {
@@ -52,48 +60,83 @@ function queueStatusLabel(item: SendQueueItem): string {
   }
 }
 
-export function BoardColumn({ stage, leads, totalCount, action, queueByLeadId, queueItems, onLeadOpen, onLeadWrite, onLeadSend }: Props) {
+function ColumnActionRow({ action, emptyColumn }: { action: ColumnAction; emptyColumn: boolean }) {
+  const danger = action.tone === "danger";
+  return (
+    <div className="flex items-center gap-1.5">
+      {action.accessory}
+      <button
+        type="button"
+        onClick={action.onClick}
+        disabled={action.disabled || action.busy || (emptyColumn && !danger)}
+        className={cn(
+          "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-all",
+          danger
+            ? "border-red-200 bg-red-50/80 text-red-700 hover:border-red-300 hover:bg-red-50"
+            : "border-brand-border/70 bg-white/80 text-brand-ink hover:border-brand-ink/25 hover:bg-white",
+          "active:scale-[0.98]",
+          "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
+        )}
+      >
+        {action.busy ? (
+          <Loader2 className="size-3 shrink-0 animate-spin text-brand-stratus-blue" />
+        ) : null}
+        <span className="truncate">{action.busy ? action.busyLabel : action.label}</span>
+      </button>
+      {action.busy && action.onCancel ? (
+        <button
+          type="button"
+          onClick={action.onCancel}
+          className="shrink-0 rounded-full border border-red-200 bg-red-50/80 px-2.5 py-1.5 text-[10.5px] font-semibold text-red-700 transition-all hover:border-red-300 hover:text-red-800 active:scale-[0.98]"
+        >
+          Cancel All
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function BoardColumn({
+  stage,
+  leads,
+  totalCount,
+  actions,
+  action,
+  headerAccessory,
+  queueByLeadId,
+  queueItems,
+  onLeadOpen,
+  onLeadWrite,
+  onLeadSend,
+  onLeadCancel,
+  cancellingLeadId,
+}: Props) {
   const accent = PIPELINE_STAGE_ACCENTS[stage];
   const useVirtual = leads.length > 40;
   const displayCount = totalCount ?? leads.length;
+  const columnActions = actions ?? (action ? [action] : []);
 
   return (
     <section className="ish-board-column flex w-[280px] shrink-0 flex-col rounded-[18px]">
-      <header className="ish-board-column-header mb-3 shrink-0 space-y-2 px-1">
-        <div className="flex items-center justify-between gap-2">
+      <header className="ish-board-column-header relative z-20 mb-3 shrink-0 space-y-2 px-1">
+        <div className={cn("flex items-center justify-between gap-2", headerAccessory && "relative z-[1]")}>
           <h2 className="truncate text-[12.5px] font-bold text-brand-ink">{stage}</h2>
-          <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-brand-ink-faint">
-            {displayCount}
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {headerAccessory}
+            <span className="rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-brand-ink-faint">
+              {displayCount}
+            </span>
+          </div>
         </div>
-        {action ? (
-          <div className="flex items-center gap-1.5">
-            {action.accessory}
-            <button
-              type="button"
-              onClick={action.onClick}
-              disabled={action.disabled || action.busy || displayCount === 0}
-              className={cn(
-                "flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[10.5px] font-semibold transition-all",
-                "border-brand-border/70 bg-white/80 text-brand-ink",
-                "hover:border-brand-ink/25 hover:bg-white active:scale-[0.98]",
-                "disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100",
-              )}
-            >
-              {action.busy ? (
-                <Loader2 className="size-3 shrink-0 animate-spin text-brand-stratus-blue" />
-              ) : null}
-              <span className="truncate">{action.busy ? action.busyLabel : action.label}</span>
-            </button>
-            {action.busy && action.onCancel ? (
-              <button
-                type="button"
-                onClick={action.onCancel}
-                className="shrink-0 rounded-full border border-brand-border/70 bg-white/80 px-2.5 py-1.5 text-[10.5px] font-semibold text-brand-ink-soft transition-all hover:border-red-300 hover:text-red-600 active:scale-[0.98]"
-              >
-                Cancel
-              </button>
-            ) : null}
+        {columnActions.length ? (
+          <div className="space-y-1.5">
+            {columnActions.map((item) => (
+              <ColumnActionRow
+                key={item.label}
+                action={item}
+                emptyColumn={displayCount === 0}
+              />
+            ))}
           </div>
         ) : null}
         {queueItems?.length ? (
@@ -130,7 +173,7 @@ export function BoardColumn({ stage, leads, totalCount, action, queueByLeadId, q
       </header>
 
       {leads.length === 0 ? (
-        <div className="min-h-0 flex-1 overflow-y-auto px-0.5 pb-1">
+        <div className="relative z-0 min-h-0 flex-1 overflow-y-auto px-0.5 pb-1">
           <div className="rounded-xl border border-dashed border-brand-border/60 px-3 py-8 text-center text-[11px] text-brand-ink-faint">
             No leads
           </div>
@@ -140,7 +183,7 @@ export function BoardColumn({ stage, leads, totalCount, action, queueByLeadId, q
           items={leads}
           estimateSize={88}
           overscan={6}
-          className="min-h-0 flex-1 px-0.5 pb-1 scrollbar-none"
+          className="relative z-0 min-h-0 flex-1 px-0.5 pb-1 scrollbar-none"
           getItemKey={(lead) => lead.id}
           renderItem={(lead, i) => (
             <div className="pb-2.5">
@@ -153,12 +196,14 @@ export function BoardColumn({ stage, leads, totalCount, action, queueByLeadId, q
                 onOpen={onLeadOpen}
                 onWrite={onLeadWrite}
                 onSend={onLeadSend}
+                onCancel={onLeadCancel}
+                cancelBusy={cancellingLeadId === lead.id}
               />
             </div>
           )}
         />
       ) : (
-        <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-0.5 pb-1 scrollbar-none">
+        <div className="relative z-0 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-0.5 pb-1 scrollbar-none">
           {leads.map((lead, i) => (
             <BoardLeadCard
               key={lead.id}
@@ -170,6 +215,8 @@ export function BoardColumn({ stage, leads, totalCount, action, queueByLeadId, q
               onOpen={onLeadOpen}
               onWrite={onLeadWrite}
               onSend={onLeadSend}
+              onCancel={onLeadCancel}
+              cancelBusy={cancellingLeadId === lead.id}
             />
           ))}
         </div>

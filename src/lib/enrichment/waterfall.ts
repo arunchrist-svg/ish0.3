@@ -271,10 +271,19 @@ async function hydrateMissingCompanyWebsites(
   const hydrated = await mapWithConcurrency(head, concurrency, async (company) => {
     if (company.domain?.trim() || company.website?.trim()) {
       try {
-        const { probeCompanyWebsiteLive } = await import("./website-probe");
+        const { probeCompanyWebsite, rejectNonIndianWebsiteStamp } = await import("./website-probe");
         const host = company.domain?.trim() || company.website?.trim();
-        const status = host ? await probeCompanyWebsiteLive(host) : "dead";
-        if (status === "dead") {
+        const probe = host ? await probeCompanyWebsite(host) : { status: "dead" as const };
+        if (probe.status === "dead") {
+          return { ...company, domain: undefined, website: undefined };
+        }
+        if (
+          rejectNonIndianWebsiteStamp({
+            host,
+            companyName: company.name,
+            snippet: probe.snippet,
+          })
+        ) {
           return { ...company, domain: undefined, website: undefined };
         }
         return company;
