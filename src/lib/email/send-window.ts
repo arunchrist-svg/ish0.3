@@ -1,5 +1,9 @@
 /** Days and local hours (6:00–20:00 exclusive end) when follow-up outreach may be scheduled. */
 
+import { calendarDayKey, getZonedParts } from "@/lib/email/send-window-parts";
+
+export { calendarDayKey } from "@/lib/email/send-window-parts";
+
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export type SendHourRange = {
@@ -75,16 +79,6 @@ export const SEND_WINDOW_PRESETS: {
   { id: "afternoon", label: "12–17", hourStart: 12, hourEnd: 17 },
   { id: "extended", label: "8–18", hourStart: 8, hourEnd: 18 },
 ];
-
-type ZonedParts = {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-  weekday: Weekday;
-};
 
 function isValidTimeZone(tz: string): boolean {
   try {
@@ -219,43 +213,6 @@ export function suggestNextHourRange(ranges: SendHourRange[]): SendHourRange | n
     cursor = Math.max(cursor, range.hourEnd);
   }
   return null;
-}
-
-function getZonedParts(date: Date, timeZone: string): ZonedParts {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    weekday: "short",
-    hourCycle: "h23",
-  });
-  const map = Object.fromEntries(
-    dtf.formatToParts(date).filter((p) => p.type !== "literal").map((p) => [p.type, p.value]),
-  ) as Record<string, string>;
-
-  const weekdayMap: Record<string, Weekday> = {
-    Sun: 0,
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6,
-  };
-
-  return {
-    year: Number(map.year),
-    month: Number(map.month),
-    day: Number(map.day),
-    hour: Number(map.hour),
-    minute: Number(map.minute),
-    second: Number(map.second),
-    weekday: weekdayMap[map.weekday] ?? 0,
-  };
 }
 
 /** Convert a wall-clock time in `timeZone` to a UTC Date. */

@@ -13,6 +13,7 @@ vi.mock("@/lib/api-client", () => ({
   fetchLead: vi.fn(),
   approveOutreach: vi.fn(),
   sendOutreach: vi.fn(),
+  sendBatchOutreach: vi.fn(),
   runWriterSequence: vi.fn(),
 }));
 
@@ -20,7 +21,7 @@ vi.mock("@/lib/outreach/send-with-gate-confirm", () => ({
   sendWithGateConfirm: vi.fn(async (send: (overrides: object) => Promise<unknown>) => send({})),
 }));
 
-import { approveOutreach, fetchLead, sendOutreach } from "@/lib/api-client";
+import { sendBatchOutreach } from "@/lib/api-client";
 
 function lead(id: string, name: string): LeadQueueItem {
   return {
@@ -48,70 +49,48 @@ describe("randomGapMinutes", () => {
     }
     expect(seen).toEqual(new Set([1, 2, 3, 4, 5]));
   });
-
-  it("maps 0 to 1 and just-below-1 to 5", () => {
-    expect(randomGapMinutes(() => 0)).toBe(1);
-    expect(randomGapMinutes(() => 0.999)).toBe(5);
-  });
 });
 
-describe("sendEmailsForLeads spaced loop", () => {
+describe("sendEmailsForLeads batch planner", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fetchLead).mockResolvedValue({
-      id: "lead",
-      outreach: {
-        id: "draft-1",
-        subjectA: "Hello",
-        emailBody: "Body",
-        sequencePosition: 1,
-      },
-    } as Awaited<ReturnType<typeof fetchLead>>);
-    vi.mocked(approveOutreach).mockResolvedValue({ approvalId: "appr-1" } as Awaited<
-      ReturnType<typeof approveOutreach>
-    >);
-    vi.mocked(sendOutreach).mockResolvedValue({ mode: "live" } as Awaited<ReturnType<typeof sendOutreach>>);
+    vi.mocked(sendBatchOutreach).mockResolvedValue({
+      mode: "queued",
+      ok: 3,
+      failed: 0,
+      errors: [],
+      results: [
+        { leadId: "a", ok: true, scheduledFor: "2026-09-10T03:30:00.000Z" },
+        { leadId: "b", ok: true, scheduledFor: "2026-09-10T03:33:00.000Z" },
+        { leadId: "c", ok: true, scheduledFor: "2026-09-10T03:36:00.000Z" },
+      ],
+      plan: { dailyCap: 30, timezone: "Asia/Kolkata", spanDays: 1, firstAt: null, lastAt: null },
+    });
   });
 
-  it("sends the first lead immediately and waits a gap before later leads", async () => {
-    const waits: number[] = [];
+  it("calls batch API once with all lead ids", async () => {
     const statuses: string[][] = [];
-    const gaps = [3, 1];
-    let gapIndex = 0;
-
     const result = await sendEmailsForLeads([lead("a", "Ada"), lead("b", "Bo"), lead("c", "Cy")], {
-      gapMinutes: () => gaps[gapIndex++] ?? 2,
-      wait: async (ms) => {
-        waits.push(ms);
-      },
       onQueueChange: (queue) => statuses.push(queue.map((item) => item.status)),
     });
 
-    expect(result).toEqual({ ok: 3, failed: 0, cancelled: 0, errors: [] });
-    expect(waits).toEqual([3 * 60_000, 1 * 60_000]);
-    expect(fetchLead).toHaveBeenCalledTimes(3);
-    expect(statuses.some((row) => row[1] === "waiting")).toBe(true);
-    expect(statuses.at(-1)).toEqual(["sent", "sent", "sent"]);
+    expect(result).toEqual({ ok: 3, failed: 0, cancelled: 0, errors: [], planSpanDays: 1 });
+    expect(sendBatchOutreach).toHaveBeenCalledTimes(1);
+    expect(sendBatchOutreach).toHaveBeenCalledWith(["a", "b", "c"], {});
+    expect(statuses.at(-1)).toEqual(["queued", "queued", "queued"]);
   });
 
-  it("cancels remaining leads when the wait is aborted", async () => {
+  it("cancels when aborted before batch call", async () => {
     const controller = new AbortController();
-    const result = await sendEmailsForLeads([lead("a", "Ada"), lead("b", "Bo")], {
-      signal: controller.signal,
-      gapMinutes: () => 2,
-      wait: async (_ms, signal) => {
-        controller.abort();
-        await sleep(1, signal);
-      },
-    });
-
-    expect(result.ok).toBe(1);
+    controller.abort();
+    const result = await sendEmailsForLeads([lead("a", "Ada")], { signal: controller.signal });
     expect(result.cancelled).toBe(1);
-    expect(result.failed).toBe(0);
-    expect(fetchLead).toHaveBeenCalledTimes(1);
+    expect(sendBatchOutreach).not.toHaveBeenCalled();
   });
+});
 
-  it("rejects sleep immediately when already aborted", async () => {
+describe("sleep", () => {
+  it("rejects immediately when already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
     await expect(sleep(1000, controller.signal)).rejects.toBeInstanceOf(SendCancelledError);

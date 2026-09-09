@@ -512,7 +512,9 @@ export function LeadsBoardApp() {
 
   const handleSendLead = useCallback(async (lead: LeadQueueItem) => {
     if (boardBusy) return;
-    const confirmed = window.confirm(`Send the ready email to ${lead.name} now?`);
+    const confirmed = window.confirm(
+      `Queue the ready email for ${lead.name} in your Settings send window (respects daily cap)?`,
+    );
     if (!confirmed) return;
 
     const controller = new AbortController();
@@ -530,7 +532,7 @@ export function LeadsBoardApp() {
       if (result.cancelled > 0 && result.ok === 0) {
         toast.message("Send cancelled");
       } else if (result.failed === 0 && result.cancelled === 0) {
-        toast.success(`Sent email to ${lead.name}`);
+        toast.success(`Queued email for ${lead.name}`);
       } else {
         toast.error(`Failed to send email to ${lead.name}`);
       }
@@ -682,8 +684,8 @@ export function LeadsBoardApp() {
 
     const confirmed = window.confirm(
       targets.length === 1
-        ? "Send the ready email for this lead now?"
-        : `Send ready emails for all ${targets.length} leads in Email? Sends are spaced 1–5 minutes apart.`,
+        ? "Queue this email for the next slot in your Settings send window (respects daily cap)?"
+        : `Queue all ${targets.length} ready emails? They will be scheduled across your Settings send hours and daily cap (~3 min apart within each day).`,
     );
     if (!confirmed) return;
 
@@ -703,12 +705,19 @@ export function LeadsBoardApp() {
       if (result.cancelled > 0 && result.ok === 0 && result.failed === 0) {
         toast.message("Send queue cancelled");
       } else if (result.failed === 0 && result.cancelled === 0) {
+        const spanNote =
+          result.planSpanDays && result.planSpanDays > 1
+            ? ` across ${result.planSpanDays} days`
+            : "";
         toast.success(
-          result.ok === 1 ? "Sent 1 email" : `Sent ${result.ok} emails`,
+          result.ok === 1
+            ? "Queued 1 email for your send window"
+            : `Queued ${result.ok} emails${spanNote}`,
+          { duration: 8000 },
         );
       } else {
         toast.error(
-          `Sent ${result.ok} of ${targets.length}. ${result.failed} failed${
+          `Queued ${result.ok} of ${targets.length}. ${result.failed} failed${
             result.cancelled ? `, ${result.cancelled} cancelled` : ""
           }.`,
           { description: result.errors.slice(0, 3).join(" · ") },

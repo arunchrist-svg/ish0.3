@@ -1,6 +1,7 @@
 import { db, outreachSchedule, leads } from "@/db";
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { extractDomain } from "@/lib/email/sender-domain";
+import { calendarDayKey } from "@/lib/email/send-window-parts";
 
 export {
   assertGradualRamp,
@@ -51,4 +52,42 @@ export async function countSendsInRange(
     );
 
   return rows[0]?.total ?? 0;
+}
+
+/**
+ * Count Email 1 rows (sent or queued) per calendar day in the settings timezone.
+ * Used to plan Send All batches against the daily send cap.
+ */
+export async function countInitialOutboundByCalendarDay(
+  workspaceId: string,
+  timezone: string,
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({
+      scheduledFor: outreachSchedule.scheduledFor,
+      sentAt: outreachSchedule.sentAt,
+      status: outreachSchedule.status,
+    })
+    .from(outreachSchedule)
+    .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+    .where(
+      and(
+        eq(leads.workspaceId, workspaceId),
+        eq(outreachSchedule.channel, "email"),
+        eq(outreachSchedule.sequenceDay, 0),
+        inArray(outreachSchedule.status, ["scheduled", "sending", "sent", "paused"]),
+      ),
+    );
+
+  const byDay = new Map<string, number>();
+  for (const row of rows) {
+    const instant =
+      row.status === "sent" && row.sentAt
+        ? row.sentAt
+        : row.scheduledFor;
+    if (!instant) continue;
+    const key = calendarDayKey(instant, timezone);
+    byDay.set(key, (byDay.get(key) ?? 0) + 1);
+  }
+  return byDay;
 }

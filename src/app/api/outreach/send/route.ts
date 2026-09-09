@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const { approvalId, overridePreflight, overrideQualityGate, toEmails, deliveryMode } =
+    const { approvalId, overridePreflight, overrideQualityGate, toEmails, deliveryMode, scheduledFor: scheduledForRaw } =
       await req.json();
     const sendDeliveryMode =
       deliveryMode === "scheduled" ? "scheduled" : deliveryMode === "now" ? "now" : undefined;
@@ -279,17 +279,25 @@ export async function POST(req: Request) {
     const primaryRecipient = recipients[0];
     const sendWindow = sendWindowFromEmailFields(emailConfig);
     const now = new Date();
+    const scheduledForOverride =
+      typeof scheduledForRaw === "string" && scheduledForRaw.trim()
+        ? new Date(scheduledForRaw)
+        : null;
+    const hasScheduledOverride =
+      scheduledForOverride != null && !Number.isNaN(scheduledForOverride.getTime());
 
     const shouldQueueInitial =
       !isReplySend &&
       !isAdditionalSend &&
-      (sendDeliveryMode === "scheduled" ||
+      (hasScheduledOverride ||
+        sendDeliveryMode === "scheduled" ||
         (sendDeliveryMode !== "now" && !isWithinSendWindow(now, sendWindow)));
 
-    // Email 1: queue on Schedule Send or when outside the send window (replies stay immediate).
+    // Email 1: queue on Schedule Send, batch plan, or when outside the send window (replies stay immediate).
     if (shouldQueueInitial) {
-      const scheduledFor =
-        sendDeliveryMode === "scheduled" && isWithinSendWindow(now, sendWindow)
+      const scheduledFor = hasScheduledOverride
+        ? scheduledForOverride!
+        : sendDeliveryMode === "scheduled" && isWithinSendWindow(now, sendWindow)
           ? deferredSendWindowSlot(now, sendWindow)
           : nextSendWindowStart(now, sendWindow);
       const bodySnippet = (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null;

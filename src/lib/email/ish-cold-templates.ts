@@ -192,7 +192,7 @@ export function fillIshCatalogDraftVariants(params: IshFillParams) {
 
 /** Default sign-off from ISH Festive Gifting Outreach Sequence 2026 (Prasant). */
 const PRASANTH_SIGN_OFF =
-  "Warm regards,\nPrasant\nCluster Manager, India Sweet House\n+91 92424 20101  |  prasantmishra@indiasweethouse.in";
+  "Warm regards,\nPrasant\nCluster Manager, India Sweet House\n+91 84313 30292  |  prasantmishra@indiasweethouse.in";
 
 function prasanthWrap(
   paragraphs: string,

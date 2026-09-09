@@ -1025,6 +1025,38 @@ export async function approveOutreach(params: {
 
 export type OutreachDeliveryMode = "now" | "scheduled";
 
+export type BatchSendResult = {
+  mode: string;
+  ok: number;
+  failed: number;
+  cancelled?: number;
+  errors: string[];
+  results: {
+    leadId: string;
+    ok: boolean;
+    scheduledFor?: string;
+    scheduledForLabel?: string;
+    error?: string;
+  }[];
+  plan: {
+    dailyCap: number;
+    timezone: string;
+    spanDays: number;
+    firstAt: string | null;
+    lastAt: string | null;
+  };
+};
+
+export async function sendBatchOutreach(
+  leadIds: string[],
+  options?: { overridePreflight?: boolean },
+): Promise<BatchSendResult> {
+  return post<BatchSendResult>("/api/outreach/send-batch", {
+    leadIds,
+    overridePreflight: options?.overridePreflight,
+  });
+}
+
 export async function sendOutreach(
   approvalId: string,
   options?: {
@@ -1032,6 +1064,7 @@ export async function sendOutreach(
     overrideQualityGate?: boolean;
     toEmails?: string[];
     deliveryMode?: OutreachDeliveryMode;
+    scheduledFor?: string;
   },
 ): Promise<{
   mode: string;
@@ -1056,6 +1089,7 @@ export async function sendOutreach(
     overrideQualityGate: options?.overrideQualityGate,
     toEmails: options?.toEmails,
     deliveryMode: options?.deliveryMode,
+    scheduledFor: options?.scheduledFor,
   });
 }
 
