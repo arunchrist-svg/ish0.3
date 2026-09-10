@@ -87,8 +87,14 @@ function cardSendBadge(
     }
     return queueBadge(sendStatus);
   }
+  if ((stage === "Email Sent" || lead.status === "outreached") && lead.lastEmailSentAt) {
+    return { label: formatSentAtLabel(lead.lastEmailSentAt), tone: "sent" };
+  }
   if (lead.pendingSendLastError) {
     const reason = lead.pendingSendLastError.trim();
+    if (reason === "Outside send window") {
+      return { label: "Waiting for send window", tone: "waiting" };
+    }
     return {
       label: reason ? `Blocked: ${reason}` : "Blocked",
       tone: "failed",

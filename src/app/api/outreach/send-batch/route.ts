@@ -1,15 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { eq, inArray } from "drizzle-orm";
 import { db, leads } from "@/db";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
-import { batchQueueInitialEmails } from "@/lib/outreach/batch-send-initial";
+import { batchQueueInitialEmails, prepareBatchQueue } from "@/lib/outreach/batch-send-initial";
 import { SenderPreflightError } from "@/lib/email/sender-preflight";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { runSequencer } from "@/lib/agents/sequencer";
+import { withoutPendingInitialEmailSend } from "@/lib/outreach/pending-send-count";
+
+export const preferredRegion = ["sin1"];
+export const maxDuration = 300;
 
 const MAX_SEND_ALL = 5000;
+/** Above this size, queue in the background and let the client poll progress. */
+const BACKGROUND_THRESHOLD = 20;
 
 export async function POST(req: Request) {
   try {
@@ -52,6 +58,7 @@ export async function POST(req: Request) {
         ctx,
         eq(leads.tenantId, ctx.tenantId),
         inArray(leads.status, statuses),
+        withoutPendingInitialEmailSend(),
       );
       const rows = await db
         .select({ id: leads.id })
@@ -65,14 +72,51 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No matching leads" }, { status: 400 });
     }
 
+    const overridePreflight = Boolean(body.overridePreflight);
+    const processDue = Boolean(body.processDue);
+
+    if (leadIds.length > BACKGROUND_THRESHOLD) {
+      const batchId = crypto.randomUUID();
+      const startedAt = new Date().toISOString();
+      const prepared = await prepareBatchQueue(ctx, { leadIds, overridePreflight });
+
+      after(async () => {
+        try {
+          await batchQueueInitialEmails(ctx, {
+            leadIds,
+            overridePreflight,
+            prepared,
+            batchId,
+          });
+          if (processDue) {
+            await runSequencer();
+          }
+        } catch (e) {
+          console.error("[api/outreach/send-batch] background queue failed", e);
+        }
+      });
+
+      return NextResponse.json({
+        mode: "background",
+        batchId,
+        startedAt,
+        total: leadIds.length,
+        ok: 0,
+        failed: 0,
+        errors: [],
+        results: [],
+        plan: prepared.plan,
+      });
+    }
+
     const result = await batchQueueInitialEmails(ctx, {
       leadIds,
-      overridePreflight: Boolean(body.overridePreflight),
+      overridePreflight,
     });
 
     const response: Record<string, unknown> = { mode: "queued", ...result };
 
-    if (Boolean(body.processDue)) {
+    if (processDue) {
       response.sequencer = await runSequencer();
     }
 

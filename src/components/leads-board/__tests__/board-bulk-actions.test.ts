@@ -15,6 +15,7 @@ vi.mock("@/lib/api-client", () => ({
   approveOutreach: vi.fn(),
   sendOutreach: vi.fn(),
   sendBatchOutreach: vi.fn(),
+  fetchSendBatchProgress: vi.fn(),
   runWriterSequence: vi.fn(),
 }));
 

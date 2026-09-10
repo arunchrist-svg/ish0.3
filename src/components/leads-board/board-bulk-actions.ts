@@ -1,4 +1,5 @@
 import {
+  fetchSendBatchProgress,
   runWriterSequence,
   sendBatchOutreach,
   type LeadQueueItem,
@@ -247,7 +248,11 @@ export async function sendEmailsForLeads(
 
 export type SendEmailsForStageOptions = SendEmailsOptions & {
   processDue?: boolean;
+  onProgress?: (completed: number, total: number) => void;
 };
+
+const SEND_BATCH_POLL_MS = 1500;
+const SEND_BATCH_STALL_LIMIT = 120;
 
 /**
  * Queues Email 1 for every lead in the given pipeline statuses (server resolves IDs).
@@ -287,15 +292,61 @@ export async function sendEmailsForStage(
     );
 
     result.planSpanDays = batchResult.plan.spanDays;
-    result.sequencer = batchResult.sequencer;
-    result.ok = batchResult.ok;
-    result.failed = batchResult.failed;
-    for (const err of batchResult.errors) {
-      if (!result.errors.includes(err)) result.errors.push(err);
-    }
-    for (const row of batchResult.results) {
-      if (!row.ok && row.error) {
-        result.errors.push(row.error);
+
+    if (
+      batchResult.mode === "background" &&
+      batchResult.startedAt &&
+      batchResult.total &&
+      batchResult.total > 0
+    ) {
+      const batchTotal = batchResult.total;
+      let completed = 0;
+      let lastCompleted = -1;
+      let stallPolls = 0;
+
+      while (!options?.signal?.aborted) {
+        const progress = await fetchSendBatchProgress({
+          statuses: params.statuses,
+          startedAt: batchResult.startedAt,
+          total: batchTotal,
+        });
+        completed = progress.completed;
+        options?.onProgress?.(completed, batchTotal);
+        queue[0] = {
+          ...queue[0],
+          name: `${completed.toLocaleString()} of ${batchTotal.toLocaleString()} scheduled`,
+          status: "sending",
+        };
+        publish();
+
+        if (completed >= batchTotal) break;
+
+        if (completed === lastCompleted) stallPolls += 1;
+        else {
+          stallPolls = 0;
+          lastCompleted = completed;
+        }
+        if (stallPolls >= SEND_BATCH_STALL_LIMIT) break;
+
+        await sleep(SEND_BATCH_POLL_MS, options?.signal);
+      }
+
+      result.ok = completed;
+      result.failed = Math.max(0, batchTotal - completed);
+      if (result.failed > 0) {
+        result.errors.push(`${result.failed} leads could not be queued (still processing or failed)`);
+      }
+    } else {
+      result.sequencer = batchResult.sequencer;
+      result.ok = batchResult.ok;
+      result.failed = batchResult.failed;
+      for (const err of batchResult.errors) {
+        if (!result.errors.includes(err)) result.errors.push(err);
+      }
+      for (const row of batchResult.results) {
+        if (!row.ok && row.error) {
+          result.errors.push(row.error);
+        }
       }
     }
 

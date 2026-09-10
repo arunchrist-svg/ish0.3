@@ -8,6 +8,7 @@ import type {
 } from "./enrichment/types";
 import type { StageRecord } from "@/lib/enrichment/stage-trace";
 import { cachedFetch, invalidateCached } from "@/lib/client-fetch-cache";
+import { aggregateStatusCountsByStage } from "@/lib/pipeline-status";
 
 export function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -1051,6 +1052,9 @@ export type BatchSendResult = {
     skipped: number;
     pendingReview: number;
   };
+  batchId?: string;
+  startedAt?: string;
+  total?: number;
 };
 
 export type SendBatchParams = {
@@ -1072,6 +1076,14 @@ export async function sendBatchOutreach(
       }
     : leadIdsOrParams;
   return post<BatchSendResult>("/api/outreach/send-batch", body);
+}
+
+export async function fetchSendBatchProgress(params: {
+  statuses?: string[];
+  startedAt: string;
+  total: number;
+}): Promise<{ completed: number; total: number }> {
+  return post<{ completed: number; total: number }>("/api/outreach/send-batch/progress", params);
 }
 
 export async function sendOutreach(
@@ -1988,9 +2000,23 @@ export async function sendFollowUp(
   });
 }
 
-export async function fetchLeadStageCounts(): Promise<Record<string, number>> {
-  const data = await get<{ counts: Record<string, number> }>("/api/leads/stage-counts");
-  return data.counts;
+export type LeadBoardCounts = {
+  byStage: Record<string, number>;
+  emailReady: number;
+  queued: number;
+  emailStageTotal: number;
+};
+
+export async function fetchLeadStageCounts(): Promise<LeadBoardCounts> {
+  const data = await get<{
+    counts: Record<string, number>;
+    board?: { emailReady: number; queued: number; emailStageTotal: number };
+  }>("/api/leads/stage-counts");
+  const byStage = aggregateStatusCountsByStage(data.counts);
+  const emailStageTotal = data.board?.emailStageTotal ?? byStage.Email ?? 0;
+  const queued = data.board?.queued ?? 0;
+  const emailReady = data.board?.emailReady ?? Math.max(0, emailStageTotal - queued);
+  return { byStage, emailReady, queued, emailStageTotal };
 }
 
 export async function writeAllLeadsForStage(params: {

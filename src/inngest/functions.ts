@@ -50,8 +50,8 @@ export const researchBatchFunction = inngest.createFunction(
 
 export const sequencerFunction = inngest.createFunction(
   { id: "sequencer-run", retries: 2 },
-  // Hourly so Shoot-to windows in non-UTC timezones are reachable (was once daily at 09:00 UTC).
-  { cron: "0 * * * *" },
+  // Every 15 minutes so morning/evening send windows are always hit.
+  { cron: "*/15 * * * *" },
   async ({ step }) => {
     const result = await step.run("run-sequencer", async () => runSequencer());
     return result;

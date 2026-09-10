@@ -142,7 +142,8 @@ export function SendAllModal({
             </div>
           ) : null}
           <p className="mt-3 text-[12px] text-brand-ink-soft">
-            Building your send schedule from Settings. This may take a moment for large batches.
+            Building your send schedule from Settings. Large batches keep running in the background;
+            leave this open until scheduling finishes.
           </p>
           <button
             type="button"

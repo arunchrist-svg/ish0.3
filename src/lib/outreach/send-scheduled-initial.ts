@@ -54,7 +54,7 @@ export async function sendScheduledInitialEmail(params: {
     with: { contact: true, account: true },
   });
   if (!lead || lead.tenantId !== params.tenantId) throw new Error("Lead not found");
-  if (lead.status !== "draft_ready" && lead.status !== "outreached") {
+  if (lead.status !== "draft_ready" && lead.status !== "approved" && lead.status !== "outreached") {
     throw new Error("Lead is not ready for Email 1 send");
   }
 

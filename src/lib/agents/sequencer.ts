@@ -13,6 +13,7 @@ import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
 import { sendScheduledInitialEmail } from "@/lib/outreach/send-scheduled-initial";
+import { pullForwardNextQueuedInitialEmail } from "@/lib/outreach/pull-forward-queue";
 import { isCatalogOnOpenDraft, isIshFestiveCatalogBody, CATALOG_ON_OPEN_EMAIL_KIND } from "@/lib/email/ish-festive-catalog";
 
 const BATCH_SIZE = 50;
@@ -89,6 +90,17 @@ async function cancelWithReason(id: string, reason: string): Promise<void> {
     .where(eq(outreachSchedule.id, id));
 }
 
+/** Permanent skip: slot will not be used; try the next queued send immediately. */
+async function cancelAndPullForward(
+  id: string,
+  reason: string,
+  workspaceId: string,
+  now: Date,
+): Promise<void> {
+  await cancelWithReason(id, reason);
+  await pullForwardNextQueuedInitialEmail(workspaceId, now);
+}
+
 export async function runSequencer(): Promise<{
   processed: number;
   failed: number;
@@ -136,6 +148,8 @@ export async function runSequencer(): Promise<{
         continue;
       }
 
+      let workspaceId: string | undefined;
+
       try {
         const lead = await db.query.leads.findFirst({
           where: eq(leads.id, claimed.leadId),
@@ -147,6 +161,8 @@ export async function runSequencer(): Promise<{
           skipped++;
           continue;
         }
+
+        workspaceId = lead.workspaceId;
 
         const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
         if (isOutreachSendingPaused(emailConfig)) {
@@ -167,8 +183,17 @@ export async function runSequencer(): Promise<{
 
         // Queued Email 1 (deferred outside the settings send window).
         if (claimed.sequenceDay === 0) {
-          if (lead.status !== "draft_ready" && lead.status !== "outreached") {
-            await cancelWithReason(claimed.id, `Lead status ${lead.status} cannot send Email 1`);
+          if (
+            lead.status !== "draft_ready" &&
+            lead.status !== "approved" &&
+            lead.status !== "outreached"
+          ) {
+            await cancelAndPullForward(
+              claimed.id,
+              `Lead status ${lead.status} cannot send Email 1`,
+              workspaceId,
+              now,
+            );
             skipped++;
             continue;
           }
@@ -359,8 +384,12 @@ export async function runSequencer(): Promise<{
         const reason = errorMessage(e);
         console.error("[sequencer] failed for schedule", claimed.id, e);
         const outcome = await markFailedOrRetry(claimed.id, claimed.attemptCount, reason);
-        if (outcome === "failed") failed++;
-        else skipped++;
+        if (outcome === "failed") {
+          failed++;
+          if (workspaceId && claimed.sequenceDay === 0) {
+            await pullForwardNextQueuedInitialEmail(workspaceId, new Date());
+          }
+        } else skipped++;
       }
     }
 

@@ -134,8 +134,8 @@ export async function GET(req: Request) {
     mark(marks, "db", dbStart);
 
     const queue: LeadQueueItem[] = rows.map((r) => {
-      const pending = pendingByLead.get(r.id);
       const sentAt = sentByLead.get(r.id);
+      const pending = sentAt ? undefined : pendingByLead.get(r.id);
       return {
         id: r.id,
         name: r.name,

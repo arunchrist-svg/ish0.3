@@ -6,7 +6,6 @@ import { cn } from "@/lib/utils";
 import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow, runSequencerNow } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
-  aggregateStatusCountsByStage,
   BOARD_QUEUED_STAGE,
   boardPipelineStages,
   groupLeadsByPipelineStage,
@@ -162,6 +161,8 @@ export function LeadsBoardApp() {
   const queueHydrated = useRef(false);
   const [composeLeadId, setComposeLeadId] = useState<string | null>(null);
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
+  const [emailReadyCount, setEmailReadyCount] = useState(0);
+  const [queuedCount, setQueuedCount] = useState(0);
 
   useEffect(() => {
     const stored = loadStoredSendQueue().filter(
@@ -225,13 +226,15 @@ export function LeadsBoardApp() {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const [page, rawCounts] = await Promise.all([
+      const [page, countData] = await Promise.all([
         fetchLeadsPage({ limit: 50 }),
         fetchLeadStageCounts(),
       ]);
       setLeads(page.leads);
       setNextCursor(page.nextCursor);
-      setStageCounts(aggregateStatusCountsByStage(rawCounts));
+      setStageCounts(countData.byStage);
+      setEmailReadyCount(countData.emailReady);
+      setQueuedCount(countData.queued);
     } catch {
       toast.error("Could not load leads");
     } finally {
@@ -348,8 +351,10 @@ export function LeadsBoardApp() {
       groups[stage] = sortLeadsQueue(groups[stage] ?? [], queueSort);
     }
     const queuedIds = new Set(queuedLeads.map((lead) => lead.id));
-    // Keep in-flight and send-window deferred sends out of Email so they only appear under Queued.
-    groups.Email = (groups.Email ?? []).filter((lead) => !queuedIds.has(lead.id));
+    // Pending sends live only in Queued, not under Email / Email Sent / other stages.
+    for (const stage of PIPELINE_STAGES) {
+      groups[stage] = (groups[stage] ?? []).filter((lead) => !queuedIds.has(lead.id));
+    }
     groups[BOARD_QUEUED_STAGE] = queuedLeads;
     return groups;
   }, [filteredLeads, queueSort, queuedLeads]);
@@ -696,7 +701,7 @@ export function LeadsBoardApp() {
       setSendAllOpen(true);
       return;
     }
-    const total = stageCounts.Email ?? grouped.Email?.length ?? 0;
+    const total = emailReadyCount || grouped.Email?.length || 0;
     if (!total) {
       toast.message("No ready emails in Email to send");
       return;
@@ -704,7 +709,7 @@ export function LeadsBoardApp() {
     setSendAllPhase("confirm");
     setSendAllResult(null);
     setSendAllOpen(true);
-  }, [writingProgress, sending, sendAllPhase, stageCounts, grouped]);
+  }, [writingProgress, sending, sendAllPhase, emailReadyCount, grouped]);
 
   const closeSendAllModal = useCallback(() => {
     if (sendAllPhase === "sending") return;
@@ -714,7 +719,7 @@ export function LeadsBoardApp() {
   }, [sendAllPhase]);
 
   const runSendAllFromModal = useCallback(async () => {
-    const total = stageCounts.Email ?? 0;
+    const total = emailReadyCount;
     const emailStatuses = STATUSES_BY_STAGE_INDEX[1] ?? [];
     if (!total || !emailStatuses.length || writingProgress || sending) return;
 
@@ -732,6 +737,9 @@ export function LeadsBoardApp() {
         {
           signal: controller.signal,
           onQueueChange: setSendQueue,
+          onProgress: () => {
+            void load({ silent: true });
+          },
           processDue: true,
         },
       );
@@ -780,7 +788,7 @@ export function LeadsBoardApp() {
       sendAbortRef.current = null;
       setSending(false);
     }
-  }, [stageCounts, writingProgress, sending, load]);
+  }, [emailReadyCount, writingProgress, sending, load]);
 
   const handleRunSequencer = useCallback(async () => {
     if (boardBusy || sequencerRunning) return;
@@ -952,7 +960,7 @@ export function LeadsBoardApp() {
                           onClick: () => openSendAllModal(),
                         },
                       ]
-                    : isQueuedStage && queuedLeads.length > 0
+                    : isQueuedStage && queuedCount > 0
                       ? [
                           {
                             label: "Send due now",
@@ -976,8 +984,10 @@ export function LeadsBoardApp() {
                       : undefined;
 
               const columnCount = isQueuedStage
-                ? queuedLeads.length
-                : stageCounts[stage];
+                ? queuedCount
+                : stage === "Email"
+                  ? emailReadyCount
+                  : stageCounts[stage];
 
               return (
                 <BoardColumn
@@ -1045,12 +1055,12 @@ export function LeadsBoardApp() {
       ) : null}
       <SendAllModal
         open={sendAllOpen}
-        leadCount={stageCounts.Email ?? grouped.Email?.length ?? 0}
+        leadCount={emailReadyCount || grouped.Email?.length || 0}
         phase={sendAllPhase}
         sendQueue={sendQueue}
         sendingLabel={
-          sendAllPhase === "sending" && (stageCounts.Email ?? 0) > 0
-            ? `Scheduling ${(stageCounts.Email ?? 0).toLocaleString()} emails…`
+          sendAllPhase === "sending" && emailReadyCount > 0
+            ? `Scheduling ${emailReadyCount.toLocaleString()} emails…`
             : undefined
         }
         result={sendAllResult}
