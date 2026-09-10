@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, Loader2, Pencil, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow, runSequencerNow } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   aggregateStatusCountsByStage,
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { BoardColumn } from "./board-column";
 import {
   sendEmailsForLeads,
+  sendEmailsForStage,
   type BoardBulkProgress,
   type SendQueueItem,
 } from "./board-bulk-actions";
@@ -147,8 +148,10 @@ export function LeadsBoardApp() {
     failed: number;
     cancelled: number;
     planSpanDays?: number;
+    sequencerProcessed?: number;
   } | null>(null);
   const [sending, setSending] = useState(false);
+  const [sequencerRunning, setSequencerRunning] = useState(false);
   const [sendQueue, setSendQueue] = useState<SendQueueItem[]>([]);
   const [cancellingLeadId, setCancellingLeadId] = useState<string | null>(null);
   const [cancellingAllQueued, setCancellingAllQueued] = useState(false);
@@ -351,7 +354,7 @@ export function LeadsBoardApp() {
     return groups;
   }, [filteredLeads, queueSort, queuedLeads]);
 
-  const boardBusy = Boolean(writingProgress) || sending;
+  const boardBusy = Boolean(writingProgress) || sending || sequencerRunning;
   const sendQueueActive = activeSendQueue.some(
     (item) => item.status === "queued" || item.status === "waiting" || item.status === "sending",
   );
@@ -711,28 +714,33 @@ export function LeadsBoardApp() {
   }, [sendAllPhase]);
 
   const runSendAllFromModal = useCallback(async () => {
-    const targets = grouped.Email ?? [];
-    if (!targets.length || writingProgress || sending) return;
+    const total = stageCounts.Email ?? 0;
+    const emailStatuses = STATUSES_BY_STAGE_INDEX[1] ?? [];
+    if (!total || !emailStatuses.length || writingProgress || sending) return;
 
     const controller = new AbortController();
     sendAbortRef.current?.abort();
     sendAbortRef.current = controller;
     setSendAllPhase("sending");
     setSending(true);
-    setSendQueue(targets.map((lead) => ({ leadId: lead.id, name: lead.name, status: "queued" })));
+    setSendQueue([]);
     cancelledLeadIdsRef.current = new Set();
 
     try {
-      const result = await sendEmailsForLeads(targets, {
-        signal: controller.signal,
-        onQueueChange: setSendQueue,
-        isLeadCancelled: (id) => cancelledLeadIdsRef.current.has(id),
-      });
+      const result = await sendEmailsForStage(
+        { statuses: emailStatuses, totalHint: total },
+        {
+          signal: controller.signal,
+          onQueueChange: setSendQueue,
+          processDue: true,
+        },
+      );
       setSendAllResult({
         ok: result.ok,
         failed: result.failed,
         cancelled: result.cancelled,
         planSpanDays: result.planSpanDays,
+        sequencerProcessed: result.sequencer?.processed,
       });
       setSendAllPhase("done");
       if (result.cancelled > 0 && result.ok === 0 && result.failed === 0) {
@@ -742,37 +750,58 @@ export function LeadsBoardApp() {
           result.planSpanDays && result.planSpanDays > 1
             ? ` across ${result.planSpanDays} days`
             : "";
+        const sentNow =
+          result.sequencer && result.sequencer.processed > 0
+            ? ` · ${result.sequencer.processed} sent now`
+            : "";
         toast.success(
           result.ok === 1
             ? "Queued 1 email for your send window"
-            : `Queued ${result.ok} emails${spanNote}`,
+            : `Queued ${result.ok.toLocaleString()} emails${spanNote}${sentNow}`,
           { duration: 8000 },
         );
       } else {
         toast.error(
-          `Queued ${result.ok} of ${targets.length}. ${result.failed} failed${
+          `Queued ${result.ok.toLocaleString()} of ${total.toLocaleString()}. ${result.failed} failed${
             result.cancelled ? `, ${result.cancelled} cancelled` : ""
           }.`,
           { description: result.errors.slice(0, 3).join(" · ") },
         );
       }
       await load({ silent: true });
-      if (result.failed > 0) {
-        setSendQueue((prev) => prev.filter((item) => item.status === "failed"));
-      } else {
-        window.setTimeout(() => {
-          setSendQueue((prev) =>
-            prev.some((item) => item.status === "sending" || item.status === "waiting") ? prev : [],
-          );
-        }, 4000);
-      }
+      window.setTimeout(() => {
+        setSendQueue((prev) =>
+          prev.some((item) => item.status === "sending" || item.status === "waiting") ? prev : [],
+        );
+      }, 4000);
     } catch {
       setSendAllPhase("confirm");
     } finally {
       sendAbortRef.current = null;
       setSending(false);
     }
-  }, [grouped, writingProgress, sending]);
+  }, [stageCounts, writingProgress, sending, load]);
+
+  const handleRunSequencer = useCallback(async () => {
+    if (boardBusy || sequencerRunning) return;
+    setSequencerRunning(true);
+    try {
+      const result = await runSequencerNow();
+      const parts = [`${result.processed} sent`];
+      if (result.failed) parts.push(`${result.failed} failed`);
+      if (result.skipped) parts.push(`${result.skipped} skipped`);
+      if (result.pendingReview) parts.push(`${result.pendingReview} need review`);
+      toast.success("Due sends processed", {
+        description: parts.join(" · "),
+        duration: 8000,
+      });
+      await load({ silent: true });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not run sequencer");
+    } finally {
+      setSequencerRunning(false);
+    }
+  }, [boardBusy, sequencerRunning, load]);
 
   const isEmpty = !loading && leads.length === 0;
   const noResults = !loading && leads.length > 0 && filteredLeads.length === 0;
@@ -926,11 +955,21 @@ export function LeadsBoardApp() {
                     : isQueuedStage && queuedLeads.length > 0
                       ? [
                           {
+                            label: "Send due now",
+                            busyLabel: "Sending…",
+                            busy: sequencerRunning,
+                            disabled: (boardBusy && !sequencerRunning) || cancellingAllQueued,
+                            onClick: () => void handleRunSequencer(),
+                          },
+                          {
                             label: "Cancel All",
                             busyLabel: "Cancelling…",
                             busy: cancellingAllQueued,
                             tone: "danger" as const,
-                            disabled: cancellingAllQueued || Boolean(cancellingLeadId),
+                            disabled:
+                              cancellingAllQueued ||
+                              Boolean(cancellingLeadId) ||
+                              (boardBusy && !cancellingAllQueued),
                             onClick: () => void handleCancelAllQueued(),
                           },
                         ]
@@ -1009,6 +1048,11 @@ export function LeadsBoardApp() {
         leadCount={stageCounts.Email ?? grouped.Email?.length ?? 0}
         phase={sendAllPhase}
         sendQueue={sendQueue}
+        sendingLabel={
+          sendAllPhase === "sending" && (stageCounts.Email ?? 0) > 0
+            ? `Scheduling ${(stageCounts.Email ?? 0).toLocaleString()} emails…`
+            : undefined
+        }
         result={sendAllResult}
         onSend={() => void runSendAllFromModal()}
         onCancelSend={() => {

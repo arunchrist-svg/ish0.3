@@ -13,7 +13,14 @@ type Props = {
   leadCount: number;
   phase: SendAllPhase;
   sendQueue: SendQueueItem[];
-  result?: { ok: number; failed: number; cancelled: number; planSpanDays?: number } | null;
+  result?: {
+    ok: number;
+    failed: number;
+    cancelled: number;
+    planSpanDays?: number;
+    sequencerProcessed?: number;
+  } | null;
+  sendingLabel?: string;
   onSend: () => void;
   onCancelSend: () => void;
   onClose: () => void;
@@ -49,9 +56,11 @@ export function SendAllModal({
   onSend,
   onCancelSend,
   onClose,
+  sendingLabel,
 }: Props) {
   const sending = phase === "sending";
   const progress = queueProgress(sendQueue);
+  const statusLabel = sendingLabel ?? progress.label;
 
   return (
     <AppModal open={open} onClose={sending ? undefined : onClose} panelClassName="lg:max-w-lg">
@@ -79,12 +88,16 @@ export function SendAllModal({
                 each day.
               </li>
               <li>Queued leads move to the Queued column until Email 1 goes out.</li>
+              <li>
+                After queueing, any due or overdue sends go out right away. The rest wait for your
+                send window.
+              </li>
             </ul>
           </div>
 
           <p className="mt-4 text-[12px] text-brand-ink-soft">
-            Nothing sends immediately unless a slot is open now. You can cancel from the Queued column
-            before send time.
+            You can cancel from the Queued column before send time, or use Send due now for overdue
+            sends.
           </p>
 
           <div className="mt-5 flex items-center gap-2">
@@ -117,8 +130,8 @@ export function SendAllModal({
             <Mail className="size-7 text-brand-stratus-blue" strokeWidth={2} />
             <Loader2 className="absolute -right-1 -top-1 size-5 animate-spin text-brand-stratus-blue" />
           </div>
-          <p className="text-[15px] font-semibold text-brand-ink">{progress.label}</p>
-          {progress.total > 0 ? (
+          <p className="text-[15px] font-semibold text-brand-ink">{statusLabel}</p>
+          {progress.total > 1 ? (
             <div className="mt-4 h-1.5 w-44 overflow-hidden rounded-full bg-brand-border">
               <div
                 className="h-full rounded-full bg-brand-stratus-blue transition-[width] duration-300"
@@ -160,6 +173,9 @@ export function SendAllModal({
           </p>
           {result && result.ok > 0 ? (
             <p className="text-[12px] text-brand-ink-soft">
+              {result.sequencerProcessed && result.sequencerProcessed > 0
+                ? `${result.sequencerProcessed.toLocaleString()} due emails were sent. `
+                : null}
               Check the Queued column for scheduled send times. The board refreshes as emails go out.
             </p>
           ) : null}

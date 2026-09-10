@@ -1045,16 +1045,33 @@ export type BatchSendResult = {
     firstAt: string | null;
     lastAt: string | null;
   };
+  sequencer?: {
+    processed: number;
+    failed: number;
+    skipped: number;
+    pendingReview: number;
+  };
+};
+
+export type SendBatchParams = {
+  leadIds?: string[];
+  statuses?: string[];
+  overridePreflight?: boolean;
+  processDue?: boolean;
 };
 
 export async function sendBatchOutreach(
-  leadIds: string[],
-  options?: { overridePreflight?: boolean },
+  leadIdsOrParams: string[] | SendBatchParams,
+  options?: { overridePreflight?: boolean; processDue?: boolean },
 ): Promise<BatchSendResult> {
-  return post<BatchSendResult>("/api/outreach/send-batch", {
-    leadIds,
-    overridePreflight: options?.overridePreflight,
-  });
+  const body: SendBatchParams = Array.isArray(leadIdsOrParams)
+    ? {
+        leadIds: leadIdsOrParams,
+        overridePreflight: options?.overridePreflight,
+        processDue: options?.processDue,
+      }
+    : leadIdsOrParams;
+  return post<BatchSendResult>("/api/outreach/send-batch", body);
 }
 
 export async function sendOutreach(

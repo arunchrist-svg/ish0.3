@@ -5,6 +5,7 @@ import {
   MIN_SEND_GAP_MINUTES,
   randomGapMinutes,
   sendEmailsForLeads,
+  sendEmailsForStage,
   SendCancelledError,
   sleep,
 } from "../board-bulk-actions";
@@ -76,7 +77,7 @@ describe("sendEmailsForLeads batch planner", () => {
 
     expect(result).toEqual({ ok: 3, failed: 0, cancelled: 0, errors: [], planSpanDays: 1 });
     expect(sendBatchOutreach).toHaveBeenCalledTimes(1);
-    expect(sendBatchOutreach).toHaveBeenCalledWith(["a", "b", "c"], {});
+    expect(sendBatchOutreach).toHaveBeenCalledWith({ leadIds: ["a", "b", "c"] });
     expect(statuses.at(-1)).toEqual(["queued", "queued", "queued"]);
   });
 
@@ -86,6 +87,35 @@ describe("sendEmailsForLeads batch planner", () => {
     const result = await sendEmailsForLeads([lead("a", "Ada")], { signal: controller.signal });
     expect(result.cancelled).toBe(1);
     expect(sendBatchOutreach).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendEmailsForStage", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(sendBatchOutreach).mockResolvedValue({
+      mode: "queued",
+      ok: 1252,
+      failed: 0,
+      errors: [],
+      results: [],
+      plan: { dailyCap: 30, timezone: "Asia/Kolkata", spanDays: 42, firstAt: null, lastAt: null },
+      sequencer: { processed: 23, failed: 0, skipped: 0, pendingReview: 0 },
+    });
+  });
+
+  it("calls batch API with statuses and processDue", async () => {
+    const result = await sendEmailsForStage(
+      { statuses: ["draft_ready", "approved"], totalHint: 1252 },
+      { processDue: true },
+    );
+
+    expect(sendBatchOutreach).toHaveBeenCalledWith({
+      statuses: ["draft_ready", "approved"],
+      processDue: true,
+    });
+    expect(result.ok).toBe(1252);
+    expect(result.sequencer?.processed).toBe(23);
   });
 });
 

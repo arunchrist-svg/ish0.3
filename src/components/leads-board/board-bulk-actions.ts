@@ -33,6 +33,12 @@ export type BoardBulkResult = {
   cancelled: number;
   errors: string[];
   planSpanDays?: number;
+  sequencer?: {
+    processed: number;
+    failed: number;
+    skipped: number;
+    pendingReview: number;
+  };
 };
 
 export class SendCancelledError extends Error {
@@ -184,10 +190,11 @@ export async function sendEmailsForLeads(
 
   try {
     const batchResult = await sendWithGateConfirm((overrides) =>
-      sendBatchOutreach(activeIds, overrides),
+      sendBatchOutreach({ leadIds: activeIds, ...overrides }),
     );
 
     result.planSpanDays = batchResult.plan.spanDays;
+    result.sequencer = batchResult.sequencer;
 
     const byLeadId = new Map(batchResult.results.map((r) => [r.leadId, r]));
 
@@ -231,6 +238,81 @@ export async function sendEmailsForLeads(
           result.errors.push(`${queue[i].name}: ${message}`);
         }
       }
+    }
+  }
+
+  publish();
+  return result;
+}
+
+export type SendEmailsForStageOptions = SendEmailsOptions & {
+  processDue?: boolean;
+};
+
+/**
+ * Queues Email 1 for every lead in the given pipeline statuses (server resolves IDs).
+ */
+export async function sendEmailsForStage(
+  params: { statuses: string[]; totalHint?: number },
+  options?: SendEmailsForStageOptions,
+): Promise<BoardBulkResult> {
+  const result: BoardBulkResult = { ok: 0, failed: 0, cancelled: 0, errors: [] };
+  const label =
+    params.totalHint && params.totalHint > 0
+      ? `${params.totalHint.toLocaleString()} leads`
+      : "all leads in Email";
+
+  const queue: SendQueueItem[] = [{ leadId: "__batch__", name: label, status: "sending" }];
+
+  function publish() {
+    options?.onQueueChange?.(queue.map((item) => ({ ...item })));
+  }
+
+  publish();
+
+  if (options?.signal?.aborted) {
+    queue[0] = { ...queue[0], status: "cancelled" };
+    result.cancelled = 1;
+    publish();
+    return result;
+  }
+
+  try {
+    const batchResult = await sendWithGateConfirm((overrides) =>
+      sendBatchOutreach({
+        statuses: params.statuses,
+        processDue: options?.processDue,
+        ...overrides,
+      }),
+    );
+
+    result.planSpanDays = batchResult.plan.spanDays;
+    result.sequencer = batchResult.sequencer;
+    result.ok = batchResult.ok;
+    result.failed = batchResult.failed;
+    for (const err of batchResult.errors) {
+      if (!result.errors.includes(err)) result.errors.push(err);
+    }
+    for (const row of batchResult.results) {
+      if (!row.ok && row.error) {
+        result.errors.push(row.error);
+      }
+    }
+
+    queue[0] = {
+      ...queue[0],
+      status: result.failed > 0 && result.ok === 0 ? "failed" : "queued",
+      error: result.failed > 0 && result.ok === 0 ? result.errors[0] : undefined,
+    };
+  } catch (e) {
+    if (options?.signal?.aborted) {
+      queue[0] = { ...queue[0], status: "cancelled" };
+      result.cancelled = 1;
+    } else {
+      const message = e instanceof Error ? e.message : "Batch send failed";
+      queue[0] = { ...queue[0], status: "failed", error: message };
+      result.failed = params.totalHint ?? 1;
+      result.errors.push(message);
     }
   }
 
