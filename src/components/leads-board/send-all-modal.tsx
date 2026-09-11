@@ -11,6 +11,8 @@ export type SendAllPhase = "confirm" | "sending" | "done";
 type Props = {
   open: boolean;
   leadCount: number;
+  /** Leads already in the outbox queue (Send All appends after these). */
+  queuedCount?: number;
   phase: SendAllPhase;
   sendQueue: SendQueueItem[];
   result?: {
@@ -50,6 +52,7 @@ function queueProgress(queue: SendQueueItem[]): { done: number; total: number; l
 export function SendAllModal({
   open,
   leadCount,
+  queuedCount = 0,
   phase,
   sendQueue,
   result,
@@ -70,6 +73,9 @@ export function SendAllModal({
           {leadCount === 1
             ? "1 ready email in Email"
             : `${leadCount.toLocaleString()} ready emails in Email`}
+          {queuedCount > 0
+            ? ` · ${queuedCount.toLocaleString()} already queued`
+            : null}
         </p>
       </div>
 
@@ -78,16 +84,18 @@ export function SendAllModal({
           <div className="mt-5 space-y-3 rounded-2xl border border-brand-border/70 bg-brand-app/40 px-4 py-3.5">
             <p className="text-[12px] font-semibold text-brand-ink">How Send All works</p>
             <ul className="space-y-2 text-[12px] leading-relaxed text-brand-ink-soft">
-              <li>Queues Email 1 for each lead using the draft already on the board.</li>
               <li>
-                Sends only during your Settings send hours and timezone (weekdays you allow).
+                Adds every ready lead to the Queued column with a scheduled send time (your timeline).
+              </li>
+              <li>
+                New sends are scheduled after any leads already in the queue, spaced about{" "}
+                {MIN_SEND_GAP_MINUTES}–{MAX_SEND_GAP_MINUTES} minutes apart within each day.
+              </li>
+              <li>
+                Sends only during your Settings send hours and timezone (morning and evening blocks).
               </li>
               <li>Respects your daily send cap. Extra emails roll to the next allowed day.</li>
-              <li>
-                Spaces sends about {MIN_SEND_GAP_MINUTES}–{MAX_SEND_GAP_MINUTES} minutes apart within
-                each day.
-              </li>
-              <li>Queued leads move to the Queued column until Email 1 goes out.</li>
+              <li>Each Queued card shows when that email is planned to go out.</li>
               <li>
                 After queueing, any due or overdue sends go out right away. The rest wait for your
                 send window.

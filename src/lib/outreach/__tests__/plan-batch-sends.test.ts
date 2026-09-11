@@ -63,6 +63,21 @@ describe("planBatchInitialSends", () => {
       expect(n).toBeLessThanOrEqual(3);
     }
   });
+
+  it("appends after an existing queue tail", () => {
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 0 }, IST);
+    const queueAfter = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 30 }, IST);
+    const { slots } = planBatchInitialSends({
+      count: 2,
+      window,
+      dailyCap: 50,
+      now,
+      existingByDay: new Map(),
+      gapMinutes: 3,
+      queueAfter,
+    });
+    expect(slots[0].getTime()).toBeGreaterThanOrEqual(queueAfter.getTime() + 3 * 60_000 - 1000);
+  });
 });
 
 describe("countPlannedInRolling24h", () => {

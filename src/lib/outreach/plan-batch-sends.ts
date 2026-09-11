@@ -84,16 +84,23 @@ export function planBatchInitialSends(params: {
   /** Existing sent + scheduled Email 1 counts keyed by YYYY-MM-DD in window timezone. */
   existingByDay: Map<string, number>;
   gapMinutes?: number;
+  /** Append after this instant (existing queue tail + gap). */
+  queueAfter?: Date | null;
 }): BatchSendPlan {
   const gapMs = (params.gapMinutes ?? BATCH_SEND_GAP_MINUTES) * 60_000;
   const dayCount = new Map(params.existingByDay);
   const slots: Date[] = [];
   let lastSlot: Date | null = null;
+  const queueStart = params.queueAfter
+    ? new Date(params.queueAfter.getTime() + gapMs)
+    : null;
 
   for (let i = 0; i < params.count; i++) {
     let candidate: Date = lastSlot
       ? new Date(Math.max(params.now.getTime(), lastSlot.getTime() + gapMs))
-      : new Date(params.now);
+      : queueStart
+        ? new Date(Math.max(params.now.getTime(), queueStart.getTime()))
+        : new Date(params.now);
 
     let guard = 0;
     while (guard++ < MAX_PLAN_ITERATIONS) {

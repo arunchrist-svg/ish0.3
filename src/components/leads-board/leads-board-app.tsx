@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Columns3, Loader2, Pencil, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow, runSequencerNow } from "@/lib/api-client";
+import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchQueuedLeadsPage, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow, runSequencerNow } from "@/lib/api-client";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   BOARD_QUEUED_STAGE,
@@ -163,6 +163,7 @@ export function LeadsBoardApp() {
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   const [emailReadyCount, setEmailReadyCount] = useState(0);
   const [queuedCount, setQueuedCount] = useState(0);
+  const [queuedLeadsServer, setQueuedLeadsServer] = useState<LeadQueueItem[]>([]);
 
   useEffect(() => {
     const stored = loadStoredSendQueue().filter(
@@ -226,15 +227,17 @@ export function LeadsBoardApp() {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const [page, countData] = await Promise.all([
+      const [page, countData, queuedPage] = await Promise.all([
         fetchLeadsPage({ limit: 50 }),
         fetchLeadStageCounts(),
+        fetchQueuedLeadsPage({ limit: 5000 }),
       ]);
       setLeads(page.leads);
       setNextCursor(page.nextCursor);
       setStageCounts(countData.byStage);
       setEmailReadyCount(countData.emailReady);
       setQueuedCount(countData.queued);
+      setQueuedLeadsServer(queuedPage.leads);
     } catch {
       toast.error("Could not load leads");
     } finally {
@@ -319,6 +322,10 @@ export function LeadsBoardApp() {
   const queuedLeads = useMemo((): LeadQueueItem[] => {
     const byId = new Map<string, LeadQueueItem>();
 
+    for (const lead of queuedLeadsServer) {
+      byId.set(lead.id, lead);
+    }
+
     for (const lead of filteredLeads) {
       if (lead.pendingSendScheduledFor) byId.set(lead.id, lead);
     }
@@ -342,8 +349,12 @@ export function LeadsBoardApp() {
       });
     }
 
-    return Array.from(byId.values());
-  }, [activeSendQueue, filteredLeads, leadsById]);
+    return Array.from(byId.values()).sort((a, b) => {
+      const ta = a.pendingSendScheduledFor ? new Date(a.pendingSendScheduledFor).getTime() : 0;
+      const tb = b.pendingSendScheduledFor ? new Date(b.pendingSendScheduledFor).getTime() : 0;
+      return ta - tb;
+    });
+  }, [activeSendQueue, filteredLeads, leadsById, queuedLeadsServer]);
 
   const grouped = useMemo(() => {
     const groups = groupLeadsByPipelineStage(filteredLeads);
@@ -1056,6 +1067,7 @@ export function LeadsBoardApp() {
       <SendAllModal
         open={sendAllOpen}
         leadCount={emailReadyCount || grouped.Email?.length || 0}
+        queuedCount={queuedCount}
         phase={sendAllPhase}
         sendQueue={sendQueue}
         sendingLabel={

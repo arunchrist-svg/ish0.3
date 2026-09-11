@@ -657,6 +657,21 @@ export async function fetchLeadsPage(params?: {
   };
 }
 
+export async function fetchQueuedLeadsPage(params?: {
+  limit?: number;
+  cursor?: string | null;
+}): Promise<LeadsPage> {
+  const qs = new URLSearchParams();
+  qs.set("limit", String(params?.limit ?? 200));
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  const path = `/api/leads/queued?${qs.toString()}`;
+  const data = await get<{ leads: LeadQueueItem[]; nextCursor?: string | null }>(path);
+  return {
+    leads: data.leads,
+    nextCursor: data.nextCursor ?? null,
+  };
+}
+
 export async function fetchLead(id: string, opts?: { force?: boolean }): Promise<LeadDetailRecord> {
   const path = `/api/leads/${id}`;
   const data = await cachedFetch(path, () => get<{ lead: LeadDetailRecord }>(path), {

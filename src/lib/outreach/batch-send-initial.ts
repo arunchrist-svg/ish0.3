@@ -30,6 +30,7 @@ import {
   countPlannedInRolling24h,
   planBatchInitialSends,
 } from "@/lib/outreach/plan-batch-sends";
+import { getLastInitialEmailQueueTime } from "@/lib/outreach/queue-schedule-tail";
 import { logAudit } from "@/lib/audit";
 import type { TenantContext } from "@/lib/tenant";
 
@@ -94,7 +95,10 @@ export async function prepareBatchQueue(
   const dailyCap = emailConfig.dailySendCapPerDomain ?? rec.recommended;
   const now = new Date();
 
-  const existingByDay = await countInitialOutboundByCalendarDay(ctx.workspaceId, sendWindow.timezone);
+  const [existingByDay, queueAfter] = await Promise.all([
+    countInitialOutboundByCalendarDay(ctx.workspaceId, sendWindow.timezone),
+    getLastInitialEmailQueueTime(ctx.workspaceId),
+  ]);
   const { slots, spanDays } = planBatchInitialSends({
     count: leadIds.length,
     window: sendWindow,
@@ -102,6 +106,7 @@ export async function prepareBatchQueue(
     now,
     existingByDay,
     gapMinutes: BATCH_SEND_GAP_MINUTES,
+    queueAfter,
   });
 
   const inRolling24h = countPlannedInRolling24h(slots, now);
