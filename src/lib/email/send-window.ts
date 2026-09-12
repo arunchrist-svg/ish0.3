@@ -357,7 +357,14 @@ export function scheduleAnchorOnCalendarDay(
   const hour = options?.localHour ?? firstRangeStart(window);
   let parts = getZonedParts(now, window.timezone);
   for (let i = 0; i < daysAhead; i++) {
-    parts = addCalendarDays(parts, 1);
+    const next = addCalendarDays(parts, 1);
+    parts = {
+      ...parts,
+      year: next.year,
+      month: next.month,
+      day: next.day,
+      weekday: next.weekday,
+    };
   }
   const target = atLocalHour(parts, hour, window.timezone);
   return snapToSendWindow(target, window);
