@@ -3,7 +3,7 @@
   "crons": [
     {
       "path": "/api/sequencer/run",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 2 * * *"
     },
     {
       "path": "/api/replies/poll",
