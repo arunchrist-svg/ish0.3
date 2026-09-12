@@ -732,18 +732,18 @@ export function OutreachComposeModal({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-black/[0.06] px-4 py-3 sm:px-5">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-brand-ink-faint">
               {headerEyebrow}
             </p>
             <h2
               id="outreach-compose-title"
-              className="truncate text-[16px] font-bold tracking-tight text-brand-ink"
+              className="break-words text-[16px] font-bold tracking-tight text-brand-ink"
             >
               {lead?.name ?? "Loading…"}
             </h2>
             {lead?.company ? (
-              <p className="truncate text-[12px] text-brand-ink-soft">{lead.company}</p>
+              <p className="break-words text-[12px] text-brand-ink-soft">{lead.company}</p>
             ) : null}
             {lead ? (
               <div className="mt-2 flex items-center gap-1.5">
@@ -899,6 +899,7 @@ export function OutreachComposeModal({
                   |
                 </span>
                 <ComposeSendButtons
+                  iconOnly
                   composeActions={composeActions}
                   onSendNow={() => void handleSendNow()}
                   onScheduleSend={() => void handleScheduleSend()}

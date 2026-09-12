@@ -91,3 +91,32 @@ export async function countInitialOutboundByCalendarDay(
   }
   return byDay;
 }
+
+/** Sent Email 1 only, per calendar day (for replanning an existing queue). */
+export async function countSentInitialByCalendarDay(
+  workspaceId: string,
+  timezone: string,
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({
+      sentAt: outreachSchedule.sentAt,
+    })
+    .from(outreachSchedule)
+    .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+    .where(
+      and(
+        eq(leads.workspaceId, workspaceId),
+        eq(outreachSchedule.channel, "email"),
+        eq(outreachSchedule.sequenceDay, 0),
+        eq(outreachSchedule.status, "sent"),
+      ),
+    );
+
+  const byDay = new Map<string, number>();
+  for (const row of rows) {
+    if (!row.sentAt) continue;
+    const key = calendarDayKey(row.sentAt, timezone);
+    byDay.set(key, (byDay.get(key) ?? 0) + 1);
+  }
+  return byDay;
+}

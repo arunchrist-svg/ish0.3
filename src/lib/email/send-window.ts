@@ -344,6 +344,26 @@ export function nextSendWindowStart(now: Date, windowInput?: Partial<SendWindow>
 }
 
 /**
+ * Anchor for replanning a queue: local morning on a future day, snapped to allowed days and hours.
+ * Default is tomorrow at the first range start (e.g. 7:00 AM when configured).
+ */
+export function scheduleAnchorOnCalendarDay(
+  now: Date,
+  windowInput?: Partial<SendWindow> | null,
+  options?: { daysAhead?: number; localHour?: number },
+): Date {
+  const window = resolveSendWindow(windowInput);
+  const daysAhead = Math.max(1, options?.daysAhead ?? 1);
+  const hour = options?.localHour ?? firstRangeStart(window);
+  let parts = getZonedParts(now, window.timezone);
+  for (let i = 0; i < daysAhead; i++) {
+    parts = addCalendarDays(parts, 1);
+  }
+  const target = atLocalHour(parts, hour, window.timezone);
+  return snapToSendWindow(target, window);
+}
+
+/**
  * Next queued slot when the user explicitly chooses Schedule Send.
  * Outside the window: earliest allowed slot. Inside the window: defer to the next day in-window.
  */

@@ -105,6 +105,21 @@ describe("runSenderHealthCheck safety", () => {
     });
   });
 
+  it("skips volume cap when queueing a multi-day Send All schedule", async () => {
+    vi.mocked(countSendsLast24h).mockResolvedValue(58);
+    const health = await runSenderHealthCheck(baseConfig, "ws-1", {
+      projectedAdditional: 1203,
+      skipVolumeCap: true,
+    });
+    expect(health.issues.some((i) => i.id === "volume_cap")).toBe(false);
+    await expect(
+      assertSenderPreflight(baseConfig, "ws-1", {
+        projectedAdditional: 1203,
+        skipVolumeCap: true,
+      }),
+    ).resolves.toMatchObject({ canSendLive: true });
+  });
+
   it("lets the user confirm a burst above the new-inbox recommendation", async () => {
     const newInbox = {
       ...baseConfig,

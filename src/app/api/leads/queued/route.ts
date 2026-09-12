@@ -7,6 +7,7 @@ import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import type { LeadQueueItem } from "@/lib/api-client";
 
 export const preferredRegion = ["sin1"];
+export const maxDuration = 60;
 
 const MAX_QUEUED_PAGE = 5000;
 

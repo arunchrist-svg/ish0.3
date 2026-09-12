@@ -5,6 +5,8 @@ import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { runSequencer } from "@/lib/agents/sequencer";
 import { logAudit } from "@/lib/audit";
 
+export const maxDuration = 300;
+
 export async function POST() {
   try {
     const ctx = await requireTenantContext();

@@ -40,6 +40,7 @@ const KNOWN_DOMAINS: Record<string, string> = {
   "tata semiconductor": "tataelectronics.com",
   "tvsscs": "tvsscs.com",
   "tvs supply chain": "tvsscs.com",
+  "genesis technologies": "genesistechnologies.in",
 };
 
 export function normalizeDomain(raw: string): string {

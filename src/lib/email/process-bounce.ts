@@ -89,6 +89,7 @@ export async function applyScheduleBounce(params: {
       .update(outreachSchedule)
       .set({
         bouncedAt,
+        openedAt: null,
         bounceType,
         bounceReason: bounceReason.slice(0, 500),
         recipientEmail: row.recipientEmail ?? recipient ?? null,

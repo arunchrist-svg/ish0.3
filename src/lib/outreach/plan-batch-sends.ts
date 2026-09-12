@@ -86,6 +86,8 @@ export function planBatchInitialSends(params: {
   gapMinutes?: number;
   /** Append after this instant (existing queue tail + gap). */
   queueAfter?: Date | null;
+  /** First slot anchor (e.g. tomorrow 7:00 local). Snapped to the send window. */
+  scheduleFrom?: Date | null;
 }): BatchSendPlan {
   const gapMs = (params.gapMinutes ?? BATCH_SEND_GAP_MINUTES) * 60_000;
   const dayCount = new Map(params.existingByDay);
@@ -100,7 +102,9 @@ export function planBatchInitialSends(params: {
       ? new Date(Math.max(params.now.getTime(), lastSlot.getTime() + gapMs))
       : queueStart
         ? new Date(Math.max(params.now.getTime(), queueStart.getTime()))
-        : new Date(params.now);
+        : params.scheduleFrom
+          ? new Date(params.scheduleFrom.getTime())
+          : new Date(params.now);
 
     let guard = 0;
     while (guard++ < MAX_PLAN_ITERATIONS) {

@@ -104,6 +104,11 @@ function buildDnsIssues(auth: DomainAuthResult): SenderIssue[] {
 export type SenderHealthOptions = {
   /** Extra recipients about to send in this batch (counts against daily cap). */
   projectedAdditional?: number;
+  /**
+   * Send All schedule only: per-day caps are enforced by the batch planner.
+   * Skip rolling 24h volume blocking when queueing a multi-day timeline.
+   */
+  skipVolumeCap?: boolean;
 };
 
 export async function runSenderHealthCheck(
@@ -149,9 +154,9 @@ export async function runSenderHealthCheck(
   const volume = assertVolumeWithinCap({
     sendsLast24h,
     dailyCap,
-    projectedAdditional,
+    projectedAdditional: options?.skipVolumeCap ? 0 : projectedAdditional,
   });
-  if (!volume.ok) {
+  if (!options?.skipVolumeCap && !volume.ok) {
     const remainingLabel =
       remainingToday === 0
         ? `Daily send quota is used up (0 remaining of ${dailyCap} today). Wait until tomorrow, or raise the daily cap in Settings → Email if this inbox is warmed.`
@@ -163,7 +168,7 @@ export async function runSenderHealthCheck(
       label: remainingLabel,
       severity: "critical",
     });
-  } else if (projectedAdditional > 0) {
+  } else if (!options?.skipVolumeCap && projectedAdditional > 0) {
     if (volume.projectedTotal > rec.max) {
       issues.push({
         id: "warmup_recommend",
@@ -224,6 +229,7 @@ export async function assertSenderPreflight(
 ): Promise<SenderHealthResult> {
   const health = await runSenderHealthCheck(config, workspaceId, {
     projectedAdditional: options?.projectedAdditional,
+    skipVolumeCap: options?.skipVolumeCap,
   });
 
   if (

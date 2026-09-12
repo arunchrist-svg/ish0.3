@@ -223,16 +223,19 @@ export function LeadsBoardApp() {
     };
   }, []);
 
-  async function load(opts?: { silent?: boolean }) {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const [page, countData, queuedPage] = await Promise.all([
-        fetchLeadsPage({ limit: 50 }),
+      const [page, countData, queuedPage, sentPage] = await Promise.all([
+        fetchLeadsPage({ limit: 50, force: true }),
         fetchLeadStageCounts(),
         fetchQueuedLeadsPage({ limit: 5000 }),
+        fetchLeadsPage({ status: "outreached", limit: 100, force: true }),
       ]);
-      setLeads(page.leads);
+      const byId = new Map(page.leads.map((lead) => [lead.id, lead]));
+      for (const lead of sentPage.leads) byId.set(lead.id, lead);
+      setLeads([...byId.values()]);
       setNextCursor(page.nextCursor);
       setStageCounts(countData.byStage);
       setEmailReadyCount(countData.emailReady);
@@ -244,7 +247,7 @@ export function LeadsBoardApp() {
       setLoading(false);
       setRefreshing(false);
     }
-  }
+  }, []);
 
   async function loadMore() {
     if (!nextCursor || loadingMore) return;
@@ -270,7 +273,14 @@ export function LeadsBoardApp() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void load({ silent: true });
+    }, 15_000);
+    return () => window.clearInterval(id);
+  }, [load]);
 
   const boardStages = useMemo(() => boardPipelineStages(), []);
 
@@ -821,6 +831,32 @@ export function LeadsBoardApp() {
       setSequencerRunning(false);
     }
   }, [boardBusy, sequencerRunning, load]);
+
+  useEffect(() => {
+    if (queuedCount <= 0) return;
+    let cancelled = false;
+    let inFlight = false;
+    const tick = async () => {
+      if (cancelled || inFlight || sending) return;
+      inFlight = true;
+      try {
+        await runSequencerNow();
+        if (!cancelled) {
+          await load({ silent: true });
+        }
+      } catch {
+        // Auto tick is best-effort; Send due now still works.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [queuedCount, sending, load]);
 
   const isEmpty = !loading && leads.length === 0;
   const noResults = !loading && leads.length > 0 && filteredLeads.length === 0;

@@ -63,10 +63,6 @@ function formatBoardDateTime(iso: string): string | null {
 }
 
 function formatPendingSendLabel(iso: string): string {
-  const at = new Date(iso);
-  if (!Number.isNaN(at.getTime()) && at.getTime() < Date.now()) {
-    return "Overdue";
-  }
   const formatted = formatBoardDateTime(iso);
   return formatted ? `Sends ${formatted}` : "Queued";
 }
@@ -104,12 +100,9 @@ function cardSendBadge(
     return { label: "Sending", tone: "sending" };
   }
   if (lead.pendingSendScheduledFor) {
-    const overdue =
-      !Number.isNaN(new Date(lead.pendingSendScheduledFor).getTime()) &&
-      new Date(lead.pendingSendScheduledFor).getTime() < Date.now();
     return {
       label: formatPendingSendLabel(lead.pendingSendScheduledFor),
-      tone: overdue ? "failed" : "waiting",
+      tone: "waiting",
     };
   }
   if (stage === "Queued") return { label: "Queued", tone: "queued" };

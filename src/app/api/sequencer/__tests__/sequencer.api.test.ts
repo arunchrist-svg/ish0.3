@@ -65,4 +65,16 @@ describe("SEQ-SEC-001 sequencer cron auth", () => {
     const body = await res.json();
     expect(body).toEqual({ processed: 0, failed: 0, skipped: 0, pendingReview: 0 });
   });
+
+  it("accepts Vercel cron header without CRON_SECRET", async () => {
+    delete process.env.CRON_SECRET;
+    const res = await GET(
+      new Request("http://localhost/api/sequencer/run", {
+        method: "GET",
+        headers: { "x-vercel-cron": "1" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(runSequencer).toHaveBeenCalledOnce();
+  });
 });

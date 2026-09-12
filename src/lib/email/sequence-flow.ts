@@ -15,6 +15,7 @@ export type SequenceFlowNode = {
   label: string;
   state: BarNodeState;
   opened: boolean;
+  bounced: boolean;
   variant: SequenceFlowVariant;
   cadenceLabel?: string;
   title: string;
@@ -98,6 +99,7 @@ function syntheticPlanNodes(cadence: [number, number]): SequenceFlowNode[] {
       label: "Email 1",
       state: "upcoming",
       opened: false,
+      bounced: false,
       variant: "none",
       title: "Email 1. The sequence starts here.",
     },
@@ -108,6 +110,7 @@ function syntheticPlanNodes(cadence: [number, number]): SequenceFlowNode[] {
       label: "Email 2",
       state: "upcoming",
       opened: false,
+      bounced: false,
       variant: "sample",
       cadenceLabel: cadenceEdgeLabel(cadence[0]),
       title: "Email 2 stays the short sample draft.",
@@ -119,6 +122,7 @@ function syntheticPlanNodes(cadence: [number, number]): SequenceFlowNode[] {
       label: "Email 3",
       state: "upcoming",
       opened: false,
+      bounced: false,
       variant: "sample",
       cadenceLabel: cadenceEdgeLabel(cadence[1]),
       title: "Email 3 stays the short breakup draft.",
@@ -129,6 +133,7 @@ function syntheticPlanNodes(cadence: [number, number]): SequenceFlowNode[] {
       label: "If Opened",
       state: "upcoming",
       opened: false,
+      bounced: false,
       variant: "catalog",
       title: "If they open Email 1 or 2, this catalogue sends the next send day.",
     },
@@ -154,6 +159,7 @@ function ifOpenedNode(thread?: EmailThread | null): SequenceFlowNode {
     label: "If Opened",
     state,
     opened: pathActive || Boolean(fromBar?.openedAt),
+    bounced: false,
     variant: "catalog",
     cadenceLabel,
     title: nodeTitle({
@@ -180,6 +186,7 @@ function ifRepliedNode(thread?: EmailThread | null): SequenceFlowNode {
     label: "Reply",
     state,
     opened: false,
+    bounced: false,
     variant: "none",
     cadenceLabel: state === "done" ? "Sent" : "Write",
     title: nodeTitle({ slot: "replied", state, opened: false, variant: "none" }),
@@ -221,8 +228,8 @@ export function buildSequenceFlow(thread?: EmailThread | null): SequenceFlowMode
     });
   }
 
-  const e1Opened = Boolean(emailNodes[0]?.openedAt);
-  const e2Opened = Boolean(emailNodes[1]?.openedAt);
+  const e1Opened = Boolean(emailNodes[0]?.openedAt) && !emailNodes[0]?.bouncedAt;
+  const e2Opened = Boolean(emailNodes[1]?.openedAt) && !emailNodes[1]?.bouncedAt;
   const openedNode = ifOpenedNode(thread);
   const catalogActive =
     openedNode.state === "scheduled" || openedNode.state === "done" || openedNode.state === "paused";
@@ -239,19 +246,22 @@ export function buildSequenceFlow(thread?: EmailThread | null): SequenceFlowMode
     const emailNum = slot === "opened" || slot === "replied" ? undefined : slot;
     const variant: SequenceFlowVariant = emailNum === 1 ? "none" : variantForFollowUp(node.body);
     const cadenceLabel = emailNum === 2 ? cadenceEdgeLabel(cadence[0]) : emailNum === 3 ? cadenceEdgeLabel(cadence[1]) : undefined;
+    const bounced = Boolean(node.bouncedAt);
+    const opened = Boolean(node.openedAt) && !bounced;
     return {
       id: node.id,
       slot,
       emailNum,
       label: emailNum === 1 ? "Email 1" : emailNum === 2 ? "Email 2" : "Email 3",
       state: node.state,
-      opened: Boolean(node.openedAt),
+      opened,
+      bounced,
       variant,
       cadenceLabel,
       title: nodeTitle({
         slot,
         state: node.state,
-        opened: Boolean(node.openedAt),
+        opened,
         variant,
         cadenceLabel,
       }),

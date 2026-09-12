@@ -70,7 +70,10 @@ vi.mock("drizzle-orm", () => ({
   notInArray: vi.fn(),
 }));
 
-vi.mock("@/lib/agents/writer", () => ({ runWriter: mocks.runWriter }));
+vi.mock("@/lib/outreach/reschedule-initial-queue", () => ({
+  rollAllDueQueuesOutsideWindow: vi.fn(async () => 0),
+  rollDueInitialQueueIfOutsideWindow: vi.fn(async () => null),
+}));
 vi.mock("@/lib/billing/credits", () => ({
   assertCredits: mocks.assertCredits,
   deductCredits: mocks.deductCredits,
@@ -145,15 +148,19 @@ function dueRow(overrides: Record<string, unknown> = {}) {
 }
 
 function queueDue(rows: Record<string, unknown>[]) {
-  mocks.select.mockReturnValue({
+  let calls = 0;
+  mocks.select.mockImplementation(() => ({
     from: () => ({
       where: () => ({
         orderBy: () => ({
-          limit: async () => rows,
+          limit: async () => {
+            calls += 1;
+            return calls === 1 ? rows : [];
+          },
         }),
       }),
     }),
-  });
+  }));
 }
 
 function prepareClaim(row: Record<string, unknown>, attemptCount = 1) {
@@ -272,7 +279,7 @@ describe("runSequencer pre-linked drafts", () => {
     expect(mocks.updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "scheduled",
-        lastError: "Outside send window",
+        lastError: null,
         scheduledFor: zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 9, minute: 0 }, IST),
       }),
     );

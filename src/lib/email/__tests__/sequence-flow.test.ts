@@ -158,6 +158,34 @@ describe("buildSequenceFlow", () => {
     expect(flow.nodes.some((n) => n.slot === "replied")).toBe(false);
   });
 
+  it("shows Bounced instead of Opened when a sent step bounced", () => {
+    const thread = buildEmailThread({
+      lead: baseLead as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s3",
+          sequenceDay: 7,
+          emailKind: "followup",
+          status: "sent",
+          scheduledFor: new Date("2026-09-08T10:00:00Z"),
+          sentAt: new Date("2026-09-08T10:00:00Z"),
+          openedAt: new Date("2026-09-08T10:12:00Z"),
+          bouncedAt: new Date("2026-09-08T10:15:00Z"),
+          bounceType: "Permanent",
+          bounceReason: "Mailbox does not exist",
+          recipientEmail: "lead@example.com",
+          subjectSent: "Re: festive gifting",
+          bodySnippet: "Follow-up body",
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      cadenceDays: [3, 7],
+    });
+    const flow = buildSequenceFlow(thread);
+    const email3 = flow.nodes.find((n) => n.emailNum === 3);
+    expect(email3?.opened).toBe(false);
+    expect(email3?.bounced).toBe(true);
+  });
+
   it("marks later emails skipped after they reply", () => {
     const thread = buildEmailThread({
       lead: {

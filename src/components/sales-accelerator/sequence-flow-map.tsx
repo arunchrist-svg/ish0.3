@@ -14,6 +14,9 @@ type Props = {
 };
 
 function chipStatusLabel(node: SequenceFlowNode): string | undefined {
+  if (node.bounced && node.slot !== "opened" && node.slot !== "replied") {
+    return "Bounced";
+  }
   if (node.opened && node.slot !== "opened" && node.slot !== "replied") {
     return "Opened";
   }
@@ -36,6 +39,7 @@ function Chip({
     "ish-seq-chip",
     selected && "is-selected",
     node.opened && "is-opened",
+    node.bounced && "is-bounced",
     node.state === "done" && "is-done",
     node.state === "skipped" && "is-skipped",
     node.slot === "opened" && "is-if-opened",

@@ -267,6 +267,22 @@ describe("multi-range hour windows", () => {
     expect(parts.hour).toBe("08");
   });
 
+  it("snaps Friday night to Saturday 7 AM for a weekend window", () => {
+    const weekend = {
+      daysOfWeek: [0, 6] as const,
+      hourRanges: [{ hourStart: 7, hourEnd: 11 }],
+      timezone: IST,
+    };
+    const fridayNight = zonedLocalToUtc({ year: 2026, month: 9, day: 11, hour: 22, minute: 13 }, IST);
+    expect(isWithinSendWindow(fridayNight, weekend)).toBe(false);
+    const next = nextSendWindowStart(fridayNight, weekend);
+    const parts = localParts(next, IST);
+    expect(parts.weekday).toBe("Sat");
+    expect(parts.day).toBe("12");
+    expect(parts.hour).toBe("07");
+    expect(parts.minute).toBe("00");
+  });
+
   it("supports half-hour range bounds", () => {
     const window = {
       daysOfWeek: [...weekdays],

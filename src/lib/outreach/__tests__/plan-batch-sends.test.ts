@@ -64,6 +64,28 @@ describe("planBatchInitialSends", () => {
     }
   });
 
+  it("starts on scheduleFrom when set (tomorrow morning)", () => {
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 11, hour: 22, minute: 0 }, IST);
+    const scheduleFrom = zonedLocalToUtc({ year: 2026, month: 9, day: 12, hour: 7, minute: 0 }, IST);
+    const weekendWindow: SendWindow = {
+      daysOfWeek: [6, 0],
+      hourStart: 7,
+      hourEnd: 11,
+      hourRanges: [{ hourStart: 7, hourEnd: 11 }],
+      timezone: IST,
+    };
+    const { slots } = planBatchInitialSends({
+      count: 2,
+      window: weekendWindow,
+      dailyCap: 50,
+      now,
+      existingByDay: new Map(),
+      scheduleFrom,
+    });
+    expect(calendarDayKey(slots[0], IST)).toBe("2026-09-12");
+    expect(slots[0].getTime()).toBeGreaterThanOrEqual(scheduleFrom.getTime() - 1000);
+  });
+
   it("appends after an existing queue tail", () => {
     const now = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 0 }, IST);
     const queueAfter = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 30 }, IST);

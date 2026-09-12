@@ -25,11 +25,7 @@ import {
 import { resolveSendRecipients } from "@/lib/outreach/send-recipients";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { cancelQueuedInitialEmailsBatch } from "@/lib/outreach/send-scheduled-initial";
-import {
-  BATCH_SEND_GAP_MINUTES,
-  countPlannedInRolling24h,
-  planBatchInitialSends,
-} from "@/lib/outreach/plan-batch-sends";
+import { BATCH_SEND_GAP_MINUTES, planBatchInitialSends } from "@/lib/outreach/plan-batch-sends";
 import { getLastInitialEmailQueueTime } from "@/lib/outreach/queue-schedule-tail";
 import { logAudit } from "@/lib/audit";
 import type { TenantContext } from "@/lib/tenant";
@@ -109,10 +105,9 @@ export async function prepareBatchQueue(
     queueAfter,
   });
 
-  const inRolling24h = countPlannedInRolling24h(slots, now);
   await assertSenderPreflight(emailConfig, ctx.workspaceId, {
     override: Boolean(params.overridePreflight),
-    projectedAdditional: inRolling24h,
+    skipVolumeCap: true,
   });
 
   return {

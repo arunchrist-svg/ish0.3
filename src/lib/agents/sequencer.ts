@@ -14,10 +14,11 @@ import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
 import { sendScheduledInitialEmail } from "@/lib/outreach/send-scheduled-initial";
 import { pullForwardNextQueuedInitialEmail } from "@/lib/outreach/pull-forward-queue";
+import { rollAllDueQueuesOutsideWindow } from "@/lib/outreach/reschedule-initial-queue";
 import { isCatalogOnOpenDraft, isIshFestiveCatalogBody, CATALOG_ON_OPEN_EMAIL_KIND } from "@/lib/email/ish-festive-catalog";
 
 const BATCH_SIZE = 50;
-const MAX_BATCHES = 20;
+const MAX_BATCHES = 40;
 const MAX_ATTEMPTS = 5;
 const STALE_SENDING_MS = 15 * 60 * 1000;
 
@@ -54,7 +55,7 @@ async function claimSchedule(id: string, now: Date, staleBefore: Date): Promise<
 
 async function releaseToScheduled(
   id: string,
-  reason: string,
+  reason: string | null,
   patch?: { scheduledFor?: Date },
 ): Promise<void> {
   await db
@@ -109,6 +110,7 @@ export async function runSequencer(): Promise<{
 }> {
   const now = new Date();
   const staleBefore = new Date(now.getTime() - STALE_SENDING_MS);
+  await rollAllDueQueuesOutsideWindow(now);
 
   let processed = 0;
   let failed = 0;
@@ -117,8 +119,9 @@ export async function runSequencer(): Promise<{
   const seenIds = new Set<string>();
 
   for (let batch = 0; batch < MAX_BATCHES; batch++) {
+    const dueNow = new Date();
     const dueConditions = [
-      lte(outreachSchedule.scheduledFor, now),
+      lte(outreachSchedule.scheduledFor, dueNow),
       or(
         eq(outreachSchedule.status, "scheduled"),
         and(
@@ -135,7 +138,7 @@ export async function runSequencer(): Promise<{
       .select()
       .from(outreachSchedule)
       .where(and(...dueConditions))
-      .orderBy(asc(outreachSchedule.scheduledFor))
+      .orderBy(asc(outreachSchedule.sequenceDay), asc(outreachSchedule.scheduledFor))
       .limit(BATCH_SIZE);
 
     if (!due.length) break;
@@ -176,7 +179,7 @@ export async function runSequencer(): Promise<{
           const nextSlot = nextSendWindowStart(now, sendWindow);
           const patch =
             nextSlot.getTime() > now.getTime() ? { scheduledFor: nextSlot } : undefined;
-          await releaseToScheduled(claimed.id, "Outside send window", patch);
+          await releaseToScheduled(claimed.id, null, patch);
           skipped++;
           continue;
         }
@@ -209,7 +212,7 @@ export async function runSequencer(): Promise<{
               const nextSlot = nextSendWindowStart(now, sendWindow);
               const patch =
                 nextSlot.getTime() > now.getTime() ? { scheduledFor: nextSlot } : undefined;
-              await releaseToScheduled(claimed.id, "Outside send window", patch);
+              await releaseToScheduled(claimed.id, null, patch);
               skipped++;
               continue;
             }
@@ -383,6 +386,14 @@ export async function runSequencer(): Promise<{
         }
         const reason = errorMessage(e);
         console.error("[sequencer] failed for schedule", claimed.id, e);
+        if (/no usable email/i.test(reason)) {
+          await cancelWithReason(claimed.id, reason);
+          skipped++;
+          if (workspaceId && claimed.sequenceDay === 0) {
+            await pullForwardNextQueuedInitialEmail(workspaceId, new Date());
+          }
+          continue;
+        }
         const outcome = await markFailedOrRetry(claimed.id, claimed.attemptCount, reason);
         if (outcome === "failed") {
           failed++;
@@ -392,8 +403,6 @@ export async function runSequencer(): Promise<{
         } else skipped++;
       }
     }
-
-    if (due.length < BATCH_SIZE) break;
   }
 
   return { processed, failed, skipped, pendingReview };

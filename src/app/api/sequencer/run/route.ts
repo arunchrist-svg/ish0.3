@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { runSequencer } from "@/lib/agents/sequencer";
 
+export const maxDuration = 300;
+
 function authorizeCron(req: Request): boolean {
+  if (req.headers.get("x-vercel-cron") === "1") return true;
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
   return req.headers.get("authorization") === `Bearer ${secret}`;
