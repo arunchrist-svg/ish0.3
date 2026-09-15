@@ -4,6 +4,7 @@ import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { handleApiError } from "@/lib/api-errors";
 import { startAutopilotRun } from "@/lib/agents/autopilot";
 import { listAutopilotRuns, serializeAutopilotRun } from "@/lib/agents/autopilot-store";
+import { parseAutopilotSettingsBody, type AutopilotSettingsBody } from "@/lib/agents/autopilot-settings";
 
 export async function GET() {
   try {
@@ -23,17 +24,9 @@ export async function POST(req: Request) {
   try {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
-    const body = (await req.json().catch(() => ({}))) as {
-      cities?: string[];
-      industries?: string[];
-      businesses?: string[];
-      seniority?: string[];
-      departments?: string[];
-      locationScope?: "focus" | "interest";
-    };
-
-    const cities = (body.cities ?? []).map((city) => city.trim()).filter(Boolean);
-    if (!cities.length) {
+    const body = (await req.json().catch(() => ({}))) as AutopilotSettingsBody;
+    const settings = parseAutopilotSettingsBody(body);
+    if (!settings.cities?.length) {
       return NextResponse.json({ error: "Select at least one city" }, { status: 400 });
     }
 
@@ -41,12 +34,7 @@ export async function POST(req: Request) {
       tenantId: ctx.tenantId,
       workspaceId: ctx.workspaceId,
       userId: ctx.userId,
-      cities,
-      industries: body.industries,
-      businesses: body.businesses,
-      seniority: body.seniority,
-      departments: body.departments,
-      locationScope: body.locationScope,
+      ...settings,
     });
 
     return NextResponse.json({ run: serializeAutopilotRun(run) }, { status: 201 });

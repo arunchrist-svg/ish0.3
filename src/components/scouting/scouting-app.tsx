@@ -2375,16 +2375,19 @@ export function ScoutingApp() {
         seniority,
         departments,
         locationScope,
+        employeeBands,
+        autoSend: true,
+        runNow: true,
       });
       setAutopilotRun(run);
-      toast.success("Autopilot started. It will not send. Approve Email 1 when drafts are ready.");
+      toast.success("Autopilot started. Email 1 will queue after drafts.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Could not start Autopilot.";
       toast.error(msg);
     } finally {
       setAutopilotStarting(false);
     }
-  }, [autopilotStarting, businesses, cities, departments, industries, locationScope, seniority]);
+  }, [autopilotStarting, businesses, cities, departments, employeeBands, industries, locationScope, seniority]);
 
   const handlePauseAutopilot = useCallback(async () => {
     if (!autopilotRun?.id || autopilotPausing) return;

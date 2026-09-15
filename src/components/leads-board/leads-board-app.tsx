@@ -1045,7 +1045,7 @@ export function LeadsBoardApp() {
         <div className="ish-page-padding pt-2 text-[12px] text-brand-ink-soft lg:px-6">
           {autopilotFilterRun && !(autopilotFilterRun.progress.leadIds ?? []).length
             ? "This Autopilot run has not saved leads yet."
-            : "Showing Autopilot run leads. Approve Email 1, then Send All."}{" "}
+            : "Showing Autopilot run leads. Email 1 queues after drafts."}{" "}
           <a href="/leads/board" className="font-semibold text-brand-stratus-blue">
             Show all leads
           </a>

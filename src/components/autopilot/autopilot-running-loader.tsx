@@ -55,7 +55,7 @@ export function AutopilotRunningLoader({
       vertical ? `Matching ${vertical} buyers from your ICP` : "Matching HR, Procurement, and Admin managers",
       "Keeping one decision-maker per company after quality gates",
       "Skipping anyone already on your board",
-      "Writing festive Email 1 to 3. Autopilot will not send.",
+      "Writing Email 1 to 3, then queueing Email 1.",
     ];
     return next;
   }, [place, vertical]);
@@ -138,7 +138,7 @@ export function AutopilotRunningLoader({
       ) : null}
 
       <p className="mt-4 max-w-[300px] text-center text-[11px] leading-snug text-brand-ink-faint">
-        Autopilot will not send. Approve Email 1 when drafts are ready, then Send All.
+        Email 1 queues after drafts. Sends still follow mailbox hours.
       </p>
 
       {onPause ? (

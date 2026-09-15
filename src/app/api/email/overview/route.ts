@@ -663,23 +663,26 @@ export async function GET(req: Request) {
       );
     }
 
-    const needsReview = result.filter((r) => r.queueStatus === "needs_review").slice(0, rowLimit);
-    const replies = result
-      .filter((r) => r.queueStatus === "replies")
+    const needsReviewAll = result.filter((r) => r.queueStatus === "needs_review");
+    const repliesAll = result.filter((r) => r.queueStatus === "replies");
+    const hotAll = result.filter((r) => r.queueStatus === "hot");
+    const activeAll = result.filter((r) => r.queueStatus === "active" && r.sequenceState === "active");
+    const doneAll = result.filter((r) => r.queueStatus === "done");
+
+    const needsReview = needsReviewAll.slice(0, rowLimit);
+    const replies = repliesAll
       .sort((a, b) => Number(a.hasOutboundReply) - Number(b.hasOutboundReply))
       .slice(0, rowLimit);
-    const hot = result.filter((r) => r.queueStatus === "hot").slice(0, rowLimit);
-    const active = result
-      .filter((r) => r.queueStatus === "active" && r.sequenceState === "active")
-      .slice(0, rowLimit);
-    const done = result.filter((r) => r.queueStatus === "done").slice(0, rowLimit);
+    const hot = hotAll.slice(0, rowLimit);
+    const active = activeAll.slice(0, rowLimit);
+    const done = doneAll.slice(0, rowLimit);
 
     const tabCounts = {
-      needs_review: needsReview.length,
-      active: active.length,
-      hot: hot.length,
-      replies: replies.length,
-      done: done.length,
+      needs_review: needsReviewAll.length,
+      active: activeAll.length,
+      hot: hotAll.length,
+      replies: repliesAll.length,
+      done: doneAll.length,
     };
 
     const totalSent = result.reduce((s, r) => s + r.emailsSent, 0);

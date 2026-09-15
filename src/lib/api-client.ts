@@ -618,11 +618,22 @@ export type AutopilotRunDto = {
     cities: string[];
     industries: string[];
     businesses?: string[];
+    employeeBands?: string[];
     seniority: string[];
     departments: string[];
+    locationScope?: "focus" | "interest";
     targetCompanies: number;
     targetLeads: number;
     chunkSize: number;
+    peoplePerCompany?: number;
+    outreachTemplate?: string;
+    schedule?: {
+      daysOfWeek: number[];
+      hour: number;
+      minute: number;
+      timezone: string;
+    };
+    autoSend?: boolean;
   };
   progress: {
     chunkIndex: number;
@@ -633,6 +644,7 @@ export type AutopilotRunDto = {
     attemptedNames?: string[];
     skipped: { name: string; reason: string }[];
     lastError?: string | null;
+    lastScheduledAt?: string | null;
   };
   error: string | null;
   startedAt: string | null;
@@ -642,14 +654,26 @@ export type AutopilotRunDto = {
   updatedAt: string;
 };
 
-export async function startAutopilotRun(params: {
+export type AutopilotRunWriteParams = {
   cities: string[];
   industries?: string[];
   businesses?: string[];
+  employeeBands?: string[];
   seniority?: string[];
   departments?: string[];
   locationScope?: "focus" | "interest";
-}): Promise<{ run: AutopilotRunDto }> {
+  outreachTemplate?: string;
+  schedule?: {
+    daysOfWeek: number[];
+    hour: number;
+    minute: number;
+    timezone: string;
+  };
+  autoSend?: boolean;
+  runNow?: boolean;
+};
+
+export async function startAutopilotRun(params: AutopilotRunWriteParams): Promise<{ run: AutopilotRunDto }> {
   return post("/api/autopilot/runs", params);
 }
 
@@ -669,14 +693,7 @@ export async function resumeAutopilotRun(id: string): Promise<{ run: AutopilotRu
   return post(`/api/autopilot/runs/${id}/resume`, {});
 }
 
-export async function updateAutopilotRun(id: string, params: {
-  cities?: string[];
-  industries?: string[];
-  businesses?: string[];
-  seniority?: string[];
-  departments?: string[];
-  locationScope?: "focus" | "interest";
-}): Promise<{ run: AutopilotRunDto }> {
+export async function updateAutopilotRun(id: string, params: Partial<AutopilotRunWriteParams>): Promise<{ run: AutopilotRunDto }> {
   return patch(`/api/autopilot/runs/${id}`, params);
 }
 
@@ -1149,6 +1166,11 @@ export async function approveOutreach(params: {
   rejectNote?: string;
 }): Promise<{ approvalId: string }> {
   return post<{ approvalId: string }>("/api/outreach/approve", params);
+}
+
+/** Move a pending_review / paused follow-up onto the scheduled send queue. */
+export async function approveFollowUpSchedule(scheduleId: string): Promise<{ ok: boolean; status: string }> {
+  return post<{ ok: boolean; status: string }>("/api/outreach/approve-followup", { scheduleId });
 }
 
 export type OutreachDeliveryMode = "now" | "scheduled";

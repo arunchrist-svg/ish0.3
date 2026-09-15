@@ -1,14 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { FileText, Inbox, MessageSquare, RefreshCw } from "lucide-react";
+import { Check, FileText, Inbox, Loader2, MessageSquare, RefreshCw, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AppPageHeader, EmptyState, MobilePageLayout, ScrollableTabs } from "@/design-system";
 import { SkeletonList } from "@/design-system";
 import {
+  approveFollowUpSchedule,
   approveOutreach,
   fetchEmailOverview,
+  fetchSendBatchProgress,
+  sendBatchOutreach,
   sendFollowUp,
   sendOutreach,
   type EmailOverviewData,
@@ -33,11 +36,18 @@ function isFollowUpRow(row: LeadEmailRow): boolean {
   return Boolean(row.pendingFollowUpScheduleId || row.isFollowUpReview);
 }
 
+function isActionableReview(row: LeadEmailRow): boolean {
+  return Boolean(row.draftOutreachId || row.pendingFollowUpScheduleId);
+}
+
 export function MobileInboxApp() {
   const [tab, setTab] = useState<InboxTab>("needs_review");
   const [data, setData] = useState<EmailOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState<"approve" | "send" | null>(null);
+  const [bulkProgress, setBulkProgress] = useState<string | null>(null);
+  const bulkAbortRef = useRef<AbortController | null>(null);
   const { refresh: refreshBadge } = useInboxBadge();
 
   const load = useCallback(async () => {
@@ -56,10 +66,21 @@ export function MobileInboxApp() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      bulkAbortRef.current?.abort();
+    };
+  }, []);
+
   const rows = useMemo(() => {
     if (!data) return [] as LeadEmailRow[];
     return tab === "needs_review" ? data.needsReview : data.replies;
   }, [data, tab]);
+
+  const actionableReview = useMemo(
+    () => (tab === "needs_review" ? rows.filter(isActionableReview) : []),
+    [rows, tab],
+  );
 
   const counts = useMemo(
     () => ({
@@ -70,6 +91,22 @@ export function MobileInboxApp() {
   );
 
   async function handleApprove(row: LeadEmailRow) {
+    const followUp = isFollowUpRow(row);
+    if (followUp && row.pendingFollowUpScheduleId) {
+      setBusyId(row.leadId);
+      try {
+        await approveFollowUpSchedule(row.pendingFollowUpScheduleId);
+        void hapticLight();
+        toast.success(`Follow-up approved · ${row.contactName}`);
+        await load();
+        refreshBadge();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Approve failed");
+      } finally {
+        setBusyId(null);
+      }
+      return;
+    }
     if (!row.draftOutreachId) {
       toast.message("Open lead to review this draft");
       return;
@@ -83,11 +120,7 @@ export function MobileInboxApp() {
         status: "approved",
       });
       void hapticLight();
-      toast.success(
-        isFollowUpRow(row)
-          ? `Follow-up approved · ${row.contactName}`
-          : `Approved · ${row.contactName}`,
-      );
+      toast.success(`Approved · ${row.contactName}`);
       await load();
       refreshBadge();
     } catch (e) {
@@ -137,12 +170,148 @@ export function MobileInboxApp() {
     }
   }
 
+  async function handleApproveAll() {
+    if (!actionableReview.length || bulkBusy) return;
+    setBulkBusy("approve");
+    let ok = 0;
+    let failed = 0;
+    try {
+      for (let i = 0; i < actionableReview.length; i++) {
+        const row = actionableReview[i]!;
+        setBulkProgress(`Approving ${i + 1} of ${actionableReview.length}`);
+        try {
+          if (isFollowUpRow(row) && row.pendingFollowUpScheduleId) {
+            await approveFollowUpSchedule(row.pendingFollowUpScheduleId);
+          } else if (row.draftOutreachId) {
+            await approveOutreach({
+              leadOutreachId: row.draftOutreachId,
+              leadId: row.leadId,
+              channel: "email",
+              status: "approved",
+            });
+          } else {
+            failed += 1;
+            continue;
+          }
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      void hapticLight();
+      if (failed === 0) {
+        toast.success(ok === 1 ? "Approved 1 draft" : `Approved ${ok} drafts`);
+      } else {
+        toast.error(`Approved ${ok} of ${actionableReview.length}. ${failed} failed.`);
+      }
+      await load();
+      refreshBadge();
+    } finally {
+      setBulkBusy(null);
+      setBulkProgress(null);
+    }
+  }
+
+  async function handleSendAll() {
+    if (!actionableReview.length || bulkBusy) return;
+    const email1 = actionableReview.filter((row) => !isFollowUpRow(row) && row.draftOutreachId);
+    const followUps = actionableReview.filter((row) => isFollowUpRow(row) && row.pendingFollowUpScheduleId);
+    if (!email1.length && !followUps.length) {
+      toast.message("Nothing ready to send");
+      return;
+    }
+
+    bulkAbortRef.current?.abort();
+    const abort = new AbortController();
+    bulkAbortRef.current = abort;
+    setBulkBusy("send");
+    let ok = 0;
+    let failed = 0;
+
+    try {
+      if (email1.length) {
+        setBulkProgress(`Queuing ${email1.length} Email 1…`);
+        const batchResult = await sendWithGateConfirm((overrides) =>
+          sendBatchOutreach({
+            leadIds: email1.map((row) => row.leadId),
+            processDue: true,
+            ...overrides,
+          }),
+        );
+
+        if (
+          batchResult.mode === "background" &&
+          batchResult.startedAt &&
+          batchResult.total &&
+          batchResult.total > 0
+        ) {
+          let polls = 0;
+          while (!abort.signal.aborted && polls < 240) {
+            const progress = await fetchSendBatchProgress({
+              startedAt: batchResult.startedAt,
+              total: batchResult.total,
+              batchId: batchResult.batchId,
+            });
+            setBulkProgress(
+              `Queuing ${Math.min(progress.completed, batchResult.total)} of ${batchResult.total}`,
+            );
+            if (progress.done) {
+              ok += progress.ok ?? progress.completed;
+              failed += progress.failed ?? 0;
+              break;
+            }
+            polls += 1;
+            await new Promise((r) => setTimeout(r, 800));
+          }
+        } else {
+          ok += batchResult.ok;
+          failed += batchResult.failed;
+        }
+      }
+
+      for (let i = 0; i < followUps.length; i++) {
+        if (abort.signal.aborted) break;
+        const row = followUps[i]!;
+        setBulkProgress(`Sending follow-up ${i + 1} of ${followUps.length}`);
+        try {
+          await sendWithGateConfirm((overrides) =>
+            sendFollowUp(row.pendingFollowUpScheduleId!, overrides),
+          );
+          ok += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+
+      if (abort.signal.aborted) {
+        toast.message("Send all stopped");
+      } else if (failed === 0) {
+        void hapticLight();
+        toast.success(ok === 1 ? "Queued 1 email" : `Queued ${ok} emails`);
+      } else {
+        toast.error(`Queued ${ok}. ${failed} failed.`);
+      }
+      await load();
+      refreshBadge();
+    } catch (e) {
+      if (!abort.signal.aborted) {
+        toast.error(e instanceof Error ? e.message : "Send all failed");
+      }
+    } finally {
+      setBulkBusy(null);
+      setBulkProgress(null);
+      bulkAbortRef.current = null;
+    }
+  }
+
   const tabLabels = TABS.map((t) => t.label);
   const tabValues = TABS.map((t) => t.id);
   const activeLabel = TABS.find((t) => t.id === tab)?.label ?? "Review";
   const tabCounts = Object.fromEntries(
     TABS.map((t) => [t.label, counts[t.id]]),
   );
+  const showBulkBar = tab === "needs_review" && actionableReview.length > 0;
+  const bulkDisabled = Boolean(busyId || bulkBusy || loading);
 
   return (
     <MobilePageLayout
@@ -188,6 +357,48 @@ export function MobileInboxApp() {
         />
       </div>
 
+      {showBulkBar ? (
+        <div className="border-b border-brand-border/40 bg-white/80 ish-page-padding py-2.5 backdrop-blur-xl">
+          <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={bulkDisabled}
+              onClick={() => void handleApproveAll()}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full border border-brand-stratus-blue/30 bg-white px-3 text-[13px] font-bold text-brand-stratus-blue shadow-sm active:scale-[0.98] disabled:opacity-50 sm:flex-none"
+            >
+              {bulkBusy === "approve" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Check className="size-3.5" strokeWidth={2.5} />
+              )}
+              Approve all
+            </button>
+            <button
+              type="button"
+              disabled={bulkDisabled}
+              onClick={() => void handleSendAll()}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-brand-black px-3 text-[13px] font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-50 sm:flex-none"
+            >
+              {bulkBusy === "send" ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              )}
+              Send all
+            </button>
+            {bulkProgress ? (
+              <p className="w-full text-[11px] font-medium text-brand-ink-soft sm:ml-auto sm:w-auto">
+                {bulkProgress}
+              </p>
+            ) : (
+              <p className="w-full text-[11px] text-brand-ink-faint sm:ml-auto sm:w-auto">
+                {actionableReview.length} ready
+              </p>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       <div className="ish-page-padding py-4">
         <div className="mx-auto w-full max-w-2xl space-y-4">
           {loading && !data ? (
@@ -222,7 +433,7 @@ export function MobileInboxApp() {
                 row={row}
                 tab={tab}
                 index={i}
-                busy={busyId === row.leadId}
+                busy={busyId === row.leadId || Boolean(bulkBusy)}
                 onApprove={handleApprove}
                 onSend={handleSend}
               />

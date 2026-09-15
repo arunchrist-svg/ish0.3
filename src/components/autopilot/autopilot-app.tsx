@@ -18,7 +18,7 @@ import {
   type AutopilotRunDto,
 } from "@/lib/api-client";
 import { AutopilotRunningLoader } from "@/components/autopilot/autopilot-running-loader";
-import { AutopilotRunForm } from "@/components/autopilot/autopilot-run-form";
+import { AutopilotRunForm, type AutopilotRunFormValues } from "@/components/autopilot/autopilot-run-form";
 
 type RunFilter = "all" | "running" | "ready" | "paused" | "stopped";
 
@@ -28,8 +28,14 @@ const STATUS_LABEL: Record<AutopilotRunDto["status"], string> = {
   awaiting_approval: "Ready for Email 1",
   paused: "Paused",
   failed: "Stopped",
-  completed: "Done",
+  completed: "Sending",
 };
+
+function statusLabel(run: AutopilotRunDto) {
+  if (run.status === "completed" && run.input.autoSend !== true) return "Done";
+  if (run.status === "awaiting_approval" && run.input.autoSend === true) return "Sending";
+  return STATUS_LABEL[run.status];
+}
 
 function isLive(run: AutopilotRunDto) {
   return run.status === "queued" || run.status === "running";
@@ -48,9 +54,9 @@ function runTitle(run: AutopilotRunDto) {
 function matchesFilter(run: AutopilotRunDto, filter: RunFilter) {
   if (filter === "all") return true;
   if (filter === "running") return isLive(run);
-  if (filter === "ready") return run.status === "awaiting_approval";
+  if (filter === "ready") return run.status === "awaiting_approval" || (run.status === "completed" && run.input.autoSend === true);
   if (filter === "paused") return run.status === "paused";
-  return run.status === "failed" || run.status === "completed";
+  return run.status === "failed" || (run.status === "completed" && run.input.autoSend !== true);
 }
 
 export function AutopilotApp() {
@@ -99,9 +105,11 @@ export function AutopilotApp() {
   }
 
   const liveRuns = runs.filter(isLive);
-  const readyRuns = runs.filter((run) => run.status === "awaiting_approval");
+  const readyRuns = runs.filter(
+    (run) => run.status === "awaiting_approval" || (run.status === "completed" && run.input.autoSend === true),
+  );
   const pausedRuns = runs.filter((run) => run.status === "paused");
-  const stoppedRuns = runs.filter((run) => run.status === "failed" || run.status === "completed");
+  const stoppedRuns = runs.filter((run) => run.status === "failed" || (run.status === "completed" && run.input.autoSend !== true));
   const continuable = runs.filter(canContinue);
   const visible = useMemo(() => runs.filter((run) => matchesFilter(run, filter)), [filter, runs]);
 
@@ -160,14 +168,14 @@ export function AutopilotApp() {
     }
   }
 
-  async function createBot(values: { cities: string[]; industries: string[] }) {
+  async function createBot(values: AutopilotRunFormValues) {
     setFormBusy(true);
     try {
       const { run } = await startAutopilotRun(values);
       setRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
       setActiveId(run.id);
       setFormMode(null);
-      toast.success("Autopilot bot created. It will not send.");
+      toast.success(values.runNow === false ? "Bot saved. It will start at the scheduled time." : "Autopilot bot started. Email 1 will queue after drafts.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create bot");
     } finally {
@@ -175,7 +183,7 @@ export function AutopilotApp() {
     }
   }
 
-  async function saveBot(values: { cities: string[]; industries: string[] }) {
+  async function saveBot(values: AutopilotRunFormValues) {
     if (!activeId) return;
     setFormBusy(true);
     try {
@@ -197,8 +205,14 @@ export function AutopilotApp() {
         cities: run.input.cities,
         industries: run.input.industries,
         businesses: run.input.businesses,
+        employeeBands: run.input.employeeBands,
         seniority: run.input.seniority,
         departments: run.input.departments,
+        locationScope: run.input.locationScope,
+        outreachTemplate: run.input.outreachTemplate,
+        schedule: run.input.schedule,
+        autoSend: run.input.autoSend !== false,
+        runNow: true,
       });
       setRuns((current) => [created, ...current]);
       setActiveId(created.id);
@@ -250,21 +264,21 @@ export function AutopilotApp() {
   ];
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="ish-scout-page flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <AppPageHeader icon={Sparkles} title="Autopilot bots" />
       <div className="min-w-0 flex-1 overflow-y-auto bg-transparent px-4 py-6 lg:px-8">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
           <h1 className="text-[20px] font-semibold text-brand-ink lg:hidden">Autopilot bots</h1>
-          <p className="text-[13px] text-brand-ink-soft">
-            Create, edit, duplicate, or delete Autopilot bots. Pause and continue runs. Bots will not
-            send. Approve Email 1 on the board, then Send All.
+          <p className="text-[13px] leading-relaxed text-brand-ink-soft">
+            Build a scheduled workflow: pick a time, scout filters, template, then Autopilot queues
+            Email 1. Sends still follow mailbox hours and the Outbox pause.
           </p>
 
-          <div className="rounded-2xl border border-brand-border bg-white p-4 shadow-[var(--shadow-brand-sm)]">
+          <div className="rounded-[20px] border border-brand-stratus-blue/15 bg-white/90 p-4 shadow-[var(--shadow-brand-sm)]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[13px] font-semibold text-brand-ink">Master switch</p>
-                <p className="text-[12px] text-brand-ink-soft">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-brand-stratus-blue">Master switch</p>
+                <p className="mt-1 text-[12px] text-brand-ink-soft">
                   Off stops new scout and write chunks. Send still uses Outbox pause.
                 </p>
               </div>
@@ -274,7 +288,7 @@ export function AutopilotApp() {
                 onClick={() => void toggleKillSwitch()}
                 className={cn(
                   "rounded-full px-3 py-1.5 text-[11px] font-semibold",
-                  enabled ? "bg-brand-green-soft text-brand-green" : "bg-brand-app text-brand-ink-soft",
+                  enabled ? "ish-scout-cta-blue text-white" : "ish-scout-ghost text-brand-ink-soft",
                 )}
               >
                 {enabled ? "Autopilot on" : "Autopilot off"}
@@ -291,7 +305,7 @@ export function AutopilotApp() {
                 type="button"
                 disabled={bulkBusy || liveRuns.length === 0}
                 onClick={() => void pauseAll()}
-                className="inline-flex h-8 items-center gap-1 rounded-full border border-brand-border px-3 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+                className="ish-scout-ghost inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
               >
                 <Pause className="size-3" />
                 Pause all running
@@ -300,7 +314,7 @@ export function AutopilotApp() {
                 type="button"
                 disabled={bulkBusy || continuable.length === 0 || !enabled}
                 onClick={() => void continueAll()}
-                className="inline-flex h-8 items-center gap-1 rounded-full bg-brand-black px-3 text-[12px] font-semibold text-white disabled:opacity-50"
+                className="ish-scout-cta-blue inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12px] font-semibold text-white disabled:opacity-50"
               >
                 <Play className="size-3" />
                 Continue stopped
@@ -309,7 +323,7 @@ export function AutopilotApp() {
                 type="button"
                 disabled={!enabled}
                 onClick={() => setFormMode("create")}
-                className="inline-flex h-8 items-center gap-1 rounded-full border border-brand-border px-3 text-[12px] font-semibold text-brand-ink disabled:opacity-50"
+                className="ish-scout-cta-yellow inline-flex h-8 items-center gap-1 rounded-full px-3 text-[12px] font-semibold disabled:opacity-50"
               >
                 <Plus className="size-3" />
                 New bot
@@ -320,8 +334,9 @@ export function AutopilotApp() {
           {formMode === "create" ? (
             <AutopilotRunForm
               title="New Autopilot bot"
-              submitLabel="Create and start"
+              submitLabel="Save workflow"
               busy={formBusy}
+              showRunNow
               onCancel={() => setFormMode(null)}
               onSubmit={createBot}
             />
@@ -346,25 +361,25 @@ export function AutopilotApp() {
                 type="button"
                 onClick={() => setFilter(item.id)}
                 className={cn(
-                  "rounded-full px-2.5 py-1 text-[11px] font-semibold",
-                  filter === item.id
-                    ? "bg-brand-black text-white"
-                    : "border border-brand-border bg-white text-brand-ink-soft",
+                  "ish-scout-filter-chip",
+                  filter === item.id ? "ish-scout-chip-on" : "ish-scout-chip-off",
                 )}
               >
-                {item.label} {item.count}
+                <span className="ish-scout-filter-chip-label">
+                  {item.label} {item.count}
+                </span>
               </button>
             ))}
           </div>
 
           {visible.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-brand-border bg-white px-4 py-8 text-center text-[13px] text-brand-ink-soft">
+            <p className="rounded-[20px] border border-dashed border-brand-stratus-blue/25 bg-white/80 px-4 py-8 text-center text-[13px] text-brand-ink-soft">
               {runs.length === 0
                 ? "No Autopilot bots yet. Tap New bot, or start one from Scouting."
                 : "No bots in this filter."}
             </p>
           ) : (
-            <div className="overflow-hidden rounded-2xl border border-brand-border bg-white">
+            <div className="overflow-hidden rounded-[20px] border border-brand-stratus-blue/15 bg-white/90">
               {visible.map((run) => {
                 const selected = run.id === activeId;
                 return (
@@ -385,21 +400,21 @@ export function AutopilotApp() {
                       <span
                         className={cn(
                           "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                          isLive(run) && "bg-amber-50 text-amber-800",
+                          isLive(run) && "bg-brand-stratus-blue/10 text-brand-stratus-blue",
                           run.status === "awaiting_approval" && "bg-brand-green-soft text-brand-green",
-                          run.status === "paused" && "bg-brand-app text-brand-ink-soft",
+                          run.status === "paused" && "bg-brand-canvas text-brand-ink-soft",
                           (run.status === "failed" || run.status === "completed") &&
-                            "bg-rose-50 text-rose-700",
-                          run.status === "completed" && "bg-brand-app text-brand-ink-soft",
+                            "bg-brand-pink-soft text-brand-stratus-salmon",
+                          run.status === "completed" && "bg-brand-canvas text-brand-ink-soft",
                         )}
                       >
-                        {STATUS_LABEL[run.status]}
+                        {statusLabel(run)}
                       </span>
                     </button>
                     {selected ? (
-                      <div className="space-y-3 border-t border-brand-border/60 bg-brand-app/30 px-4 py-3">
+                      <div className="space-y-3 border-t border-brand-stratus-blue/15 bg-brand-stratus-blue/5 px-4 py-3">
                         {run.error || run.progress.lastError ? (
-                          <p className="text-[11px] text-rose-700">{run.error || run.progress.lastError}</p>
+                          <p className="text-[11px] text-brand-stratus-salmon">{run.error || run.progress.lastError}</p>
                         ) : null}
                         <div className="flex flex-wrap gap-2">
                           {isLive(run) ? (
@@ -407,7 +422,7 @@ export function AutopilotApp() {
                               type="button"
                               disabled={busyId === run.id}
                               onClick={() => void pauseRun(run.id)}
-                              className="inline-flex h-7 items-center gap-1 rounded-full border border-brand-border bg-white px-2.5 text-[11px] font-semibold text-brand-ink"
+                              className="ish-scout-ghost inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-brand-ink"
                             >
                               <Pause className="size-3" />
                               Pause
@@ -418,7 +433,7 @@ export function AutopilotApp() {
                               type="button"
                               disabled={busyId === run.id || !enabled}
                               onClick={() => void continueRun(run.id)}
-                              className="inline-flex h-7 items-center gap-1 rounded-full bg-brand-black px-2.5 text-[11px] font-semibold text-white disabled:opacity-50"
+                              className="ish-scout-cta-blue inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-white disabled:opacity-50"
                             >
                               <Play className="size-3" />
                               Continue
@@ -431,7 +446,7 @@ export function AutopilotApp() {
                               setActiveId(run.id);
                               setFormMode("edit");
                             }}
-                            className="inline-flex h-7 items-center gap-1 rounded-full border border-brand-border bg-white px-2.5 text-[11px] font-semibold text-brand-ink"
+                            className="ish-scout-ghost inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-brand-ink"
                           >
                             <Pencil className="size-3" />
                             Edit
@@ -440,7 +455,7 @@ export function AutopilotApp() {
                             type="button"
                             disabled={busyId === run.id || !enabled}
                             onClick={() => void duplicateBot(run)}
-                            className="inline-flex h-7 items-center gap-1 rounded-full border border-brand-border bg-white px-2.5 text-[11px] font-semibold text-brand-ink disabled:opacity-50"
+                            className="ish-scout-ghost inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-brand-ink disabled:opacity-50"
                           >
                             <Copy className="size-3" />
                             Duplicate
@@ -449,16 +464,16 @@ export function AutopilotApp() {
                             type="button"
                             disabled={busyId === run.id}
                             onClick={() => void removeBot(run)}
-                            className="inline-flex h-7 items-center gap-1 rounded-full border border-rose-200 bg-white px-2.5 text-[11px] font-semibold text-rose-700"
+                            className="ish-scout-ghost inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-brand-stratus-salmon"
                           >
                             <Trash2 className="size-3" />
                             Delete
                           </button>
                           <Link
                             href={`/leads/board?autopilotRun=${run.id}`}
-                            className="inline-flex h-7 items-center rounded-full border border-brand-border bg-white px-2.5 text-[11px] font-semibold text-brand-ink"
+                            className="ish-scout-ghost inline-flex h-7 items-center rounded-full px-2.5 text-[11px] font-semibold text-brand-ink"
                           >
-                            Review Email 1
+                            Open board
                           </Link>
                         </div>
                         {(run.progress.attemptedNames?.length || run.progress.skipped?.length) && !isLive(run) ? (
@@ -503,7 +518,7 @@ export function AutopilotApp() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-brand-border/70 bg-brand-app/40 px-3 py-2">
+    <div className="rounded-xl border border-brand-stratus-blue/15 bg-brand-stratus-blue/5 px-3 py-2">
       <p className="text-[11px] font-semibold text-brand-ink-soft">{label}</p>
       <p className="text-[18px] font-semibold tabular-nums text-brand-ink">{value}</p>
     </div>

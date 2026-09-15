@@ -3,11 +3,14 @@ import {
   AUTOPILOT_OUTREACH_TEMPLATE,
   AUTOPILOT_SENDS_EMAIL,
   applyGuessedEmail,
+  autopilotSendsEmail,
   companyDedupeReason,
   decideAfterAutopilotChunk,
   guessPersonEmail,
+  isAutopilotScheduleDue,
   isAutopilotTavilyExhausted,
   mergeAutopilotProgress,
+  parseAutopilotBatchRunId,
   planNextAutopilotChunk,
   resolveAutopilotPeopleFilters,
   autopilotExcludeNames,
@@ -204,6 +207,12 @@ describe("decideAfterAutopilotChunk", () => {
     expect(decision.enqueueNext).toBe(false);
     expect(decision.enqueueWriter).toBe(true);
   });
+
+  it("completes at 100 leads when auto-send is on", () => {
+    const decision = decideAfterAutopilotChunk({ ...base, leadsSavedTotal: 100, autoSend: true });
+    expect(decision.nextStatus).toBe("completed");
+    expect(decision.enqueueWriter).toBe(true);
+  });
 });
 
 describe("dedupe and email guess", () => {
@@ -258,6 +267,13 @@ describe("tavily and defaults", () => {
     });
   });
 
+  it("keeps empty people filters when the user cleared them", () => {
+    expect(resolveAutopilotPeopleFilters({ seniority: [], departments: [] })).toEqual({
+      seniority: [],
+      departments: [],
+    });
+  });
+
   it("excludes skipped and attempted companies from the next chunk", () => {
     expect(
       autopilotExcludeNames({
@@ -268,8 +284,10 @@ describe("tavily and defaults", () => {
     ).toEqual(["AkzoNobel", "Berger", "KASTURI ENTERPRISES"]);
   });
 
-  it("never marks Autopilot as a sender", () => {
-    expect(AUTOPILOT_SENDS_EMAIL).toBe(false);
+  it("new workflow bots queue Email 1 by default", () => {
+    expect(AUTOPILOT_SENDS_EMAIL).toBe(true);
+    expect(autopilotSendsEmail(true)).toBe(true);
+    expect(autopilotSendsEmail(undefined)).toBe(false);
     expect(AUTOPILOT_OUTREACH_TEMPLATE).toBe("prasanth_sequence");
   });
 
@@ -351,5 +369,29 @@ describe("mergeAutopilotProgress", () => {
     );
     expect(merged.leadIds).toEqual(["lead-1"]);
     expect(merged.companyNames).toEqual(["AkzoNobel"]);
+  });
+});
+
+describe("autopilot schedule and batch ids", () => {
+  const slot = {
+    daysOfWeek: [1],
+    hour: 9,
+    minute: 0,
+    timezone: "Asia/Kolkata",
+  };
+
+  it("is due in the 15-minute local slot and not twice", () => {
+    const now = new Date("2026-09-14T03:35:00.000Z");
+    expect(isAutopilotScheduleDue(slot, now)).toBe(true);
+    expect(isAutopilotScheduleDue(slot, now, "2026-09-14T03:31:00.000Z")).toBe(false);
+    expect(isAutopilotScheduleDue(slot, new Date("2026-09-14T04:05:00.000Z"))).toBe(false);
+    expect(isAutopilotScheduleDue(undefined, now)).toBe(false);
+  });
+
+  it("parses the autopilot writer batch id", () => {
+    expect(parseAutopilotBatchRunId("autopilot:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:3")).toBe(
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    expect(parseAutopilotBatchRunId("writer-batch")).toBeNull();
   });
 });

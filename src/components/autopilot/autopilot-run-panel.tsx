@@ -13,10 +13,10 @@ import {
 const STATUS_LABEL: Record<AutopilotRunDto["status"], string> = {
   queued: "Queued",
   running: "Agent team scouting",
-  awaiting_approval: "Ready for Email 1 approval",
+  awaiting_approval: "Ready for Email 1",
   paused: "Paused",
   failed: "Stopped",
-  completed: "Done",
+  completed: "Sending",
 };
 
 export function AutopilotRunPanel({
@@ -79,7 +79,9 @@ export function AutopilotRunPanel({
             Autopilot · {STATUS_LABEL[run.status]}
           </div>
           <p className="mt-1 text-[11px] leading-snug text-brand-ink-soft">
-            Autopilot will not send. Approve Email 1, then Send All as today.
+            {run.input.autoSend
+              ? "Email 1 queues after drafts. Sends follow mailbox hours."
+              : "Approve Email 1, then Send All."}
           </p>
         </div>
         {onClose ? (
@@ -143,7 +145,7 @@ export function AutopilotRunPanel({
               : "bg-brand-black text-white"
           }`}
         >
-          Review Email 1
+          Review board
         </Link>
         {hideAllRunsLink ? null : (
           <Link href="/autopilot" className="text-[11px] font-semibold text-brand-stratus-blue">

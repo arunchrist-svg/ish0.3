@@ -706,7 +706,7 @@ function LocationAreaPicker({
   );
 }
 
-function LocationDistrictPicker({
+export function LocationDistrictPicker({
   cities,
   onCitiesChange,
   locationOptions,
@@ -960,7 +960,7 @@ function MobileCitySheetContent({
   );
 }
 
-function MobileIndustrySheetContent({
+export function ScoutIndustryFilterPanel({
   industries,
   onIndustryToggle,
   employeeBands,
@@ -1061,7 +1061,7 @@ function MobileIndustrySheetContent({
   );
 }
 
-function MobilePeopleSheetContent({
+export function ScoutPeopleFilterPanel({
   seniority,
   departments,
   verticalScope,
@@ -1934,7 +1934,7 @@ export function ScoutingToolbar({
             />
           }
         >
-          <MobileIndustrySheetContent
+          <ScoutIndustryFilterPanel
             industries={industries}
             onIndustryToggle={onIndustryToggle}
             employeeBands={employeeBands}
@@ -2099,7 +2099,7 @@ export function ScoutingToolbar({
               onRunAutopilot();
             }}
             disabled={!canScout || autopilotRunning}
-            title="Scout, save, and write drafts. Autopilot will not send."
+            title="Scout, save, write drafts, and queue Email 1."
             className={cn(
               "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold transition-all duration-150 sm:px-3.5 sm:text-[12.5px]",
               canScout && !autopilotRunning ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",

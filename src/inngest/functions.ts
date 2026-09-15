@@ -144,11 +144,11 @@ export const autopilotChunkFunction = inngest.createFunction(
 
 export const autopilotDailyFunction = inngest.createFunction(
   { id: "autopilot-daily", retries: 1 },
-  { cron: "0 2 * * *" },
+  { cron: "*/15 * * * *" },
   async ({ step }) => {
-    return step.run("kick-daily-autopilot", async () => {
-      const { kickDailyAutopilotRuns } = await import("@/lib/agents/autopilot");
-      return kickDailyAutopilotRuns();
+    return step.run("kick-due-autopilot", async () => {
+      const { kickDueAutopilotRuns } = await import("@/lib/agents/autopilot");
+      return kickDueAutopilotRuns();
     });
   },
 );

@@ -4,6 +4,7 @@ import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { handleApiError } from "@/lib/api-errors";
 import { getAutopilotRun, serializeAutopilotRun } from "@/lib/agents/autopilot-store";
 import { removeAutopilotRun, updateAutopilotRunSettings } from "@/lib/agents/autopilot";
+import { parseAutopilotSettingsBody, type AutopilotSettingsBody } from "@/lib/agents/autopilot-settings";
 
 async function loadOwnedRun(id: string, tenantId: string, workspaceId: string) {
   const run = await getAutopilotRun(id);
@@ -30,15 +31,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { id } = await params;
     const existing = await loadOwnedRun(id, ctx.tenantId, ctx.workspaceId);
     if (!existing) return NextResponse.json({ error: "Autopilot run not found" }, { status: 404 });
-    const body = (await req.json().catch(() => ({}))) as {
-      cities?: string[];
-      industries?: string[];
-      businesses?: string[];
-      seniority?: string[];
-      departments?: string[];
-      locationScope?: "focus" | "interest";
-    };
-    const run = await updateAutopilotRunSettings(id, body);
+    const body = (await req.json().catch(() => ({}))) as AutopilotSettingsBody;
+    const settings = parseAutopilotSettingsBody(body);
+    if (body.cities !== undefined && !settings.cities?.length) {
+      return NextResponse.json({ error: "Select at least one city" }, { status: 400 });
+    }
+    const run = await updateAutopilotRunSettings(id, settings);
     return NextResponse.json({ run: serializeAutopilotRun(run) });
   } catch (e) {
     const message = e instanceof Error ? e.message : "";

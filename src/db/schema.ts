@@ -624,10 +624,18 @@ export type AutopilotRunStatus =
   | "failed"
   | "completed";
 
+export type AutopilotSchedule = {
+  daysOfWeek: number[];
+  hour: number;
+  minute: number;
+  timezone: string;
+};
+
 export type AutopilotRunInput = {
   cities: string[];
   industries: string[];
   businesses?: string[];
+  employeeBands?: string[];
   seniority: string[];
   departments: string[];
   locationScope?: "focus" | "interest";
@@ -635,6 +643,9 @@ export type AutopilotRunInput = {
   targetLeads: number;
   chunkSize: number;
   peoplePerCompany: number;
+  outreachTemplate?: string;
+  schedule?: AutopilotSchedule;
+  autoSend?: boolean;
 };
 
 export type AutopilotRunProgress = {
@@ -647,6 +658,7 @@ export type AutopilotRunProgress = {
   emptyDiscoveryStreak?: number;
   skipped: { name: string; reason: string }[];
   lastError?: string | null;
+  lastScheduledAt?: string | null;
 };
 
 export const autopilotRuns = pgTable("autopilot_runs", {

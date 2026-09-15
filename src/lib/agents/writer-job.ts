@@ -72,5 +72,13 @@ export async function writeOutreachForJob(params: WriterJobParams): Promise<{ ou
     }
     void checkLowBalanceAlerts(params.tenantId);
   }
+  if (ids.length) {
+    const { queueAutopilotEmailIfEnabled } = await import("@/lib/agents/autopilot-send");
+    await queueAutopilotEmailIfEnabled({
+      leadId: params.leadId,
+      tenantId: params.tenantId,
+      batchId: params.batchId,
+    });
+  }
   return { outreachIds: ids };
 }

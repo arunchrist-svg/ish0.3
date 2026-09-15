@@ -22,9 +22,12 @@ import {
   autopilotFocusIndustries,
   autopilotPeopleCities,
   autopilotPeopleSkipReason,
+  autopilotSendsEmail,
   decideAfterAutopilotChunk,
+  isAutopilotScheduleDue,
   isAutopilotTavilyExhausted,
   mergeAutopilotProgress,
+  normalizeAutopilotSchedule,
   planDailyAutopilotAction,
   planNextAutopilotChunk,
   resolveAutopilotPeopleFilters,
@@ -40,33 +43,43 @@ import {
   updateAutopilotRun,
   type AutopilotRunRow,
 } from "@/lib/agents/autopilot-store";
-import type { AutopilotRunInput } from "@/db";
+import type { AutopilotRunInput, AutopilotSchedule } from "@/db";
 
 void AUTOPILOT_SENDS_EMAIL;
 
 const PEOPLE_CONCURRENCY = 2;
 
-export type StartAutopilotParams = {
-  tenantId: string;
-  workspaceId: string;
-  userId?: string;
-  cities: string[];
+export type AutopilotRunSettings = {
+  cities?: string[];
   industries?: string[];
   businesses?: string[];
+  employeeBands?: string[];
   seniority?: string[];
   departments?: string[];
   locationScope?: "focus" | "interest";
+  outreachTemplate?: string;
+  schedule?: Partial<AutopilotSchedule> | null;
+  autoSend?: boolean;
+  runNow?: boolean;
 };
 
-export function buildAutopilotInput(params: StartAutopilotParams): AutopilotRunInput {
+export type StartAutopilotParams = AutopilotRunSettings & {
+  tenantId: string;
+  workspaceId: string;
+  userId?: string;
+};
+
+export function buildAutopilotInput(params: AutopilotRunSettings): AutopilotRunInput {
   const people = resolveAutopilotPeopleFilters({
     seniority: params.seniority,
     departments: params.departments,
   });
+  const autoSend = params.autoSend !== false;
   return {
-    cities: params.cities,
+    cities: params.cities ?? [],
     industries: params.industries ?? [],
     businesses: params.businesses,
+    employeeBands: params.employeeBands,
     seniority: people.seniority,
     departments: people.departments,
     locationScope: params.locationScope,
@@ -74,11 +87,14 @@ export function buildAutopilotInput(params: StartAutopilotParams): AutopilotRunI
     targetLeads: AUTOPILOT_TARGET_LEADS,
     chunkSize: AUTOPILOT_CHUNK_SIZE,
     peoplePerCompany: AUTOPILOT_PEOPLE_PER_COMPANY,
+    outreachTemplate: params.outreachTemplate?.trim() || AUTOPILOT_OUTREACH_TEMPLATE,
+    schedule: normalizeAutopilotSchedule(params.schedule),
+    autoSend,
   };
 }
 
 export async function startAutopilotRun(params: StartAutopilotParams): Promise<AutopilotRunRow> {
-  if (!params.cities.length) {
+  if (!params.cities?.length) {
     throw new Error("Select at least one city");
   }
   const flags = await getAgentFlags(params.workspaceId);
@@ -86,14 +102,19 @@ export async function startAutopilotRun(params: StartAutopilotParams): Promise<A
     throw new Error("Autopilot is paused. Turn it on in Settings → AI.");
   }
 
+  const runNow = params.runNow !== false;
   const run = await createAutopilotRun({
     tenantId: params.tenantId,
     workspaceId: params.workspaceId,
     createdByUserId: params.userId,
     input: buildAutopilotInput(params),
+    status: runNow ? "queued" : "paused",
+    error: runNow ? null : "Scheduled. Waiting for the next run time.",
   });
 
-  await enqueueAutopilotChunk({ runId: run.id, chunkIndex: 0 });
+  if (runNow) {
+    await enqueueAutopilotChunk({ runId: run.id, chunkIndex: 0 });
+  }
   return run;
 }
 
@@ -269,6 +290,7 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
       fetchSeed: fetchSeed + discoveryPasses * 11,
       lockIndustries: true,
       agenticDataStack: enrichmentConfig.agenticDataStack,
+      employeeBands: input.employeeBands,
     });
     discoveryPasses += 1;
     searchMessages.push(...discovery.errors, ...discovery.warnings);
@@ -422,6 +444,7 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
     chunkSize: input.chunkSize,
     attemptedCount: merged.attemptedNames?.length ?? 0,
     emptyDiscoveryStreak,
+    autoSend: input.autoSend,
   });
 
   const updated = await updateAutopilotRun(runId, {
@@ -440,7 +463,7 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
       leadIds: newLeadIds,
       tenantId: run.tenantId,
       mode: "sequence",
-      outreachTemplate: AUTOPILOT_OUTREACH_TEMPLATE,
+      outreachTemplate: input.outreachTemplate || AUTOPILOT_OUTREACH_TEMPLATE,
       batchId: `autopilot:${runId}:${chunkIndex}`,
     });
   }
@@ -453,7 +476,7 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
 }
 
 export async function requestPauseAutopilotRun(runId: string): Promise<AutopilotRunRow> {
-  return pauseAutopilotRun(runId, "Paused by you. Autopilot will not send.");
+  return pauseAutopilotRun(runId, "Paused by you.");
 }
 
 export async function resumeAutopilotRun(runId: string): Promise<AutopilotRunRow> {
@@ -461,7 +484,7 @@ export async function resumeAutopilotRun(runId: string): Promise<AutopilotRunRow
   if (!run) throw new Error("Autopilot run not found");
   if (run.status === "queued" || run.status === "running") return run;
   if (run.progress.leadsSaved >= run.input.targetLeads) {
-    throw new Error("This run already has 100 leads. Approve Email 1 on the board.");
+    throw new Error("This run already has 100 leads.");
   }
   if (isAutopilotTavilyExhausted([run.error ?? "", run.progress.lastError ?? ""])) {
     const { getResolvedEnrichmentConfigForWorkspace } = await import(
@@ -508,14 +531,7 @@ export async function resumeAutopilotRun(runId: string): Promise<AutopilotRunRow
 
 export async function updateAutopilotRunSettings(
   runId: string,
-  patch: {
-    cities?: string[];
-    industries?: string[];
-    businesses?: string[];
-    seniority?: string[];
-    departments?: string[];
-    locationScope?: "focus" | "interest";
-  },
+  patch: AutopilotRunSettings,
 ): Promise<AutopilotRunRow> {
   const run = await getAutopilotRun(runId);
   if (!run) throw new Error("Autopilot run not found");
@@ -523,28 +539,27 @@ export async function updateAutopilotRunSettings(
   if (!cities.length) throw new Error("Select at least one city");
 
   const people = resolveAutopilotPeopleFilters({
-    seniority: patch.seniority ?? run.input.seniority,
-    departments: patch.departments ?? run.input.departments,
+    seniority: patch.seniority !== undefined ? patch.seniority : run.input.seniority,
+    departments: patch.departments !== undefined ? patch.departments : run.input.departments,
   });
-  const input = {
-    ...run.input,
-    ...buildAutopilotInput({
-      tenantId: run.tenantId,
-      workspaceId: run.workspaceId,
-      cities,
-      industries: patch.industries ?? run.input.industries,
-      businesses: patch.businesses ?? run.input.businesses,
-      seniority: people.seniority,
-      departments: people.departments,
-      locationScope: patch.locationScope ?? run.input.locationScope,
-    }),
-  };
+  const input = buildAutopilotInput({
+    cities,
+    industries: patch.industries ?? run.input.industries,
+    businesses: patch.businesses ?? run.input.businesses,
+    employeeBands: patch.employeeBands ?? run.input.employeeBands,
+    seniority: people.seniority,
+    departments: people.departments,
+    locationScope: patch.locationScope ?? run.input.locationScope,
+    outreachTemplate: patch.outreachTemplate ?? run.input.outreachTemplate,
+    schedule: patch.schedule ?? run.input.schedule,
+    autoSend: patch.autoSend ?? run.input.autoSend,
+  });
 
   const wasLive = run.status === "queued" || run.status === "running";
   return updateAutopilotRun(runId, {
     input,
     status: wasLive ? "paused" : run.status,
-    error: wasLive ? "Updated. Autopilot paused so the next chunk uses the new city and industry." : run.error,
+    error: wasLive ? "Updated. Autopilot paused so the next chunk uses the new filters." : run.error,
     pausedAt: wasLive ? new Date() : run.pausedAt,
   });
 }
@@ -559,8 +574,8 @@ export async function removeAutopilotRun(runId: string): Promise<void> {
   if (!ok) throw new Error("Autopilot run not found");
 }
 
-/** Morning kick: continue unfinished bots or start the next 100-lead run. Never sends. */
-export async function kickDailyAutopilotRuns(): Promise<{
+/** Start or resume each scheduled bot whose local time slot is due. */
+export async function kickDueAutopilotRuns(now = new Date()): Promise<{
   resumed: number;
   started: number;
   skipped: number;
@@ -578,47 +593,64 @@ export async function kickDailyAutopilotRuns(): Promise<{
     const runs = await listAutopilotRuns({
       tenantId: workspace.tenantId,
       workspaceId: workspace.id,
-      limit: 20,
+      limit: 50,
     });
-    const plan = planDailyAutopilotAction(
-      runs.map((run) => ({
-        id: run.id,
-        status: run.status,
-        leadsSaved: run.progress.leadsSaved,
-        targetLeads: run.input.targetLeads,
-      })),
-    );
-    if (plan.action === "resume") {
-      try {
-        await resumeAutopilotRun(plan.runId);
-        resumed += 1;
-      } catch (error) {
-        console.error("[autopilot] daily resume failed", plan.runId, error);
-        skipped += 1;
-      }
-      continue;
-    }
-    if (plan.action === "start_new") {
-      const source = runs.find((run) => run.id === plan.sourceRunId);
-      if (!source?.input.cities.length) {
-        skipped += 1;
+    for (const run of runs) {
+      if (!isAutopilotScheduleDue(run.input.schedule, now, run.progress.lastScheduledAt)) {
         continue;
       }
-      await startAutopilotRun({
-        tenantId: source.tenantId,
-        workspaceId: source.workspaceId,
-        userId: source.createdByUserId ?? undefined,
-        cities: source.input.cities,
-        industries: source.input.industries,
-        businesses: source.input.businesses,
-        seniority: source.input.seniority,
-        departments: source.input.departments,
-        locationScope: source.input.locationScope,
+      await updateAutopilotRun(run.id, {
+        progress: { ...run.progress, lastScheduledAt: now.toISOString() },
       });
-      started += 1;
-      continue;
+      const plan = planDailyAutopilotAction([
+        {
+          id: run.id,
+          status: run.status,
+          leadsSaved: run.progress.leadsSaved,
+          targetLeads: run.input.targetLeads,
+        },
+      ]);
+      if (plan.action === "resume") {
+        try {
+          await resumeAutopilotRun(plan.runId);
+          resumed += 1;
+        } catch (error) {
+          console.error("[autopilot] scheduled resume failed", plan.runId, error);
+          skipped += 1;
+        }
+        continue;
+      }
+      if (plan.action === "start_new") {
+        if (!run.input.cities.length) {
+          skipped += 1;
+          continue;
+        }
+        await startAutopilotRun({
+          tenantId: run.tenantId,
+          workspaceId: run.workspaceId,
+          userId: run.createdByUserId ?? undefined,
+          cities: run.input.cities,
+          industries: run.input.industries,
+          businesses: run.input.businesses,
+          employeeBands: run.input.employeeBands,
+          seniority: run.input.seniority,
+          departments: run.input.departments,
+          locationScope: run.input.locationScope,
+          outreachTemplate: run.input.outreachTemplate,
+          schedule: run.input.schedule,
+          autoSend: run.input.autoSend,
+          runNow: true,
+        });
+        started += 1;
+        continue;
+      }
+      skipped += 1;
     }
-    skipped += 1;
   }
   return { resumed, started, skipped };
+}
+
+/** @deprecated Use kickDueAutopilotRuns. Kept for older cron callers. */
+export async function kickDailyAutopilotRuns() {
+  return kickDueAutopilotRuns();
 }

@@ -23,16 +23,21 @@ export async function createAutopilotRun(params: {
   workspaceId: string;
   createdByUserId?: string;
   input: AutopilotRunInput;
+  status?: AutopilotRunStatus;
+  error?: string | null;
 }): Promise<AutopilotRunRow> {
+  const status = params.status ?? "queued";
   const [row] = await db
     .insert(autopilotRuns)
     .values({
       tenantId: params.tenantId,
       workspaceId: params.workspaceId,
       createdByUserId: params.createdByUserId,
-      status: "queued",
+      status,
       input: params.input,
       progress: EMPTY_PROGRESS,
+      error: params.error ?? null,
+      pausedAt: status === "paused" ? new Date() : undefined,
     })
     .returning();
   if (!row) throw new Error("Could not create Autopilot run");

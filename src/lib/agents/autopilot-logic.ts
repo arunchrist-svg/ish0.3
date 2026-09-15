@@ -4,7 +4,8 @@ import {
   resolveContactName,
 } from "@/lib/enrichment/email-permutations";
 import type { ScoutCompanyResult, ScoutPersonResult } from "@/lib/enrichment/types";
-import type { AutopilotRunProgress, AutopilotRunStatus } from "@/db";
+import type { AutopilotRunProgress, AutopilotRunStatus, AutopilotSchedule } from "@/db";
+import { getZonedParts } from "@/lib/email/send-window-parts";
 
 export const AUTOPILOT_TARGET_COMPANIES = 100;
 export const AUTOPILOT_TARGET_LEADS = 100;
@@ -20,10 +21,63 @@ export const AUTOPILOT_MAX_DISCOVERY_PASSES = 6;
 /** Cap people lookups per chunk so a dry city cannot burn the whole Tavily pool. */
 export const AUTOPILOT_MAX_TRIES_PER_CHUNK = 40;
 
-/** Autopilot never approves or sends. Email 1 stays on the board. */
-export const AUTOPILOT_SENDS_EMAIL = false;
-/** Autopilot drafts Email 1-3 with Prasant's festive template. */
+/** Default for new workflow bots: queue Email 1 after drafts. */
+export const AUTOPILOT_SENDS_EMAIL = true;
+/** Fallback template when the bot does not pick one. */
 export const AUTOPILOT_OUTREACH_TEMPLATE = "prasanth_sequence";
+
+export const DEFAULT_AUTOPILOT_SCHEDULE: AutopilotSchedule = {
+  daysOfWeek: [1, 2, 3, 4, 5],
+  hour: 9,
+  minute: 0,
+  timezone: "Asia/Kolkata",
+};
+
+export function autopilotSendsEmail(autoSend?: boolean): boolean {
+  return autoSend === true;
+}
+
+export function normalizeAutopilotSchedule(raw?: Partial<AutopilotSchedule> | null): AutopilotSchedule {
+  const days = (raw?.daysOfWeek ?? DEFAULT_AUTOPILOT_SCHEDULE.daysOfWeek)
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6);
+  const hour = Number(raw?.hour);
+  const minute = Number(raw?.minute);
+  return {
+    daysOfWeek: days.length ? [...new Set(days)] : [...DEFAULT_AUTOPILOT_SCHEDULE.daysOfWeek],
+    hour: Number.isInteger(hour) ? Math.min(23, Math.max(0, hour)) : DEFAULT_AUTOPILOT_SCHEDULE.hour,
+    minute: Number.isInteger(minute) ? Math.min(59, Math.max(0, minute)) : DEFAULT_AUTOPILOT_SCHEDULE.minute,
+    timezone: typeof raw?.timezone === "string" && raw.timezone.trim() ? raw.timezone.trim() : DEFAULT_AUTOPILOT_SCHEDULE.timezone,
+  };
+}
+
+/** True when local time is in the same 15-minute slot as the bot schedule. */
+export function isAutopilotScheduleDue(
+  schedule: AutopilotSchedule | undefined,
+  now: Date,
+  lastScheduledAt?: string | null,
+): boolean {
+  if (!schedule?.daysOfWeek?.length) return false;
+  const tz = schedule.timezone || DEFAULT_AUTOPILOT_SCHEDULE.timezone;
+  const parts = getZonedParts(now, tz);
+  if (!schedule.daysOfWeek.includes(parts.weekday)) return false;
+  const scheduledMinutes = schedule.hour * 60 + schedule.minute;
+  const nowMinutes = parts.hour * 60 + parts.minute;
+  if (nowMinutes < scheduledMinutes || nowMinutes >= scheduledMinutes + 15) return false;
+  if (lastScheduledAt) {
+    const last = getZonedParts(new Date(lastScheduledAt), tz);
+    if (last.year === parts.year && last.month === parts.month && last.day === parts.day) {
+      const lastMinutes = last.hour * 60 + last.minute;
+      if (lastMinutes >= scheduledMinutes && lastMinutes < scheduledMinutes + 15) return false;
+    }
+  }
+  return true;
+}
+
+export function parseAutopilotBatchRunId(batchId?: string | null): string | null {
+  const match = /^autopilot:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i.exec(batchId ?? "");
+  return match?.[1] ?? null;
+}
 
 export type DailyAutopilotPlan =
   | { action: "none" }
@@ -176,6 +230,7 @@ export function decideAfterAutopilotChunk(input: {
   chunkSize: number;
   attemptedCount?: number;
   emptyDiscoveryStreak?: number;
+  autoSend?: boolean;
 }): AutopilotChunkDecision {
   if (!input.enabled) {
     return { nextStatus: "paused", enqueueNext: false, enqueueWriter: false, error: "Autopilot is paused." };
@@ -208,7 +263,7 @@ export function decideAfterAutopilotChunk(input: {
 
   if (hitLeadCap || remaining === 0) {
     return {
-      nextStatus: "awaiting_approval",
+      nextStatus: autopilotSendsEmail(input.autoSend) ? "completed" : "awaiting_approval",
       enqueueNext: false,
       enqueueWriter: input.leadsSavedTotal > 0,
     };
@@ -263,6 +318,7 @@ export function mergeAutopilotProgress(
     emptyDiscoveryStreak: patch.emptyDiscoveryStreak ?? prev.emptyDiscoveryStreak ?? 0,
     skipped: [...(prev.skipped ?? []), ...(patch.newSkipped ?? []), ...(patch.skipped ?? [])].slice(-200),
     lastError: patch.lastError === undefined ? prev.lastError : patch.lastError,
+    lastScheduledAt: patch.lastScheduledAt === undefined ? prev.lastScheduledAt : patch.lastScheduledAt,
   };
 }
 
@@ -271,8 +327,8 @@ export function resolveAutopilotPeopleFilters(input: {
   departments?: string[];
 }): { seniority: string[]; departments: string[] } {
   return {
-    seniority: input.seniority?.length ? input.seniority : AUTOPILOT_DEFAULT_SENIORITY,
-    departments: input.departments?.length ? input.departments : AUTOPILOT_DEFAULT_DEPARTMENTS,
+    seniority: input.seniority == null ? AUTOPILOT_DEFAULT_SENIORITY : input.seniority,
+    departments: input.departments == null ? AUTOPILOT_DEFAULT_DEPARTMENTS : input.departments,
   };
 }
 
