@@ -4,7 +4,9 @@ import {
   buildDraftsEmailThread,
   effectiveScheduleStep,
   isEmail1SentInThread,
+  isSequenceTabSent,
   pendingFollowUpScheduleIdFromNode,
+  pickSequenceReviewDraft,
 } from "@/lib/email/email-thread";
 import {
   conversationSide,
@@ -253,6 +255,9 @@ describe("buildEmailThread", () => {
     expect(thread.barMode).toBe("sequence");
     expect(thread.barNodes[0].label).toBe("Email 1");
     expect(thread.barNodes[0].state).toBe("done");
+    expect(isSequenceTabSent("draft-1", thread)).toBe(true);
+    expect(isSequenceTabSent("draft-2", thread)).toBe(false);
+    expect(isSequenceTabSent("draft-3", thread)).toBe(false);
     expect(thread.barNodes[0].openedAt).toBeUndefined();
     expect(thread.barNodes[1].label).toBe("Email 2");
     expect(thread.barNodes[1].state).toBe("scheduled");
@@ -649,5 +654,21 @@ describe("pendingFollowUpScheduleIdFromNode", () => {
         state: "skipped",
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("pickSequenceReviewDraft", () => {
+  const drafts = [
+    { id: "d1", sequencePosition: 1 },
+    { id: "d2", sequencePosition: 2 },
+    { id: "d3", sequencePosition: 3 },
+  ];
+
+  it("defaults to Email 1 instead of the latest follow-up", () => {
+    expect(pickSequenceReviewDraft(drafts)?.id).toBe("d1");
+  });
+
+  it("honors an explicit later draft id", () => {
+    expect(pickSequenceReviewDraft(drafts, "d3")?.id).toBe("d3");
   });
 });

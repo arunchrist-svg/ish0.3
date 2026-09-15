@@ -30,4 +30,10 @@ describe("client-fetch-cache", () => {
     const next = await cachedFetch("force", async () => 2, { force: true });
     expect(next).toBe(2);
   });
+
+  it("can return a stale value after TTL", () => {
+    setCached("stale", { n: 1 }, -1);
+    expect(getCached<{ n: number }>("stale", { allowStale: true })).toEqual({ n: 1 });
+    expect(getCached<{ n: number }>("stale")).toBeUndefined();
+  });
 });

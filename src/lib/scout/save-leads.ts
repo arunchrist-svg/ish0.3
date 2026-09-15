@@ -17,6 +17,7 @@ import type { EnrichmentConfig } from "@/lib/enrichment/config";
 import { searchProviderUsesTavily } from "@/lib/enrichment/config";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import { resolveLeadOwnerUserId } from "@/lib/leads/lead-owner";
 import { isGenericCompanyEmail, sanitizeEmail, sanitizePhone, resolveSavedWhatsAppPhone } from "@/lib/enrichment/validate-contact";
 import {
   emailBelongsToCompany,
@@ -493,7 +494,12 @@ export async function saveScoutLeads(params: {
   sweetsGifting?: boolean;
   plantCities?: string[];
 }): Promise<SaveLeadsResult> {
-  const { people, company, tenantId, workspaceId, createdByUserId } = params;
+  const { people, company, tenantId, workspaceId } = params;
+  const createdByUserId = await resolveLeadOwnerUserId({
+    tenantId,
+    workspaceId,
+    fallbackUserId: params.createdByUserId,
+  });
 
   if (!people.length) {
     const { account } = await upsertScoutAccount({

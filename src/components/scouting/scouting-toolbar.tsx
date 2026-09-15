@@ -136,6 +136,8 @@ type Props = {
   onBusinessToggle?: (business: string) => void;
   peopleCities?: string[];
   onPeopleCitiesChange?: (cities: string[]) => void;
+  onRunAutopilot?: () => void;
+  autopilotRunning?: boolean;
 };
 
 /* ─────────────────────────────────────────────
@@ -1785,6 +1787,8 @@ export function ScoutingToolbar({
   onBusinessToggle,
   peopleCities,
   onPeopleCitiesChange,
+  onRunAutopilot,
+  autopilotRunning = false,
 }: Props) {
   const resolvedLocationOptions = locationOptions ?? defaultLocationOptions();
   const [active, setActive] = useState<ActivePanel>(null);
@@ -2087,6 +2091,24 @@ export function ScoutingToolbar({
             {loadingCompanies ? "Scouting…" : "Scout"}
           </button>
         )}
+        {!isSearchMode && onRunAutopilot ? (
+          <button
+            type="button"
+            onClick={() => {
+              setActive(null);
+              onRunAutopilot();
+            }}
+            disabled={!canScout || autopilotRunning}
+            title="Scout, save, and write drafts. Autopilot will not send."
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-[12px] font-bold transition-all duration-150 sm:px-3.5 sm:text-[12.5px]",
+              canScout && !autopilotRunning ? "ish-scout-cta-blue hover:opacity-95" : "ish-scout-cta-muted",
+            )}
+          >
+            <Rocket className="size-3.5" />
+            {autopilotRunning ? "Running…" : "Run Autopilot"}
+          </button>
+        ) : null}
 
         {/* Thin separator */}
         <div className="ish-scout-rule hidden shrink-0 lg:block" aria-hidden />

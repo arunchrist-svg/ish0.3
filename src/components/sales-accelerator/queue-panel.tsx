@@ -5,7 +5,7 @@ import { Check, Loader2, Mail, RefreshCw } from "lucide-react";
 import { sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { IshAvatar, ScoreBadge, SearchBar, TruncatedText } from "@/design-system";
 import { LeadAddMenu } from "@/components/leads/lead-add-menu";
-import { cn } from "@/lib/utils";
+import { cn, uniqueById } from "@/lib/utils";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { useLoadMoreOnScroll } from "@/hooks/use-load-more-on-scroll";
 import { statusToDisplayLabel } from "@/lib/pipeline-status";
@@ -337,7 +337,7 @@ export function QueuePanel({
   const filters = useMemo(() => ({ quick, panel, addedByUserId }), [quick, panel, addedByUserId]);
 
   const filteredLeads = useMemo(
-    () => applyLeadListView(leads, { search: searchQuery, filters, sort }),
+    () => uniqueById(applyLeadListView(leads, { search: searchQuery, filters, sort })),
     [leads, searchQuery, filters, sort],
   );
 

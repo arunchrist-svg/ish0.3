@@ -21,7 +21,7 @@ import {
   keepStrictCompaniesOnly,
   parseCompaniesFromDirectoryResults,
 } from "./directory-parser";
-import { searchPeopleViaTavily } from "./people-search";
+import { searchPeopleViaWeb } from "./people-search";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
 import { freeCompanyFilterProvider } from "./filter-companies-llm";
 import {
@@ -377,6 +377,7 @@ Return up to ${limit} companies.`,
 export async function indiaDirectoriesSearchPeople(params: {
   companyName: string;
   companyDomain?: string;
+  companyWebsite?: string;
   limit?: number;
   roleHints?: string[];
   cities?: string[];
@@ -388,9 +389,10 @@ export async function indiaDirectoriesSearchPeople(params: {
   plantSeatPhase?: "plant" | "hq_corridor";
   goldFewShot?: string;
 }): Promise<ScoutPersonResult[]> {
-  return searchPeopleViaTavily({
+  return searchPeopleViaWeb({
     companyName: params.companyName,
     companyDomain: params.companyDomain,
+    companyWebsite: params.companyWebsite,
     limit: params.limit,
     dataSource: "india_directories",
     roleHints: params.roleHints,

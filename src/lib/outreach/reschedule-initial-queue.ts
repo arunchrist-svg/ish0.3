@@ -11,7 +11,7 @@ import {
 import { recommendedDailyCap } from "@/lib/email/sender-warmup";
 import { countSentInitialByCalendarDay } from "@/lib/email/sender-volume";
 import { isOutreachSendingPaused, OUTREACH_PAUSED_MESSAGE } from "@/lib/email/config";
-import { BATCH_SEND_GAP_MINUTES, planBatchInitialSends } from "@/lib/outreach/plan-batch-sends";
+import { BATCH_SEND_GAP_MAX_SECONDS, planBatchInitialSends } from "@/lib/outreach/plan-batch-sends";
 import { calendarDayKey } from "@/lib/email/send-window-parts";
 import { logAudit } from "@/lib/audit";
 import type { TenantContext } from "@/lib/tenant";
@@ -117,7 +117,6 @@ async function replanQueuedRows(params: {
     dailyCap,
     now: params.now,
     existingByDay: params.existingByDay,
-    gapMinutes: BATCH_SEND_GAP_MINUTES,
     scheduleFrom: params.scheduleFrom,
   });
 
@@ -296,4 +295,113 @@ export async function rescheduleInitialEmailQueue(
     existingByDay: await countSentInitialByCalendarDay(ctx.workspaceId, sendWindow.timezone),
     auditAction: "outreach.queue_rescheduled",
   });
+}
+
+/**
+ * Re-space remaining Email 1 queue from now (or next window) with a fresh random
+ * 30s–3m gap between each send. Daily cap still applies. Does not count other
+ * queued rows as occupancy so the remaining list can fill today's window.
+ */
+export async function spreadQueuedInitialEmailsFromNow(
+  actor: QueueActor,
+  now = new Date(),
+): Promise<RescheduleQueueResult | null> {
+  const emailConfig = await getResolvedEmailConfig(actor.workspaceId, actor.userId ?? undefined);
+  if (isOutreachSendingPaused(emailConfig)) return null;
+
+  const sendWindow = sendWindowFromEmailFields(emailConfig);
+  const scheduleFrom = isWithinSendWindow(now, sendWindow)
+    ? now
+    : nextSendWindowStart(now, sendWindow);
+
+  const rows = await db
+    .select({
+      id: outreachSchedule.id,
+      leadId: outreachSchedule.leadId,
+    })
+    .from(outreachSchedule)
+    .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+    .where(
+      and(
+        eq(leads.tenantId, actor.tenantId),
+        eq(leads.workspaceId, actor.workspaceId),
+        eq(outreachSchedule.channel, "email"),
+        eq(outreachSchedule.sequenceDay, 0),
+        inArray(outreachSchedule.status, ["scheduled", "sending"]),
+      ),
+    )
+    .orderBy(asc(outreachSchedule.scheduledFor), asc(outreachSchedule.leadId));
+
+  if (rows.length === 0) return null;
+
+  return replanQueuedRows({
+    actor,
+    rows,
+    scheduleFrom,
+    now,
+    existingByDay: await countSentInitialByCalendarDay(actor.workspaceId, sendWindow.timezone),
+    auditAction: "outreach.queue_spread_random_gaps",
+  });
+}
+
+const EQUAL_GAP_MS = BATCH_SEND_GAP_MAX_SECONDS * 1000;
+
+function queueNeedsRandomSpread(times: Date[], now: Date): boolean {
+  let dueCount = 0;
+  for (let i = 0; i < times.length; i++) {
+    if (times[i]!.getTime() <= now.getTime()) dueCount++;
+    if (i > 0 && times[i]!.getTime() - times[i - 1]!.getTime() === EQUAL_GAP_MS) {
+      return true;
+    }
+  }
+  return dueCount >= 2;
+}
+
+/**
+ * Re-space Email 1 queues that are still on equal 3m gaps, or that have piled up as due.
+ */
+export async function rebalanceQueuedInitialSendGaps(now = new Date()): Promise<number> {
+  const groups = await db
+    .selectDistinct({
+      tenantId: leads.tenantId,
+      workspaceId: leads.workspaceId,
+    })
+    .from(outreachSchedule)
+    .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+    .where(
+      and(
+        eq(outreachSchedule.channel, "email"),
+        eq(outreachSchedule.sequenceDay, 0),
+        inArray(outreachSchedule.status, ["scheduled", "sending"]),
+      ),
+    );
+
+  const seen = new Set<string>();
+  let rescheduled = 0;
+  for (const group of groups) {
+    const key = `${group.tenantId}:${group.workspaceId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const times = await db
+      .select({ scheduledFor: outreachSchedule.scheduledFor })
+      .from(outreachSchedule)
+      .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+      .where(
+        and(
+          eq(leads.tenantId, group.tenantId),
+          eq(leads.workspaceId, group.workspaceId),
+          eq(outreachSchedule.channel, "email"),
+          eq(outreachSchedule.sequenceDay, 0),
+          inArray(outreachSchedule.status, ["scheduled", "sending"]),
+        ),
+      )
+      .orderBy(asc(outreachSchedule.scheduledFor));
+
+    if (!queueNeedsRandomSpread(times.map((row) => row.scheduledFor), now)) continue;
+
+    const result = await spreadQueuedInitialEmailsFromNow(group, now);
+    if (result) rescheduled += result.rescheduled;
+  }
+  return rescheduled;
 }

@@ -4,7 +4,9 @@ import {
   sendBatchOutreach,
   type LeadQueueItem,
 } from "@/lib/api-client";
+import { uniqueById } from "@/lib/utils";
 import { sendWithGateConfirm } from "@/lib/outreach/send-with-gate-confirm";
+import { summarizeBatchQueueErrors } from "@/lib/outreach/send-batch-progress";
 
 export const MIN_SEND_GAP_MINUTES = 1;
 export const MAX_SEND_GAP_MINUTES = 5;
@@ -141,7 +143,7 @@ export type SendEmailsOptions = {
 
 /**
  * Queues Email 1 for all leads via the batch planner: respects settings timezone,
- * send hours, daily cap per calendar day, and ~3 minute spacing within each day.
+ * send hours, daily cap per calendar day, and a random 30s–3m gap between each send.
  */
 export async function sendEmailsForLeads(
   leads: LeadQueueItem[],
@@ -149,7 +151,8 @@ export async function sendEmailsForLeads(
 ): Promise<BoardBulkResult> {
   const result: BoardBulkResult = { ok: 0, failed: 0, cancelled: 0, errors: [] };
 
-  const queue: SendQueueItem[] = leads.map((lead) => ({
+  const uniqueLeads = uniqueById(leads);
+  const queue: SendQueueItem[] = uniqueLeads.map((lead) => ({
     leadId: lead.id,
     name: lead.name,
     status: "queued",
@@ -170,7 +173,7 @@ export async function sendEmailsForLeads(
     return result;
   }
 
-  const activeIds = leads
+  const activeIds = uniqueLeads
     .filter((lead) => !options?.isLeadCancelled?.(lead.id))
     .map((lead) => lead.id);
 
@@ -251,8 +254,8 @@ export type SendEmailsForStageOptions = SendEmailsOptions & {
   onProgress?: (completed: number, total: number) => void;
 };
 
-const SEND_BATCH_POLL_MS = 1500;
-const SEND_BATCH_STALL_LIMIT = 120;
+const SEND_BATCH_POLL_MS = 800;
+const SEND_BATCH_MAX_POLLS = 240;
 
 /**
  * Queues Email 1 for every lead in the given pipeline statuses (server resolves IDs).
@@ -300,17 +303,36 @@ export async function sendEmailsForStage(
       batchResult.total > 0
     ) {
       const batchTotal = batchResult.total;
+      const batchId = batchResult.batchId;
       let completed = 0;
-      let lastCompleted = -1;
-      let stallPolls = 0;
+      let polls = 0;
 
       while (!options?.signal?.aborted) {
         const progress = await fetchSendBatchProgress({
           statuses: params.statuses,
           startedAt: batchResult.startedAt,
           total: batchTotal,
+          batchId,
         });
-        completed = progress.completed;
+        if (progress.done) {
+          result.ok = progress.ok ?? progress.completed;
+          result.failed = progress.failed ?? 0;
+          for (const err of progress.errors ?? []) {
+            if (!result.errors.includes(err)) result.errors.push(err);
+          }
+          completed = result.ok;
+          options?.onProgress?.(Math.min(batchTotal, completed), batchTotal);
+          queue[0] = {
+            ...queue[0],
+            name: `${Math.min(batchTotal, completed).toLocaleString()} of ${batchTotal.toLocaleString()} scheduled`,
+            status: result.failed > 0 && result.ok === 0 ? "failed" : "queued",
+            error: result.failed > 0 && result.ok === 0 ? result.errors[0] : undefined,
+          };
+          publish();
+          break;
+        }
+
+        completed = Math.min(batchTotal, progress.completed);
         options?.onProgress?.(completed, batchTotal);
         queue[0] = {
           ...queue[0],
@@ -319,22 +341,19 @@ export async function sendEmailsForStage(
         };
         publish();
 
-        if (completed >= batchTotal) break;
-
-        if (completed === lastCompleted) stallPolls += 1;
-        else {
-          stallPolls = 0;
-          lastCompleted = completed;
+        polls += 1;
+        if (polls >= SEND_BATCH_MAX_POLLS) {
+          result.ok = completed;
+          result.failed = 0;
+          if (completed < batchTotal) {
+            result.errors.push(
+              `Queued ${completed.toLocaleString()} of ${batchTotal.toLocaleString()}. The rest may still be scheduling. Check the Queued column.`,
+            );
+          }
+          break;
         }
-        if (stallPolls >= SEND_BATCH_STALL_LIMIT) break;
 
         await sleep(SEND_BATCH_POLL_MS, options?.signal);
-      }
-
-      result.ok = completed;
-      result.failed = Math.max(0, batchTotal - completed);
-      if (result.failed > 0) {
-        result.errors.push(`${result.failed} leads could not be queued (still processing or failed)`);
       }
     } else {
       result.sequencer = batchResult.sequencer;
@@ -350,6 +369,7 @@ export async function sendEmailsForStage(
       }
     }
 
+    result.errors = summarizeBatchQueueErrors(result.errors);
     queue[0] = {
       ...queue[0],
       status: result.failed > 0 && result.ok === 0 ? "failed" : "queued",
@@ -360,7 +380,11 @@ export async function sendEmailsForStage(
       queue[0] = { ...queue[0], status: "cancelled" };
       result.cancelled = 1;
     } else {
-      const message = e instanceof Error ? e.message : "Batch send failed";
+      const raw = e instanceof Error ? e.message : "Batch send failed";
+      const message =
+        /no matching leads/i.test(raw)
+          ? "No contacts with a usable email in Email. Add one on the card, then Send All."
+          : raw;
       queue[0] = { ...queue[0], status: "failed", error: message };
       result.failed = params.totalHint ?? 1;
       result.errors.push(message);

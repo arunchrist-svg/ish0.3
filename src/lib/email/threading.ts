@@ -1,4 +1,9 @@
-export type EmailKind = "initial" | "followup" | "outbound_reply" | "inbound_reply";
+export type EmailKind =
+  | "initial"
+  | "followup"
+  | "outbound_reply"
+  | "inbound_reply"
+  | "inbound_auto_reply";
 
 const RE_PREFIX = /^re:\s*/i;
 
@@ -41,6 +46,91 @@ export function parseReferencesChain(chain?: string | null): string[] {
   return chain.trim().split(/\s+/).filter(Boolean);
 }
 
+const ANGLE_MESSAGE_ID_RE = /<[^<>]+>/g;
+
+/** Canonical Message-ID for comparison: no brackets, lowercased. */
+export function normalizeRfcMessageId(raw?: string | null): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/^<|>$/g, "").trim().toLowerCase();
+}
+
+function pushMessageIdTokens(raw: string | string[] | null | undefined, into: string[]) {
+  if (!raw) return;
+  if (Array.isArray(raw)) {
+    for (const item of raw) pushMessageIdTokens(item, into);
+    return;
+  }
+  into.push(raw);
+}
+
+/**
+ * Collect In-Reply-To / References ids from envelopes, mailparser fields, or raw header text.
+ */
+export function extractReferencedMessageIds(
+  inReplyTo?: string | string[] | null,
+  references?: string | string[] | null,
+): string[] {
+  const chunks: string[] = [];
+  pushMessageIdTokens(inReplyTo, chunks);
+  pushMessageIdTokens(references, chunks);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const chunk of chunks) {
+    const angled = chunk.match(ANGLE_MESSAGE_ID_RE);
+    const tokens = angled ?? chunk.split(/\s+/);
+    for (const token of tokens) {
+      const id = normalizeRfcMessageId(token);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
+}
+
+function headerValue(headers: Record<string, unknown>, name: string): string | string[] | undefined {
+  const keys = [name, name.toLowerCase(), name.toUpperCase()];
+  for (const key of keys) {
+    const value = headers[key];
+    if (typeof value === "string" || Array.isArray(value)) return value;
+    if (value && typeof value === "object" && "value" in value) {
+      const inner = (value as { value?: unknown }).value;
+      if (typeof inner === "string" || Array.isArray(inner)) return inner as string | string[];
+    }
+  }
+  return undefined;
+}
+
+export function extractReferencedMessageIdsFromHeaders(
+  headers?: Record<string, unknown> | Array<{ name?: string; value?: string }> | null,
+): string[] {
+  if (!headers) return [];
+  if (Array.isArray(headers)) {
+    const record: Record<string, string> = {};
+    for (const row of headers) {
+      const name = row.name?.trim();
+      if (!name || !row.value) continue;
+      record[name] = record[name] ? `${record[name]} ${row.value}` : row.value;
+    }
+    return extractReferencedMessageIdsFromHeaders(record);
+  }
+  return extractReferencedMessageIds(
+    headerValue(headers, "In-Reply-To"),
+    headerValue(headers, "References"),
+  );
+}
+
+export function referencedIdsFromInboundPayload(params: {
+  inReplyTo?: string | string[] | null;
+  references?: string | string[] | null;
+  headers?: Record<string, unknown> | Array<{ name?: string; value?: string }> | null;
+}): string[] {
+  const fromFields = extractReferencedMessageIds(params.inReplyTo, params.references);
+  if (fromFields.length) return fromFields;
+  return extractReferencedMessageIdsFromHeaders(params.headers);
+}
+
 export function appendReference(chain: string | null | undefined, messageId: string): string {
   const id = messageId?.trim();
   if (!id) return chain?.trim() ?? "";
@@ -73,6 +163,8 @@ export function emailKindLabel(kind: EmailKind | string | null | undefined, sequ
       return "Your reply sent";
     case "inbound_reply":
       return "They replied";
+    case "inbound_auto_reply":
+      return "Auto-reply";
     default:
       if (sequenceDay === 0) return "Email 1 sent";
       if (sequenceDay != null && sequenceDay > 0) return `Follow-up (day ${sequenceDay})`;

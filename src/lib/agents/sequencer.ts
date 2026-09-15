@@ -14,7 +14,10 @@ import { evaluateOutreachDraft } from "@/lib/agents/quality-gate";
 import { sendScheduledFollowUp, FollowUpQualityError } from "@/lib/outreach/send-scheduled-followup";
 import { sendScheduledInitialEmail } from "@/lib/outreach/send-scheduled-initial";
 import { pullForwardNextQueuedInitialEmail } from "@/lib/outreach/pull-forward-queue";
-import { rollAllDueQueuesOutsideWindow } from "@/lib/outreach/reschedule-initial-queue";
+import {
+  rollAllDueQueuesOutsideWindow,
+  rebalanceQueuedInitialSendGaps,
+} from "@/lib/outreach/reschedule-initial-queue";
 import { isCatalogOnOpenDraft, isIshFestiveCatalogBody, CATALOG_ON_OPEN_EMAIL_KIND } from "@/lib/email/ish-festive-catalog";
 
 const BATCH_SIZE = 50;
@@ -111,6 +114,7 @@ export async function runSequencer(): Promise<{
   const now = new Date();
   const staleBefore = new Date(now.getTime() - STALE_SENDING_MS);
   await rollAllDueQueuesOutsideWindow(now);
+  await rebalanceQueuedInitialSendGaps(now);
 
   let processed = 0;
   let failed = 0;

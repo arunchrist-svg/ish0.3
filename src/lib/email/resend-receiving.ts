@@ -15,6 +15,9 @@ export type ReceivedEmailSummary = {
 export type ReceivedEmailDetail = ReceivedEmailSummary & {
   html?: string | null;
   text?: string | null;
+  in_reply_to?: string | null;
+  references?: string | string[] | null;
+  headers?: Record<string, string | string[]> | Array<{ name?: string; value?: string }> | null;
 };
 
 export type ListReceivedEmailsResult = {

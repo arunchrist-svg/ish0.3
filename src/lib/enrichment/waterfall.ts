@@ -53,6 +53,8 @@ import { applySellerPollutionFilter } from "./seller-pollution";
 import { loadScoutQualityLearning } from "./quality-learning";
 import { isTavilyQuotaError } from "./tavily-client";
 import { hasTavilyKeys } from "./tavily-keys";
+import { getAvailableGeminiKeys } from "@/lib/llm/provider-chain";
+import { canSearchPeopleOnWeb } from "./web-search";
 import { fetchTavilyAccountUsage } from "./tavily-account";
 import { allTavilyKeysExhausted, syncSessionKeysFromAccount, takeTavilyKeySwitchMessage } from "./tavily-usage";
 import {
@@ -326,6 +328,7 @@ const DIRECTORY_FALLBACK_FLOOR = 8;
 
 async function shouldStopBatchForTavilyQuota(messages: string[]): Promise<boolean> {
   if (!tavilyQuotaHit(messages)) return false;
+  if (getAvailableGeminiKeys().length > 0) return false;
   if (!hasTavilyKeys()) return true;
 
   const now = Date.now();
@@ -1308,6 +1311,19 @@ export async function discoverPeople(params: {
   peopleCities?: string[];
   qualityContext?: ScoutQualityContext;
 }): Promise<PeopleDiscoveryResult> {
+  if (params.config?.peopleSearchProvider === "none") {
+    const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
+    return finishPeopleDiscovery({
+      tenantId: params.tenantId,
+      workspaceId: params.workspaceId,
+      qualityContext: params.qualityContext,
+      ranked: [],
+      limit,
+      warnings: ["People search is turned off. Select Tavily or Apollo to find contacts."],
+      errors: [],
+      broadenStages: [],
+    });
+  }
   const cfg = materializeDiscoveryConfig(resolveEnrichmentConfig(params.dataMode, params.config));
   const limit = Math.max(1, Math.min(params.limit ?? 15, MAX_SCOUT_LEADS_LIMIT));
   if (cfg.peopleSearchProvider === "none") {
@@ -1547,6 +1563,7 @@ export async function discoverPeople(params: {
         indiaDirectoriesSearchPeople({
           companyName: params.companyName,
           companyDomain: resolvedDomain,
+          companyWebsite: resolvedWebsite,
           limit: remaining,
           roleHints: roleHints.length > 0 ? roleHints : undefined,
           cities: peopleSearchCities.length ? peopleSearchCities : params.cities,
@@ -1574,6 +1591,32 @@ export async function discoverPeople(params: {
     } else {
       warnings.push(`Apollo found no matching people for ${params.companyName}.`);
     }
+    if (canSearchPeopleOnWeb()) {
+      await runStep(
+        "people_search_web",
+        () =>
+          indiaDirectoriesSearchPeople({
+            companyName: params.companyName,
+            companyDomain: resolvedDomain,
+            companyWebsite: resolvedWebsite,
+            limit: remaining,
+            roleHints: roleHints.length > 0 ? roleHints : undefined,
+            cities: peopleSearchCities.length ? peopleSearchCities : params.cities,
+            localOperators,
+            locationScope: params.locationScope,
+            strictPeopleFilters: cfg.strictPeopleFilters,
+            plantSeatPhase: plantSeatMode ? "plant" : undefined,
+            goldFewShot: goldFewShot || undefined,
+          }),
+        external,
+        remaining,
+        [],
+        [],
+        warnings,
+        errors,
+        trace,
+      );
+    }
   }
 
   if (external.length === 0) {
@@ -1588,9 +1631,15 @@ export async function discoverPeople(params: {
     const tavilyAccount =
       quotaHit && hasTavilyKeys() ? await fetchTavilyAccountUsage() : [];
 
-    if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
+    if (quotaHit && allTavilyKeysExhausted(tavilyAccount) && getAvailableGeminiKeys().length > 0) {
+      const geminiFallbackMsg =
+        "Tavily credits are exhausted. People search is using Gemini Google Search.";
+      if (!combined.some((m) => /using gemini google search/i.test(m))) {
+        warnings.push(geminiFallbackMsg);
+      }
+    } else if (quotaHit && allTavilyKeysExhausted(tavilyAccount)) {
       const allExhaustedMsg =
-        "All Tavily keys exhausted for people search. Add more keys (TAVILY_API_KEY_2, ...) or TAVILY_API_KEYS in .env.local, switch to Apollo mode, or wait for monthly reset.";
+        "All Tavily keys exhausted for people search. Add more keys (TAVILY_API_KEY_2, ...) or TAVILY_API_KEYS in .env.local, add GEMINI_API_KEY for Google Search people scout, or wait for monthly reset.";
       if (!combined.some((m) => /all tavily keys exhausted/i.test(m))) {
         errors.push(allExhaustedMsg);
       }
@@ -1599,8 +1648,8 @@ export async function discoverPeople(params: {
       if (quotaMsg && !warnings.some(isTavilyQuotaError)) {
         warnings.push(quotaMsg);
       }
-    } else if (cfg.peopleSearchProvider === "tavily_ai" && !hasTavilyKeys()) {
-      errors.push("TAVILY_API_KEY is missing. Add it in .env.local to search LinkedIn for decision-makers.");
+    } else if (cfg.peopleSearchProvider === "tavily_ai" && !hasTavilyKeys() && getAvailableGeminiKeys().length === 0) {
+      errors.push("TAVILY_API_KEY is missing. Add it in .env.local, or add GEMINI_API_KEY so Agentic people search can use Google Search.");
     } else if (!hasActionable) {
       if (!resolvedDomain) {
         warnings.push(
@@ -1688,8 +1737,7 @@ export async function discoverPeople(params: {
     // Stage B: deep HQ corridor search only when plant stage returned nobody.
     if (
       seated.people.length === 0 &&
-      !tavilyQuotaHit([...warnings, ...errors]) &&
-      hasTavilyKeys()
+      canSearchPeopleOnWeb()
     ) {
       const corridorCities = corridorOnlyLabels(scoutCities);
       if (corridorCities.length) {
@@ -1700,6 +1748,7 @@ export async function discoverPeople(params: {
             indiaDirectoriesSearchPeople({
               companyName: params.companyName,
               companyDomain: resolvedDomain,
+              companyWebsite: resolvedWebsite,
               limit: remaining,
               roleHints: roleHints.length > 0 ? roleHints : undefined,
               cities: corridorCities,
@@ -1954,8 +2003,11 @@ export async function discoverPeopleBatchStream(
 
 function stepFailureMessage(label: string, err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
+  if (/People search needs Tavily or Gemini/i.test(msg)) {
+    return "People search needs Tavily or Gemini. Add TAVILY_API_KEY or GEMINI_API_KEY.";
+  }
   if (/TAVILY_API_KEY not set/i.test(msg)) {
-    return "TAVILY_API_KEY is missing. Add it in .env.local for company and people search via Tavily.";
+    return "TAVILY_API_KEY is missing. Add it in .env.local for company search via Tavily, or GEMINI_API_KEY for people search.";
   }
   if (/APOLLO_API_KEY/i.test(msg)) {
     return "APOLLO_API_KEY is missing. Switch Data Mode to Free or add your Apollo key.";

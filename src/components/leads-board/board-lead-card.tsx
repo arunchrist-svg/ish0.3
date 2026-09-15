@@ -5,6 +5,7 @@ import { Check, Clock, Loader2, MapPin, Pencil, Send, X } from "lucide-react";
 import { IshAvatar, ScoreBadge, TruncatedText } from "@/design-system";
 import { cn } from "@/lib/utils";
 import type { LeadQueueItem } from "@/lib/api-client";
+import { boardDateMetaLine, formatBoardDateTime } from "@/lib/email/board-date-labels";
 import { statusToDisplayLabel, type PipelineStageAccent } from "@/lib/pipeline-status";
 import type { SendQueueItem } from "./board-bulk-actions";
 
@@ -16,6 +17,7 @@ type Props = {
   sendStatus?: SendQueueItem;
   /** When set, card opens this handler instead of navigating to the lead page. */
   onOpen?: (lead: LeadQueueItem) => void;
+  onPrefetch?: (lead: LeadQueueItem) => void;
   onWrite?: (lead: LeadQueueItem) => void;
   onSend?: (lead: LeadQueueItem) => void;
   onCancel?: (lead: LeadQueueItem) => void;
@@ -45,21 +47,6 @@ function queueBadge(item: SendQueueItem): CardSendBadge {
     default:
       return { label: "Queued", tone: "queued" };
   }
-}
-
-function formatBoardDateTime(iso: string): string | null {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return null;
-  const now = new Date();
-  const sameYear = at.getFullYear() === now.getFullYear();
-  const datePart = at.toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    ...(sameYear ? {} : { year: "numeric" }),
-  });
-  const timePart = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return `${datePart}, ${timePart}`;
 }
 
 function formatPendingSendLabel(iso: string): string {
@@ -123,12 +110,17 @@ export function BoardLeadCard({
   stage,
   sendStatus,
   onOpen,
+  onPrefetch,
   onWrite,
   onSend,
   onCancel,
   cancelBusy,
 }: Props) {
   const badge = cardSendBadge(lead, stage, sendStatus);
+  const dateMeta = boardDateMetaLine({
+    lastEmailSentAt: lead.lastEmailSentAt,
+    pendingSendScheduledFor: lead.pendingSendScheduledFor,
+  });
   const className =
     "ish-board-lead-card group block w-full overflow-hidden rounded-[16px] text-left transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5";
 
@@ -172,6 +164,12 @@ export function BoardLeadCard({
             <span className="truncate">{lead.city}</span>
           </div>
         )}
+
+        {dateMeta ? (
+          <div className="mb-1 truncate text-[10px] tabular-nums text-brand-ink-faint" title={dateMeta}>
+            {dateMeta}
+          </div>
+        ) : null}
 
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-black/[0.04] pt-2.5">
           <span
@@ -243,21 +241,36 @@ export function BoardLeadCard({
     </>
   );
 
+  const prefetchHandlers = onPrefetch
+    ? {
+        onPointerEnter: () => onPrefetch(lead),
+        onFocus: () => onPrefetch(lead),
+        onPointerDown: () => onPrefetch(lead),
+      }
+    : undefined;
+
   if (onOpen) {
     return (
-      <div onClick={() => onOpen(lead)} className={className} role="button" tabIndex={0} onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onOpen(lead);
-        }
-      }}>
+      <div
+        onClick={() => onOpen(lead)}
+        className={className}
+        role="button"
+        tabIndex={0}
+        {...prefetchHandlers}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen(lead);
+          }
+        }}
+      >
         {body}
       </div>
     );
   }
 
   return (
-    <Link href={`/leads?lead=${lead.id}`} className={className}>
+    <Link href={`/leads?lead=${lead.id}`} className={className} {...prefetchHandlers}>
       {body}
     </Link>
   );

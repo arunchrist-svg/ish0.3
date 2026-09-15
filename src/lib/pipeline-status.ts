@@ -69,14 +69,19 @@ export const STATUSES_BY_STAGE_INDEX: Record<number, string[]> = Object.entries(
   return acc;
 }, {});
 
-export function groupLeadsByPipelineStage<T extends { status: string; score?: number | null }>(
+export function groupLeadsByPipelineStage<T extends { status: string; score?: number | null; id?: string }>(
   leads: T[],
   packId?: VerticalPackId | string | null,
 ): Record<string, T[]> {
   const stages = pipelineStageLabels(packId);
   const groups = Object.fromEntries(stages.map((stage) => [stage, [] as T[]])) as Record<string, T[]>;
+  const seenIds = new Set<string>();
 
   for (const lead of leads) {
+    if (lead.id) {
+      if (seenIds.has(lead.id)) continue;
+      seenIds.add(lead.id);
+    }
     const stage = stages[statusToPipelineIndex(lead.status)] ?? stages[0];
     groups[stage].push(lead);
   }
@@ -103,6 +108,18 @@ export const PIPELINE_STAGE_ACCENTS: Record<string, (typeof ACCENTS_BY_INDEX)[nu
 
 /** Board-only column for in-flight Send All items, inserted before Email Sent. */
 export const BOARD_QUEUED_STAGE = "Queued";
+
+/** DB statuses that feed a given board column (Queued has its own API). */
+export function statusesForPipelineStage(
+  stage: string,
+  packId?: VerticalPackId | string | null,
+): string[] {
+  if (stage === BOARD_QUEUED_STAGE) return [];
+  const labels = pipelineStageLabels(packId);
+  const idx = labels.indexOf(stage);
+  if (idx < 0) return [];
+  return STATUSES_BY_STAGE_INDEX[idx] ?? [];
+}
 
 /** Pipeline stages for the leads board, including the Queued column before Email Sent. */
 export function boardPipelineStages(packId?: VerticalPackId | string | null): string[] {

@@ -38,7 +38,7 @@ export function isIfOpenedOpenTrigger(params: {
 }): boolean {
   const kind = params.openedEmailKind;
   if (kind === CATALOG_ON_OPEN_EMAIL_KIND) return false;
-  if (kind === "inbound_reply" || kind === "outbound_reply") return false;
+  if (kind === "inbound_reply" || kind === "outbound_reply" || kind === "inbound_auto_reply") return false;
   if (params.openedSequenceDay < 0) return false;
   if (params.openedSequenceDay === 0 || kind === "initial") return true;
   const cadence = normalizeCadenceDays(params.cadenceDays);

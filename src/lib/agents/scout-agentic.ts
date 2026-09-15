@@ -13,12 +13,12 @@ import {
   getScoutCompaniesLimit,
   getScoutLeadsLimit,
   resolveAgenticDataStack,
+  type AgenticDataStack,
   type EnrichmentConfig,
 } from "@/lib/enrichment/config";
 import { peoplePerCompanyLimit } from "@/lib/enrichment/people-diversity";
 import {
   getResolvedEnrichmentConfigForWorkspace,
-  getResolvedWorkspaceEnrichmentConfig,
 } from "@/lib/settings/workspace-settings";
 import { loadUserPreferenceProfile } from "@/lib/settings/preference-profile";
 import { scoutLocationOptions, defaultLabelsFromLocationOptions } from "@/lib/geo/india";
@@ -62,6 +62,12 @@ export type AgenticCompanyDiscoveryParams = {
   employeeBands?: string[];
   locationScope?: "focus" | "interest";
   searchKind?: "industry" | "business";
+  /** When true, do not merge extra ICP industries from workspace preferences. */
+  lockIndustries?: boolean;
+  /** Override Agentic stack for this discovery (Places companies, or Tavily directories). */
+  agenticDataStack?: AgenticDataStack;
+  /** When true, do not merge extra ICP seniority/departments from workspace preferences. */
+  lockRoles?: boolean;
   onPartial?: (companies: ScoutCompanyResult[]) => void | Promise<void>;
   qualityContext?: { userId?: string; sessionId?: string | null };
 };
@@ -87,21 +93,24 @@ export async function discoverAgenticCompaniesForScout(
   const prefs = await loadUserPreferenceProfile(params.workspaceId);
   const industries = uniqueStrings([
     ...(params.industries ?? []),
-    ...(prefs.scout?.industries ?? []),
+    ...(params.lockIndustries ? [] : (prefs.scout?.industries ?? [])),
   ]);
   const seniority = uniqueStrings([
     ...(params.seniority ?? []),
-    ...(prefs.scout?.seniority ?? []),
+    ...(params.lockRoles ? [] : (prefs.scout?.seniority ?? [])),
   ]);
   const departments = uniqueStrings([
     ...(params.departments ?? []),
-    ...(prefs.scout?.departments ?? []),
+    ...(params.lockRoles ? [] : (prefs.scout?.departments ?? [])),
   ]);
 
-  const baseConfig = await getResolvedWorkspaceEnrichmentConfig({
+  const stored = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
+  const baseConfig: EnrichmentConfig = {
+    ...stored,
     dataMode: "auto",
     searchProvider: "agentic_ai",
-  });
+    ...(params.agenticDataStack ? { agenticDataStack: params.agenticDataStack } : {}),
+  };
   // Quality defaults from stack; never force strict filters from People chips
   // (plant LinkedIn is thin and needs empty-result broaden).
   const enrichmentConfig: EnrichmentConfig = applyAgenticScoutDefaults(baseConfig);
@@ -160,31 +169,35 @@ export async function runAgenticScoutBatch(params: ScoutBatchParams): Promise<Sc
 
   const industries = uniqueStrings([
     ...(params.industries ?? []),
-    ...(prefs.scout?.industries ?? []),
+    ...(params.lockIndustries ? [] : (prefs.scout?.industries ?? [])),
   ]);
   const seniority = uniqueStrings([
     ...(params.seniority ?? []),
-    ...(prefs.scout?.seniority ?? []),
+    ...(params.lockRoles ? [] : (prefs.scout?.seniority ?? [])),
   ]);
   const departments = uniqueStrings([
     ...(params.departments ?? []),
-    ...(prefs.scout?.departments ?? []),
+    ...(params.lockRoles ? [] : (prefs.scout?.departments ?? [])),
   ]);
 
   // Agentic locks quality defaults; request dataMode is ignored so users cannot
   // accidentally route Indian locality scouts through Apollo-only company search.
-  const baseConfig = await getResolvedWorkspaceEnrichmentConfig({
+  const stored = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
+  const baseConfig: EnrichmentConfig = {
+    ...stored,
     dataMode: "auto",
     searchProvider: "agentic_ai",
-  });
+    ...(params.agenticDataStack ? { agenticDataStack: params.agenticDataStack } : {}),
+  };
   const enrichmentConfig: EnrichmentConfig = applyAgenticScoutDefaults(baseConfig);
   const dataMode: DataMode = enrichmentConfig.dataMode;
   const stack = resolveAgenticDataStack(baseConfig.agenticDataStack);
 
   const companyLimit = params.companyLimit ?? workspaceCfg.scoutCompaniesLimit ?? getScoutCompaniesLimit();
-  const leadsLimit = workspaceCfg.scoutLeadsLimit ?? getScoutLeadsLimit();
+  const leadsLimit = params.leadsLimit ?? workspaceCfg.scoutLeadsLimit ?? getScoutLeadsLimit();
   const maxCompanies = params.maxCompaniesToProcess ?? Math.max(companyLimit * 2, 20);
-  const leadTarget = Math.max(1, Math.ceil(companyLimit * leadsLimit * LEAD_FILL_RATIO));
+  const leadTarget =
+    params.leadTarget ?? Math.max(1, Math.ceil(companyLimit * leadsLimit * LEAD_FILL_RATIO));
 
   const errors: string[] = [];
   const stageTrace: ScoutStageTrace[] = [];
@@ -260,6 +273,12 @@ export async function runAgenticScoutBatch(params: ScoutBatchParams): Promise<Sc
     departments,
     limit: companyLimit,
     skipInternal: true,
+    fetchSeed: params.fetchSeed,
+    excludeNames: params.excludeNames,
+    locationScope: params.locationScope,
+    agenticDataStack: params.agenticDataStack,
+    lockIndustries: params.lockIndustries,
+    lockRoles: params.lockRoles,
   });
 
   errors.push(...discovery.errors, ...discovery.warnings);

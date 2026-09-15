@@ -62,25 +62,44 @@ export async function countInitialOutboundByCalendarDay(
   workspaceId: string,
   timezone: string,
 ): Promise<Map<string, number>> {
-  const rows = await db
-    .select({
-      scheduledFor: outreachSchedule.scheduledFor,
-      sentAt: outreachSchedule.sentAt,
-      status: outreachSchedule.status,
-    })
-    .from(outreachSchedule)
-    .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
-    .where(
-      and(
-        eq(leads.workspaceId, workspaceId),
-        eq(outreachSchedule.channel, "email"),
-        eq(outreachSchedule.sequenceDay, 0),
-        inArray(outreachSchedule.status, ["scheduled", "sending", "sent", "paused"]),
+  const workspaceFilter = and(
+    eq(leads.workspaceId, workspaceId),
+    eq(outreachSchedule.channel, "email"),
+    eq(outreachSchedule.sequenceDay, 0),
+  );
+  const sentSince = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+
+  const [queued, sent] = await Promise.all([
+    db
+      .select({
+        scheduledFor: outreachSchedule.scheduledFor,
+        sentAt: outreachSchedule.sentAt,
+        status: outreachSchedule.status,
+      })
+      .from(outreachSchedule)
+      .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+      .where(
+        and(workspaceFilter, inArray(outreachSchedule.status, ["scheduled", "sending", "paused"])),
       ),
-    );
+    db
+      .select({
+        scheduledFor: outreachSchedule.scheduledFor,
+        sentAt: outreachSchedule.sentAt,
+        status: outreachSchedule.status,
+      })
+      .from(outreachSchedule)
+      .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+      .where(
+        and(
+          workspaceFilter,
+          eq(outreachSchedule.status, "sent"),
+          gte(outreachSchedule.sentAt, sentSince),
+        ),
+      ),
+  ]);
 
   const byDay = new Map<string, number>();
-  for (const row of rows) {
+  for (const row of [...queued, ...sent]) {
     const instant =
       row.status === "sent" && row.sentAt
         ? row.sentAt

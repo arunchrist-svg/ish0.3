@@ -10,6 +10,8 @@ export type AgentFlags = {
   notifyEmail?: boolean;
   notifyInApp?: boolean;
   searchConfidenceThreshold?: number;
+  /** Workspace kill switch for Autopilot scout + write. Send still uses Outbox pause. */
+  autopilotEnabled?: boolean;
 };
 
 const DEFAULT_FLAGS: AgentFlags = {
@@ -19,6 +21,7 @@ const DEFAULT_FLAGS: AgentFlags = {
   notifyEmail: true,
   notifyInApp: true,
   searchConfidenceThreshold: 0.85,
+  autopilotEnabled: true,
 };
 
 export async function getAgentFlags(workspaceId: string): Promise<AgentFlags> {
@@ -27,4 +30,28 @@ export async function getAgentFlags(workspaceId: string): Promise<AgentFlags> {
   });
   const cfg = (row?.enrichmentConfig ?? {}) as { agentFlags?: AgentFlags };
   return { ...DEFAULT_FLAGS, ...cfg.agentFlags };
+}
+
+export function isAutopilotEnabled(flags: AgentFlags): boolean {
+  return flags.autopilotEnabled !== false;
+}
+
+export async function setAutopilotEnabled(workspaceId: string, enabled: boolean): Promise<AgentFlags> {
+  const row = await db.query.workspaceSettings.findFirst({
+    where: eq(workspaceSettings.workspaceId, workspaceId),
+  });
+  const existing = (row?.enrichmentConfig ?? {}) as Record<string, unknown>;
+  const existingFlags = (existing.agentFlags ?? {}) as AgentFlags;
+  const nextFlags: AgentFlags = { ...existingFlags, autopilotEnabled: enabled };
+  const merged = { ...existing, agentFlags: nextFlags };
+
+  await db
+    .insert(workspaceSettings)
+    .values({ workspaceId, enrichmentConfig: merged, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: workspaceSettings.workspaceId,
+      set: { enrichmentConfig: merged, updatedAt: new Date() },
+    });
+
+  return { ...DEFAULT_FLAGS, ...nextFlags };
 }

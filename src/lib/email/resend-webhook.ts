@@ -10,6 +10,10 @@ export type ResendWebhookEvent = {
     subject?: string;
     text?: string;
     html?: string;
+    message_id?: string;
+    in_reply_to?: string;
+    references?: string | string[];
+    headers?: Record<string, string | string[]> | Array<{ name?: string; value?: string }>;
     bounce?: {
       message?: string;
       type?: string;

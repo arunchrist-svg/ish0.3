@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { eq, gte, inArray, sql } from "drizzle-orm";
-import { db, leads, outreachSchedule } from "@/db";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
-import { withLeadVisibility } from "@/lib/leads/lead-visibility";
+import { countSendableEmailStageLeads } from "@/lib/outreach/pending-send-count";
+import { loadSendBatchJobResult } from "@/lib/outreach/send-batch-job";
+import { progressFromRemaining } from "@/lib/outreach/send-batch-progress";
 
 export async function POST(req: Request) {
   try {
@@ -12,34 +12,37 @@ export async function POST(req: Request) {
       startedAt?: string;
       total?: number;
       statuses?: string[];
+      batchId?: string;
     };
 
-    const startedAt = body.startedAt ? new Date(body.startedAt) : null;
-    const total = body.total ?? 0;
-    const statuses = [...new Set((body.statuses ?? []).filter(Boolean))];
+    const total = Math.max(0, body.total ?? 0);
+    const batchId = typeof body.batchId === "string" ? body.batchId : "";
 
-    if (!startedAt || Number.isNaN(startedAt.getTime())) {
-      return NextResponse.json({ error: "startedAt required" }, { status: 400 });
+    if (batchId) {
+      const done = await loadSendBatchJobResult(batchId);
+      if (done) {
+        return NextResponse.json({
+          completed: done.ok,
+          total: total || done.ok + done.failed,
+          ok: done.ok,
+          failed: done.failed,
+          errors: done.errors,
+          done: true,
+        });
+      }
     }
 
-    const where = withLeadVisibility(
-      ctx,
-      eq(leads.tenantId, ctx.tenantId),
-      eq(outreachSchedule.channel, "email"),
-      eq(outreachSchedule.sequenceDay, 0),
-      gte(outreachSchedule.createdAt, startedAt),
-      statuses.length ? inArray(leads.status, statuses) : undefined,
-    );
+    const remaining = await countSendableEmailStageLeads(ctx);
+    const { completed } = progressFromRemaining(total, remaining);
 
-    const row = await db
-      .select({ n: sql<number>`count(distinct ${outreachSchedule.leadId})::int` })
-      .from(outreachSchedule)
-      .innerJoin(leads, eq(leads.id, outreachSchedule.leadId))
-      .where(where);
-
-    const completed = row[0]?.n ?? 0;
-
-    return NextResponse.json({ completed, total });
+    return NextResponse.json({
+      completed,
+      total,
+      ok: completed,
+      failed: 0,
+      errors: [],
+      done: false,
+    });
   } catch (e) {
     return handleApiError(e, "[api/outreach/send-batch/progress]");
   }

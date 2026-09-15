@@ -38,9 +38,15 @@ export type ScoutQualityLearnRequested = {
   data: { tenantId: string; workspaceId: string };
 };
 
+export type AutopilotChunkRequested = {
+  name: "autopilot/chunk.requested";
+  data: { runId: string; chunkIndex: number };
+};
+
 export type AppEvents =
   | ResearchLeadRequested
   | ReplyLeadReceived
   | WriterLeadRequested
   | EnrichLeadRequested
-  | ScoutQualityLearnRequested;
+  | ScoutQualityLearnRequested
+  | AutopilotChunkRequested;

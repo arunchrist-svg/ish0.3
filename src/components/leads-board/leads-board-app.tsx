@@ -1,18 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Columns3, Loader2, Pencil, RefreshCw, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchQueuedLeadsPage, fetchWriteAllProgress, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow, runSequencerNow } from "@/lib/api-client";
-import type { LeadQueueItem } from "@/lib/api-client";
+import { cn, uniqueById } from "@/lib/utils";
+import { fetchLeadAddedByUsers, fetchLeadsPage, fetchLeadStageCounts, fetchQueuedLeadsPage, fetchWriteAllProgress, getAutopilotRun, resumeAutopilotRun, prefetchLead, runWriterSequence, writeAllLeadsForStage, cancelQueuedOutreach, sendQueuedOutreachNow, runSequencerNow } from "@/lib/api-client";
+import type { AutopilotRunDto, LeadQueueItem } from "@/lib/api-client";
+import { AutopilotBoardEmpty } from "@/components/autopilot/autopilot-board-empty";
 import {
   BOARD_QUEUED_STAGE,
   boardPipelineStages,
   groupLeadsByPipelineStage,
-  PIPELINE_STAGES,
   STATUSES_BY_STAGE_INDEX,
+  statusesForPipelineStage,
 } from "@/lib/pipeline-status";
 import { toast } from "sonner";
+import { sequencerRunCopy } from "@/lib/outreach/sequencer-run-copy";
 import { BoardColumn } from "./board-column";
 import {
   sendEmailsForLeads,
@@ -31,7 +34,6 @@ import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
 import { WritingLoader } from "@/components/sales-accelerator/writing-loader";
 import { WriteAllModal, type WriteAllPhase } from "@/components/leads-board/write-all-modal";
 import { SendAllModal, type SendAllPhase } from "@/components/leads-board/send-all-modal";
-import { useLoadMoreOnScroll } from "@/hooks/use-load-more-on-scroll";
 import {
   applyLeadListView,
   LEAD_ADDED_BY_STORAGE_KEY,
@@ -42,6 +44,7 @@ import {
   parseLeadQueueSort,
   parsePanelFilters,
   parseQuickFilter,
+  sortEmailSentLeads,
   sortLeadsQueue,
   type LeadAddedByUserOption,
   type LeadPanelFilterId,
@@ -117,10 +120,37 @@ function sendBusyLabel(queue: SendQueueItem[]): string {
   return `Sending ${current} of ${total}`;
 }
 
+function boardStagePageLimit(stage: string): number {
+  return stage === "Email Sent" ? 80 : 50;
+}
+
+function fetchBoardStagePage(
+  stage: string,
+  opts?: { cursor?: string | null; ids?: string[]; force?: boolean },
+) {
+  const statuses = statusesForPipelineStage(stage);
+  if (!statuses.length) {
+    return Promise.resolve({ leads: [] as LeadQueueItem[], nextCursor: null as string | null });
+  }
+  return fetchLeadsPage({
+    status: statuses.join(","),
+    limit: boardStagePageLimit(stage),
+    cursor: opts?.cursor,
+    ids: opts?.ids,
+    sort: stage === "Email Sent" ? "sent_newest" : undefined,
+    excludePendingInitial: stage === "Email",
+    force: opts?.force,
+  });
+}
+
 export function LeadsBoardApp() {
+  const searchParams = useSearchParams();
+  const autopilotRunId = searchParams.get("autopilotRun");
+  const [autopilotFilterRun, setAutopilotFilterRun] = useState<AutopilotRunDto | null>(null);
+  const [autopilotContinuing, setAutopilotContinuing] = useState(false);
   const [leads, setLeads] = useState<LeadQueueItem[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [stageCursors, setStageCursors] = useState<Record<string, string | null>>({});
+  const [loadingMoreStage, setLoadingMoreStage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -148,6 +178,7 @@ export function LeadsBoardApp() {
     cancelled: number;
     planSpanDays?: number;
     sequencerProcessed?: number;
+    errors?: string[];
   } | null>(null);
   const [sending, setSending] = useState(false);
   const [sequencerRunning, setSequencerRunning] = useState(false);
@@ -157,11 +188,13 @@ export function LeadsBoardApp() {
   const sendAbortRef = useRef<AbortController | null>(null);
   const cancelledLeadIdsRef = useRef<Set<string>>(new Set());
   const writeAbortRef = useRef<AbortController | null>(null);
+  const boardScrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const queueHydrated = useRef(false);
   const [composeLeadId, setComposeLeadId] = useState<string | null>(null);
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   const [emailReadyCount, setEmailReadyCount] = useState(0);
+  const [emailSendableCount, setEmailSendableCount] = useState(0);
   const [queuedCount, setQueuedCount] = useState(0);
   const [queuedLeadsServer, setQueuedLeadsServer] = useState<LeadQueueItem[]>([]);
 
@@ -227,49 +260,88 @@ export function LeadsBoardApp() {
     if (!opts?.silent) setLoading(true);
     else setRefreshing(true);
     try {
-      const [page, countData, queuedPage, sentPage] = await Promise.all([
-        fetchLeadsPage({ limit: 50, force: true }),
+      let autopilotIds: string[] | undefined;
+      if (autopilotRunId) {
+        const { run } = await getAutopilotRun(autopilotRunId);
+        setAutopilotFilterRun(run);
+        autopilotIds = run.progress.leadIds ?? [];
+        if (!autopilotIds.length) {
+          setLeads([]);
+          setStageCursors({});
+          setQueuedLeadsServer([]);
+          setStageCounts({});
+          setEmailReadyCount(0);
+          setQueuedCount(0);
+          return;
+        }
+      } else {
+        setAutopilotFilterRun(null);
+      }
+      const boardLoadStages = boardPipelineStages().filter((stage) => stage !== BOARD_QUEUED_STAGE);
+      const [countData, queuedPage, ...stagePages] = await Promise.all([
         fetchLeadStageCounts(),
         fetchQueuedLeadsPage({ limit: 5000 }),
-        fetchLeadsPage({ status: "outreached", limit: 100, force: true }),
+        ...boardLoadStages.map(async (stage) => ({
+          stage,
+          page: await fetchBoardStagePage(stage, { ids: autopilotIds, force: true }),
+        })),
       ]);
-      const byId = new Map(page.leads.map((lead) => [lead.id, lead]));
-      for (const lead of sentPage.leads) byId.set(lead.id, lead);
-      setLeads([...byId.values()]);
-      setNextCursor(page.nextCursor);
+      const byId = new Map<string, LeadQueueItem>();
+      const cursors: Record<string, string | null> = {};
+      for (const { stage, page } of stagePages) {
+        for (const lead of page.leads) byId.set(lead.id, lead);
+        cursors[stage] = page.nextCursor;
+      }
+      if (opts?.silent) {
+        setLeads((prev) => {
+          const merged = new Map(prev.map((lead) => [lead.id, lead]));
+          for (const lead of byId.values()) merged.set(lead.id, lead);
+          return [...merged.values()];
+        });
+        setStageCursors((prev) => {
+          const next = { ...prev };
+          for (const [stage, cursor] of Object.entries(cursors)) {
+            if (!prev[stage]) next[stage] = cursor;
+          }
+          return next;
+        });
+      } else {
+        setLeads([...byId.values()]);
+        setStageCursors(cursors);
+      }
       setStageCounts(countData.byStage);
       setEmailReadyCount(countData.emailReady);
+      setEmailSendableCount(countData.emailSendable);
       setQueuedCount(countData.queued);
       setQueuedLeadsServer(queuedPage.leads);
     } catch {
+      if (autopilotRunId) setAutopilotFilterRun(null);
       toast.error("Could not load leads");
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [autopilotRunId]);
 
-  async function loadMore() {
-    if (!nextCursor || loadingMore) return;
-    setLoadingMore(true);
+  const loadMoreStage = useCallback(async (stage: string) => {
+    const cursor = stageCursors[stage];
+    if (!cursor || loadingMoreStage) return;
+    setLoadingMoreStage(stage);
     try {
-      const page = await fetchLeadsPage({ limit: 50, cursor: nextCursor });
-      setLeads((prev) => [...prev, ...page.leads]);
-      setNextCursor(page.nextCursor);
+      const page = await fetchBoardStagePage(stage, { cursor });
+      setLeads((prev) => {
+        if (!page.leads.length) return prev;
+        const byId = new Map(prev.map((lead) => [lead.id, lead]));
+        for (const lead of page.leads) byId.set(lead.id, lead);
+        return [...byId.values()];
+      });
+      setStageCursors((prev) => ({ ...prev, [stage]: page.nextCursor }));
     } catch {
       toast.error("Could not load more leads");
     } finally {
-      setLoadingMore(false);
+      setLoadingMoreStage(null);
     }
-  }
-
-  const boardScrollRef = useRef<HTMLDivElement>(null);
-  const loadMoreSentinelRef = useLoadMoreOnScroll({
-    enabled: Boolean(nextCursor) && !loading,
-    loading: loadingMore,
-    onLoadMore: loadMore,
-    root: boardScrollRef,
-  });
+  }, [loadingMoreStage, stageCursors]);
 
   useEffect(() => {
     load();
@@ -286,11 +358,13 @@ export function LeadsBoardApp() {
 
   const filteredLeads = useMemo(
     () =>
-      applyLeadListView(leads, {
-        search,
-        filters: { quick: quickFilter, panel: panelFilters, addedByUserId },
-        sort: queueSort,
-      }),
+      uniqueById(
+        applyLeadListView(leads, {
+          search,
+          filters: { quick: quickFilter, panel: panelFilters, addedByUserId },
+          sort: queueSort,
+        }),
+      ),
     [leads, search, quickFilter, panelFilters, addedByUserId, queueSort],
   );
 
@@ -368,17 +442,45 @@ export function LeadsBoardApp() {
 
   const grouped = useMemo(() => {
     const groups = groupLeadsByPipelineStage(filteredLeads);
-    for (const stage of PIPELINE_STAGES) {
-      groups[stage] = sortLeadsQueue(groups[stage] ?? [], queueSort);
+    for (const stage of Object.keys(groups)) {
+      if (stage === BOARD_QUEUED_STAGE) continue;
+      groups[stage] =
+        stage === "Email Sent"
+          ? sortEmailSentLeads(groups[stage] ?? [], queueSort)
+          : sortLeadsQueue(groups[stage] ?? [], queueSort);
     }
-    const queuedIds = new Set(queuedLeads.map((lead) => lead.id));
-    // Pending sends live only in Queued, not under Email / Email Sent / other stages.
-    for (const stage of PIPELINE_STAGES) {
-      groups[stage] = (groups[stage] ?? []).filter((lead) => !queuedIds.has(lead.id));
-    }
+    const queuedIds = new Set(
+      queuedLeads
+        .filter((lead) => lead.status === "draft_ready" || lead.status === "approved")
+        .map((lead) => lead.id),
+    );
+    // Pending Email 1 sends live only in Queued, not under Email.
+    groups.Email = (groups.Email ?? []).filter((lead) => !queuedIds.has(lead.id));
     groups[BOARD_QUEUED_STAGE] = queuedLeads;
     return groups;
   }, [filteredLeads, queueSort, queuedLeads]);
+
+  useEffect(() => {
+    if (loading || loadingMoreStage) return;
+    for (const stage of boardStages) {
+      if (stage === BOARD_QUEUED_STAGE) continue;
+      const visible = grouped[stage]?.length ?? 0;
+      const count = stage === "Email" ? emailReadyCount : (stageCounts[stage] ?? 0);
+      if (visible === 0 && count > 0 && stageCursors[stage]) {
+        void loadMoreStage(stage);
+        return;
+      }
+    }
+  }, [
+    boardStages,
+    grouped,
+    emailReadyCount,
+    stageCounts,
+    stageCursors,
+    loading,
+    loadingMoreStage,
+    loadMoreStage,
+  ]);
 
   const boardBusy = Boolean(writingProgress) || sending || sequencerRunning;
   const sendQueueActive = activeSendQueue.some(
@@ -722,8 +824,8 @@ export function LeadsBoardApp() {
       setSendAllOpen(true);
       return;
     }
-    const total = emailReadyCount || grouped.Email?.length || 0;
-    if (!total) {
+    const unqueued = emailReadyCount || grouped.Email?.length || 0;
+    if (!unqueued) {
       toast.message("No ready emails in Email to send");
       return;
     }
@@ -740,9 +842,15 @@ export function LeadsBoardApp() {
   }, [sendAllPhase]);
 
   const runSendAllFromModal = useCallback(async () => {
-    const total = emailReadyCount;
+    const total = emailSendableCount;
     const emailStatuses = STATUSES_BY_STAGE_INDEX[1] ?? [];
-    if (!total || !emailStatuses.length || writingProgress || sending) return;
+    if (!emailStatuses.length || writingProgress || sending) return;
+    if (!total) {
+      toast.message("No usable emails to queue", {
+        description: "Open an Email card and add a real inbox, then Send All.",
+      });
+      return;
+    }
 
     const controller = new AbortController();
     sendAbortRef.current?.abort();
@@ -770,11 +878,12 @@ export function LeadsBoardApp() {
         cancelled: result.cancelled,
         planSpanDays: result.planSpanDays,
         sequencerProcessed: result.sequencer?.processed,
+        errors: result.errors,
       });
       setSendAllPhase("done");
       if (result.cancelled > 0 && result.ok === 0 && result.failed === 0) {
         toast.message("Send cancelled");
-      } else if (result.failed === 0 && result.cancelled === 0) {
+      } else if (result.failed === 0 && result.cancelled === 0 && result.errors.length === 0) {
         const spanNote =
           result.planSpanDays && result.planSpanDays > 1
             ? ` across ${result.planSpanDays} days`
@@ -788,6 +897,13 @@ export function LeadsBoardApp() {
             ? "Queued 1 email for your send window"
             : `Queued ${result.ok.toLocaleString()} emails${spanNote}${sentNow}`,
           { duration: 8000 },
+        );
+      } else if (result.failed === 0) {
+        toast.message(
+          result.ok > 0
+            ? `Queued ${result.ok.toLocaleString()} emails`
+            : "Send All is still working",
+          { description: result.errors.slice(0, 3).join(" · ") },
         );
       } else {
         toast.error(
@@ -809,21 +925,16 @@ export function LeadsBoardApp() {
       sendAbortRef.current = null;
       setSending(false);
     }
-  }, [emailReadyCount, writingProgress, sending, load]);
+  }, [emailSendableCount, writingProgress, sending, load]);
 
   const handleRunSequencer = useCallback(async () => {
     if (boardBusy || sequencerRunning) return;
     setSequencerRunning(true);
     try {
       const result = await runSequencerNow();
-      const parts = [`${result.processed} sent`];
-      if (result.failed) parts.push(`${result.failed} failed`);
-      if (result.skipped) parts.push(`${result.skipped} skipped`);
-      if (result.pendingReview) parts.push(`${result.pendingReview} need review`);
-      toast.success("Due sends processed", {
-        description: parts.join(" · "),
-        duration: 8000,
-      });
+      const copy = sequencerRunCopy(result);
+      const show = copy.tone === "success" ? toast.success : copy.tone === "error" ? toast.error : toast.message;
+      show(copy.title, { description: copy.description, duration: 8000 });
       await load({ silent: true });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not run sequencer");
@@ -930,12 +1041,43 @@ export function LeadsBoardApp() {
         }
       />
 
+      {autopilotRunId ? (
+        <div className="ish-page-padding pt-2 text-[12px] text-brand-ink-soft lg:px-6">
+          {autopilotFilterRun && !(autopilotFilterRun.progress.leadIds ?? []).length
+            ? "This Autopilot run has not saved leads yet."
+            : "Showing Autopilot run leads. Approve Email 1, then Send All."}{" "}
+          <a href="/leads/board" className="font-semibold text-brand-stratus-blue">
+            Show all leads
+          </a>
+        </div>
+      ) : null}
+
       <div
         ref={boardScrollRef}
         className="ish-page-padding min-h-0 flex-1 overflow-x-auto overflow-y-auto py-3 lg:px-6 lg:py-5"
       >
         {loading ? (
           <BoardSkeleton />
+        ) : isEmpty && autopilotFilterRun ? (
+          <AutopilotBoardEmpty
+            run={autopilotFilterRun}
+            continuing={autopilotContinuing}
+            onContinue={() => {
+              void (async () => {
+                setAutopilotContinuing(true);
+                try {
+                  const next = await resumeAutopilotRun(autopilotFilterRun.id);
+                  setAutopilotFilterRun(next.run);
+                  toast.success("Autopilot is searching for new companies and leads.");
+                  await load({ silent: true });
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Could not continue this bot");
+                } finally {
+                  setAutopilotContinuing(false);
+                }
+              })();
+            }}
+          />
         ) : isEmpty ? (
           <EmptyState />
         ) : noResults ? (
@@ -1052,6 +1194,11 @@ export function LeadsBoardApp() {
                       ? (lead) => setComposeLeadId(lead.id)
                       : undefined
                   }
+                  onLeadPrefetch={
+                    stage === "Email" || isQueuedStage || stage === "Email Sent"
+                      ? (lead) => prefetchLead(lead.id)
+                      : undefined
+                  }
                   onLeadWrite={
                     stage === "Contact Ready" || stage === "Email" ? handleWriteLead : undefined
                   }
@@ -1064,22 +1211,16 @@ export function LeadsBoardApp() {
                   }
                   onLeadCancel={isQueuedStage ? handleCancelQueuedLead : undefined}
                   cancellingLeadId={isQueuedStage ? cancellingLeadId : null}
+                  hasMore={!isQueuedStage && Boolean(stageCursors[stage])}
+                  loadingMore={loadingMoreStage === stage}
+                  onLoadMore={
+                    isQueuedStage ? undefined : () => void loadMoreStage(stage)
+                  }
                 />
               );
             })}
           </div>
         )}
-        {nextCursor && !loading ? (
-          <div
-            ref={loadMoreSentinelRef}
-            className="flex h-10 items-center justify-center py-3"
-            aria-hidden={!loadingMore}
-          >
-            {loadingMore ? (
-              <Loader2 className="size-4 animate-spin text-brand-ink-faint" aria-label="Loading more leads" />
-            ) : null}
-          </div>
-        ) : null}
       </div>
       {writingProgress && !writeAllOpen ? (
         <div
@@ -1102,15 +1243,11 @@ export function LeadsBoardApp() {
       ) : null}
       <SendAllModal
         open={sendAllOpen}
-        leadCount={emailReadyCount || grouped.Email?.length || 0}
+        leadCount={emailSendableCount}
+        needEmailCount={Math.max(0, emailReadyCount - emailSendableCount)}
         queuedCount={queuedCount}
         phase={sendAllPhase}
         sendQueue={sendQueue}
-        sendingLabel={
-          sendAllPhase === "sending" && emailReadyCount > 0
-            ? `Scheduling ${emailReadyCount.toLocaleString()} emails…`
-            : undefined
-        }
         result={sendAllResult}
         onSend={() => void runSendAllFromModal()}
         onCancelSend={() => {

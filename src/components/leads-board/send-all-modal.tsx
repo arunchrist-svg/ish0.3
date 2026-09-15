@@ -4,13 +4,14 @@ import { Loader2, Mail } from "lucide-react";
 import { AppModal } from "@/components/ui/app-modal";
 import { cn } from "@/lib/utils";
 import type { SendQueueItem } from "./board-bulk-actions";
-import { MIN_SEND_GAP_MINUTES, MAX_SEND_GAP_MINUTES } from "./board-bulk-actions";
 
 export type SendAllPhase = "confirm" | "sending" | "done";
 
 type Props = {
   open: boolean;
   leadCount: number;
+  /** Unqueued Email cards that still need a usable To address. */
+  needEmailCount?: number;
   /** Leads already in the outbox queue (Send All appends after these). */
   queuedCount?: number;
   phase: SendAllPhase;
@@ -21,6 +22,7 @@ type Props = {
     cancelled: number;
     planSpanDays?: number;
     sequencerProcessed?: number;
+    errors?: string[];
   } | null;
   sendingLabel?: string;
   onSend: () => void;
@@ -36,7 +38,11 @@ function queueProgress(queue: SendQueueItem[]): { done: number; total: number; l
   ).length;
   const sending = queue.find((item) => item.status === "sending");
   if (sending) {
-    return { done, total, label: `Scheduling ${sending.name}…` };
+    const name = sending.name.trim();
+    if (/\d/.test(name) && /of|scheduled|leads/i.test(name)) {
+      return { done, total, label: name.includes("…") || name.endsWith(".") ? name : `${name}…` };
+    }
+    return { done, total, label: `Scheduling ${name}…` };
   }
   const waiting = queue.find((item) => item.status === "waiting");
   if (waiting?.gapMinutes) {
@@ -52,6 +58,7 @@ function queueProgress(queue: SendQueueItem[]): { done: number; total: number; l
 export function SendAllModal({
   open,
   leadCount,
+  needEmailCount = 0,
   queuedCount = 0,
   phase,
   sendQueue,
@@ -73,6 +80,9 @@ export function SendAllModal({
           {leadCount === 1
             ? "1 ready email in Email"
             : `${leadCount.toLocaleString()} ready emails in Email`}
+          {needEmailCount > 0
+            ? ` · ${needEmailCount.toLocaleString()} need an email`
+            : null}
           {queuedCount > 0
             ? ` · ${queuedCount.toLocaleString()} already queued`
             : null}
@@ -85,11 +95,18 @@ export function SendAllModal({
             <p className="text-[12px] font-semibold text-brand-ink">How Send All works</p>
             <ul className="space-y-2 text-[12px] leading-relaxed text-brand-ink-soft">
               <li>
-                Adds every ready lead to the Queued column with a scheduled send time (your timeline).
+                Adds every Email lead with a usable To address to the Queued column with a scheduled
+                send time (your timeline).
               </li>
+              {needEmailCount > 0 ? (
+                <li>
+                  Cards without a real inbox stay in Email. Open the card, add an email, then Send All
+                  again.
+                </li>
+              ) : null}
               <li>
-                New sends are scheduled after any leads already in the queue, spaced about{" "}
-                {MIN_SEND_GAP_MINUTES}–{MAX_SEND_GAP_MINUTES} minutes apart within each day.
+                New sends are scheduled after any leads already in the queue, with a random gap of
+                30 seconds to 3 minutes between each email.
               </li>
               <li>
                 Sends only during your Settings send hours and timezone (morning and evening blocks).
@@ -150,8 +167,9 @@ export function SendAllModal({
             </div>
           ) : null}
           <p className="mt-3 text-[12px] text-brand-ink-soft">
-            Building your send schedule from Settings. Large batches keep running in the background;
-            leave this open until scheduling finishes.
+            {queuedCount > 0
+              ? `New sends are added after the ${queuedCount.toLocaleString()} already in Queued. Progress updates as each email is scheduled.`
+              : "Building your send schedule from Settings. Progress updates as each email is scheduled."}
           </p>
           <button
             type="button"
@@ -187,6 +205,13 @@ export function SendAllModal({
                 : null}
               Check the Queued column for scheduled send times. The board refreshes as emails go out.
             </p>
+          ) : null}
+          {result?.errors && result.errors.length > 0 ? (
+            <ul className="space-y-1 rounded-xl border border-red-100 bg-red-50/70 px-3 py-2.5 text-[12px] leading-relaxed text-red-800">
+              {result.errors.slice(0, 5).map((err) => (
+                <li key={err}>{err}</li>
+              ))}
+            </ul>
           ) : null}
           <button
             type="button"

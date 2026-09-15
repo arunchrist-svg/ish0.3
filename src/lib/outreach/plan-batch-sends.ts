@@ -6,10 +6,21 @@ import {
 } from "@/lib/email/send-window";
 import { calendarDayKey, getZonedParts, type ZonedParts } from "@/lib/email/send-window-parts";
 
-/** Average spacing between batch sends (matches board 1–5 minute range). */
-export const BATCH_SEND_GAP_MINUTES = 3;
+/** Smallest gap between batch Email 1 sends. */
+export const BATCH_SEND_GAP_MIN_SECONDS = 30;
+/** Largest gap between batch Email 1 sends. */
+export const BATCH_SEND_GAP_MAX_SECONDS = 180;
+/** @deprecated Use BATCH_SEND_GAP_MAX_SECONDS. Kept as the old equal-gap default. */
+export const BATCH_SEND_GAP_MINUTES = BATCH_SEND_GAP_MAX_SECONDS / 60;
 
 const MAX_PLAN_ITERATIONS = 2000;
+
+export function randomBatchSendGapMs(random: () => number = Math.random): number {
+  const span = BATCH_SEND_GAP_MAX_SECONDS - BATCH_SEND_GAP_MIN_SECONDS;
+  const unit = Math.min(1, Math.max(0, random()));
+  const seconds = BATCH_SEND_GAP_MIN_SECONDS + Math.min(span, Math.floor(unit * (span + 1)));
+  return seconds * 1000;
+}
 
 function firstRangeStart(window: SendWindow): number {
   return window.hourRanges[0]?.hourStart ?? window.hourStart;
@@ -74,7 +85,8 @@ export type BatchSendPlan = {
 
 /**
  * Plan Email 1 send times for a batch: respects send window (timezone, days, hours)
- * and daily send cap per calendar day in that timezone. Spaces sends by gapMinutes.
+ * and daily send cap per calendar day in that timezone.
+ * Default spacing is a fresh random gap of 30s–3m between each send.
  */
 export function planBatchInitialSends(params: {
   count: number;
@@ -83,23 +95,30 @@ export function planBatchInitialSends(params: {
   now: Date;
   /** Existing sent + scheduled Email 1 counts keyed by YYYY-MM-DD in window timezone. */
   existingByDay: Map<string, number>;
+  /** Fixed gap in minutes. When omitted, each send uses a random 30s–3m gap. */
   gapMinutes?: number;
-  /** Append after this instant (existing queue tail + gap). */
+  /** Injected RNG for tests (0..1). Ignored when gapMinutes is set. */
+  random?: () => number;
+  /** Append after this instant (existing queue tail + one gap). */
   queueAfter?: Date | null;
   /** First slot anchor (e.g. tomorrow 7:00 local). Snapped to the send window. */
   scheduleFrom?: Date | null;
 }): BatchSendPlan {
-  const gapMs = (params.gapMinutes ?? BATCH_SEND_GAP_MINUTES) * 60_000;
+  const nextGapMs =
+    params.gapMinutes != null
+      ? () => params.gapMinutes! * 60_000
+      : () => randomBatchSendGapMs(params.random ?? Math.random);
   const dayCount = new Map(params.existingByDay);
   const slots: Date[] = [];
   let lastSlot: Date | null = null;
   const queueStart = params.queueAfter
-    ? new Date(params.queueAfter.getTime() + gapMs)
+    ? new Date(params.queueAfter.getTime() + nextGapMs())
     : null;
 
   for (let i = 0; i < params.count; i++) {
+    const stepGapMs = lastSlot ? nextGapMs() : 0;
     let candidate: Date = lastSlot
-      ? new Date(Math.max(params.now.getTime(), lastSlot.getTime() + gapMs))
+      ? new Date(Math.max(params.now.getTime(), lastSlot.getTime() + stepGapMs))
       : queueStart
         ? new Date(Math.max(params.now.getTime(), queueStart.getTime()))
         : params.scheduleFrom
@@ -118,8 +137,8 @@ export function planBatchInitialSends(params: {
         continue;
       }
 
-      if (lastSlot && candidate.getTime() < lastSlot.getTime() + gapMs) {
-        candidate = new Date(lastSlot.getTime() + gapMs);
+      if (lastSlot && candidate.getTime() < lastSlot.getTime() + stepGapMs) {
+        candidate = new Date(lastSlot.getTime() + stepGapMs);
         if (!isWithinSendWindow(candidate, params.window)) {
           candidate = snapToSendWindow(candidate, params.window);
         }

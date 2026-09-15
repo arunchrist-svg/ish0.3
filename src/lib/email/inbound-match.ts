@@ -1,6 +1,14 @@
 import { extractEmailAddress } from "@/lib/email/email-address";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { normalizeRfcMessageId } from "@/lib/email/threading";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
+
+export const INBOUND_REPLY_EMAIL_KIND = "inbound_reply";
+export const INBOUND_AUTO_REPLY_EMAIL_KIND = "inbound_auto_reply";
+
+export function isInboundEmailKind(emailKind?: string | null): boolean {
+  return emailKind === INBOUND_REPLY_EMAIL_KIND || emailKind === INBOUND_AUTO_REPLY_EMAIL_KIND;
+}
 
 export type ReplyWatchLead = {
   leadId: string;
@@ -8,7 +16,15 @@ export type ReplyWatchLead = {
   workspaceId: string;
   emails: string[];
   firstSentAt: Date | null;
+  /** Normalized RFC Message-IDs from campaign sends we made (not inbound). */
+  campaignMessageIds: string[];
 };
+
+function addCampaignMessageId(ids: Set<string>, raw?: string | null, emailKind?: string | null) {
+  if (isInboundEmailKind(emailKind)) return;
+  const id = normalizeRfcMessageId(raw);
+  if (id) ids.add(id);
+}
 
 function addWatchEmail(emails: Set<string>, raw?: string | null) {
   const normalized = extractEmailAddress(raw);
@@ -45,6 +61,9 @@ export function mergeWatchLeadRows(
     recipientEmail?: string | null;
     alternateEmails?: unknown;
     firstSentAt?: Date | null;
+    rfcMessageId?: string | null;
+    emailKind?: string | null;
+    threadRootMessageId?: string | null;
   }>,
 ): ReplyWatchLead[] {
   const byLead = new Map<string, ReplyWatchLead>();
@@ -54,6 +73,9 @@ export function mergeWatchLeadRows(
       recipientEmail: row.recipientEmail,
       alternateEmails: row.alternateEmails,
     });
+    const campaignIds = new Set<string>();
+    addCampaignMessageId(campaignIds, row.rfcMessageId, row.emailKind);
+    addCampaignMessageId(campaignIds, row.threadRootMessageId, null);
     const existing = byLead.get(row.leadId);
     const sentAt = row.firstSentAt ?? null;
     if (!existing) {
@@ -63,17 +85,21 @@ export function mergeWatchLeadRows(
         workspaceId: row.workspaceId,
         emails,
         firstSentAt: sentAt,
+        campaignMessageIds: [...campaignIds],
       });
       continue;
     }
     for (const email of emails) {
       if (!existing.emails.includes(email)) existing.emails.push(email);
     }
+    for (const id of campaignIds) {
+      if (!existing.campaignMessageIds.includes(id)) existing.campaignMessageIds.push(id);
+    }
     if (sentAt && (!existing.firstSentAt || sentAt < existing.firstSentAt)) {
       existing.firstSentAt = sentAt;
     }
   }
-  return [...byLead.values()].filter((lead) => lead.emails.length > 0);
+  return [...byLead.values()].filter((lead) => lead.emails.length > 0 || lead.campaignMessageIds.length > 0);
 }
 
 export function indexWatchLeadsByEmail(leads: ReplyWatchLead[]): Map<string, ReplyWatchLead> {
@@ -97,6 +123,46 @@ export function findWatchLeadForFrom(
     if (lead) return lead;
   }
   return undefined;
+}
+
+export function indexWatchLeadsByCampaignMessageId(leads: ReplyWatchLead[]): Map<string, ReplyWatchLead> {
+  const map = new Map<string, ReplyWatchLead>();
+  for (const lead of leads) {
+    for (const id of lead.campaignMessageIds) {
+      if (!map.has(id)) map.set(id, lead);
+    }
+  }
+  return map;
+}
+
+export function findWatchLeadForCampaignThread(
+  referencedIds: Array<string | null | undefined>,
+  index: Map<string, ReplyWatchLead>,
+): ReplyWatchLead | undefined {
+  for (const raw of referencedIds) {
+    const id = normalizeRfcMessageId(raw);
+    if (!id) continue;
+    const lead = index.get(id);
+    if (lead) return lead;
+  }
+  return undefined;
+}
+
+/**
+ * Attach only when In-Reply-To / References hits a campaign send we made.
+ * If From belongs to a different watched lead, do not jump threads.
+ */
+export function resolveCampaignReplyLead(params: {
+  fromAddresses: Array<string | null | undefined>;
+  referencedIds: Array<string | null | undefined>;
+  byMessageId: Map<string, ReplyWatchLead>;
+  byEmail: Map<string, ReplyWatchLead>;
+}): ReplyWatchLead | undefined {
+  const threadLead = findWatchLeadForCampaignThread(params.referencedIds, params.byMessageId);
+  if (!threadLead) return undefined;
+  const fromLead = findWatchLeadForFrom(params.fromAddresses, params.byEmail);
+  if (fromLead && fromLead.leadId !== threadLead.leadId) return undefined;
+  return threadLead;
 }
 
 export function replyContentFromBodies(text?: string | null, html?: string | null): string {

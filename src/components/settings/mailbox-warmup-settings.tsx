@@ -89,8 +89,8 @@ export function MailboxWarmupSettings({ config, onUpdate }: Props) {
         <p className="px-4 pb-3 text-[12px] font-medium leading-relaxed text-[#c47a00]">{warning}</p>
       ) : (
         <p className="px-4 pb-3 text-[11px] leading-relaxed text-brand-ink-faint">
-          Live send, sequences, and follow-ups stop when remaining quota is 0. A sudden burst still asks for
-          confirm even if the cap allows it.
+          Live send, sequences, and follow-ups stop when remaining quota is 0. Changing the cap or inbox age
+          re-spaces queued Email 1s to the new daily limit inside your send windows.
         </p>
       )}
     </SettingsGroup>

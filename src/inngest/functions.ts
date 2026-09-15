@@ -125,6 +125,34 @@ export const scoutQualityLearnFunction = inngest.createFunction(
   },
 );
 
+export const autopilotChunkFunction = inngest.createFunction(
+  {
+    id: "autopilot-chunk",
+    retries: 1,
+    idempotency: "event.data.runId + '-' + event.data.chunkIndex",
+    concurrency: [{ limit: 1, key: "event.data.runId" }],
+  },
+  { event: "autopilot/chunk.requested" },
+  async ({ event, step }) => {
+    const result = await step.run("autopilot-chunk", async () => {
+      const { runAutopilotChunk } = await import("@/lib/agents/autopilot");
+      return runAutopilotChunk(event.data.runId, event.data.chunkIndex);
+    });
+    return { runId: event.data.runId, chunkIndex: event.data.chunkIndex, status: result?.status };
+  },
+);
+
+export const autopilotDailyFunction = inngest.createFunction(
+  { id: "autopilot-daily", retries: 1 },
+  { cron: "0 2 * * *" },
+  async ({ step }) => {
+    return step.run("kick-daily-autopilot", async () => {
+      const { kickDailyAutopilotRuns } = await import("@/lib/agents/autopilot");
+      return kickDailyAutopilotRuns();
+    });
+  },
+);
+
 export const inngestFunctions = [
   researchLeadFunction,
   researchBatchFunction,
@@ -133,4 +161,6 @@ export const inngestFunctions = [
   writerLeadFunction,
   enrichLeadFunction,
   scoutQualityLearnFunction,
+  autopilotChunkFunction,
+  autopilotDailyFunction,
 ];

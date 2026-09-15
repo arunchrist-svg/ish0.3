@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { enrichLeadById } from "@/lib/enrichment/enrich-lead";
 import { enrichModeForSettings } from "@/lib/enrichment/provider-config";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
+import { resolveLeadOwnerUserId } from "@/lib/leads/lead-owner";
 import { enqueueResearchForLeads } from "@/lib/jobs/enqueue";
 import { sanitizeEmail, isGenericCompanyEmail, sanitizePhone } from "@/lib/enrichment/validate-contact";
 import { toDbEmailStatus } from "@/lib/enrichment/contact-emails";
@@ -78,6 +79,12 @@ export async function importMappedLeads(params: {
   if (!required.ok) {
     throw new Error(`Missing required column mappings: ${required.missing.join(", ")}`);
   }
+
+  const actorId = await resolveLeadOwnerUserId({
+    tenantId: params.tenantId,
+    workspaceId: params.workspaceId,
+    fallbackUserId: params.actorId,
+  });
 
   const { rows, invalid, skipped: missingEmail } = applyColumnMapping(params.rawRows, params.mapping);
   const results: ImportRowResult[] = [
@@ -199,7 +206,7 @@ export async function importMappedLeads(params: {
             owner: row.owner?.trim() || null,
             researcherEligible: true,
             tags: Array.from(new Set(["Lead", "Excel Import", ...(row.tags ?? [])])),
-            createdByUserId: params.actorId ?? null,
+            createdByUserId: actorId ?? null,
           })),
         ),
       );

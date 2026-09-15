@@ -9,7 +9,9 @@ export type ConversationSide = "them" | "us";
 export function shouldShowConversationTimeline(
   thread: Pick<EmailThread, "events"> | null | undefined,
 ): boolean {
-  return (thread?.events ?? []).some((e) => e.kind === "inbound_reply");
+  return (thread?.events ?? []).some(
+    (e) => e.kind === "inbound_reply" || e.kind === "inbound_auto_reply",
+  );
 }
 
 /**
@@ -31,13 +33,16 @@ export function shouldShowSentOutboundPreview(params: {
 }
 
 export function conversationSide(event: ThreadEvent): ConversationSide {
-  return event.kind === "inbound_reply" ? "them" : "us";
+  return event.kind === "inbound_reply" || event.kind === "inbound_auto_reply" ? "them" : "us";
 }
 
 export function conversationStatusChip(event: ThreadEvent): {
   label: string;
   tone: "draft" | "scheduled" | "sent" | "opened" | "bounced" | "inbound" | "outbound";
 } {
+  if (event.kind === "inbound_auto_reply") {
+    return { label: "Auto-reply", tone: "inbound" };
+  }
   if (event.kind === "inbound_reply") {
     return { label: "Their reply", tone: "inbound" };
   }

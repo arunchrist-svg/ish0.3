@@ -5,6 +5,9 @@ import {
   normalizeReplySubject,
   stripReplyPrefix,
   buildThreadHeaders,
+  extractReferencedMessageIds,
+  extractReferencedMessageIdsFromHeaders,
+  normalizeRfcMessageId,
 } from "@/lib/email/threading";
 
 describe("threading", () => {
@@ -35,5 +38,26 @@ describe("threading", () => {
     });
     expect(headers["In-Reply-To"]).toBe("<in@test.com>");
     expect(headers["References"]).toContain("<root@test.com>");
+  });
+
+  it("normalizes Message-IDs with or without brackets", () => {
+    expect(normalizeRfcMessageId("<UUID@Domain.com>")).toBe("uuid@domain.com");
+    expect(normalizeRfcMessageId("UUID@Domain.com")).toBe("uuid@domain.com");
+  });
+
+  it("extracts In-Reply-To and References ids", () => {
+    expect(
+      extractReferencedMessageIds("<uuid@domain>", "<root@domain> <uuid@domain>"),
+    ).toEqual(["uuid@domain", "root@domain"]);
+    expect(extractReferencedMessageIds(undefined, undefined)).toEqual([]);
+  });
+
+  it("reads thread headers from a header map", () => {
+    expect(
+      extractReferencedMessageIdsFromHeaders({
+        "In-Reply-To": "<camp@ish.local>",
+        references: "<root@ish.local> <camp@ish.local>",
+      }),
+    ).toEqual(["camp@ish.local", "root@ish.local"]);
   });
 });

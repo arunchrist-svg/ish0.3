@@ -5,6 +5,7 @@ import { Check, ChevronRight, Send, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IshAvatar } from "@/design-system";
 import type { LeadEmailRow } from "@/app/api/email/overview/route";
+import { boardDateMetaLine } from "@/lib/email/board-date-labels";
 
 type SwipeInboxCardProps = {
   row: LeadEmailRow;
@@ -30,6 +31,10 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
   const followUp = Boolean(row.pendingFollowUpScheduleId || row.isFollowUpReview);
   const showActions = tab === "needs_review" && isActionableReview(row);
   const isReply = tab === "replies";
+  const dateMeta = boardDateMetaLine({
+    lastEmailSentAt: row.lastEmailSentAt,
+    pendingSendScheduledFor: row.lastEmailSentAt ? null : (row.countedFor ?? row.nextEmailDue),
+  });
 
   const accentClass = isReply
     ? "ish-inbox-accent-reply"
@@ -50,6 +55,11 @@ export function SwipeInboxCard({ row, tab, onApprove, onSend, busy, index = 0 }:
               <div className="min-w-0">
                 <h3 className="truncate text-[16px] font-bold tracking-tight text-brand-ink">{row.contactName}</h3>
                 <p className="truncate text-[13px] font-medium text-brand-ink-soft">{row.companyName}</p>
+                {dateMeta ? (
+                  <p className="mt-0.5 truncate text-[11px] tabular-nums text-brand-ink-faint" title={dateMeta}>
+                    {dateMeta}
+                  </p>
+                ) : null}
               </div>
               <Link
                 href={href}

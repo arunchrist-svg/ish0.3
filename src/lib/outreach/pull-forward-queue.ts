@@ -1,9 +1,10 @@
 import { and, asc, eq, gt } from "drizzle-orm";
 import { db, leads, outreachSchedule } from "@/db";
+import { randomBatchSendGapMs } from "@/lib/outreach/plan-batch-sends";
 
 /**
- * When a send slot is freed (skip/cancel), pull the next scheduled Email 1 forward to now
- * so mass sends do not wait for the next gap slot.
+ * When a send slot is freed (skip/cancel), pull the next scheduled Email 1 forward
+ * by a random 30s–3m gap so the next send is not immediate and not a fixed 3m wait.
  */
 export async function pullForwardNextQueuedInitialEmail(
   workspaceId: string,
@@ -29,7 +30,7 @@ export async function pullForwardNextQueuedInitialEmail(
 
   await db
     .update(outreachSchedule)
-    .set({ scheduledFor: now, lastError: null })
+    .set({ scheduledFor: new Date(now.getTime() + randomBatchSendGapMs()), lastError: null })
     .where(eq(outreachSchedule.id, next.id));
 
   return true;

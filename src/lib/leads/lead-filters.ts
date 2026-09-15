@@ -280,6 +280,14 @@ function createdAtMs(item: LeadQueueItem): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+function emailSentAtMs(item: LeadQueueItem): number {
+  if (item.lastEmailSentAt) {
+    const ms = new Date(item.lastEmailSentAt).getTime();
+    if (Number.isFinite(ms)) return ms;
+  }
+  return createdAtMs(item);
+}
+
 export function sortLeadsQueue(leads: LeadQueueItem[], sort: LeadQueueSort): LeadQueueItem[] {
   return [...leads].sort((a, b) => {
     if (sort === "date_newest" || sort === "date_oldest") {
@@ -290,6 +298,16 @@ export function sortLeadsQueue(leads: LeadQueueItem[], sort: LeadQueueSort): Lea
     }
     const diff = (b.score ?? 0) - (a.score ?? 0);
     if (diff !== 0) return diff;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/** Email Sent column: newest send first, unless the board sort is oldest. */
+export function sortEmailSentLeads(leads: LeadQueueItem[], sort: LeadQueueSort = "date_newest"): LeadQueueItem[] {
+  return [...leads].sort((a, b) => {
+    const diff = emailSentAtMs(b) - emailSentAtMs(a);
+    const ordered = sort === "date_oldest" ? -diff : diff;
+    if (ordered !== 0) return ordered;
     return a.name.localeCompare(b.name);
   });
 }

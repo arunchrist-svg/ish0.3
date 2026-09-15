@@ -3,11 +3,23 @@ import { eq, and } from "drizzle-orm";
 import { isPastReplyStage, isReplyWatchStatus } from "@/lib/pipeline-status";
 import { logAudit } from "@/lib/audit";
 import { enqueueReplyOrchestrator } from "@/lib/jobs/enqueue";
+import {
+  INBOUND_AUTO_REPLY_EMAIL_KIND,
+  INBOUND_REPLY_EMAIL_KIND,
+} from "@/lib/email/inbound-match";
+
+export type InboundReplyClass = "human" | "auto";
 
 export type ProcessReplyResult =
-  | { ok: true; skipped?: false }
+  | { ok: true; skipped?: false; replyClass: InboundReplyClass }
   | { ok: true; skipped: true; reason: string }
   | { ok: false; error: string };
+
+function snippet(text: string | undefined, max = 280): string | null {
+  if (!text?.trim()) return null;
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  return cleaned.length > max ? `${cleaned.slice(0, max).trimEnd()}…` : cleaned;
+}
 
 export async function processLeadReply(params: {
   leadId: string;
@@ -16,8 +28,22 @@ export async function processLeadReply(params: {
   inboundMessageId?: string;
   tenantId?: string;
   workspaceId?: string;
+  /** Default human. Auto keeps the sequence running and skips notify/draft. */
+  replyClass?: InboundReplyClass;
+  autoReason?: string;
+  subject?: string | null;
 }): Promise<ProcessReplyResult> {
-  const { leadId, source = "webhook", replyContent, inboundMessageId, tenantId, workspaceId } = params;
+  const {
+    leadId,
+    source = "webhook",
+    replyContent,
+    inboundMessageId,
+    tenantId,
+    workspaceId,
+    replyClass = "human",
+    autoReason,
+    subject,
+  } = params;
 
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
   if (!lead) return { ok: false, error: "Lead not found" };
@@ -28,6 +54,44 @@ export async function processLeadReply(params: {
 
   if (!isReplyWatchStatus(lead.status) && lead.status !== "outreached") {
     return { ok: true, skipped: true, reason: `lead status is ${lead.status}` };
+  }
+
+  const resolvedTenantId = tenantId ?? lead.tenantId;
+  const resolvedWorkspaceId = workspaceId ?? lead.workspaceId;
+  const bodySnippet = snippet(replyContent);
+
+  if (replyClass === "auto") {
+    if (inboundMessageId) {
+      await db.insert(outreachSchedule).values({
+        leadId,
+        channel: "email",
+        sequenceDay: -2,
+        emailKind: INBOUND_AUTO_REPLY_EMAIL_KIND,
+        rfcMessageId: inboundMessageId,
+        subjectSent: subject?.trim() || "Automated reply",
+        bodySnippet: bodySnippet,
+        bounceReason: autoReason ?? null,
+        scheduledFor: new Date(),
+        sentAt: new Date(),
+        status: "sent",
+      });
+    }
+
+    await logAudit({
+      tenantId: resolvedTenantId,
+      workspaceId: resolvedWorkspaceId,
+      action: "lead.auto_replied",
+      entityType: "lead",
+      entityId: leadId,
+      metadata: {
+        source,
+        autoReason: autoReason ?? null,
+        hasReplyContent: !!replyContent,
+        inboundMessageId,
+      },
+    });
+
+    return { ok: true, replyClass: "auto" };
   }
 
   await db
@@ -42,7 +106,12 @@ export async function processLeadReply(params: {
   await db.insert(yieldFunnel).values({
     leadId,
     stage: "replied",
-    metadata: { source, hasReplyContent: !!replyContent, inboundMessageId: inboundMessageId ?? null },
+    metadata: {
+      source,
+      hasReplyContent: !!replyContent,
+      inboundMessageId: inboundMessageId ?? null,
+      replyClass: "human",
+    },
   });
 
   if (inboundMessageId) {
@@ -50,8 +119,10 @@ export async function processLeadReply(params: {
       leadId,
       channel: "email",
       sequenceDay: -2,
-      emailKind: "inbound_reply",
+      emailKind: INBOUND_REPLY_EMAIL_KIND,
       rfcMessageId: inboundMessageId,
+      subjectSent: subject?.trim() || null,
+      bodySnippet: bodySnippet,
       scheduledFor: new Date(),
       sentAt: new Date(),
       status: "sent",
@@ -64,16 +135,19 @@ export async function processLeadReply(params: {
     .where(and(eq(outreachSchedule.leadId, leadId), eq(outreachSchedule.status, "scheduled")))
     .returning({ id: outreachSchedule.id });
 
-  const resolvedTenantId = tenantId ?? lead.tenantId;
-  const resolvedWorkspaceId = workspaceId ?? lead.workspaceId;
-
   await logAudit({
     tenantId: resolvedTenantId,
     workspaceId: resolvedWorkspaceId,
     action: "lead.replied",
     entityType: "lead",
     entityId: leadId,
-    metadata: { source, cancelledFollowUps: cancelled.length, hasReplyContent: !!replyContent, inboundMessageId },
+    metadata: {
+      source,
+      cancelledFollowUps: cancelled.length,
+      hasReplyContent: !!replyContent,
+      inboundMessageId,
+      replyClass: "human",
+    },
   });
 
   if (replyContent) {
@@ -84,5 +158,5 @@ export async function processLeadReply(params: {
     });
   }
 
-  return { ok: true };
+  return { ok: true, replyClass: "human" };
 }

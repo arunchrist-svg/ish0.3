@@ -18,11 +18,6 @@ import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { updateLeadFields, updateLeadStatus, deleteLeadById, LeadNotFoundError } from "@/lib/leads/crud";
 import { canAccessLeadRecord } from "@/lib/leads/lead-visibility";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
-import { ensureCatalogOnOpenDraft } from "@/lib/email/promote-catalog-on-open";
-import {
-  CATALOG_ON_OPEN_SEQUENCE_POSITION,
-  isCatalogOnOpenDraft,
-} from "@/lib/email/ish-festive-catalog";
 
 export const preferredRegion = ["sin1"];
 
@@ -123,24 +118,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     let sequenceDraftRows = [...emailOutreachRows]
       .filter((row) => row.sequencePosition != null)
       .sort((a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0));
-
-    const hasMainSequence = sequenceDraftRows.some((d) => d.sequencePosition === 1);
-    const hasCatalog = sequenceDraftRows.some((d) => isCatalogOnOpenDraft(d));
-    if (hasMainSequence && !hasCatalog) {
-      await ensureCatalogOnOpenDraft(id);
-      const catalogRow = await db.query.leadOutreach.findFirst({
-        where: and(
-          eq(leadOutreach.leadId, id),
-          eq(leadOutreach.sequencePosition, CATALOG_ON_OPEN_SEQUENCE_POSITION),
-        ),
-      });
-      if (catalogRow) {
-        sequenceDraftRows = [...sequenceDraftRows, catalogRow].sort(
-          (a, b) => (a.sequencePosition ?? 0) - (b.sequencePosition ?? 0),
-        );
-        if (!outreach) outreach = catalogRow;
-      }
-    }
 
     const replyDraftRow = outreach?.templateVariant === "reply" ? outreach : null;
     const activeOutreach = replyDraftRow ?? (sequenceDraftRows[0] ?? outreach ?? null);

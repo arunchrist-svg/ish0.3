@@ -56,6 +56,8 @@ export type SequenceEmailStatus = {
   bounceReason: string | null;
   recipientEmail: string | null;
   scheduledFor: string | null;
+  /** When this step actually sent (UTC ISO). */
+  sentAt: string | null;
   scheduleId: string | null;
 };
 
@@ -70,6 +72,13 @@ export type LeadEmailRow = {
   lastEmailDay: number;
   nextEmailDay: number | null;
   nextEmailDue: string | null;
+  /** Email 1 sent_at when present (UTC ISO). */
+  lastEmailSentAt: string | null;
+  /**
+   * Calendar moment that counts toward the daily Email 1 send cap:
+   * Email 1 sent_at if sent, else Email 1 scheduled_for while queued.
+   */
+  countedFor: string | null;
   openedAt: string | null;
   /** Per-step open/send status for E1 + cadence follow-ups */
   sequenceEmails: SequenceEmailStatus[];
@@ -83,7 +92,10 @@ export type LeadEmailRow = {
   status: "active" | "hot" | "replied" | "stopped" | "draft_ready";
   leadStatus: string;
   hasDraftReady: boolean;
+  /** Real human inbound reply (moves lead to Replied / Replies tab). */
   hasInboundReply: boolean;
+  /** OOO / auto-reply recorded without stopping the sequence. */
+  hasInboundAutoReply: boolean;
   hasReplyDraft: boolean;
   hasOutboundReply: boolean;
   threadStage: "sequence" | "awaiting_reply" | "they_replied" | "reply_draft" | "reply_sent" | "complete";
@@ -155,6 +167,9 @@ function buildLeadRow(
   const hasInboundReply =
     leadRows.some((r) => r.scheduleStatus === "sent" && r.emailKind === "inbound_reply") ||
     first.leadStatus === "replied";
+  const hasInboundAutoReply = leadRows.some(
+    (r) => r.scheduleStatus === "sent" && r.emailKind === "inbound_auto_reply",
+  );
   const hasOutboundReply = sentRows.some((r) => r.emailKind === "outbound_reply" || r.sequenceDay === -1);
   const hasReplyDraft = hasReplyDraftFromSet && first.leadStatus === "replied" && !hasOutboundReply;
 
@@ -200,14 +215,24 @@ function buildLeadRow(
       bounceReason: row?.bounceReason ?? null,
       recipientEmail: row?.recipientEmail ?? null,
       scheduledFor: row?.scheduledFor ? new Date(row.scheduledFor).toISOString() : null,
+      sentAt: row?.sentAt ? new Date(row.sentAt).toISOString() : null,
       scheduleId: row?.scheduleId ?? null,
     };
   });
 
-  // Also include day 0 if present in schedule
-  if (leadRows.some((r) => r.sequenceDay === 0)) {
-    // already tracked via emailsSent / sequenceEmails
-  }
+  const email1Row =
+    leadRows.find((r) => r.sequenceDay === 0 && r.scheduleStatus === "sent") ??
+    leadRows.find((r) => r.sequenceDay === 0 && (r.scheduleStatus === "scheduled" || r.scheduleStatus === "sending")) ??
+    leadRows.find((r) => r.sequenceDay === 0);
+  const lastEmailSentAt = email1Row?.sentAt ? new Date(email1Row.sentAt).toISOString() : null;
+  const countedFor = lastEmailSentAt
+    ? lastEmailSentAt
+    : email1Row?.scheduledFor &&
+        (email1Row.scheduleStatus === "scheduled" ||
+          email1Row.scheduleStatus === "sending" ||
+          email1Row.scheduleStatus === "paused")
+      ? new Date(email1Row.scheduledFor).toISOString()
+      : null;
 
   let queueStatus: LeadEmailRow["queueStatus"];
   if (opts.needsReviewMeta) {
@@ -258,6 +283,8 @@ function buildLeadRow(
     lastEmailDay: maxSentDay,
     nextEmailDay: nextScheduled?.sequenceDay ?? null,
     nextEmailDue: nextScheduled ? new Date(nextScheduled.scheduledFor).toISOString() : null,
+    lastEmailSentAt,
+    countedFor,
     openedAt: lastOpenedAt ? new Date(lastOpenedAt).toISOString() : null,
     sequenceEmails,
     queueStatus,
@@ -265,6 +292,7 @@ function buildLeadRow(
     leadStatus: first.leadStatus,
     hasDraftReady: hasReplyDraftFromSet,
     hasInboundReply,
+    hasInboundAutoReply,
     hasReplyDraft,
     hasOutboundReply,
     threadStage,

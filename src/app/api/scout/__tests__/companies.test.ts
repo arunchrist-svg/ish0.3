@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const discoverCompanies = vi.fn();
+const discoverAgenticCompaniesForScout = vi.fn();
 const getResolvedWorkspaceEnrichmentConfig = vi.fn();
 
 vi.mock("@/lib/enrichment/waterfall", () => ({
   discoverCompanies: (...args: unknown[]) => discoverCompanies(...args),
+}));
+
+vi.mock("@/lib/agents/scout-agentic", () => ({
+  discoverAgenticCompaniesForScout: (...args: unknown[]) => discoverAgenticCompaniesForScout(...args),
 }));
 
 vi.mock("@/lib/settings/workspace-settings", () => ({
@@ -68,9 +73,10 @@ describe("POST /api/scout/companies provider resolution", () => {
     });
     getResolvedWorkspaceEnrichmentConfig.mockResolvedValue(resolvedPlacesOffConfig);
     discoverCompanies.mockResolvedValue({ companies: [], warnings: [], errors: [] });
+    discoverAgenticCompaniesForScout.mockResolvedValue({ companies: [], warnings: [], errors: [] });
   });
 
-  it("passes the resolved Places and people-Off config to discovery", async () => {
+  it("routes company scout through the Agentic AI team even when settings stored Places", async () => {
     const response = await POST(
       new Request("http://localhost/api/scout/companies", {
         method: "POST",
@@ -84,17 +90,11 @@ describe("POST /api/scout/companies provider resolution", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(discoverCompanies).toHaveBeenCalledWith(
-      expect.objectContaining({
-        dataMode: "free",
-        config: resolvedPlacesOffConfig,
-      }),
-    );
-    expect(discoverCompanies.mock.calls[0][0].config.searchProvider).toBe("google_places");
-    expect(discoverCompanies.mock.calls[0][0].config.peopleSearchProvider).toBe("none");
+    expect(discoverAgenticCompaniesForScout).toHaveBeenCalled();
+    expect(discoverCompanies).not.toHaveBeenCalled();
   });
 
-  it("uses the same resolved config for the NDJSON stream", async () => {
+  it("uses the Agentic AI team for the NDJSON stream", async () => {
     const response = await POST(
       new Request("http://localhost/api/scout/companies?stream=1", {
         method: "POST",
@@ -109,8 +109,7 @@ describe("POST /api/scout/companies provider resolution", () => {
 
     expect(response.status).toBe(200);
     await response.text();
-    expect(discoverCompanies).toHaveBeenCalledWith(
-      expect.objectContaining({ config: resolvedPlacesOffConfig }),
-    );
+    expect(discoverAgenticCompaniesForScout).toHaveBeenCalled();
+    expect(discoverCompanies).not.toHaveBeenCalled();
   });
 });

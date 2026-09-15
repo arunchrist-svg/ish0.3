@@ -5,6 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Keep first occurrence of each `id`. Safe for React list keys. */
+export function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  if (items.length < 2) return items;
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
+  }
+  return out;
+}
+
 /** Normalize LinkedIn profile URLs from mixed formats (path-only, full URL, regional subdomain). */
 export function normalizeLinkedInUrl(raw?: string | null): string | undefined {
   if (!raw) return undefined;

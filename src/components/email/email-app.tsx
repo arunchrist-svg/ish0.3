@@ -22,6 +22,7 @@ import { MobilePageLayout, PanelCard, AppPageHeader, text } from "@/design-syste
 import {
   fetchEmailLogs,
   fetchEmailOverview,
+  prefetchLead,
   setOutreachSendingPaused,
   type EmailLogStatus,
   type EmailLogsData,
@@ -41,6 +42,7 @@ import {
   isEmailSentForStep,
   normalizeCadenceDays,
 } from "@/lib/email/cadence";
+import { boardDateMetaLine } from "@/lib/email/board-date-labels";
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 
 type QueueTab = "needs_review" | "active" | "hot" | "replies" | "done";
@@ -288,6 +290,7 @@ function inboxStatus(row: LeadEmailRow, tab: QueueTab): { label: string; accent?
     if (row.hasReplyDraft) return { label: "Draft", accent: true };
     return { label: "They replied", accent: true };
   }
+  if (row.hasInboundAutoReply) return { label: "Auto-reply" };
   if (row.openedAt) return { label: `Opened ${timeAgo(row.openedAt)}`, accent: true };
   if (row.sequenceState === "paused") return { label: "Paused" };
   if (row.nextEmailDue) {
@@ -343,6 +346,10 @@ function LeadCard({
   const status = inboxStatus(row, tab);
   const secondary = inboxSecondary(row, tab);
   const meta = leadMetaLine(row);
+  const dateMeta = boardDateMetaLine({
+    lastEmailSentAt: row.lastEmailSentAt,
+    pendingSendScheduledFor: row.lastEmailSentAt ? null : (row.countedFor ?? row.nextEmailDue),
+  });
   const unread = tab === "replies" && !row.hasOutboundReply;
   const showSequence = tab !== "needs_review" && tab !== "replies";
 
@@ -350,6 +357,9 @@ function LeadCard({
     <div
       role="button"
       tabIndex={0}
+      onPointerEnter={() => prefetchLead(row.leadId)}
+      onFocus={() => prefetchLead(row.leadId)}
+      onPointerDown={() => prefetchLead(row.leadId)}
       onClick={() => onNavigate(row)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -382,6 +392,11 @@ function LeadCard({
               </span>
               {meta ? (
                 <p className="truncate text-[12px] leading-snug text-brand-ink-soft">{meta}</p>
+              ) : null}
+              {dateMeta ? (
+                <p className="truncate text-[11px] tabular-nums leading-snug text-brand-ink-faint" title={dateMeta}>
+                  {dateMeta}
+                </p>
               ) : null}
               {secondary ? (
                 <p className="truncate text-[12px] leading-snug text-brand-ink-faint">{secondary}</p>
@@ -588,7 +603,13 @@ export function EmailApp() {
 
   const visibleRows = useMemo(() => {
     if (!data || activeTab === "logs") return [];
-    return filterRows(tabRows(data, activeTab));
+    const rows = filterRows(tabRows(data, activeTab));
+    const seen = new Set<string>();
+    return rows.filter((row) => {
+      if (seen.has(row.leadId)) return false;
+      seen.add(row.leadId);
+      return true;
+    });
   }, [data, activeTab, filterRows]);
 
   const openRate =

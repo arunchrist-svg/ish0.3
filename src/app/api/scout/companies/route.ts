@@ -9,7 +9,7 @@ import {
   getResolvedWorkspaceEnrichmentConfig,
 } from "@/lib/settings/workspace-settings";
 import { normalizeEmployeeBandIds } from "@/lib/enrichment/employee-size";
-import { MAX_SCOUT_COMPANIES_LIMIT, isAgenticSearchProvider } from "@/lib/enrichment/config";
+import { MAX_SCOUT_COMPANIES_LIMIT, isAgenticSearchProvider, lockScoutToAgenticAi } from "@/lib/enrichment/config";
 import { firstZeroingStage, type StageRecord } from "@/lib/enrichment/stage-trace";
 import { discoverAgenticCompaniesForScout } from "@/lib/agents/scout-agentic";
 
@@ -63,7 +63,6 @@ export async function POST(req: Request) {
       cities = [],
       industries = [],
       dataMode = (process.env.DEFAULT_DATA_MODE ?? "free") as DataMode,
-      searchProvider,
       enrichProvider,
       excludeNames = [],
       excludeSavedAccounts,
@@ -86,11 +85,10 @@ export async function POST(req: Request) {
     }
 
     const requestOverride = {
-      ...(searchProvider ? { searchProvider } : {}),
       ...(enrichProvider ? { enrichProvider } : {}),
       dataMode,
     };
-    const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
+    const cfg = lockScoutToAgenticAi(await getResolvedWorkspaceEnrichmentConfig(requestOverride));
     const limit = Math.min(requestedLimit ?? cfg.scoutCompaniesLimit, MAX_SCOUT_COMPANIES_LIMIT);
 
     const prerequisiteErrors = checkDiscoveryPrerequisites(cfg);

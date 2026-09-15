@@ -10,8 +10,10 @@ import {
   describeProviderChoice,
   SEARCH_PROVIDER_LABELS,
   applyAgenticScoutDefaults,
+  applyAutopilotScoutDefaults,
   isAgenticLeadFinding,
   isAgenticSearchProvider,
+  lockScoutToAgenticAi,
   materializeDiscoveryConfig,
   resolveAiOperatingMode,
   resolveAgenticDataStack,
@@ -128,6 +130,12 @@ describe("agentic AI lead finding", () => {
     expect(isAgenticSearchProvider("agentic_ai")).toBe(true);
     expect(isAgenticLeadFinding({ searchProvider: "agentic_ai" })).toBe(true);
     expect(isAgenticLeadFinding({ searchProvider: "google_places" })).toBe(false);
+    expect(lockScoutToAgenticAi(resolveEnrichmentConfig("free", { searchProvider: "google_places" })).searchProvider).toBe(
+      "agentic_ai",
+    );
+    expect(lockScoutToAgenticAi(resolveEnrichmentConfig("free", { searchProvider: "google_places" })).aiOperatingMode).toBe(
+      "agentic",
+    );
     expect(resolveAiOperatingMode(undefined, "agentic_ai")).toBe("agentic");
     expect(resolveEnrichmentConfig(undefined, { searchProvider: "agentic_ai" }).aiOperatingMode).toBe(
       "agentic",
@@ -187,5 +195,20 @@ describe("agentic AI lead finding", () => {
     });
     expect(materializeDiscoveryConfig(places).searchProvider).toBe("google_places");
     vi.unstubAllEnvs();
+  });
+
+  it("keeps Autopilot company search on Places and people on Tavily", () => {
+    const locked = applyAutopilotScoutDefaults(
+      resolveEnrichmentConfig("free", {
+        searchProvider: "agentic_ai",
+        peopleSearchProvider: "tavily_ai",
+        fallbackToAI: true,
+      }),
+      { preferPlaces: true },
+    );
+    expect(locked.searchProvider).toBe("google_places");
+    expect(locked.peopleSearchProvider).toBe("tavily_ai");
+    expect(locked.fallbackToAI).toBe(false);
+    expect(locked.enrichOnImport).toBe(false);
   });
 });

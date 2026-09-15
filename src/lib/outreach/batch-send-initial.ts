@@ -25,12 +25,32 @@ import {
 import { resolveSendRecipients } from "@/lib/outreach/send-recipients";
 import type { ContactEmailEntry } from "@/lib/enrichment/contact-emails";
 import { cancelQueuedInitialEmailsBatch } from "@/lib/outreach/send-scheduled-initial";
-import { BATCH_SEND_GAP_MINUTES, planBatchInitialSends } from "@/lib/outreach/plan-batch-sends";
+import { planBatchInitialSends } from "@/lib/outreach/plan-batch-sends";
 import { getLastInitialEmailQueueTime } from "@/lib/outreach/queue-schedule-tail";
 import { logAudit } from "@/lib/audit";
 import type { TenantContext } from "@/lib/tenant";
 
 const CHUNK_SIZE = 40;
+const QUEUE_CONCURRENCY = 8;
+
+async function mapPool<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      out[index] = await fn(items[index], index);
+    }
+  }
+  const n = Math.min(Math.max(1, limit), items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
+}
 
 export type BatchSendLeadResult = {
   leadId: string;
@@ -101,7 +121,6 @@ export async function prepareBatchQueue(
     dailyCap,
     now,
     existingByDay,
-    gapMinutes: BATCH_SEND_GAP_MINUTES,
     queueAfter,
   });
 
@@ -255,7 +274,7 @@ async function queueLeadForBatch(params: {
     });
   }
 
-  await logAudit({
+  void logAudit({
     tenantId: ctx.tenantId,
     workspaceId: ctx.workspaceId,
     actorId: ctx.userId,
@@ -271,6 +290,8 @@ async function queueLeadForBatch(params: {
       batchIndex,
       batchSize,
     },
+  }).catch((e) => {
+    console.warn("[batch-send-initial] audit failed", e);
   });
 
   return {
@@ -318,40 +339,50 @@ export async function batchQueueInitialEmails(
       leadIds: chunkIds,
     });
 
-    for (let i = 0; i < chunkIds.length; i++) {
-      const leadId = chunkIds[i];
-      const scheduledFor = slots[nextSlotIdx];
+    const chunkStart = nextSlotIdx;
+    const chunkResults = await mapPool(chunkIds, QUEUE_CONCURRENCY, async (leadId, i) => {
+        const scheduledFor = slots[chunkStart + i];
+        try {
+          const bundle = bundles.get(leadId);
+          if (!bundle) {
+            throw new Error("Lead not found");
+          }
+          const outreach = outreachByLead.get(leadId);
+          if (!outreach) {
+            throw new Error("No Email 1 draft ready");
+          }
 
-      try {
-        const bundle = bundles.get(leadId);
-        if (!bundle) {
-          throw new Error("Lead not found");
+          const row = await queueLeadForBatch({
+            ctx,
+            leadId,
+            scheduledFor,
+            bundle,
+            outreach,
+            emailConfig,
+            sendWindow,
+            batchId: params.batchId,
+            batchIndex: chunkStart + i,
+            batchSize: leadIds.length,
+          });
+          return { leadId, row };
+        } catch (e) {
+          const message = e instanceof Error ? e.message : "Send failed";
+          return { leadId, error: message };
         }
-        const outreach = outreachByLead.get(leadId);
-        if (!outreach) {
-          throw new Error("No Email 1 draft ready");
-        }
+      },
+    );
 
-        const row = await queueLeadForBatch({
-          ctx,
-          leadId,
-          scheduledFor,
-          bundle,
-          outreach,
-          emailConfig,
-          sendWindow,
-          batchId: params.batchId,
-          batchIndex: nextSlotIdx,
-          batchSize: leadIds.length,
-        });
+    for (const item of chunkResults) {
+      nextSlotIdx += 1;
+      if ("row" in item && item.row) {
         result.ok += 1;
-        result.results.push(row);
-        nextSlotIdx += 1;
-      } catch (e) {
-        const message = e instanceof Error ? e.message : "Send failed";
+        result.results.push(item.row);
+      } else {
+        const message = "error" in item ? item.error : "Send failed";
+        const label = bundles.get(item.leadId)?.contact.name?.trim() || "Lead";
         result.failed += 1;
-        result.errors.push(`${leadId}: ${message}`);
-        result.results.push({ leadId, ok: false, error: message });
+        result.errors.push(`${label}: ${message}`);
+        result.results.push({ leadId: item.leadId, ok: false, error: message });
       }
     }
   }

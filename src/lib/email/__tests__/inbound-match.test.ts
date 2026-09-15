@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   collectWatchEmails,
   findWatchLeadForFrom,
+  indexWatchLeadsByCampaignMessageId,
   indexWatchLeadsByEmail,
   mergeWatchLeadRows,
   replyContentFromBodies,
+  resolveCampaignReplyLead,
 } from "@/lib/email/inbound-match";
 
 describe("collectWatchEmails", () => {
@@ -59,5 +61,62 @@ describe("replyContentFromBodies", () => {
       "Thanks, we will taste this.",
     );
     expect(replyContentFromBodies("", "<p>Please send a box.</p>")).toBe("Please send a box.");
+  });
+});
+
+describe("resolveCampaignReplyLead", () => {
+  const rows = mergeWatchLeadRows([
+    {
+      leadId: "lead-1",
+      tenantId: "t1",
+      workspaceId: "ws1",
+      contactEmail: "pooja@transactfoods.com",
+      rfcMessageId: "<camp-1@indiasweethouse.in>",
+      emailKind: "initial",
+      firstSentAt: new Date("2026-09-12T02:00:00.000Z"),
+    },
+    {
+      leadId: "lead-2",
+      tenantId: "t1",
+      workspaceId: "ws1",
+      contactEmail: "other@example.com",
+      rfcMessageId: "<camp-2@indiasweethouse.in>",
+      emailKind: "initial",
+    },
+  ]);
+  const byEmail = indexWatchLeadsByEmail(rows);
+  const byMessageId = indexWatchLeadsByCampaignMessageId(rows);
+
+  it("accepts a reply that references the campaign Message-ID", () => {
+    expect(
+      resolveCampaignReplyLead({
+        fromAddresses: ["pooja@transactfoods.com"],
+        referencedIds: ["<CAMP-1@indiasweethouse.in>"],
+        byMessageId,
+        byEmail,
+      })?.leadId,
+    ).toBe("lead-1");
+  });
+
+  it("skips From-only mail that is not in the campaign thread", () => {
+    expect(
+      resolveCampaignReplyLead({
+        fromAddresses: ["pooja@transactfoods.com"],
+        referencedIds: [],
+        byMessageId,
+        byEmail,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("does not attach a campaign thread to a different From lead", () => {
+    expect(
+      resolveCampaignReplyLead({
+        fromAddresses: ["other@example.com"],
+        referencedIds: ["camp-1@indiasweethouse.in"],
+        byMessageId,
+        byEmail,
+      }),
+    ).toBeUndefined();
   });
 });

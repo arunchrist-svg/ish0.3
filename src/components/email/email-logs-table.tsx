@@ -22,6 +22,21 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function formatSentAbsolute(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "Pending";
+  const now = new Date();
+  const sameYear = at.getFullYear() === now.getFullYear();
+  const datePart = at.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+  const timePart = at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return `${datePart}, ${timePart}`;
+}
+
 function StatusPill({ row }: { row: EmailLogRow }) {
   if (row.status === "bounced") {
     return (
@@ -179,8 +194,15 @@ export function EmailLogsTable({
                     <td className="max-w-[280px] px-3 py-3">
                       <div className="truncate text-brand-ink">{row.subject}</div>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-[12px] text-brand-ink-soft">
-                      {row.sentAt ? timeAgo(row.sentAt) : "Pending"}
+                    <td className="whitespace-nowrap px-4 py-3 text-right text-[12px] text-brand-ink-soft">
+                      {row.sentAt ? (
+                        <div className="leading-snug">
+                          <div className="tabular-nums text-brand-ink">{formatSentAbsolute(row.sentAt)}</div>
+                          <div className="text-[10px] text-brand-ink-faint">{timeAgo(row.sentAt)}</div>
+                        </div>
+                      ) : (
+                        "Pending"
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -3,7 +3,11 @@ import { db, leads, leadOutreach, outreachApprovals, outreachSchedule } from "@/
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 
 function isInboundReplyRow(): SQL {
-  return or(eq(outreachSchedule.emailKind, "inbound_reply"), eq(outreachSchedule.sequenceDay, -2))!;
+  return or(
+    eq(outreachSchedule.emailKind, "inbound_reply"),
+    eq(outreachSchedule.emailKind, "inbound_auto_reply"),
+    eq(outreachSchedule.sequenceDay, -2),
+  )!;
 }
 
 /**

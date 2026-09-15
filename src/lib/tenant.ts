@@ -6,6 +6,8 @@ import { getSessionTokenFromCookies, getSessionRecord } from "@/lib/auth/session
 import { isSuperadmin } from "@/lib/auth/platform";
 import {
   SEALED_SESSION_COOKIE,
+  sealTenantClaims,
+  sealedSessionCookieOptions,
   unsealTenantClaims,
   type SealedTenantClaims,
 } from "@/lib/auth/sealed-session";
@@ -183,6 +185,8 @@ async function loadTenantContextFromDb(): Promise<TenantContext> {
   return ctx;
 }
 
+const SEAL_REFRESH_MS = 10 * 60 * 1000;
+
 async function loadTenantContext(): Promise<TenantContext> {
   const cookieStore = await cookies();
   const sealed = unsealTenantClaims(cookieStore.get(SEALED_SESSION_COOKIE)?.value);
@@ -190,6 +194,14 @@ async function loadTenantContext(): Promise<TenantContext> {
     const sessionToken = await getSessionTokenFromCookies();
     // Still require a session cookie so logout/revocation works.
     if (sessionToken) {
+      if (sealed.exp - Date.now() < SEAL_REFRESH_MS) {
+        try {
+          const next = sealTenantClaims(tenantContextToSealClaims(claimsToContext(sealed)));
+          cookieStore.set(SEALED_SESSION_COOKIE, next, sealedSessionCookieOptions(next));
+        } catch {
+          // Route handlers can set cookies; some server-component paths cannot.
+        }
+      }
       const cacheKey = `seal:${sessionToken}`;
       const cached = tenantCtxCache.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) return cached.ctx;

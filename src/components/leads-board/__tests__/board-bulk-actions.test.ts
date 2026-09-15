@@ -23,7 +23,7 @@ vi.mock("@/lib/outreach/send-with-gate-confirm", () => ({
   sendWithGateConfirm: vi.fn(async (send: (overrides: object) => Promise<unknown>) => send({})),
 }));
 
-import { sendBatchOutreach } from "@/lib/api-client";
+import { sendBatchOutreach, fetchSendBatchProgress } from "@/lib/api-client";
 
 function lead(id: string, name: string): LeadQueueItem {
   return {
@@ -117,6 +117,36 @@ describe("sendEmailsForStage", () => {
     });
     expect(result.ok).toBe(1252);
     expect(result.sequencer?.processed).toBe(23);
+  });
+
+  it("uses finished job counts and does not treat extra queued rows as failures", async () => {
+    vi.mocked(sendBatchOutreach).mockResolvedValue({
+      mode: "background",
+      batchId: "batch-1",
+      startedAt: "2026-09-15T02:00:00.000Z",
+      total: 49,
+      ok: 0,
+      failed: 0,
+      errors: [],
+      results: [],
+      plan: { dailyCap: 30, timezone: "Asia/Kolkata", spanDays: 1, firstAt: null, lastAt: null },
+    });
+    vi.mocked(fetchSendBatchProgress).mockResolvedValue({
+      completed: 39,
+      total: 49,
+      ok: 39,
+      failed: 10,
+      errors: ["10 leads: No Email 1 draft ready"],
+      done: true,
+    });
+
+    const result = await sendEmailsForStage(
+      { statuses: ["draft_ready", "approved"], totalHint: 49 },
+    );
+
+    expect(result.ok).toBe(39);
+    expect(result.failed).toBe(10);
+    expect(result.errors.join(" ")).toMatch(/No Email 1 draft ready/);
   });
 });
 

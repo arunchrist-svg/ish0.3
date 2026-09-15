@@ -7,7 +7,7 @@ import type {
   DataMode,
 } from "./enrichment/types";
 import type { StageRecord } from "@/lib/enrichment/stage-trace";
-import { cachedFetch, invalidateCached } from "@/lib/client-fetch-cache";
+import { cachedFetch, getCached, invalidateCached } from "@/lib/client-fetch-cache";
 import { aggregateStatusCountsByStage } from "@/lib/pipeline-status";
 
 export function isAbortError(error: unknown): boolean {
@@ -611,6 +611,90 @@ export async function runScoutAgent(params: {
   return post<ScoutBatchResult>("/api/agents/scout/run", params);
 }
 
+export type AutopilotRunDto = {
+  id: string;
+  status: "queued" | "running" | "awaiting_approval" | "paused" | "failed" | "completed";
+  input: {
+    cities: string[];
+    industries: string[];
+    businesses?: string[];
+    seniority: string[];
+    departments: string[];
+    targetCompanies: number;
+    targetLeads: number;
+    chunkSize: number;
+  };
+  progress: {
+    chunkIndex: number;
+    companiesSaved: number;
+    leadsSaved: number;
+    leadIds: string[];
+    companyNames: string[];
+    attemptedNames?: string[];
+    skipped: { name: string; reason: string }[];
+    lastError?: string | null;
+  };
+  error: string | null;
+  startedAt: string | null;
+  pausedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function startAutopilotRun(params: {
+  cities: string[];
+  industries?: string[];
+  businesses?: string[];
+  seniority?: string[];
+  departments?: string[];
+  locationScope?: "focus" | "interest";
+}): Promise<{ run: AutopilotRunDto }> {
+  return post("/api/autopilot/runs", params);
+}
+
+export async function listAutopilotRuns(): Promise<{ runs: AutopilotRunDto[] }> {
+  return get("/api/autopilot/runs");
+}
+
+export async function getAutopilotRun(id: string): Promise<{ run: AutopilotRunDto }> {
+  return get(`/api/autopilot/runs/${id}`);
+}
+
+export async function pauseAutopilotRun(id: string): Promise<{ run: AutopilotRunDto }> {
+  return post(`/api/autopilot/runs/${id}/pause`, {});
+}
+
+export async function resumeAutopilotRun(id: string): Promise<{ run: AutopilotRunDto }> {
+  return post(`/api/autopilot/runs/${id}/resume`, {});
+}
+
+export async function updateAutopilotRun(id: string, params: {
+  cities?: string[];
+  industries?: string[];
+  businesses?: string[];
+  seniority?: string[];
+  departments?: string[];
+  locationScope?: "focus" | "interest";
+}): Promise<{ run: AutopilotRunDto }> {
+  return patch(`/api/autopilot/runs/${id}`, params);
+}
+
+export async function deleteAutopilotRun(id: string): Promise<{ ok: boolean }> {
+  return del(`/api/autopilot/runs/${id}`);
+}
+
+export async function fetchAutopilotEnabled(): Promise<{ autopilotEnabled: boolean }> {
+  return get("/api/settings/autopilot");
+}
+
+export async function setAutopilotEnabled(autopilotEnabled: boolean): Promise<{
+  ok: boolean;
+  autopilotEnabled: boolean;
+}> {
+  return post("/api/settings/autopilot", { autopilotEnabled });
+}
+
 // ─── Leads ────────────────────────────────────────────────────────────────────
 export type LeadsPage = {
   leads: LeadQueueItem[];
@@ -634,12 +718,18 @@ export async function fetchLeadsPage(params?: {
   cursor?: string | null;
   totals?: boolean;
   force?: boolean;
+  ids?: string[];
+  sort?: "sent_newest";
+  excludePendingInitial?: boolean;
 }): Promise<LeadsPage> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   qs.set("limit", String(params?.limit ?? 50));
   if (params?.cursor) qs.set("cursor", params.cursor);
   if (params?.totals) qs.set("totals", "1");
+  if (params?.ids?.length) qs.set("ids", params.ids.slice(0, 100).join(","));
+  if (params?.sort) qs.set("sort", params.sort);
+  if (params?.excludePendingInitial) qs.set("excludePendingInitial", "1");
   const path = `/api/leads?${qs.toString()}`;
   // Cache first page only; paginated pages stay uncached to avoid stale appends.
   const useCache = !params?.cursor;
@@ -675,10 +765,18 @@ export async function fetchQueuedLeadsPage(params?: {
 export async function fetchLead(id: string, opts?: { force?: boolean }): Promise<LeadDetailRecord> {
   const path = `/api/leads/${id}`;
   const data = await cachedFetch(path, () => get<{ lead: LeadDetailRecord }>(path), {
-    ttlMs: 20_000,
+    ttlMs: 60_000,
     force: opts?.force,
   });
   return data.lead;
+}
+
+export function peekLead(id: string): LeadDetailRecord | undefined {
+  return getCached<{ lead: LeadDetailRecord }>(`/api/leads/${id}`, { allowStale: true })?.lead;
+}
+
+export function prefetchLead(id: string): void {
+  void fetchLead(id).catch(() => undefined);
 }
 
 export type WriterMode = "standard" | "ai";
@@ -848,7 +946,21 @@ export async function runSequencerNow(): Promise<{
   skipped: number;
   pendingReview: number;
 }> {
-  return post("/api/sequencer/run-now", {});
+  const data = await post<{
+    ok?: boolean;
+    processed?: number;
+    failed?: number;
+    skipped?: number;
+    pendingReview?: number;
+  }>("/api/sequencer/run-now", {});
+  const num = (value: number | undefined) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+  return {
+    ok: Boolean(data.ok),
+    processed: num(data.processed),
+    failed: num(data.failed),
+    skipped: num(data.skipped),
+    pendingReview: num(data.pendingReview),
+  };
 }
 
 export async function setOutreachSendingPaused(paused: boolean): Promise<{ outreachPaused: boolean }> {
@@ -1097,8 +1209,16 @@ export async function fetchSendBatchProgress(params: {
   statuses?: string[];
   startedAt: string;
   total: number;
-}): Promise<{ completed: number; total: number }> {
-  return post<{ completed: number; total: number }>("/api/outreach/send-batch/progress", params);
+  batchId?: string;
+}): Promise<{
+  completed: number;
+  total: number;
+  ok?: number;
+  failed?: number;
+  errors?: string[];
+  done?: boolean;
+}> {
+  return post("/api/outreach/send-batch/progress", params);
 }
 
 export async function sendOutreach(
@@ -1576,7 +1696,7 @@ export type BarNode = {
 
 export type ThreadEvent = {
   id: string;
-  kind: "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
+  kind: "initial" | "followup" | "inbound_reply" | "inbound_auto_reply" | "outbound_reply" | "scheduled" | "draft";
   label: string;
   subject?: string;
   snippet?: string;
@@ -2018,6 +2138,7 @@ export async function sendFollowUp(
 export type LeadBoardCounts = {
   byStage: Record<string, number>;
   emailReady: number;
+  emailSendable: number;
   queued: number;
   emailStageTotal: number;
 };
@@ -2025,13 +2146,14 @@ export type LeadBoardCounts = {
 export async function fetchLeadStageCounts(): Promise<LeadBoardCounts> {
   const data = await get<{
     counts: Record<string, number>;
-    board?: { emailReady: number; queued: number; emailStageTotal: number };
+    board?: { emailReady: number; emailSendable?: number; queued: number; emailStageTotal: number };
   }>("/api/leads/stage-counts");
   const byStage = aggregateStatusCountsByStage(data.counts);
   const emailStageTotal = data.board?.emailStageTotal ?? byStage.Email ?? 0;
   const queued = data.board?.queued ?? 0;
   const emailReady = data.board?.emailReady ?? Math.max(0, emailStageTotal - queued);
-  return { byStage, emailReady, queued, emailStageTotal };
+  const emailSendable = data.board?.emailSendable ?? emailReady;
+  return { byStage, emailReady, emailSendable, queued, emailStageTotal };
 }
 
 export async function writeAllLeadsForStage(params: {

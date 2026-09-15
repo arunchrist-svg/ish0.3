@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "@/components/providers/session-provider";
 import { useEffect, useState } from "react";
 import {
-  Bot, ChevronLeft, Contact, Flame, Home,
+  Bot, ChevronLeft, Contact, Flame, Home, Sparkles,
   Mail, Pin, Radar, Rocket, Settings, Shield, Telescope, User, GitFork,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,7 @@ const mainNav: NavItemEntry[] = [
 
 const workNav: NavItemEntry[] = [
   { icon: Telescope, label: "Scouting", href: "/scouting", key: "scouting" },
+  { icon: Sparkles, label: "Autopilot", href: "/autopilot", key: "autopilot" },
   { icon: Rocket, label: "Leads", href: "/leads/board", key: "leads" },
   { icon: Mail, label: "Outbox", href: "/email", key: "email" },
   { icon: Bot, label: "Agent Console", href: "/agents/console", key: "agent-console" },

@@ -13,6 +13,7 @@ function createQuery(rows: unknown[]) {
   chain.from = vi.fn(next);
   chain.innerJoin = vi.fn(next);
   chain.leftJoin = vi.fn(next);
+  chain.innerJoin = vi.fn(next);
   chain.where = vi.fn(next);
   chain.orderBy = vi.fn(next);
   chain.limit = vi.fn(next);
@@ -68,7 +69,15 @@ describe("processResendInboundEvent", () => {
   it("applies a matched inbound reply", async () => {
     mocks.select.mockReturnValue(
       createQuery([
-        { leadId: "lead-1", tenantId: "t1", workspaceId: "ws1", status: "outreached" },
+        {
+          leadId: "lead-1",
+          tenantId: "t1",
+          workspaceId: "ws1",
+          status: "outreached",
+          contactEmail: "prasantmishra@indiasweethouse.in",
+          rfcMessageId: "<camp-1@indiasweethouse.in>",
+          emailKind: "initial",
+        },
       ]),
     );
 
@@ -78,6 +87,7 @@ describe("processResendInboundEvent", () => {
         email_id: "email_1",
         from: "Prasanth <prasantmishra@indiasweethouse.in>",
         text: "Please send a sample box.",
+        in_reply_to: "<camp-1@indiasweethouse.in>",
       },
     });
 
@@ -89,6 +99,44 @@ describe("processResendInboundEvent", () => {
         source: "resend_inbound",
         inboundMessageId: "email_1",
         replyContent: "Please send a sample box.",
+        replyClass: "human",
+      }),
+    );
+  });
+
+  it("routes automated OOO replies as auto without treating them as human", async () => {
+    mocks.select.mockReturnValue(
+      createQuery([
+        {
+          leadId: "lead-1",
+          tenantId: "t1",
+          workspaceId: "ws1",
+          status: "outreached",
+          contactEmail: "ops@acme.com",
+          rfcMessageId: "<camp-1@indiasweethouse.in>",
+          emailKind: "initial",
+        },
+      ]),
+    );
+
+    const result = await processResendInboundEvent({
+      type: "email.received",
+      data: {
+        email_id: "email_ooo",
+        from: "ops@acme.com",
+        subject: "Out of Office: back Monday",
+        text: "I am currently out of the office.",
+        in_reply_to: "<camp-1@indiasweethouse.in>",
+        headers: { "Auto-Submitted": "auto-replied" },
+      },
+    });
+
+    expect(result).toEqual({ ok: true, leadId: "lead-1" });
+    expect(mocks.processLeadReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leadId: "lead-1",
+        replyClass: "auto",
+        autoReason: "header_auto_submitted",
       }),
     );
   });
@@ -96,7 +144,15 @@ describe("processResendInboundEvent", () => {
   it("fetches receiving get when the webhook has no body", async () => {
     mocks.select.mockReturnValue(
       createQuery([
-        { leadId: "lead-1", tenantId: "t1", workspaceId: "ws1", status: "outreached" },
+        {
+          leadId: "lead-1",
+          tenantId: "t1",
+          workspaceId: "ws1",
+          status: "outreached",
+          contactEmail: "prasantmishra@indiasweethouse.in",
+          rfcMessageId: "<camp-1@indiasweethouse.in>",
+          emailKind: "initial",
+        },
       ]),
     );
     mocks.getReceivedEmail.mockResolvedValue({
@@ -104,6 +160,7 @@ describe("processResendInboundEvent", () => {
       from: "prasantmishra@indiasweethouse.in",
       text: "Yes, send the festive tasting box.",
       html: null,
+      in_reply_to: "<camp-1@indiasweethouse.in>",
     });
 
     const result = await processResendInboundEvent({
@@ -121,6 +178,7 @@ describe("processResendInboundEvent", () => {
       expect.objectContaining({
         leadId: "lead-1",
         replyContent: "Yes, send the festive tasting box.",
+        replyClass: "human",
       }),
     );
   });
@@ -133,6 +191,33 @@ describe("processResendInboundEvent", () => {
     });
     expect(result.reason).toBe("lead_not_found");
     expect(mocks.getReceivedEmail).not.toHaveBeenCalled();
+    expect(mocks.processLeadReply).not.toHaveBeenCalled();
+  });
+
+  it("skips From-only mail that is not a campaign reply", async () => {
+    mocks.select.mockReturnValue(
+      createQuery([
+        {
+          leadId: "lead-1",
+          tenantId: "t1",
+          workspaceId: "ws1",
+          status: "outreached",
+          contactEmail: "pooja@transactfoods.com",
+          rfcMessageId: "<camp-1@indiasweethouse.in>",
+          emailKind: "initial",
+        },
+      ]),
+    );
+
+    const result = await processResendInboundEvent({
+      type: "email.received",
+      data: {
+        from: "pooja@transactfoods.com",
+        text: "Forwarded hygiene complaint",
+      },
+    });
+
+    expect(result).toEqual({ ok: true, skipped: true, reason: "not_campaign_thread" });
     expect(mocks.processLeadReply).not.toHaveBeenCalled();
   });
 });

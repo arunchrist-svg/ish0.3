@@ -55,6 +55,8 @@ vi.mock("@/lib/email/process-reply", () => ({
 import { pollRepliesForWorkspace } from "@/lib/email/reply-poller";
 import { repliesCapability } from "@/lib/email/replies-capability";
 
+const CAMPAIGN_MESSAGE_ID = "<camp-1@indiasweethouse.in>";
+
 const watchRow = {
   leadId: "lead-1",
   tenantId: "t1",
@@ -63,17 +65,21 @@ const watchRow = {
   recipientEmail: "prasantmishra@indiasweethouse.in",
   alternateEmails: [{ email: "buying@acme.com", emailStatus: "unverified" }],
   firstSentAt: new Date("2026-08-01T00:00:00.000Z"),
+  rfcMessageId: CAMPAIGN_MESSAGE_ID,
+  emailKind: "initial",
+  threadRootMessageId: CAMPAIGN_MESSAGE_ID,
 };
 
 describe("pollRepliesForWorkspace resend", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.persistEmailConfig.mockResolvedValue(undefined);
-    mocks.processLeadReply.mockResolvedValue({ ok: true });
+    mocks.processLeadReply.mockResolvedValue({ ok: true, replyClass: "human" });
     mocks.getReceivedEmail.mockResolvedValue({
       id: "email_1",
       from: "prasantmishra@indiasweethouse.in",
       text: "Please send the festive tasting box.",
+      in_reply_to: CAMPAIGN_MESSAGE_ID,
     });
     mocks.select.mockReturnValue(createQuery([watchRow]));
   });
@@ -174,11 +180,49 @@ describe("pollRepliesForWorkspace resend", () => {
       id: "email_alt",
       from: "prasantmishra@indiasweethouse.in",
       text: "We can taste a box next week.",
+      in_reply_to: CAMPAIGN_MESSAGE_ID,
     });
 
     const result = await pollRepliesForWorkspace("ws1");
     expect(result.processed).toBe(1);
     expect(mocks.processLeadReply).toHaveBeenCalledWith(expect.objectContaining({ leadId: "lead-1" }));
+  });
+
+  it("skips From-only inbox mail that is not a campaign reply", async () => {
+    mocks.getResolvedEmailConfig.mockResolvedValue({
+      provider: "resend",
+      resendApiKey: "re_test",
+      processedReplyMessageIds: [],
+    });
+    mocks.listReceivedEmails.mockResolvedValue({
+      hasMore: false,
+      data: [
+        {
+          id: "email_unrelated",
+          from: "pooja@transactfoods.com",
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
+    mocks.select.mockReturnValue(
+      createQuery([
+        {
+          ...watchRow,
+          contactEmail: "pooja@transactfoods.com",
+          recipientEmail: "pooja@transactfoods.com",
+        },
+      ]),
+    );
+    mocks.getReceivedEmail.mockResolvedValue({
+      id: "email_unrelated",
+      from: "pooja@transactfoods.com",
+      text: "Forwarded hygiene complaint",
+    });
+
+    const result = await pollRepliesForWorkspace("ws1");
+    expect(result.processed).toBe(0);
+    expect(result.skipped).toBeGreaterThanOrEqual(1);
+    expect(mocks.processLeadReply).not.toHaveBeenCalled();
   });
 
   it("does not list Resend Receiving for smtp workspaces", async () => {

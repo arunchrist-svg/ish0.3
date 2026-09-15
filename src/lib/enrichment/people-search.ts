@@ -13,7 +13,7 @@ import {
 } from "./people-role-filter";
 import type { ScoutPersonResult } from "./types";
 import { computeSeniorityScore } from "./seniority-score";
-import { hasLLMKey, hasTavilyKey } from "./discovery-prerequisites";
+import { hasGeminiKey, hasLLMKey } from "./discovery-prerequisites";
 import { parsePeopleFromSearchResults } from "./people-parser";
 import {
   isTavilyQuotaError,
@@ -21,8 +21,9 @@ import {
   optimizedMaxResults,
   TavilyQuotaError,
   TAVILY_QUOTA_PEOPLE_MSG,
-  tavilySearch,
 } from "./tavily-client";
+import { canSearchPeopleOnWeb, searchWeb } from "./web-search";
+import { fetchCompanyLeadershipPages } from "./company-site-pages";
 import {
   citySearchClause,
   hasPlantCitySelection,
@@ -356,7 +357,7 @@ function personNameFoundInCompanyHit(
 }
 
 /** Drop LLM inventions that stamp the scout company onto someone at a different employer. */
-function llmPersonSupportedBySearchHits(
+export function llmPersonSupportedBySearchHits(
   person: ScoutPersonResult,
   hits: { title: string; url: string; content: string }[],
   companyNames: string[],
@@ -479,7 +480,7 @@ async function fetchLinkedInForUnresolved(
 
       for (const q of queries) {
         try {
-          const hits = await tavilySearch(q, perQueryLimit);
+          const hits = await searchWeb(q, perQueryLimit);
           for (const hit of hits) {
             if (!hit.url.toLowerCase().includes("linkedin.com/in/")) continue;
             const match = hit.url.match(/linkedin\.com\/in\/([^/?#]+)/i);
@@ -760,7 +761,7 @@ async function fetchOpenToWorkDenylistHits(
   const batches = await Promise.all(
     queries.map(async (q) => {
       try {
-        return await tavilySearch(q, optimizedMaxResults(3));
+        return await searchWeb(q, optimizedMaxResults(3));
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.warn("[people-search] Open to Work denylist query failed:", q, message);
@@ -771,9 +772,10 @@ async function fetchOpenToWorkDenylistHits(
   return batches.flat();
 }
 
-export async function searchPeopleViaTavily(params: {
+export async function searchPeopleViaWeb(params: {
   companyName: string;
   companyDomain?: string;
+  companyWebsite?: string;
   limit?: number;
   dataSource?: string;
   roleHints?: string[];
@@ -841,7 +843,9 @@ export async function searchPeopleViaTavily(params: {
         ? citySearchClause(searchCities, 6)
         : "India";
 
-  if (!hasTavilyKey()) throw new Error("TAVILY_API_KEY not set");
+  if (!canSearchPeopleOnWeb()) {
+    throw new Error("People search needs Tavily or Gemini. Add TAVILY_API_KEY or GEMINI_API_KEY.");
+  }
 
   const roleTerm =
     roleHints.length > 0
@@ -1021,10 +1025,10 @@ export async function searchPeopleViaTavily(params: {
     const tavilyBatches = await Promise.all(
       batch.map(async (q) => {
         try {
-          return await tavilySearch(q, perQueryLimit);
+          return await searchWeb(q, perQueryLimit);
         } catch (e) {
           const err = e instanceof Error ? e : new Error(String(e));
-          console.error("[people-search] Tavily query failed:", q, err.message);
+          console.error("[people-search] web query failed:", q, err.message);
           if (isTavilyQuotaError(err.message) && !isTavilyRateLimitError(err.message)) quotaHit = true;
           errors.push(err);
           return [] as { title: string; url: string; content: string }[];
@@ -1078,15 +1082,37 @@ export async function searchPeopleViaTavily(params: {
     ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
   }
 
+  let sitePagesPulled = false;
+  async function pullCompanySitePages() {
+    if (sitePagesPulled) return 0;
+    sitePagesPulled = true;
+    const pages = await fetchCompanyLeadershipPages({
+      website: params.companyWebsite,
+      domain: params.companyDomain,
+    });
+    if (pages.length) {
+      allResults.push(...pages);
+      console.info("[people-search] Company website pages", {
+        company,
+        pages: pages.length,
+      });
+    }
+    return pages.length;
+  }
+
   if (!allResults.length) {
-    if (quotaHit) {
+    await pullCompanySitePages();
+  }
+
+  if (!allResults.length) {
+    if (quotaHit && !hasGeminiKey()) {
       throw new TavilyQuotaError(TAVILY_QUOTA_PEOPLE_MSG);
     }
     const lastError = errors[errors.length - 1];
-    if (lastError && isTavilyQuotaError(lastError.message)) {
+    if (lastError && isTavilyQuotaError(lastError.message) && !hasGeminiKey()) {
       throw new TavilyQuotaError(TAVILY_QUOTA_PEOPLE_MSG);
     }
-    if (lastError) throw lastError;
+    if (lastError && !isTavilyQuotaError(lastError.message)) throw lastError;
     return [];
   }
 
@@ -1246,5 +1272,19 @@ Return up to ${limit} people.`,
     }
   }
 
+  const siteCount = await pullCompanySitePages();
+  if (siteCount) {
+    const afterSite = keepableFromHits();
+    if (afterSite.roleMatched.length) {
+      const kept = await finalize(afterSite.roleMatched.slice(0, limit));
+      if (kept.length) return kept;
+    }
+    const siteBuyers = afterSite.matched.filter((p) => isFestivalBuyerRole(p.title));
+    if (siteBuyers.length) return finalize(siteBuyers.slice(0, limit));
+  }
+
   return [];
 }
+
+/** @deprecated Use searchPeopleViaWeb. Same pipeline with Tavily then Gemini search. */
+export const searchPeopleViaTavily = searchPeopleViaWeb;

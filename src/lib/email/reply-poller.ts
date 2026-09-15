@@ -11,14 +11,18 @@ import {
 } from "@/lib/email/imap-inbox";
 import {
   findWatchLeadForFrom,
+  indexWatchLeadsByCampaignMessageId,
   indexWatchLeadsByEmail,
   mergeWatchLeadRows,
   replyContentFromBodies,
+  resolveCampaignReplyLead,
   type ReplyWatchLead,
 } from "@/lib/email/inbound-match";
+import { detectAutomatedReply } from "@/lib/email/detect-automated-reply";
 import { processLeadReply } from "@/lib/email/process-reply";
-import { getReceivedEmail, listReceivedEmails } from "@/lib/email/resend-receiving";
+import { getReceivedEmail, listReceivedEmails, type ReceivedEmailDetail } from "@/lib/email/resend-receiving";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { referencedIdsFromInboundPayload } from "@/lib/email/threading";
 import { REPLY_WATCH_STATUSES } from "@/lib/pipeline-status";
 import { getResolvedEmailConfig, listWorkspaceUserEmailSettings, persistUserEmailConfig, persistWorkspaceEmailConfig } from "@/lib/settings/email-settings";
 
@@ -67,6 +71,9 @@ async function loadReplyWatchLeads(workspaceId: string): Promise<ReplyWatchLead[
       alternateEmails: contacts.alternateEmails,
       recipientEmail: outreachSchedule.recipientEmail,
       firstSentAt: outreachSchedule.sentAt,
+      rfcMessageId: outreachSchedule.rfcMessageId,
+      emailKind: outreachSchedule.emailKind,
+      threadRootMessageId: leads.threadRootMessageId,
     })
     .from(leads)
     .innerJoin(contacts, eq(leads.contactId, contacts.id))
@@ -115,7 +122,14 @@ async function markProcessedReply(params: {
   source: string;
   replyContent?: string;
   inboundMessageId: string;
-}): Promise<boolean> {
+  subject?: string | null;
+  headers?: unknown;
+}): Promise<"human" | "auto" | "skipped"> {
+  const auto = detectAutomatedReply({
+    subject: params.subject,
+    text: params.replyContent,
+    headers: params.headers as Parameters<typeof detectAutomatedReply>[0]["headers"],
+  });
   const processed = await processLeadReply({
     leadId: params.lead.leadId,
     source: params.source,
@@ -123,8 +137,12 @@ async function markProcessedReply(params: {
     inboundMessageId: params.inboundMessageId,
     tenantId: params.lead.tenantId,
     workspaceId: params.lead.workspaceId,
+    replyClass: auto.automated ? "auto" : "human",
+    autoReason: auto.reason,
+    subject: params.subject,
   });
-  return processed.ok && !processed.skipped;
+  if (!processed.ok || processed.skipped) return "skipped";
+  return processed.replyClass ?? "human";
 }
 
 async function pollImapReplies(
@@ -143,6 +161,7 @@ async function pollImapReplies(
   if (watchLeads.length === 0) return result;
 
   const emailToLead = indexWatchLeadsByEmail(watchLeads);
+  const messageIdToLead = indexWatchLeadsByCampaignMessageId(watchLeads);
   const processedIds = new Set(config.processedReplyMessageIds ?? []);
   const since = getPollSince();
 
@@ -183,8 +202,55 @@ async function pollImapReplies(
             continue;
           }
 
-          const lead = findWatchLeadForFrom(fromAddresses, emailToLead);
-          if (!lead) continue;
+          const fromLead = findWatchLeadForFrom(fromAddresses, emailToLead);
+          let replyContent = "";
+          let parsedHeaders: Array<{ name?: string; value?: string }> | undefined;
+          let referencedIds: string[] = referencedIdsFromInboundPayload({
+            inReplyTo: message.envelope?.inReplyTo,
+          });
+          if (message.source) {
+            try {
+              const parsed = await simpleParser(message.source);
+              replyContent = extractReplyBody(parsed);
+              referencedIds = referencedIdsFromInboundPayload({
+                inReplyTo: parsed.inReplyTo ?? message.envelope?.inReplyTo,
+                references: parsed.references,
+              });
+              parsedHeaders = [
+                "auto-submitted",
+                "x-autoreply",
+                "x-auto-reply",
+                "precedence",
+                "x-auto-response-suppress",
+                "x-postfix-autoreply",
+              ].flatMap((name) => {
+                const value = parsed.headers?.get?.(name);
+                if (value == null) return [];
+                return [
+                  {
+                    name,
+                    value: Array.isArray(value) ? value.map(String).join(" ") : String(value),
+                  },
+                ];
+              });
+            } catch (e) {
+              console.error("[reply-poller] parse failed", e);
+            }
+          }
+
+          const lead = resolveCampaignReplyLead({
+            fromAddresses,
+            referencedIds,
+            byMessageId: messageIdToLead,
+            byEmail: emailToLead,
+          });
+          if (!lead) {
+            if (fromLead || referencedIds.length > 0) {
+              newlyProcessedIds.push(messageId);
+              result.skipped++;
+            }
+            continue;
+          }
 
           if (lead.firstSentAt && messageDate < lead.firstSentAt) {
             newlyProcessedIds.push(messageId);
@@ -193,26 +259,22 @@ async function pollImapReplies(
           }
 
           result.matched++;
-          let replyContent = "";
-          if (message.source) {
-            try {
-              const parsed = await simpleParser(message.source);
-              replyContent = extractReplyBody(parsed);
-            } catch (e) {
-              console.error("[reply-poller] parse failed", e);
-            }
-          }
-
           newlyProcessedIds.push(messageId);
+          const subject =
+            typeof message.envelope?.subject === "string" ? message.envelope.subject : null;
           const applied = await markProcessedReply({
             lead,
             source: "imap_poll",
             replyContent,
             inboundMessageId: messageId,
+            subject,
+            headers: parsedHeaders,
           });
-          if (applied) {
+          if (applied === "human") {
             result.processed++;
             forgetLead(emailToLead, lead);
+          } else if (applied === "auto") {
+            result.processed++;
           } else {
             result.skipped++;
           }
@@ -246,6 +308,7 @@ async function pollResendReplies(
   if (watchLeads.length === 0) return result;
 
   const emailToLead = indexWatchLeadsByEmail(watchLeads);
+  const messageIdToLead = indexWatchLeadsByCampaignMessageId(watchLeads);
   const processedIds = new Set(config.processedReplyMessageIds ?? []);
   const since = getPollSince();
   const newlyProcessedIds: string[] = [];
@@ -270,8 +333,62 @@ async function pollResendReplies(
           continue;
         }
 
-        const lead = findWatchLeadForFrom([item.from], emailToLead);
-        if (!lead) continue;
+        const fromLead = findWatchLeadForFrom([item.from], emailToLead);
+        const listItem = item as ReceivedEmailDetail;
+        let replyContent = "";
+        let detail: ReceivedEmailDetail | null = null;
+        let referencedIds = referencedIdsFromInboundPayload({
+          inReplyTo: listItem.in_reply_to,
+          headers: listItem.headers,
+        });
+
+        if (fromLead) {
+          try {
+            detail = await getReceivedEmail(inboundId, apiKey);
+            replyContent = replyContentFromBodies(detail?.text, detail?.html);
+            referencedIds = referencedIdsFromInboundPayload({
+              inReplyTo: detail?.in_reply_to ?? listItem.in_reply_to,
+              references: detail?.references,
+              headers: detail?.headers ?? listItem.headers,
+            });
+          } catch (e) {
+            console.error("[reply-poller] resend receiving get failed", inboundId, e);
+          }
+        }
+
+        // If we matched by thread id without a From watch hit, still fetch body/headers for classification.
+        if (!detail && referencedIds.length > 0) {
+          try {
+            detail = await getReceivedEmail(inboundId, apiKey);
+            if (!replyContent) replyContent = replyContentFromBodies(detail?.text, detail?.html);
+            referencedIds = referencedIdsFromInboundPayload({
+              inReplyTo: detail?.in_reply_to ?? listItem.in_reply_to,
+              references: detail?.references,
+              headers: detail?.headers ?? listItem.headers,
+            });
+          } catch (e) {
+            console.error("[reply-poller] resend receiving get failed", inboundId, e);
+          }
+        }
+
+        const lead = resolveCampaignReplyLead({
+          fromAddresses: [item.from],
+          referencedIds,
+          byMessageId: messageIdToLead,
+          byEmail: emailToLead,
+        });
+        if (!lead) {
+          if (fromLead || referencedIds.length > 0) {
+            newlyProcessedIds.push(inboundId);
+            processedIds.add(inboundId);
+            if (item.message_id) {
+              newlyProcessedIds.push(item.message_id);
+              processedIds.add(item.message_id);
+            }
+            result.skipped++;
+          }
+          continue;
+        }
 
         if (lead.firstSentAt && messageDate < lead.firstSentAt) {
           newlyProcessedIds.push(inboundId);
@@ -281,14 +398,6 @@ async function pollResendReplies(
         }
 
         result.matched++;
-        let replyContent = "";
-        try {
-          const detail = await getReceivedEmail(inboundId, apiKey);
-          replyContent = replyContentFromBodies(detail?.text, detail?.html);
-        } catch (e) {
-          console.error("[reply-poller] resend receiving get failed", inboundId, e);
-        }
-
         newlyProcessedIds.push(inboundId);
         processedIds.add(inboundId);
         if (item.message_id) {
@@ -301,10 +410,14 @@ async function pollResendReplies(
           source: "resend_poll",
           replyContent,
           inboundMessageId: inboundId,
+          subject: detail?.subject ?? item.subject,
+          headers: detail?.headers ?? listItem.headers,
         });
-        if (applied) {
+        if (applied === "human") {
           result.processed++;
           forgetLead(emailToLead, lead);
+        } else if (applied === "auto") {
+          result.processed++;
         } else {
           result.skipped++;
         }

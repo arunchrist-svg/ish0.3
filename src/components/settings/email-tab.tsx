@@ -253,7 +253,7 @@ function SequenceScheduleSettings({
           <div className="min-w-0">
             <span className="text-[13px] font-semibold text-brand-ink">Shoot to</span>
             <p className="mt-0.5 text-[11px] text-brand-ink-faint">
-              Follow-ups only send on these days and hours. Outside the window, they roll to the next slot.
+              Email 1 queue and follow-ups only send on these days and hours. Saving changes re-spaces the queued list to fit your daily cap.
             </p>
           </div>
           <span className="max-w-[14rem] text-right text-[10px] leading-snug text-brand-ink-faint">
@@ -583,6 +583,27 @@ export function EmailTab({
               ]}
               disabledValue={canSelectLive ? undefined : "live"}
             />
+          </SettingsRow>
+          <SettingsGroupDivider />
+          <SettingsRow className="justify-between py-2.5">
+            <div className="min-w-0 flex-1 pr-4">
+              <span className="text-[13px] font-semibold text-brand-ink">New leads send from</span>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-brand-ink-soft">
+                Scout and Autopilot leads use this inbox, not whoever clicked Add leads.
+              </p>
+            </div>
+            <select
+              value={config.defaultLeadOwnerUserId ?? ""}
+              onChange={(e) => onUpdate("defaultLeadOwnerUserId", e.target.value)}
+              className="ish-email-settings-input max-w-[220px] rounded-full border border-brand-stratus-blue/20 bg-white/80 px-3 py-1.5 text-[12px] font-semibold text-brand-ink outline-none"
+            >
+              <option value="">Logged-in user</option>
+              {(config.leadOwnerMailboxes ?? []).map((mailbox) => (
+                <option key={mailbox.userId} value={mailbox.userId}>
+                  {mailbox.fromAddress}
+                </option>
+              ))}
+            </select>
           </SettingsRow>
           <SettingsGroupDivider />
           <div className="grid gap-3 px-4 py-3 sm:grid-cols-2">

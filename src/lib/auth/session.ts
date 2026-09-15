@@ -44,33 +44,48 @@ export type SessionRecord = SessionUser & {
   platformRole: string;
 };
 
+function isTransientSessionDbError(e: unknown): boolean {
+  const text = e instanceof Error ? `${e.message} ${e.cause instanceof Error ? e.cause.message : ""}` : String(e);
+  return /fetch failed|error connecting to database|econnreset|etimedout|socket hang up/i.test(text);
+}
+
 export const getSessionRecord = cache(async (token: string | undefined): Promise<SessionRecord | null> => {
   if (!token) return null;
 
-  const [row] = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      name: users.name,
-      mustChangePassword: users.mustChangePassword,
-      platformRole: users.platformRole,
-      tenantId: sessions.tenantId,
-      expiresAt: sessions.expiresAt,
-    })
-    .from(sessions)
-    .innerJoin(users, eq(users.id, sessions.userId))
-    .where(and(eq(sessions.token, token), gt(sessions.expiresAt, new Date())))
-    .limit(1);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const [row] = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          mustChangePassword: users.mustChangePassword,
+          platformRole: users.platformRole,
+          tenantId: sessions.tenantId,
+          expiresAt: sessions.expiresAt,
+        })
+        .from(sessions)
+        .innerJoin(users, eq(users.id, sessions.userId))
+        .where(and(eq(sessions.token, token), gt(sessions.expiresAt, new Date())))
+        .limit(1);
 
-  if (!row) return null;
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    mustChangePassword: row.mustChangePassword,
-    platformRole: row.platformRole ?? "user",
-    tenantId: row.tenantId,
-  };
+      if (!row) return null;
+      return {
+        id: row.id,
+        email: row.email,
+        name: row.name,
+        mustChangePassword: row.mustChangePassword,
+        platformRole: row.platformRole ?? "user",
+        tenantId: row.tenantId,
+      };
+    } catch (e) {
+      lastError = e;
+      if (!isTransientSessionDbError(e) || attempt === 1) throw e;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
 });
 
 export async function getSessionUser(token: string | undefined): Promise<SessionUser | null> {

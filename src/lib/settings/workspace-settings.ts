@@ -1,6 +1,6 @@
 import { db, workspaceSettings } from "@/db";
 import type { EnrichmentConfig } from "@/lib/enrichment/config";
-import { getEnrichmentConfig, resolveEnrichmentConfig } from "@/lib/enrichment/config";
+import { getEnrichmentConfig, lockScoutToAgenticAi, resolveEnrichmentConfig } from "@/lib/enrichment/config";
 import { normalizeScoutGeo } from "@/lib/geo/india";
 import { normalizeScoutAreasOfFocus } from "@/lib/geo/area-of-focus";
 import { requireTenantContext } from "@/lib/tenant";
@@ -27,7 +27,12 @@ export async function saveWorkspaceEnrichmentOverrides(
 ): Promise<EnrichmentConfig> {
   const { workspaceId } = await requireTenantContext();
   const existing = await loadWorkspaceEnrichmentOverrides();
-  const merged = { ...existing, ...partial };
+  const merged: Partial<EnrichmentConfig> = {
+    ...existing,
+    ...partial,
+    searchProvider: "agentic_ai",
+    aiOperatingMode: "agentic",
+  };
   if (partial.scoutGeo !== undefined || existing.scoutGeo) {
     merged.scoutGeo = normalizeScoutGeo(merged.scoutGeo);
   }
@@ -60,7 +65,9 @@ export async function saveWorkspaceEnrichmentOverrides(
       },
     });
 
-  return resolveEnrichmentConfig(merged.dataMode ?? getEnrichmentConfig().dataMode, merged);
+  return lockScoutToAgenticAi(
+    resolveEnrichmentConfig(merged.dataMode ?? getEnrichmentConfig().dataMode, merged),
+  );
 }
 
 export async function getResolvedWorkspaceEnrichmentConfig(
@@ -68,7 +75,7 @@ export async function getResolvedWorkspaceEnrichmentConfig(
 ): Promise<EnrichmentConfig> {
   const stored = await loadWorkspaceEnrichmentOverrides();
   const dataMode = override?.dataMode ?? stored.dataMode ?? getEnrichmentConfig().dataMode;
-  return resolveEnrichmentConfig(dataMode, { ...stored, ...override });
+  return lockScoutToAgenticAi(resolveEnrichmentConfig(dataMode, { ...stored, ...override }));
 }
 
 export async function loadEnrichmentOverridesForWorkspace(
@@ -88,5 +95,5 @@ export async function getResolvedEnrichmentConfigForWorkspace(
 ): Promise<import("@/lib/enrichment/config").EnrichmentConfig> {
   const stored = await loadEnrichmentOverridesForWorkspace(workspaceId);
   const dataMode = stored.dataMode ?? getEnrichmentConfig().dataMode;
-  return resolveEnrichmentConfig(dataMode, stored);
+  return lockScoutToAgenticAi(resolveEnrichmentConfig(dataMode, stored));
 }

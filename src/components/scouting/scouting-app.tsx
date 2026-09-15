@@ -29,8 +29,15 @@ import {
   scoutUpdateSession,
   scoutGetSession,
   scoutMarkPlantSeatGold,
+  startAutopilotRun,
+  getAutopilotRun,
+  listAutopilotRuns,
+  pauseAutopilotRun,
+  type AutopilotRunDto,
   type ScoutSessionDetail,
 } from "@/lib/api-client";
+import { AutopilotRunPanel } from "@/components/autopilot/autopilot-run-panel";
+import { AutopilotRunningLoader } from "@/components/autopilot/autopilot-running-loader";
 import { isPlantSeatScout } from "@/lib/scout/plant-seat";
 import type { Person } from "@/lib/scouting-data";
 import { useSession } from "@/components/providers/session-provider";
@@ -556,6 +563,28 @@ export function ScoutingApp() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeSessionTitle, setActiveSessionTitle] = useState<string | null>(null);
+  const [autopilotRun, setAutopilotRun] = useState<AutopilotRunDto | null>(null);
+  const [autopilotStarting, setAutopilotStarting] = useState(false);
+  const [autopilotPausing, setAutopilotPausing] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function hydrateLiveAutopilot() {
+      try {
+        const data = await listAutopilotRuns();
+        if (cancelled) return;
+        const live = data.runs.find((run) => run.status === "queued" || run.status === "running");
+        const latest = live ?? data.runs[0];
+        if (latest) setAutopilotRun(latest);
+      } catch {
+        /* Scout still works without a live run */
+      }
+    }
+    void hydrateLiveAutopilot();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const persistAreaSelectionTimer = useRef<number | null>(null);
   const sessionPersistTimer = useRef<number | null>(null);
@@ -2335,6 +2364,69 @@ export function ScoutingApp() {
     isMobileLayout &&
     ((view === "companies" && primaryCompany) || (view === "people" && primaryPerson));
 
+  const handleRunAutopilot = useCallback(async () => {
+    if (!cities.length || autopilotStarting) return;
+    setAutopilotStarting(true);
+    try {
+      const { run } = await startAutopilotRun({
+        cities,
+        industries,
+        businesses,
+        seniority,
+        departments,
+        locationScope,
+      });
+      setAutopilotRun(run);
+      toast.success("Autopilot started. It will not send. Approve Email 1 when drafts are ready.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Could not start Autopilot.";
+      toast.error(msg);
+    } finally {
+      setAutopilotStarting(false);
+    }
+  }, [autopilotStarting, businesses, cities, departments, industries, locationScope, seniority]);
+
+  const handlePauseAutopilot = useCallback(async () => {
+    if (!autopilotRun?.id || autopilotPausing) return;
+    setAutopilotPausing(true);
+    try {
+      const next = await pauseAutopilotRun(autopilotRun.id);
+      setAutopilotRun(next.run);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not pause Autopilot.");
+    } finally {
+      setAutopilotPausing(false);
+    }
+  }, [autopilotPausing, autopilotRun?.id]);
+
+  const autopilotLive =
+    autopilotStarting ||
+    autopilotRun?.status === "queued" ||
+    autopilotRun?.status === "running";
+
+  useEffect(() => {
+    const runId = autopilotRun?.id;
+    const status = autopilotRun?.status;
+    if (!runId) return;
+    if (status !== "queued" && status !== "running") return;
+    const rid = runId;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const next = await getAutopilotRun(rid);
+        if (!cancelled) setAutopilotRun(next.run);
+      } catch {
+        /* keep last snapshot */
+      }
+    }
+    void poll();
+    const timer = window.setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [autopilotRun?.id, autopilotRun?.status]);
+
   const toolbarProps = {
     view,
     cities,
@@ -2381,14 +2473,35 @@ export function ScoutingApp() {
     onVerticalScopeChange: handleVerticalScopeChange,
     businesses,
     onBusinessToggle: toggleBusiness,
+    onRunAutopilot: handleRunAutopilot,
+    autopilotRunning: autopilotLive,
   } as const;
+
+  const autopilotPanel = autopilotRun && !autopilotLive ? (
+    <div className="mx-4 mt-2 lg:mx-5">
+      <AutopilotRunPanel
+        runId={autopilotRun.id}
+        initialRun={autopilotRun}
+        onClose={() => setAutopilotRun(null)}
+        onRunChange={setAutopilotRun}
+      />
+    </div>
+  ) : null;
 
   const missingWebsiteCompanies = companies
     .filter((c) => selectedCompanyIds.has(c.id) && companyNeedsOfficialWebsite(c))
     .map((c) => ({ id: c.id, name: c.name }));
 
   const companiesResults = view === "companies" ? (
-    loadingCompanies ? (
+    autopilotLive ? (
+      <AutopilotRunningLoader
+        run={autopilotRun}
+        cities={cities}
+        industries={industries}
+        onPause={handlePauseAutopilot}
+        pausing={autopilotPausing}
+      />
+    ) : loadingCompanies ? (
       <DiscoveringLoader
         message={showingSaved ? "Loading saved companies" : undefined}
         hints={
@@ -2413,19 +2526,23 @@ export function ScoutingApp() {
         }
       />
     ) : companies.length === 0 && (!filterPanelOpen || showingSaved) ? (
-      <ScoutCompaniesEmpty
-        hasFetched={hasFetched}
-        scoutMode={scoutMode}
-        fetchMessage={fetchMessage}
-        stageTrace={stageTrace}
-        showingSaved={showingSaved}
-        icpHint={icpHint}
-        locationScope={locationScope}
-      />
+      <>
+        {autopilotPanel}
+        <ScoutCompaniesEmpty
+          hasFetched={hasFetched}
+          scoutMode={scoutMode}
+          fetchMessage={fetchMessage}
+          stageTrace={stageTrace}
+          showingSaved={showingSaved}
+          icpHint={icpHint}
+          locationScope={locationScope}
+        />
+      </>
     ) : companies.length === 0 ? (
-      null
+      autopilotPanel
     ) : (
       <>
+        {autopilotPanel}
         {isAgenticSearchProvider(searchProvider) && !showingSaved ? (
           <div className="mx-4 mt-2 rounded-xl border border-brand-stratus-blue/20 bg-brand-stratus-blue/5 px-3 py-2 text-[12px] leading-snug text-brand-ink-soft lg:mx-5">
             Agentic Scout ·{" "}
@@ -2827,6 +2944,19 @@ export function ScoutingApp() {
               <button
                 type="button"
                 onClick={() => {
+                  void handleRunAutopilot();
+                  setOverflowOpen(false);
+                }}
+                disabled={!canScoutMobile || autopilotStarting}
+                className="flex min-h-[48px] items-center gap-3 rounded-2xl border border-brand-border/60 bg-white px-4 text-left text-[14px] font-semibold text-brand-ink active:scale-[0.99] disabled:opacity-50"
+              >
+                Run Autopilot
+              </button>
+            ) : null}
+            {view === "companies" ? (
+              <button
+                type="button"
+                onClick={() => {
                   void handleShowSaved();
                 }}
                 disabled={loadingCompanies}
@@ -2894,7 +3024,7 @@ export function ScoutingApp() {
         />
         <ScoutingToolbar {...toolbarProps} />
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          <div className="ish-page-padding min-w-0 flex-1 overflow-y-auto bg-white/40 py-4 lg:px-6">
+          <div className={`ish-page-padding min-w-0 flex-1 overflow-y-auto bg-white/40 py-4 lg:px-6${autopilotLive ? " flex flex-col" : ""}`}>
             {companiesResults}
           </div>
           {(view === "companies" && primaryCompany) ||

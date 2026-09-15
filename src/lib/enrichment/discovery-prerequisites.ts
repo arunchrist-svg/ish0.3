@@ -34,9 +34,9 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
           "Agentic Places + Apollo needs GOOGLE_PLACES_API_KEY. Add it, or switch Agentic data stack to Directories.",
         );
       }
-      if (cfg.peopleSearchProvider !== "none" && !hasApolloKey()) {
+      if (cfg.peopleSearchProvider !== "none" && !hasApolloKey() && !hasGeminiKey()) {
         errors.push(
-          "Agentic Places + Apollo needs APOLLO_API_KEY for people search. Add it, turn People search Off, or switch to Directories.",
+          "Agentic Places + Apollo needs APOLLO_API_KEY or GEMINI_API_KEY for people search. Add one, turn People search Off, or switch to Directories.",
         );
       }
       return errors;

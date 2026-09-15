@@ -12,6 +12,7 @@ import {
   parseDealAmount,
   PIPELINE_STAGES,
   boardPipelineStages,
+  statusesForPipelineStage,
 } from "@/lib/pipeline-status";
 
 describe("FUNNEL-UNIT-001 pipeline status mapping", () => {
@@ -111,6 +112,12 @@ describe("FUNNEL-UNIT-003 stage helpers", () => {
       "Negotiate",
       "Closed",
     ]);
+  });
+
+  it("maps board columns to DB statuses", () => {
+    expect(statusesForPipelineStage("Email")).toEqual(["draft_ready", "approved"]);
+    expect(statusesForPipelineStage("Replied")).toEqual(["replied"]);
+    expect(statusesForPipelineStage("Queued")).toEqual([]);
   });
 
   it("inserts Queued before Email Sent on the board", () => {

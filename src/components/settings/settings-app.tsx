@@ -279,6 +279,7 @@ function SettingsAppInner() {
         resendConfigured,
         resendHint,
         validationWarnings,
+        leadOwnerMailboxes,
         ...payload
       } = emailConfig;
       const res = await fetch("/api/settings/email/verify", {
@@ -331,6 +332,7 @@ function SettingsAppInner() {
         resendConfigured,
         resendHint,
         validationWarnings,
+        leadOwnerMailboxes,
         ...payload
       } = emailConfig;
       const res = await fetch("/api/settings/email", {
@@ -351,7 +353,13 @@ function SettingsAppInner() {
       if (data.config) setEmailConfig(data.config);
       setSmtpPassDraft("");
       setEmailDirty(false);
-      toast.success("Email settings saved");
+      if (data.queueRespread?.started) {
+        toast.success("Email settings saved", {
+          description: `Queued Email 1s are re-spacing to ${data.queueRespread.dailyCap}/day inside your send windows.`,
+        });
+      } else {
+        toast.success("Email settings saved");
+      }
       return true;
     } catch {
       toast.error("Could not save email settings");

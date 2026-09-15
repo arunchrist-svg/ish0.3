@@ -174,6 +174,16 @@ export function isAgenticSearchProvider(
   return provider === "agentic_ai";
 }
 
+/** Company scout always runs through the Agentic AI team, never classic providers. */
+export function lockScoutToAgenticAi(config: EnrichmentConfig): EnrichmentConfig {
+  return {
+    ...config,
+    searchProvider: "agentic_ai",
+    aiOperatingMode: "agentic",
+    agenticDataStack: resolveAgenticDataStack(config.agenticDataStack),
+  };
+}
+
 export function resolveAiOperatingMode(
   value: AiOperatingMode | string | null | undefined,
   searchProvider?: SearchProvider | string | null,
@@ -187,6 +197,13 @@ export function isAgenticLeadFinding(
   config: Pick<EnrichmentConfig, "aiOperatingMode" | "searchProvider"> | null | undefined,
 ): boolean {
   return isAgenticSearchProvider(config?.searchProvider);
+}
+
+/** True when people search will spend Tavily credits. */
+export function configUsesTavilyForPeople(
+  config: Pick<EnrichmentConfig, "peopleSearchProvider">,
+): boolean {
+  return config.peopleSearchProvider === "tavily_ai";
 }
 
 /** True when this config (or Agentic stack) will spend Tavily credits on company search. */
@@ -250,6 +267,32 @@ export function applyAgenticScoutDefaults(
         : config.searchProvider,
       reason: "configured",
     },
+  };
+}
+
+/**
+ * Autopilot company search uses Places when available so empty pages do not
+ * burn Tavily directory credits. People stay on the workspace provider.
+ */
+export function applyAutopilotScoutDefaults(
+  config: EnrichmentConfig,
+  options?: { preferPlaces?: boolean },
+): EnrichmentConfig {
+  const people =
+    config.peopleSearchProvider && config.peopleSearchProvider !== "none"
+      ? config.peopleSearchProvider
+      : "tavily_ai";
+  const preferPlaces = options?.preferPlaces !== false;
+  const base = applyAgenticScoutDefaults({
+    ...config,
+    searchProvider: "agentic_ai",
+    ...(preferPlaces ? { agenticDataStack: "places_apollo" as const } : {}),
+  });
+  return {
+    ...base,
+    peopleSearchProvider: people,
+    fallbackToAI: false,
+    enrichOnImport: false,
   };
 }
 

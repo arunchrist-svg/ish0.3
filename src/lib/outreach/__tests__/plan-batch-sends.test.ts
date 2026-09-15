@@ -86,6 +86,22 @@ describe("planBatchInitialSends", () => {
     expect(slots[0].getTime()).toBeGreaterThanOrEqual(scheduleFrom.getTime() - 1000);
   });
 
+  it("uses a fresh random 30s–3m gap when gapMinutes is omitted", () => {
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 0 }, IST);
+    const seq = [0, 1];
+    let i = 0;
+    const { slots } = planBatchInitialSends({
+      count: 3,
+      window,
+      dailyCap: 50,
+      now,
+      existingByDay: new Map(),
+      random: () => seq[i++] ?? 0.5,
+    });
+    expect(slots[1].getTime() - slots[0].getTime()).toBe(30_000);
+    expect(slots[2].getTime() - slots[1].getTime()).toBe(180_000);
+  });
+
   it("appends after an existing queue tail", () => {
     const now = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 0 }, IST);
     const queueAfter = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 10, minute: 30 }, IST);

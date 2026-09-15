@@ -26,7 +26,7 @@ import {
   applyWriterDraft,
   mergeLeadOutreachFromServer,
 } from "@/lib/email/apply-writer-draft";
-import { isEmail1SentInThread } from "@/lib/email/email-thread";
+import { isEmail1SentInThread, isSequenceTabSent, pickSequenceReviewDraft } from "@/lib/email/email-thread";
 import {
   IF_OPENED_NODE_ID,
   isCatalogOnOpenDraft,
@@ -36,6 +36,7 @@ import {
   ensureBlankReplyDraftClient,
   ensureCatalogOnOpenDraftClient,
   fetchLead,
+  peekLead,
   runReplyWriter,
   runWriterSequence,
   updateOutreachDraft,
@@ -173,24 +174,10 @@ function findReviewDraft(
     if (byId) return byId;
   }
 
-  if (lead.status === "draft_ready") {
-    return (
-      sequence.find((d) => d.sequencePosition === 1) ??
-      (lead.outreach && isOutreachDraft(lead.outreach) ? lead.outreach : undefined) ??
-      sequence[0]
-    );
-  }
+  const picked = pickSequenceReviewDraft(sequence, draftOutreachId);
+  if (picked) return picked;
 
-  const followUps = sequence
-    .filter((d) => (d.sequencePosition ?? 1) > 1)
-    .sort((a, b) => (b.sequencePosition ?? 0) - (a.sequencePosition ?? 0));
-  if (followUps[0]) return followUps[0];
-
-  return (
-    sequence.find((d) => d.sequencePosition === 1) ??
-    (lead.outreach && isOutreachDraft(lead.outreach) ? lead.outreach : undefined) ??
-    sequence[0]
-  );
+  return lead.outreach && isOutreachDraft(lead.outreach) ? lead.outreach : undefined;
 }
 
 function resolveMode(
@@ -243,11 +230,18 @@ export function OutreachComposeModal({
       silent?: boolean;
       replaceOutreach?: boolean;
       clearOutreach?: boolean;
+      useCache?: boolean;
     }) => {
-      if (!opts?.silent) setLoading(true);
+      const cached = opts?.useCache ? peekLead(leadId) : undefined;
+      if (cached) {
+        setLead(cached);
+        setLoading(false);
+      } else if (!opts?.silent) {
+        setLoading(true);
+      }
       try {
-        invalidateCached(`/api/leads/${leadId}`);
-        const next = await fetchLead(leadId, { force: true });
+        if (!opts?.useCache) invalidateCached(`/api/leads/${leadId}`);
+        const next = await fetchLead(leadId, { force: !opts?.useCache });
         setLead((prev) => {
           if (!prev || opts?.replaceOutreach || opts?.clearOutreach) return next;
           return mergeLeadOutreachFromServer(prev, next);
@@ -269,7 +263,7 @@ export function OutreachComposeModal({
   );
 
   useEffect(() => {
-    void load();
+    void load({ useCache: true });
   }, [load]);
 
   useEffect(() => {
@@ -674,14 +668,23 @@ export function OutreachComposeModal({
     mode === "review" && !isEmail1SentInThread(lead?.emailThread);
   const sendTargetIsEmail1 =
     sequenceNotStartedForSend && isNonInitialSequenceDraft(resolvedReviewDraft);
-  const reviewComposeStatus = viewingPendingFollowUp
-    ? "Follow-up"
+  const selectedTabSent = Boolean(
+    selectedReviewTab && isSequenceTabSent(selectedReviewTab.id, lead?.emailThread),
+  );
+  const reviewComposeStatus = selectedTabSent
+    ? "Sent"
+    : viewingPendingFollowUp
+      ? "Queued"
+      : sendTargetIsEmail1
+        ? "Starts with Email 1"
+        : isCatalogOnOpenDraft(resolvedReviewDraft)
+          ? "If opened"
+          : "Draft";
+  const sendingBadgeLabel = selectedTabSent
+    ? "Already sent"
     : sendTargetIsEmail1
-      ? "Starts with Email 1"
-      : isCatalogOnOpenDraft(resolvedReviewDraft)
-        ? "If opened"
-        : "Draft";
-  const sendingBadgeLabel = sendTargetIsEmail1 ? "Sending Email 1" : "Sending this";
+      ? "Sending Email 1"
+      : "Sending this";
   const reviewCadence = lead?.emailThread?.cadenceDays ?? [3, 7];
   const reviewExcludeSequenceDays =
     !selectedReviewNodeId || selectedReviewNodeId === IF_OPENED_NODE_ID
@@ -935,21 +938,35 @@ export function OutreachComposeModal({
                 >
                   {reviewTabs.map((tabItem) => {
                     const selected = (selectedReviewNodeId ?? reviewTabs[0]?.id) === tabItem.id;
+                    const sent = isSequenceTabSent(tabItem.id, lead.emailThread);
                     return (
                       <button
                         key={tabItem.id}
                         type="button"
                         role="tab"
                         aria-selected={selected}
+                        aria-label={sent ? `${tabItem.label}, sent` : tabItem.label}
                         onClick={() => handleReviewNodeSelect(tabItem.id)}
                         className={cn(
-                          "rounded-[7px] px-3 py-1 text-[12px] font-semibold tracking-wide transition-all",
+                          "inline-flex items-center gap-1.5 rounded-[7px] px-3 py-1 text-[12px] font-semibold tracking-wide transition-all",
                           selected
                             ? "bg-white text-brand-ink shadow-[0_1px_2px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.04)]"
                             : "text-brand-ink-soft hover:text-brand-ink",
                         )}
                       >
                         {tabItem.label}
+                        {sent ? (
+                          <span
+                            className={cn(
+                              "rounded-full px-1.5 py-px text-[9px] font-bold uppercase tracking-wide",
+                              selected
+                                ? "bg-brand-green-soft text-brand-green"
+                                : "bg-brand-green-soft/80 text-brand-green",
+                            )}
+                          >
+                            Sent
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
@@ -1012,7 +1029,14 @@ export function OutreachComposeModal({
                           </span>
                         </p>
                       </div>
-                      <span className="inline-flex items-center rounded-full bg-brand-stratus-blue/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-stratus-blue ring-1 ring-brand-stratus-blue/20">
+                      <span
+                        className={cn(
+                          "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ring-1",
+                          selectedTabSent
+                            ? "bg-brand-green-soft text-brand-green ring-brand-green/20"
+                            : "bg-brand-stratus-blue/10 text-brand-stratus-blue ring-brand-stratus-blue/20",
+                        )}
+                      >
                         {sendingBadgeLabel}
                       </span>
                     </div>

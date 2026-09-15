@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, uniqueById } from "@/lib/utils";
 import type { SequenceFlowModel, SequenceFlowNode } from "@/lib/email/sequence-flow";
 
 type Props = {
@@ -20,6 +20,7 @@ function chipStatusLabel(node: SequenceFlowNode): string | undefined {
   if (node.opened && node.slot !== "opened" && node.slot !== "replied") {
     return "Opened";
   }
+  if (node.state === "done") return "Sent";
   return node.cadenceLabel;
 }
 
@@ -76,7 +77,7 @@ export function SequenceFlowMap({
   embedded = false,
 }: Props) {
   const compact = density === "compact";
-  const emails = model.nodes.filter((n) => n.slot !== "opened" && n.slot !== "replied");
+  const emails = uniqueById(model.nodes.filter((n) => n.slot !== "opened" && n.slot !== "replied"));
   const ifOpened = model.nodes.find((n) => n.slot === "opened");
   const ifReplied = model.nodes.find((n) => n.slot === "replied");
   const replySelected =

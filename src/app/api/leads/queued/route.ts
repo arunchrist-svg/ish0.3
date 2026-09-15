@@ -4,6 +4,8 @@ import { db, leads, contacts, accounts, users, outreachSchedule } from "@/db";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
+import { PENDING_INITIAL_SEND_STATUSES } from "@/lib/outreach/pending-send-count";
+import { STATUSES_BY_STAGE_INDEX } from "@/lib/pipeline-status";
 import type { LeadQueueItem } from "@/lib/api-client";
 
 export const preferredRegion = ["sin1"];
@@ -45,7 +47,8 @@ export async function GET(req: Request) {
       eq(leads.tenantId, ctx.tenantId),
       eq(outreachSchedule.channel, "email"),
       eq(outreachSchedule.sequenceDay, 0),
-      inArray(outreachSchedule.status, ["scheduled", "sending", "paused"]),
+      inArray(outreachSchedule.status, [...PENDING_INITIAL_SEND_STATUSES]),
+      inArray(leads.status, STATUSES_BY_STAGE_INDEX[1] ?? ["draft_ready", "approved"]),
       cursor
         ? or(
             gt(outreachSchedule.scheduledFor, cursor.scheduledFor),
@@ -85,7 +88,15 @@ export async function GET(req: Request) {
       .orderBy(asc(outreachSchedule.scheduledFor), asc(leads.id))
       .limit(limit);
 
-    const queue: LeadQueueItem[] = rows.map((r) => ({
+    const uniqueRows: typeof rows = [];
+    const seenLeadIds = new Set<string>();
+    for (const row of rows) {
+      if (seenLeadIds.has(row.id)) continue;
+      seenLeadIds.add(row.id);
+      uniqueRows.push(row);
+    }
+
+    const queue: LeadQueueItem[] = uniqueRows.map((r) => ({
       id: r.id,
       name: r.name,
       title: r.title ?? "—",
@@ -105,7 +116,7 @@ export async function GET(req: Request) {
       createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt ?? undefined,
     }));
 
-    const last = rows[rows.length - 1];
+    const last = uniqueRows[uniqueRows.length - 1];
     const nextCursor =
       rows.length >= limit && last
         ? encodeScheduledCursor(last.scheduledFor, last.id)

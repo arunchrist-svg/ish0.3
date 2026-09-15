@@ -6,7 +6,7 @@ import type { TenantContext } from "@/lib/tenant";
 export type OutreachAttentionCounts = {
   /** Email 1 drafts + follow-ups awaiting human review (visible leads only). */
   needsReview: number;
-  /** Inbound replies without a sent outbound reply (visible leads only). */
+  /** Inbound human replies without a sent outbound reply (visible leads only). Auto-replies are excluded. */
   replies: number;
   /** Sidebar / inbox badge: items needing attention. */
   inboxCount: number;

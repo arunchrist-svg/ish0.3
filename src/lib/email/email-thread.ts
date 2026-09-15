@@ -16,6 +16,10 @@ import {
   isCatalogOnOpenSchedule,
 } from "@/lib/email/ish-festive-catalog";
 import { IF_REPLIED_NODE_ID } from "@/lib/email/blank-reply-constants";
+import {
+  INBOUND_AUTO_REPLY_EMAIL_KIND,
+  INBOUND_REPLY_EMAIL_KIND,
+} from "@/lib/email/inbound-match";
 
 export function isSequenceRailPosition(pos: number | null | undefined): boolean {
   return pos === 1 || pos === 2 || pos === 3 || pos === CATALOG_ON_OPEN_SEQUENCE_POSITION;
@@ -108,7 +112,14 @@ export function buildDraftsEmailThread(
   };
 }
 
-export type ThreadEventKind = "initial" | "followup" | "inbound_reply" | "outbound_reply" | "scheduled" | "draft";
+export type ThreadEventKind =
+  | "initial"
+  | "followup"
+  | "inbound_reply"
+  | "inbound_auto_reply"
+  | "outbound_reply"
+  | "scheduled"
+  | "draft";
 export type ThreadEventStatus = "sent" | "scheduled" | "cancelled" | "draft" | "opened" | "bounced";
 
 export type ThreadPhase =
@@ -147,12 +158,52 @@ export type BarNode = {
 };
 
 /** True when the rail has a real Email 1 send, not a later step stored as the opener. */
+function tabLooksSent(node?: { kind?: BarNodeKind; state?: BarNodeState } | null): boolean {
+  if (!node) return false;
+  return node.kind === "sent" || node.state === "done";
+}
+
 export function isEmail1SentInThread(thread?: {
   barNodes?: Array<{ id: string; kind?: BarNodeKind; state?: BarNodeState }>;
+  events?: Array<{ label?: string; status?: string; kind?: string }>;
 } | null): boolean {
-  const e1 = thread?.barNodes?.find((n) => n.id === "e1" || n.id === "draft-1");
-  if (!e1) return false;
-  return e1.kind === "sent" || e1.state === "done";
+  return isSequenceTabSent("draft-1", thread);
+}
+
+/** True when an Email 1 / 2 / 3 / If Opened tab matches a sent rail node or sent event. */
+export function isSequenceTabSent(
+  tabId: string,
+  thread?: {
+    barNodes?: Array<{ id: string; kind?: BarNodeKind; state?: BarNodeState; label?: string }>;
+    events?: Array<{ label?: string; status?: string; kind?: string }>;
+  } | null,
+): boolean {
+  const aliases: Record<string, string[]> = {
+    "draft-1": ["draft-1", "e1"],
+    "draft-2": ["draft-2", "e2"],
+    "draft-3": ["draft-3", "e3"],
+  };
+  const ids = aliases[tabId] ?? [tabId];
+  const node = thread?.barNodes?.find((n) => ids.includes(n.id));
+  if (tabLooksSent(node)) return true;
+
+  const label =
+    tabId === IF_OPENED_NODE_ID || node?.label === "If Opened"
+      ? "If Opened"
+      : tabId === "draft-1" || tabId === "e1"
+        ? "Email 1"
+        : tabId === "draft-2" || tabId === "e2"
+          ? "Email 2"
+          : tabId === "draft-3" || tabId === "e3"
+            ? "Email 3"
+            : node?.label;
+  if (!label) return false;
+  return (thread?.events ?? []).some(
+    (event) =>
+      event.label === label &&
+      event.kind !== "draft" &&
+      (event.status === "sent" || event.status === "opened"),
+  );
 }
 
 /** Schedule id to send-now for Email 2/3 / If Opened. Ignores sent, skipped, and cancelled rows. */
@@ -309,7 +360,17 @@ export function effectiveScheduleStep(params: {
 
   const kind = (() => {
     const k = params.emailKind as ThreadEventKind | null | undefined;
-    if (k === "initial" || k === "followup" || k === "outbound_reply" || k === "inbound_reply") return k;
+    if (
+      k === "initial" ||
+      k === "followup" ||
+      k === "outbound_reply" ||
+      k === "inbound_reply" ||
+      k === "inbound_auto_reply"
+    ) {
+      return k;
+    }
+    if (params.emailKind === INBOUND_AUTO_REPLY_EMAIL_KIND) return "inbound_auto_reply" as const;
+    if (params.emailKind === INBOUND_REPLY_EMAIL_KIND) return "inbound_reply" as const;
     if (params.sequenceDay === 0) return "initial" as const;
     if (params.sequenceDay === -1) return "outbound_reply" as const;
     if (params.sequenceDay === -2) return "inbound_reply" as const;
@@ -322,6 +383,7 @@ export function effectiveScheduleStep(params: {
     emailKind: params.emailKind,
     label: (() => {
       if (params.emailKind === CATALOG_ON_OPEN_EMAIL_KIND) return "If Opened";
+      if (kind === "inbound_auto_reply") return "Auto-reply";
       if (kind === "inbound_reply") return "Their reply";
       if (kind === "outbound_reply") return "Your reply";
       return emailStepLabel(params.sequenceDay, cadence);
@@ -338,6 +400,22 @@ function isTrueInitialSentRow(
   if (row.status !== "sent") return false;
   if (!(row.sequenceDay === 0 || row.emailKind === "initial")) return false;
   return !isNonInitialSequenceDraft(linkedDraft);
+}
+
+/**
+ * Draft to open in the Email 1/2/3 review tabs.
+ * Defaults to Email 1. Only honor a later step when that draft was requested.
+ */
+export function pickSequenceReviewDraft<T extends { id: string; sequencePosition?: number | null; templateVariant?: string | null }>(
+  drafts: T[],
+  draftOutreachId?: string | null,
+): T | undefined {
+  const sequence = drafts.filter((d) => d.templateVariant !== "reply" && !isCatalogOnOpenDraft(d));
+  if (draftOutreachId) {
+    const requested = sequence.find((d) => d.id === draftOutreachId);
+    if (requested) return requested;
+  }
+  return sequence.find((d) => d.sequencePosition === 1) ?? sequence[0];
 }
 
 export function buildEmailThread(params: {
@@ -395,8 +473,18 @@ export function buildEmailThread(params: {
       kind,
       label: step.label,
       subject,
-      snippet: step.kind === "inbound_reply" ? preview(lead.lastReplyContent) : preview(body),
-      body: step.kind === "inbound_reply" ? clip(lead.lastReplyContent) : clip(body),
+      snippet:
+        step.kind === "inbound_reply"
+          ? preview(lead.lastReplyContent)
+          : step.kind === "inbound_auto_reply"
+            ? preview(row.bodySnippet ?? body)
+            : preview(body),
+      body:
+        step.kind === "inbound_reply"
+          ? clip(lead.lastReplyContent)
+          : step.kind === "inbound_auto_reply"
+            ? clip(row.bodySnippet ?? body)
+            : clip(body),
       at: (row.sentAt ?? (isScheduled ? row.scheduledFor : undefined))?.toISOString(),
       status: bounce.bouncedAt ? "bounced" : openedAt ? "opened" : isScheduled ? "scheduled" : "sent",
       openedAt,
@@ -405,7 +493,11 @@ export function buildEmailThread(params: {
     });
   }
 
-  const hasInboundRow = scheduleRows.some((r) => r.emailKind === "inbound_reply" || r.sequenceDay === -2);
+  const hasInboundRow = scheduleRows.some(
+    (r) =>
+      r.emailKind === INBOUND_REPLY_EMAIL_KIND ||
+      (r.sequenceDay === -2 && r.emailKind !== INBOUND_AUTO_REPLY_EMAIL_KIND),
+  );
   const hasInbound = hasInboundRow || lead.status === "replied" || Boolean(lead.lastReplyContent);
   const hasOutboundReply = scheduleRows.some((r) => r.emailKind === "outbound_reply" || r.sequenceDay === -1);
   const initialSent = scheduleRows.some((r) =>

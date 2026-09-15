@@ -13,6 +13,7 @@ import { smtpTransport } from "@/lib/email/smtp-transport";
 import { resendTransport } from "@/lib/email/resend-transport";
 import { verifyImapAccess } from "@/lib/email/imap-inbox";
 import { repliesCapability } from "@/lib/email/replies-capability";
+import type { LeadOwnerMailbox } from "@/lib/leads/lead-owner";
 import {
   sealEmailSecrets,
   secretsNeedSealing,
@@ -20,6 +21,11 @@ import {
 } from "@/lib/email/secret-crypto";
 import { clearTenantContextCache, requireTenantContext } from "@/lib/tenant";
 import { and, eq } from "drizzle-orm";
+import {
+  effectiveDailySendCap,
+  scheduleBasisChanged,
+  scheduleBasisFingerprint,
+} from "@/lib/outreach/schedule-basis";
 
 export type EmailConfigResponse = Omit<EmailConfig, "smtpPass" | "resendApiKey"> & {
   smtpPassSet: boolean;
@@ -33,6 +39,20 @@ export type EmailConfigResponse = Omit<EmailConfig, "smtpPass" | "resendApiKey">
   repliesSupported: boolean;
   repliesHint: string;
   validationWarnings: string[];
+  leadOwnerMailboxes?: LeadOwnerMailbox[];
+};
+
+export type QueueRespreadPlan = {
+  needed: true;
+  dailyCap: number;
+  fingerprintBefore: string;
+  fingerprintAfter: string;
+};
+
+export type SaveEmailSettingsResult = {
+  config: EmailConfigResponse;
+  /** Present when send window / daily cap / warmup basis changed; caller should respread the queue. */
+  queueRespread: QueueRespreadPlan | null;
 };
 
 export class EmailSettingsValidationError extends Error {
@@ -336,7 +356,7 @@ export async function saveWorkspaceEmailOverrides(
   partial: Partial<EmailConfig>,
   workspaceId?: string,
   userId?: string,
-): Promise<EmailConfigResponse> {
+): Promise<SaveEmailSettingsResult> {
   const ctx = workspaceId && userId ? null : await requireTenantContext().catch(() => null);
   const resolvedWorkspaceId = workspaceId ?? ctx?.workspaceId;
   const resolvedUserId = userId ?? ctx?.userId;
@@ -347,7 +367,10 @@ export async function saveWorkspaceEmailOverrides(
     ? await loadUserEmailOverrides(resolvedWorkspaceId, resolvedUserId)
     : {};
 
+  const beforeResolved = resolveEmailConfig({ ...workspaceExisting, ...userExisting });
+
   const withSecrets = preserveSecrets(partial, { ...workspaceExisting, ...userExisting });
+  delete (withSecrets as { leadOwnerMailboxes?: unknown }).leadOwnerMailboxes;
   const userPatch = pickUserEmailFields(withSecrets);
   const workspacePatch = omitUserEmailFields(withSecrets);
 
@@ -375,7 +398,21 @@ export async function saveWorkspaceEmailOverrides(
   if (merged.sendMode === "live" && smtpReady) {
     await clearDemoModeForCurrentTenant();
   }
-  return buildEmailConfigResponse(merged);
+
+  const basisChanged = scheduleBasisChanged(beforeResolved, merged);
+  const queueRespread: QueueRespreadPlan | null = basisChanged
+    ? {
+        needed: true,
+        dailyCap: effectiveDailySendCap(merged),
+        fingerprintBefore: scheduleBasisFingerprint(beforeResolved),
+        fingerprintAfter: scheduleBasisFingerprint(merged),
+      }
+    : null;
+
+  return {
+    config: await buildEmailConfigResponse(merged),
+    queueRespread,
+  };
 }
 
 /**
@@ -508,7 +545,10 @@ export async function setOutreachPaused(paused: boolean, workspaceId?: string): 
 export async function getEmailConfigForApi(userId?: string): Promise<EmailConfigResponse> {
   const ctx = await requireTenantContext();
   const config = await getResolvedEmailConfig(ctx.workspaceId, userId ?? ctx.userId);
-  return buildEmailConfigResponse(config);
+  const response = await buildEmailConfigResponse(config);
+  const { listLeadOwnerMailboxes } = await import("@/lib/leads/lead-owner");
+  response.leadOwnerMailboxes = await listLeadOwnerMailboxes(ctx.workspaceId);
+  return response;
 }
 
 export type { UserEmailKey };

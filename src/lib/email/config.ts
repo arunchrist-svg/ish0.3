@@ -107,6 +107,11 @@ export type EmailConfig = {
   /** Optional branch/location under brand on Warmly (e.g. Kasturinagar). From Email settings. */
   fromLocation?: string;
   /**
+   * Workspace member whose mailbox owns newly saved Scout/Autopilot leads.
+   * Outreach uses this inbox instead of whoever clicked Add leads.
+   */
+  defaultLeadOwnerUserId?: string;
+  /**
    * Free-text signature from Email settings. When set, ISH drafts use it as the
    * identity under Warmly / Thanks & Regards (replacing From name, brand, location).
    * Also appended at send time if the draft body does not already include it.
@@ -317,6 +322,7 @@ export function getDefaultEmailConfig(): EmailConfig {
     fromName: "",
     fromPhone: "",
     fromLocation: "",
+    defaultLeadOwnerUserId: "",
     signature: "",
     replyToAddress: "",
     replyToName: "",
@@ -371,6 +377,7 @@ export function resolveEmailConfig(overrides?: Partial<EmailConfig>): EmailConfi
     fromName: merged.fromName?.trim() ?? "",
     fromPhone: merged.fromPhone?.trim() ?? "",
     fromLocation: merged.fromLocation?.trim() ?? "",
+    defaultLeadOwnerUserId: merged.defaultLeadOwnerUserId?.trim() ?? "",
     signature: merged.signature?.trim() ?? "",
     cadenceDays: [day1, day2],
     sendDaysOfWeek: normalizeSendDays(merged.sendDaysOfWeek),

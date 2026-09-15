@@ -121,7 +121,7 @@ export function lastOutboundRecipientEmail(
     const ev = events[i];
     const email = ev.recipientEmail?.trim();
     if (!email || !isUsableRecipientAddress(email)) continue;
-    if (ev.kind === "inbound_reply") continue;
+    if (ev.kind === "inbound_reply" || ev.kind === "inbound_auto_reply") continue;
     if (ev.status === "sent" || ev.status === "opened") return email;
   }
   if (barNodes) {

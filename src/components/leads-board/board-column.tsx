@@ -1,13 +1,13 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import type { LeadQueueItem } from "@/lib/api-client";
 import {
   PIPELINE_STAGE_ACCENTS,
   type PipelineStageLabel,
 } from "@/lib/pipeline-status";
-import { cn } from "@/lib/utils";
+import { cn, uniqueById } from "@/lib/utils";
 import { TruncatedText } from "@/design-system";
 import { BoardLeadCard } from "./board-lead-card";
 import type { SendQueueItem } from "./board-bulk-actions";
@@ -37,10 +37,14 @@ type Props = {
   queueByLeadId?: Record<string, SendQueueItem>;
   queueItems?: SendQueueItem[];
   onLeadOpen?: (lead: LeadQueueItem) => void;
+  onLeadPrefetch?: (lead: LeadQueueItem) => void;
   onLeadWrite?: (lead: LeadQueueItem) => void;
   onLeadSend?: (lead: LeadQueueItem) => void;
   onLeadCancel?: (lead: LeadQueueItem) => void;
   cancellingLeadId?: string | null;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 };
 
 function queueStatusLabel(item: SendQueueItem): string {
@@ -106,15 +110,30 @@ export function BoardColumn({
   queueByLeadId,
   queueItems,
   onLeadOpen,
+  onLeadPrefetch,
   onLeadWrite,
   onLeadSend,
   onLeadCancel,
   cancellingLeadId,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: Props) {
   const accent = PIPELINE_STAGE_ACCENTS[stage];
-  const useVirtual = leads.length > 40;
-  const displayCount = totalCount ?? leads.length;
+  const columnLeads = uniqueById(leads);
+  const columnQueueItems = queueItems
+    ? queueItems.filter((item, index, arr) => arr.findIndex((x) => x.leadId === item.leadId) === index)
+    : undefined;
+  const useVirtual = columnLeads.length > 40;
+  const displayCount = totalCount ?? columnLeads.length;
   const columnActions = actions ?? (action ? [action] : []);
+
+  useEffect(() => {
+    if (columnLeads.length > 0 || !hasMore || loadingMore || !onLoadMore) return;
+    onLoadMore();
+    // Intentionally omit onLoadMore: parent passes a new function each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [columnLeads.length, hasMore, loadingMore]);
 
   return (
     <section className="ish-board-column flex w-[280px] shrink-0 flex-col rounded-[18px]">
@@ -139,9 +158,9 @@ export function BoardColumn({
             ))}
           </div>
         ) : null}
-        {queueItems?.length ? (
+        {columnQueueItems?.length ? (
           <ul className="max-h-36 space-y-1 overflow-y-auto rounded-xl border border-[#e8ebf1] bg-[#ffffff] p-1.5">
-            {queueItems.map((item) => (
+            {columnQueueItems.map((item) => (
               <li
                 key={item.leadId}
                 className="flex items-center justify-between gap-2 rounded-lg px-2 py-1"
@@ -172,15 +191,24 @@ export function BoardColumn({
         ) : null}
       </header>
 
-      {leads.length === 0 ? (
+      {columnLeads.length === 0 ? (
         <div className="relative z-0 min-h-0 flex-1 overflow-y-auto px-0.5 pb-1">
           <div className="rounded-xl border border-dashed border-brand-border/60 px-3 py-8 text-center text-[11px] text-brand-ink-faint">
-            No leads
+            {loadingMore ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="size-3.5 animate-spin" />
+                Loading leads
+              </span>
+            ) : displayCount > 0 ? (
+              "No matching leads"
+            ) : (
+              "No leads"
+            )}
           </div>
         </div>
       ) : useVirtual ? (
         <VirtualList
-          items={leads}
+          items={columnLeads}
           estimateSize={88}
           overscan={6}
           className="relative z-0 min-h-0 flex-1 px-0.5 pb-1 scrollbar-none"
@@ -194,6 +222,7 @@ export function BoardColumn({
                 stage={stage}
                 sendStatus={queueByLeadId?.[lead.id]}
                 onOpen={onLeadOpen}
+                onPrefetch={onLeadPrefetch}
                 onWrite={onLeadWrite}
                 onSend={onLeadSend}
                 onCancel={onLeadCancel}
@@ -204,7 +233,7 @@ export function BoardColumn({
         />
       ) : (
         <div className="relative z-0 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-0.5 pb-1 scrollbar-none">
-          {leads.map((lead, i) => (
+          {columnLeads.map((lead, i) => (
             <BoardLeadCard
               key={lead.id}
               lead={lead}
@@ -213,6 +242,7 @@ export function BoardColumn({
               stage={stage}
               sendStatus={queueByLeadId?.[lead.id]}
               onOpen={onLeadOpen}
+              onPrefetch={onLeadPrefetch}
               onWrite={onLeadWrite}
               onSend={onLeadSend}
               onCancel={onLeadCancel}
@@ -221,6 +251,16 @@ export function BoardColumn({
           ))}
         </div>
       )}
+      {hasMore && columnLeads.length > 0 ? (
+        <button
+          type="button"
+          onClick={onLoadMore}
+          disabled={loadingMore}
+          className="mt-1 shrink-0 rounded-full px-2 py-1 text-[10.5px] font-semibold text-brand-ink-soft hover:text-brand-ink disabled:opacity-50"
+        >
+          {loadingMore ? "Loading…" : "Load more"}
+        </button>
+      ) : null}
     </section>
   );
 }

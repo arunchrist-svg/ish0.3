@@ -19,7 +19,7 @@ import {
 } from "./company-name-match";
 import { cleanCompanyName, parseCompaniesFromDirectoryResults } from "./directory-parser";
 import { hasLLMKey, hasTavilyKey, llmErrorMessage } from "./discovery-prerequisites";
-import { searchPeopleViaTavily } from "./people-search";
+import { searchPeopleViaWeb } from "./people-search";
 import type { DirectorySearchMeta } from "./india-directories";
 import { tavilySearch } from "./tavily-client";
 import { domainFromWebsite } from "./provider-utils";
@@ -373,7 +373,7 @@ export async function tavilySearchPeople(params: {
   titles: string[];
   limit?: number;
 }): Promise<ScoutPersonResult[]> {
-  return searchPeopleViaTavily({
+  return searchPeopleViaWeb({
     companyName: params.companyName,
     companyDomain: params.companyDomain,
     limit: params.limit,

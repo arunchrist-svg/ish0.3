@@ -245,7 +245,7 @@ export function ConversationTimeline({
       const tb = b.at ? new Date(b.at).getTime() : Number.POSITIVE_INFINITY;
       if (ta !== tb) return ta - tb;
       const order = (e: ThreadEvent) => {
-        if (e.kind === "inbound_reply") return 50;
+        if (e.kind === "inbound_reply" || e.kind === "inbound_auto_reply") return 50;
         if (e.id === "reply-draft" || e.kind === "outbound_reply") return 60;
         if (e.status === "draft") return 40 + (e.sequenceDay ?? 0);
         if (e.status === "scheduled") return 30 + (e.sequenceDay ?? 0);
@@ -253,7 +253,12 @@ export function ConversationTimeline({
       };
       return order(a) - order(b);
     });
-    return list;
+    const seen = new Set<string>();
+    return list.filter((event) => {
+      if (seen.has(event.id)) return false;
+      seen.add(event.id);
+      return true;
+    });
   }, [
     thread,
     hideDraftEvents,

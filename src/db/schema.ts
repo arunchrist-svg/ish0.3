@@ -616,6 +616,65 @@ export const scoutSessions = pgTable("scout_sessions", {
   tenantWorkspaceIdx: index("scout_sessions_tenant_workspace_idx").on(table.tenantId, table.workspaceId),
 }));
 
+export type AutopilotRunStatus =
+  | "queued"
+  | "running"
+  | "awaiting_approval"
+  | "paused"
+  | "failed"
+  | "completed";
+
+export type AutopilotRunInput = {
+  cities: string[];
+  industries: string[];
+  businesses?: string[];
+  seniority: string[];
+  departments: string[];
+  locationScope?: "focus" | "interest";
+  targetCompanies: number;
+  targetLeads: number;
+  chunkSize: number;
+  peoplePerCompany: number;
+};
+
+export type AutopilotRunProgress = {
+  chunkIndex: number;
+  companiesSaved: number;
+  leadsSaved: number;
+  leadIds: string[];
+  companyNames: string[];
+  attemptedNames?: string[];
+  emptyDiscoveryStreak?: number;
+  skipped: { name: string; reason: string }[];
+  lastError?: string | null;
+};
+
+export const autopilotRuns = pgTable("autopilot_runs", {
+  id:              uuid("id").defaultRandom().primaryKey(),
+  tenantId:        uuid("tenant_id").notNull().references(() => tenants.id),
+  workspaceId:     uuid("workspace_id").notNull().references(() => workspaces.id),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  status:          text("status").$type<AutopilotRunStatus>().notNull().default("queued"),
+  input:           jsonb("input").$type<AutopilotRunInput>().notNull(),
+  progress:        jsonb("progress").$type<AutopilotRunProgress>().notNull().default({
+    chunkIndex: 0,
+    companiesSaved: 0,
+    leadsSaved: 0,
+    leadIds: [],
+    companyNames: [],
+    skipped: [],
+  }),
+  error:           text("error"),
+  startedAt:       timestamp("started_at"),
+  pausedAt:        timestamp("paused_at"),
+  completedAt:     timestamp("completed_at"),
+  createdAt:       timestamp("created_at").defaultNow().notNull(),
+  updatedAt:       timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  workspaceStatusIdx: index("autopilot_runs_workspace_status_idx").on(table.workspaceId, table.status),
+  workspaceUpdatedIdx: index("autopilot_runs_workspace_updated_idx").on(table.workspaceId, table.updatedAt),
+}));
+
 export const scoutQualityEvents = pgTable("scout_quality_events", {
   id:          uuid("id").defaultRandom().primaryKey(),
   tenantId:    uuid("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),

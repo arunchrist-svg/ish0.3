@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Sparkles, Telescope, Wrench } from "lucide-react";
 import { SettingsGroup, SettingsGroupDivider, SettingsRow } from "@/components/settings/settings-group";
@@ -7,7 +8,9 @@ import {
   isAgenticSearchProvider,
   type EnrichmentConfig,
 } from "@/lib/enrichment/config";
+import { fetchAutopilotEnabled, setAutopilotEnabled } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type Props = {
   config: EnrichmentConfig | null;
@@ -24,6 +27,20 @@ export function AiTab({ config, onUpdate }: Props) {
   }
 
   const agentic = isAgenticSearchProvider(config.searchProvider);
+  const [autopilotEnabled, setAutopilotOn] = useState(true);
+  const [autopilotBusy, setAutopilotBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAutopilotEnabled()
+      .then((data) => {
+        if (!cancelled) setAutopilotOn(data.autopilotEnabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function enableAgentic() {
     onUpdate("searchProvider", "agentic_ai");
@@ -62,9 +79,8 @@ export function AiTab({ config, onUpdate }: Props) {
               )}
             </div>
             <p className="mt-1 text-[12.5px] leading-relaxed text-brand-ink-soft">
-              {agentic
-                ? "Company search is Agentic AI. Pick Directories (Tavily) or Places + Apollo under Enrichment → Agentic data stack. Open Scouting to run Scout and Fetch Leads."
-                : "Company search is currently a classic provider. Switch to Agentic AI under Enrichment to use the agent team in Scouting."}
+              Scouting always uses the Scout agent team. Pick Directories (Tavily) or Places + Apollo
+              under Enrichment → Agentic data stack. Open Scouting to run Scout and Fetch Leads.
             </p>
             <ul className="mt-3 space-y-1.5 text-[12px] text-brand-ink-soft">
               <li className="flex gap-2">
@@ -90,6 +106,43 @@ export function AiTab({ config, onUpdate }: Props) {
               </button>
             ) : null}
           </div>
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup
+        title="Autopilot"
+        footer="Autopilot uses the Agentic Scout team to find companies and people, then writes Email 1 to 3. It never sends. Kill switch stops new scout and write chunks. Sending still uses Email → Outbox pause."
+        className="mb-4"
+      >
+        <SettingsRow className="justify-between py-3">
+          <div>
+            <div className="text-[14px] font-medium text-brand-ink">Allow Autopilot runs</div>
+            <p className="text-[12px] text-brand-ink-soft">
+              Kill switch for the Scout agent team + write.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={autopilotBusy}
+            onClick={async () => {
+              const next = !autopilotEnabled;
+              setAutopilotBusy(true);
+              try {
+                const saved = await setAutopilotEnabled(next);
+                setAutopilotOn(saved.autopilotEnabled);
+              } catch (e) {
+                toast.error(e instanceof Error ? e.message : "Could not update Autopilot");
+              } finally {
+                setAutopilotBusy(false);
+              }
+            }}
+            className={cn(
+              "rounded-full px-3 py-1.5 text-[11px] font-semibold",
+              autopilotEnabled ? "bg-brand-green-soft text-brand-green" : "bg-brand-app text-brand-ink-soft",
+            )}
+          >
+            {autopilotEnabled ? "On" : "Off"}
+          </button>
         </SettingsRow>
       </SettingsGroup>
 

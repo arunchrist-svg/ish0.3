@@ -4,6 +4,7 @@ import {
   classifyLeadEmail,
   filterLeadsByFilters,
   parseLeadQueueSort,
+  sortEmailSentLeads,
   sortLeadsQueue,
   togglePanelFilter,
   toggleQuickFilter,
@@ -167,5 +168,43 @@ describe("sortLeadsQueue", () => {
     expect(parseLeadQueueSort("date")).toBe("date_newest");
     expect(parseLeadQueueSort("date_oldest")).toBe("date_oldest");
     expect(parseLeadQueueSort("score")).toBe("score");
+  });
+});
+
+describe("sortEmailSentLeads", () => {
+  const leads = [
+    lead({
+      id: "old-send",
+      name: "Old send",
+      lastEmailSentAt: "2026-01-01T08:00:00.000Z",
+      createdAt: "2026-03-01T00:00:00.000Z",
+    }),
+    lead({
+      id: "new-send",
+      name: "New send",
+      lastEmailSentAt: "2026-09-12T08:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    }),
+    lead({
+      id: "mid-send",
+      name: "Mid send",
+      lastEmailSentAt: "2026-06-01T08:00:00.000Z",
+    }),
+  ];
+
+  it("defaults to latest sent first, even when board sort is score", () => {
+    expect(sortEmailSentLeads(leads, "score").map((l) => l.id)).toEqual([
+      "new-send",
+      "mid-send",
+      "old-send",
+    ]);
+  });
+
+  it("can reverse to oldest sent first", () => {
+    expect(sortEmailSentLeads(leads, "date_oldest").map((l) => l.id)).toEqual([
+      "old-send",
+      "mid-send",
+      "new-send",
+    ]);
   });
 });

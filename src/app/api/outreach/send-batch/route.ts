@@ -1,14 +1,15 @@
 import { NextResponse, after } from "next/server";
 import { eq, inArray } from "drizzle-orm";
-import { db, leads } from "@/db";
+import { db, leads, contacts } from "@/db";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { batchQueueInitialEmails, prepareBatchQueue } from "@/lib/outreach/batch-send-initial";
+import { saveSendBatchJobResult } from "@/lib/outreach/send-batch-job";
 import { SenderPreflightError } from "@/lib/email/sender-preflight";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { runSequencer } from "@/lib/agents/sequencer";
-import { withoutPendingInitialEmailSend } from "@/lib/outreach/pending-send-count";
+import { withoutPendingInitialEmailSend, withLikelySendableContactEmail } from "@/lib/outreach/pending-send-count";
 
 export const preferredRegion = ["sin1"];
 export const maxDuration = 300;
@@ -59,10 +60,12 @@ export async function POST(req: Request) {
         eq(leads.tenantId, ctx.tenantId),
         inArray(leads.status, statuses),
         withoutPendingInitialEmailSend(),
+        withLikelySendableContactEmail(),
       );
       const rows = await db
         .select({ id: leads.id })
         .from(leads)
+        .innerJoin(contacts, eq(contacts.id, leads.contactId))
         .where(where)
         .limit(MAX_SEND_ALL);
       leadIds = rows.map((r) => r.id);
@@ -78,21 +81,34 @@ export async function POST(req: Request) {
     if (leadIds.length > BACKGROUND_THRESHOLD) {
       const batchId = crypto.randomUUID();
       const startedAt = new Date().toISOString();
-      const prepared = await prepareBatchQueue(ctx, { leadIds, overridePreflight });
 
       after(async () => {
         try {
-          await batchQueueInitialEmails(ctx, {
+          const prepared = await prepareBatchQueue(ctx, { leadIds, overridePreflight });
+          const queued = await batchQueueInitialEmails(ctx, {
             leadIds,
             overridePreflight,
             prepared,
             batchId,
           });
-          if (processDue) {
-            await runSequencer();
-          }
+          await saveSendBatchJobResult({
+            ctx,
+            batchId,
+            ok: queued.ok,
+            failed: queued.failed,
+            errors: queued.errors,
+          });
+          // Do not flush the whole outbox here. With a large existing queue that can take
+          // many minutes. Inngest / the sequencer cron sends due mail on its own.
         } catch (e) {
           console.error("[api/outreach/send-batch] background queue failed", e);
+          await saveSendBatchJobResult({
+            ctx,
+            batchId,
+            ok: 0,
+            failed: leadIds.length,
+            errors: [e instanceof Error ? e.message : "Batch queue failed"],
+          });
         }
       });
 
@@ -105,7 +121,7 @@ export async function POST(req: Request) {
         failed: 0,
         errors: [],
         results: [],
-        plan: prepared.plan,
+        plan: { dailyCap: 0, timezone: "", spanDays: 0, firstAt: null, lastAt: null },
       });
     }
 

@@ -5,7 +5,7 @@ import { discoverPeopleBatch, discoverPeopleBatchStream } from "@/lib/enrichment
 import type { DataMode } from "@/lib/enrichment/types";
 import { getResolvedWorkspaceEnrichmentConfig } from "@/lib/settings/workspace-settings";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
-import { MAX_SCOUT_LEADS_LIMIT } from "@/lib/enrichment/config";
+import { MAX_SCOUT_LEADS_LIMIT, lockScoutToAgenticAi } from "@/lib/enrichment/config";
 
 type BatchCompanyInput = {
   id: string;
@@ -36,7 +36,6 @@ export async function POST(req: Request) {
     const {
       companies,
       dataMode = (process.env.DEFAULT_DATA_MODE ?? "free") as DataMode,
-      searchProvider,
       peopleSearchProvider,
       enrichProvider,
       limit: requestedLimit,
@@ -54,13 +53,12 @@ export async function POST(req: Request) {
     }
 
     const requestOverride = {
-      ...(searchProvider ? { searchProvider } : {}),
       ...(peopleSearchProvider ? { peopleSearchProvider } : {}),
       ...(enrichProvider ? { enrichProvider } : {}),
       dataMode,
     };
-    const cfg = await getResolvedWorkspaceEnrichmentConfig(requestOverride);
-    const discoveryConfig = { ...cfg, ...requestOverride };
+    const cfg = lockScoutToAgenticAi(await getResolvedWorkspaceEnrichmentConfig(requestOverride));
+    const discoveryConfig = { ...cfg, ...requestOverride, searchProvider: "agentic_ai" as const };
     const mappedCompanies = mapCompanies(companies);
 
     const batchLimit = Math.min(requestedLimit ?? cfg.scoutLeadsLimit, MAX_SCOUT_LEADS_LIMIT);

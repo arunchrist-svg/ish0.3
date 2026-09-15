@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { discoverCompanies, discoverPeople } from "@/lib/enrichment/waterfall";
 import { saveScoutLeads } from "@/lib/scout/save-leads";
 import { logAudit } from "@/lib/audit";
-import { getScoutCompaniesLimit, getScoutLeadsLimit, isAgenticLeadFinding } from "@/lib/enrichment/config";
+import { getScoutCompaniesLimit, getScoutLeadsLimit } from "@/lib/enrichment/config";
 import { peoplePerCompanyLimit } from "@/lib/enrichment/people-diversity";
 import {
   getResolvedEnrichmentConfigForWorkspace,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/settings/workspace-settings";
 import { scoutLocationOptions, defaultLabelsFromLocationOptions } from "@/lib/geo/india";
 import type { DataMode } from "@/lib/enrichment/types";
+import type { AgenticDataStack } from "@/lib/enrichment/config";
 import { mapWithConcurrency } from "@/lib/async";
 import { db, accounts } from "@/db";
 import { eq } from "drizzle-orm";
@@ -27,6 +28,14 @@ export type ScoutBatchParams = {
   departments?: string[];
   /** Force classic batch even when workspace AI mode is agentic. */
   forceClassic?: boolean;
+  leadsLimit?: number;
+  leadTarget?: number;
+  fetchSeed?: number;
+  excludeNames?: string[];
+  locationScope?: "focus" | "interest";
+  agenticDataStack?: AgenticDataStack;
+  lockIndustries?: boolean;
+  lockRoles?: boolean;
 };
 
 export type ScoutBatchResult = {
@@ -49,12 +58,9 @@ export type ScoutStageTrace = {
 const AGENT_COMPANY_CONCURRENCY = 4;
 
 export async function runScoutBatch(params: ScoutBatchParams): Promise<ScoutBatchResult> {
-  const workspaceCfg = await getResolvedEnrichmentConfigForWorkspace(params.workspaceId);
-  if (!params.forceClassic && isAgenticLeadFinding(workspaceCfg)) {
-    const { runAgenticScoutBatch } = await import("@/lib/agents/scout-agentic");
-    return runAgenticScoutBatch(params);
-  }
-  return runClassicScoutBatch(params);
+  if (params.forceClassic) return runClassicScoutBatch(params);
+  const { runAgenticScoutBatch } = await import("@/lib/agents/scout-agentic");
+  return runAgenticScoutBatch(params);
 }
 
 /** Legacy one-pass scout used only when classic is forced. */

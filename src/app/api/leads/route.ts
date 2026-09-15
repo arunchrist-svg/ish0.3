@@ -16,6 +16,7 @@ import {
 } from "@/lib/api/cursor";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
+import { withoutPendingInitialEmailSend } from "@/lib/outreach/pending-send-count";
 
 export const preferredRegion = ["sin1"];
 
@@ -30,11 +31,16 @@ export async function GET(req: Request) {
     const statusFilter = searchParams.get("status");
     const statuses = statusFilter ? statusFilter.split(",").filter(Boolean) : null;
     const limit = parseListLimit(searchParams.get("limit"));
-    const cursor = decodeCursor(searchParams.get("cursor"));
+    const sortSentNewest = searchParams.get("sort") === "sent_newest";
+    const cursor = sortSentNewest ? null : decodeCursor(searchParams.get("cursor"));
     const includeTotal = searchParams.get("totals") === "1";
 
+    const excludePendingInitial = searchParams.get("excludePendingInitial") === "1";
+    const ids = searchParams.get("ids")?.split(",").map((id) => id.trim()).filter(Boolean) ?? [];
     const whereParts = [eq(leads.tenantId, ctx.tenantId)];
     if (statuses?.length) whereParts.push(inArray(leads.status, statuses));
+    if (ids.length) whereParts.push(inArray(leads.id, ids.slice(0, 100)));
+    if (excludePendingInitial) whereParts.push(withoutPendingInitialEmailSend());
     const keyset = keysetBefore(leads.createdAt, leads.id, cursor);
     if (keyset) whereParts.push(keyset);
     const listWhere = withLeadVisibility(ctx, ...whereParts);
@@ -44,37 +50,68 @@ export async function GET(req: Request) {
       statuses?.length ? inArray(leads.status, statuses) : undefined,
     );
 
+    const listColumns = {
+      id: leads.id,
+      status: leads.status,
+      score: leads.score,
+      createdAt: leads.createdAt,
+      researcherEligible: leads.researcherEligible,
+      leadSource: leads.leadSource,
+      isPinned: leads.isPinned,
+      createdByUserId: leads.createdByUserId,
+      createdByName: users.name,
+      name: contacts.name,
+      title: contacts.title,
+      emailStatus: contacts.emailStatus,
+      email: contacts.email,
+      phone: contacts.phone,
+      linkedIn: contacts.linkedIn,
+      company: accounts.name,
+      companyDomain: accounts.domain,
+      employees: accounts.employees,
+      city: accounts.city,
+    };
+
+    const lastInitialSent = db
+      .select({
+        leadId: outreachSchedule.leadId,
+        sentAt: sql<Date>`max(${outreachSchedule.sentAt})`.as("last_sent_at"),
+      })
+      .from(outreachSchedule)
+      .where(
+        and(
+          eq(outreachSchedule.channel, "email"),
+          eq(outreachSchedule.sequenceDay, 0),
+          eq(outreachSchedule.status, "sent"),
+        ),
+      )
+      .groupBy(outreachSchedule.leadId)
+      .as("last_initial_sent");
+
+    const listQuery = sortSentNewest
+      ? db
+          .select(listColumns)
+          .from(leads)
+          .leftJoin(contacts, eq(contacts.id, leads.contactId))
+          .leftJoin(accounts, eq(accounts.id, leads.accountId))
+          .leftJoin(users, eq(users.id, leads.createdByUserId))
+          .leftJoin(lastInitialSent, eq(lastInitialSent.leadId, leads.id))
+          .where(listWhere)
+          .orderBy(sql`${lastInitialSent.sentAt} desc nulls last`, desc(leads.createdAt), desc(leads.id))
+          .limit(limit)
+      : db
+          .select(listColumns)
+          .from(leads)
+          .leftJoin(contacts, eq(contacts.id, leads.contactId))
+          .leftJoin(accounts, eq(accounts.id, leads.accountId))
+          .leftJoin(users, eq(users.id, leads.createdByUserId))
+          .where(listWhere)
+          .orderBy(desc(leads.createdAt), desc(leads.id))
+          .limit(limit);
+
     const dbStart = performance.now();
     const [rows, totalRow] = await Promise.all([
-      db
-        .select({
-          id: leads.id,
-          status: leads.status,
-          score: leads.score,
-          createdAt: leads.createdAt,
-          researcherEligible: leads.researcherEligible,
-          leadSource: leads.leadSource,
-          isPinned: leads.isPinned,
-          createdByUserId: leads.createdByUserId,
-          createdByName: users.name,
-          name: contacts.name,
-          title: contacts.title,
-          emailStatus: contacts.emailStatus,
-          email: contacts.email,
-          phone: contacts.phone,
-          linkedIn: contacts.linkedIn,
-          company: accounts.name,
-          companyDomain: accounts.domain,
-          employees: accounts.employees,
-          city: accounts.city,
-        })
-        .from(leads)
-        .innerJoin(contacts, eq(contacts.id, leads.contactId))
-        .innerJoin(accounts, eq(accounts.id, leads.accountId))
-        .leftJoin(users, eq(users.id, leads.createdByUserId))
-        .where(listWhere)
-        .orderBy(desc(leads.createdAt), desc(leads.id))
-        .limit(limit),
+      listQuery,
       includeTotal
         ? db
             .select({ n: sql<number>`count(*)::int` })
@@ -106,13 +143,13 @@ export async function GET(req: Request) {
             inArray(outreachSchedule.leadId, leadIds),
             eq(outreachSchedule.channel, "email"),
             eq(outreachSchedule.sequenceDay, 0),
-            inArray(outreachSchedule.status, ["scheduled", "sending", "sent"]),
+            inArray(outreachSchedule.status, ["scheduled", "sending", "paused", "sent"]),
           ),
         )
         .orderBy(asc(outreachSchedule.scheduledFor));
 
       for (const row of scheduleMeta) {
-        if (row.status === "scheduled" || row.status === "sending") {
+        if (row.status === "scheduled" || row.status === "sending" || row.status === "paused") {
           if (!pendingByLead.has(row.leadId)) {
             pendingByLead.set(row.leadId, {
               scheduledFor: row.scheduledFor,
@@ -138,9 +175,9 @@ export async function GET(req: Request) {
       const pending = sentAt ? undefined : pendingByLead.get(r.id);
       return {
         id: r.id,
-        name: r.name,
+        name: r.name?.trim() || "—",
         title: r.title ?? "—",
-        company: r.company,
+        company: r.company?.trim() || "—",
         companyDomain: r.companyDomain ?? undefined,
         employees: r.employees ?? undefined,
         city: r.city ?? "—",
@@ -165,13 +202,15 @@ export async function GET(req: Request) {
       };
     });
 
-    const nextCursor = nextCursorFromRows(
-      rows.map((r) => ({
-        id: r.id,
-        createdAt: r.createdAt,
-      })),
-      limit,
-    );
+    const nextCursor = sortSentNewest
+      ? null
+      : nextCursorFromRows(
+          rows.map((r) => ({
+            id: r.id,
+            createdAt: r.createdAt,
+          })),
+          limit,
+        );
 
     const res = NextResponse.json({
       leads: queue,

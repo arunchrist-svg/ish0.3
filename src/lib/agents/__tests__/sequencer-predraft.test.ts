@@ -73,6 +73,8 @@ vi.mock("drizzle-orm", () => ({
 vi.mock("@/lib/outreach/reschedule-initial-queue", () => ({
   rollAllDueQueuesOutsideWindow: vi.fn(async () => 0),
   rollDueInitialQueueIfOutsideWindow: vi.fn(async () => null),
+  rebalanceQueuedInitialSendGaps: vi.fn(async () => 0),
+  spreadQueuedInitialEmailsFromNow: vi.fn(async () => null),
 }));
 vi.mock("@/lib/billing/credits", () => ({
   assertCredits: mocks.assertCredits,
