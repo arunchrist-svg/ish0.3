@@ -14,23 +14,29 @@ describe("providersToAttempt", () => {
     delete process.env.OPENROUTER_API_KEY;
   });
 
-  it("prefers gemini when configured", () => {
+  it("prefers OpenRouter then Claude, and does not use Gemini for chat", () => {
     process.env.GEMINI_API_KEY = "g1";
     process.env.ANTHROPIC_API_KEY = "a1";
-    delete process.env.OPENROUTER_API_KEY;
-    expect(providersToAttempt()).toEqual(["gemini", "anthropic"]);
+    process.env.OPENROUTER_API_KEY = "o1";
+    expect(providersToAttempt()).toEqual(["openrouter", "anthropic"]);
   });
 
-  it("honors explicit provider first then rotates through defaults", () => {
+  it("ignores Gemini even when it is requested first", () => {
     process.env.GEMINI_API_KEY = "g1";
     process.env.OPENROUTER_API_KEY = "o1";
-    expect(providersToAttempt("openrouter")).toEqual(["openrouter", "gemini"]);
+    expect(providersToAttempt("gemini")).toEqual(["openrouter"]);
+  });
+
+  it("honors explicit OpenRouter first then rotates through chat defaults", () => {
+    process.env.GEMINI_API_KEY = "g1";
+    process.env.OPENROUTER_API_KEY = "o1";
+    expect(providersToAttempt("openrouter")).toEqual(["openrouter"]);
   });
 
   it("skips rejected gemini keys until provider is exhausted", () => {
     process.env.GEMINI_API_KEY = "g1";
     process.env.GEMINI_API_KEY_2 = "g2";
     markGeminiKeyRejected("gemini-1");
-    expect(providersToAttempt()).toEqual(["gemini"]);
+    expect(providersToAttempt()).toEqual([]);
   });
 });

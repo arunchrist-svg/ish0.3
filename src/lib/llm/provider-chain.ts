@@ -3,7 +3,8 @@ import { getGeminiKeys } from "@/lib/llm/gemini-keys";
 import { getOpenRouterKeys } from "@/lib/llm/openrouter";
 import { sanitizeEnvValue } from "@/lib/llm/gemini-env";
 
-export const DEFAULT_LLM_PROVIDER_ORDER: LLMProvider[] = ["gemini", "anthropic", "openrouter"];
+/** Chat/extract only. Gemini is reserved for Scout Google Search (`geminiGroundedSearch`). */
+export const DEFAULT_LLM_PROVIDER_ORDER: LLMProvider[] = ["openrouter", "anthropic"];
 
 const sessionRejectedGeminiKeys = new Set<string>();
 const sessionRejectedOpenRouterKeys = new Set<string>();
@@ -77,7 +78,7 @@ export function providersToAttempt(preferred?: LLMProvider): LLMProvider[] {
     if (isProviderConfigured(provider) && !order.includes(provider)) order.push(provider);
   };
 
-  if (preferred) add(preferred);
+  if (preferred && preferred !== "gemini") add(preferred);
   for (const provider of DEFAULT_LLM_PROVIDER_ORDER) add(provider);
   return order;
 }
@@ -88,5 +89,5 @@ export function takeProviderSwitchMessage(from: LLMProvider, to: LLMProvider): s
     anthropic: "Claude",
     openrouter: "OpenRouter",
   };
-  return `${labels[from]} quota reached — switched to ${labels[to]}.`;
+  return `${labels[from]} quota reached. Switched to ${labels[to]}.`;
 }

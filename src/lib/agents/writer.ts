@@ -99,7 +99,7 @@ export async function runWriter(leadId: string, options?: WriterOptions): Promis
   const sequencePosition = options?.sequencePosition ?? (isFollowUp ? (options?.followUpMode === "follow_up" ? 2 : 3) : 1);
 
   const writerMode = resolveWriterMode(options?.writerMode);
-  const llmProvider: LLMProvider | undefined = writerMode === "ai" ? "gemini" : undefined;
+  const llmProvider: LLMProvider | undefined = undefined;
   const defaultOutreachTemplate = resolveDefaultOutreachCta(brandConfig) as OutreachTemplateId;
   const overview = (account.companyOverview as CompanyOverview | null) ?? null;
   const occasionId =

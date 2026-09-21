@@ -10,6 +10,7 @@ import {
   companyPeopleSearchNames,
   companyPeopleSearchTokens,
   dropOpenToWorkPeople,
+  googleFirstPeopleQueries,
   HQ_BUYER_ROLE_TERM,
   HQ_LINKEDIN_ROLE_TERM,
   OPEN_TO_WORK_EXCLUSION,
@@ -51,6 +52,31 @@ describe("buildSimpleGoogleRolePeopleQueries", () => {
     expect(queries.some((q) => /^procurement head nashindustriesinc/i.test(q))).toBe(true);
     expect(queries.some((q) => /^admin head Nash Industries/i.test(q))).toBe(true);
     expect(queries.some((q) => /^hr head nashindustriesinc/i.test(q))).toBe(true);
+  });
+
+  it("leads with the query a person types in Google", () => {
+    const queries = buildSimpleGoogleRolePeopleQueries({
+      company: "Knovatic Solutions",
+      roleHints: ["Head of HR"],
+    });
+    expect(queries[0]).toBe("Knovatic Solutions head hr");
+    expect(queries).toContain("Knovatic Solutions hr head");
+  });
+});
+
+describe("googleFirstPeopleQueries", () => {
+  it("uses the same two queries a person types for HR", () => {
+    expect(googleFirstPeopleQueries("Knovatic Solutions", ["Head of HR"])).toEqual([
+      "Knovatic Solutions head hr",
+      "Knovatic Solutions hr head",
+    ]);
+  });
+
+  it("uses the requested role phrase when it is not HR", () => {
+    expect(googleFirstPeopleQueries("Nash Industries", ["Head of Procurement"])).toEqual([
+      "Nash Industries procurement head",
+      "procurement head Nash Industries",
+    ]);
   });
 });
 

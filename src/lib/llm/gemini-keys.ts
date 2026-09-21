@@ -31,9 +31,12 @@ export function getGeminiKeys(): GeminiKeyEntry[] {
   add(process.env.GEMINI_API_KEY, "gemini-1");
   add(process.env.GEMINI_API_KEY_2, "gemini-2");
   add(process.env.GEMINI_API_KEY_3, "gemini-3");
+  add(process.env.GEMINI_API_KEY_4, "gemini-4");
+  add(process.env.GEMINI_API_KEY_5, "gemini-5");
   add(process.env.GOOGLE_GENERATIVE_AI_API_KEY, "gemini-google");
 
-  return keys;
+  // Newest numbered key first so a fresh account is used before exhausted ones.
+  return keys.reverse();
 }
 
 export function hasGeminiKeys(): boolean {

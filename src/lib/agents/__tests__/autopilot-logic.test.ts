@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   AUTOPILOT_OUTREACH_TEMPLATE,
+  AUTOPILOT_PLACES_QUOTA_ERROR,
   AUTOPILOT_SENDS_EMAIL,
   applyGuessedEmail,
   autopilotSendsEmail,
   companyDedupeReason,
   decideAfterAutopilotChunk,
   guessPersonEmail,
+  isAutopilotPlacesQuotaExhausted,
   isAutopilotScheduleDue,
   isAutopilotTavilyExhausted,
   mergeAutopilotProgress,
@@ -144,6 +146,20 @@ describe("decideAfterAutopilotChunk", () => {
     expect(decision.error).toMatch(/credits ran out/i);
   });
 
+  it("pauses on Places quota before the zero-lead brake", () => {
+    const decision = decideAfterAutopilotChunk({
+      ...base,
+      peopleFound: 0,
+      leadsSavedTotal: 0,
+      companiesSavedTotal: 0,
+      placesQuotaExhausted: true,
+      zeroLeadChunkStreak: 1,
+    });
+    expect(decision.nextStatus).toBe("paused");
+    expect(decision.enqueueNext).toBe(false);
+    expect(decision.error).toBe(AUTOPILOT_PLACES_QUOTA_ERROR);
+  });
+
   it("keeps running when a whole chunk finds companies but zero people", () => {
     const decision = decideAfterAutopilotChunk({
       ...base,
@@ -151,6 +167,7 @@ describe("decideAfterAutopilotChunk", () => {
       leadsSavedTotal: 0,
       companiesSavedTotal: 0,
       allCompaniesDeduped: false,
+      zeroLeadChunkStreak: 1,
     });
     expect(decision).toMatchObject({
       nextStatus: "running",
@@ -158,6 +175,20 @@ describe("decideAfterAutopilotChunk", () => {
       enqueueWriter: false,
       nextChunkIndex: 1,
     });
+  });
+
+  it("pauses after five rounds that save zero leads", () => {
+    const decision = decideAfterAutopilotChunk({
+      ...base,
+      peopleFound: 0,
+      leadsSavedTotal: 0,
+      companiesSavedTotal: 0,
+      chunkIndex: 4,
+      zeroLeadChunkStreak: 5,
+    });
+    expect(decision.nextStatus).toBe("paused");
+    expect(decision.enqueueNext).toBe(false);
+    expect(decision.error).toMatch(/no new leads/i);
   });
 
   it("keeps paging when this search page was all skips or empty", () => {
@@ -347,6 +378,16 @@ describe("tavily and defaults", () => {
     expect(autopilotPeopleSkipReason(["Tavily keys are exhausted. Autopilot stopped."])).toBe(
       "people search paused: Tavily credits ran out",
     );
+  });
+
+  it("detects Places daily quota and surfaces it on skips", () => {
+    const placesMsg =
+      "Quota exceeded for quota metric 'SearchTextRequest' and limit 'SearchTextRequest per day' of service 'places.googleapis.com'";
+    expect(isAutopilotPlacesQuotaExhausted([placesMsg])).toBe(true);
+    expect(isAutopilotPlacesQuotaExhausted(["google_places has exhausted its quota. Switch Data Mode to Free."])).toBe(
+      true,
+    );
+    expect(autopilotPeopleSkipReason([placesMsg])).toBe("Google Places daily search quota ran out");
   });
 });
 

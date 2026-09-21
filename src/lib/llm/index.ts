@@ -202,10 +202,11 @@ export async function callLLM(params: {
   exclusiveProvider?: boolean;
   trace?: LLMTraceContext;
 }): Promise<string> {
-  const providerOrder =
+  const providerOrder = (
     params.exclusiveProvider && params.provider
       ? [params.provider]
-      : providersToAttempt(params.provider);
+      : providersToAttempt(params.provider)
+  ).filter((provider) => provider !== "gemini");
   if (!providerOrder.length) {
     throw new Error("No LLM provider configured. Add GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.");
   }

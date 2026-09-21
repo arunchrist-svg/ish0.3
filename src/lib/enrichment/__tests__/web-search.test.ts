@@ -69,4 +69,11 @@ describe("searchWeb Tavily quota fallback", () => {
     expect(webSearchBackends.gemini).toHaveBeenCalledOnce();
     expect(hits[0]?.url).toContain("anita-rao-hr");
   });
+
+  it("does not spend Gemini on LinkedIn fallbacks when allowGemini is false", async () => {
+    await expect(searchWeb("site:linkedin.com/in Acme", 5, { allowGemini: false })).rejects.toThrow(
+      /quota|Tavily/i,
+    );
+    expect(webSearchBackends.gemini).not.toHaveBeenCalled();
+  });
 });

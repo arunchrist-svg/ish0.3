@@ -5,7 +5,6 @@
  * People search uses the Gemini REST generateContent + googleSearch tool. The AI SDK
  * path rejects gemini-2.5-flash for these keys even though REST grounding works.
  */
-import { geminiModelId } from "@/lib/llm/gemini-env";
 import {
   getAvailableGeminiKeys,
   isLLMQuotaOrAuthError,
@@ -120,8 +119,8 @@ function sourcesToHits(sources: Array<{ url?: string; title?: string }> | undefi
 }
 
 function geminiSearchModels(): string[] {
-  const preferred = geminiModelId("quality");
-  return [...new Set(["gemini-2.5-flash", preferred, "gemini-3.6-flash", "gemini-3.5-flash"])];
+  // 2.5 is blocked for new AI Studio accounts and burns old-account free-tier RPM.
+  return ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.6-flash"];
 }
 
 function isGeminiModelUnavailable(message: string): boolean {
@@ -159,6 +158,13 @@ Query: ${query}`;
   const candidate = data.candidates?.[0];
   const text = candidate?.content?.parts?.map((part) => part.text).filter(Boolean).join("\n") ?? "";
   const hits = mapGroundingMetadataToHits(candidate?.groundingMetadata, text);
+  if (!hits.length && text.trim()) {
+    hits.push({
+      title: query,
+      url: `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      content: text.trim().slice(0, 4000),
+    });
+  }
   return { hits, status: res.status };
 }
 
@@ -178,6 +184,7 @@ export async function geminiGroundedSearch(query: string, limit = 8): Promise<We
             markGeminiKeyRejected(keyEntry.id);
             break;
           }
+          // Per-model quota (e.g. 2.5-flash free cap). Try the next model on this key.
           continue;
         }
         return result.hits.slice(0, Math.max(1, limit));
@@ -185,10 +192,11 @@ export async function geminiGroundedSearch(query: string, limit = 8): Promise<We
         lastError = error;
         const message = error instanceof Error ? error.message : String(error);
         if (isGeminiModelUnavailable(message)) continue;
-        if (isLLMQuotaOrAuthError(error)) {
+        if (/401|invalid.?api.?key|unauthorized|API_KEY_INVALID/i.test(message)) {
           markGeminiKeyRejected(keyEntry.id);
           break;
         }
+        if (isLLMQuotaOrAuthError(error)) continue;
         throw error;
       }
     }
@@ -209,8 +217,13 @@ export function canSearchPeopleOnWeb(): boolean {
 /**
  * Tavily when credits remain. Gemini Google Search when Tavily is missing or out of plan credits.
  */
-export async function searchWeb(query: string, limit = 8): Promise<WebSearchHit[]> {
-  const geminiReady = () => getAvailableGeminiKeys().length > 0;
+export async function searchWeb(
+  query: string,
+  limit = 8,
+  opts?: { allowGemini?: boolean },
+): Promise<WebSearchHit[]> {
+  const allowGemini = opts?.allowGemini !== false;
+  const geminiReady = () => allowGemini && getAvailableGeminiKeys().length > 0;
 
   if (hasTavilyKey()) {
     try {

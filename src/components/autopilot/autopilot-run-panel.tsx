@@ -134,7 +134,7 @@ export function AutopilotRunPanel({
             className="inline-flex h-7 items-center gap-1 rounded-full bg-brand-black px-2.5 text-[11px] font-semibold text-white"
           >
             <Play className="size-3" />
-            {resuming ? "Continuing…" : "Continue to 100 leads"}
+            {resuming ? "Continuing…" : `Continue to ${run.input.targetLeads} leads`}
           </button>
         ) : null}
         <Link

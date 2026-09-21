@@ -11,9 +11,12 @@ import type { DataMode, ScoutCompanyResult, ScoutPersonResult } from "@/lib/enri
 import {
   AUTOPILOT_CHUNK_SIZE,
   AUTOPILOT_LEAD_SOURCE,
+  AUTOPILOT_ZERO_LEAD_CHUNK_LIMIT,
   AUTOPILOT_MAX_TRIES_PER_CHUNK,
   AUTOPILOT_OUTREACH_TEMPLATE,
   AUTOPILOT_PEOPLE_PER_COMPANY,
+  AUTOPILOT_PLACES_QUOTA_ERROR,
+  AUTOPILOT_RUN_WRITER,
   AUTOPILOT_SENDS_EMAIL,
   AUTOPILOT_TARGET_COMPANIES,
   AUTOPILOT_TARGET_LEADS,
@@ -24,6 +27,7 @@ import {
   autopilotPeopleSkipReason,
   autopilotSendsEmail,
   decideAfterAutopilotChunk,
+  isAutopilotPlacesQuotaExhausted,
   isAutopilotScheduleDue,
   isAutopilotTavilyExhausted,
   mergeAutopilotProgress,
@@ -34,6 +38,7 @@ import {
   shouldFillAutopilotChunk,
 } from "@/lib/agents/autopilot-logic";
 import { blockReasonForCompany, loadAutopilotCompanyBlocks } from "@/lib/agents/autopilot-dedupe";
+import { noteProviderError } from "@/lib/enrichment/provider-health";
 import {
   createAutopilotRun,
   deleteAutopilotRun as deleteAutopilotRunRow,
@@ -147,6 +152,13 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
 
   const input = run.input;
   const progress = run.progress;
+  const stalledZeroLeadStreak = (progress.zeroLeadChunkStreak ?? 0) >= AUTOPILOT_ZERO_LEAD_CHUNK_LIMIT;
+  if (stalledZeroLeadStreak) {
+    const error =
+      "Paused after several rounds with no new leads. Companies were found but people search did not save anyone. Change cities or people filters, then tap Continue.";
+    return pauseAutopilotRun(runId, error);
+  }
+
   const chunkSize = planNextAutopilotChunk({
     targetCompanies: input.targetCompanies,
     chunkSize: input.chunkSize,
@@ -296,6 +308,9 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
     searchMessages.push(...discovery.errors, ...discovery.warnings);
     discoveredCount += discovery.companies.length;
     tavilyDead = isAutopilotTavilyExhausted(searchMessages);
+    if (isAutopilotPlacesQuotaExhausted(searchMessages)) {
+      break;
+    }
     if (
       tavilyDead &&
       peopleConfig.peopleSearchProvider === "tavily_ai" &&
@@ -416,8 +431,15 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
   if (tavilyExhausted && !configUsesTavilyForCompanies(peopleConfig) && hasApolloKey()) {
     tavilyExhausted = false;
   }
+  const placesQuotaExhausted = isAutopilotPlacesQuotaExhausted(searchMessages);
+  if (placesQuotaExhausted) {
+    const placesMsg =
+      searchMessages.find((msg) => isAutopilotPlacesQuotaExhausted([msg])) ?? AUTOPILOT_PLACES_QUOTA_ERROR;
+    noteProviderError("google_places", new Error(placesMsg), placesMsg);
+  }
   const emptyPage = attemptedThisChunk.length === 0;
   const emptyDiscoveryStreak = emptyPage ? (progress.emptyDiscoveryStreak ?? 0) + 1 : 0;
+  const zeroLeadChunkStreak = newLeadIds.length === 0 ? (progress.zeroLeadChunkStreak ?? 0) + 1 : 0;
   const merged = mergeAutopilotProgress(progress, {
     chunkIndex,
     newLeadIds,
@@ -425,14 +447,18 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
     newAttemptedNames: attemptedThisChunk,
     newSkipped: skipped,
     emptyDiscoveryStreak,
-    lastError: tavilyExhausted
-      ? "Tavily credits ran out. Autopilot paused. Add credits, then tap Continue."
-      : null,
+    zeroLeadChunkStreak,
+    lastError: placesQuotaExhausted
+      ? AUTOPILOT_PLACES_QUOTA_ERROR
+      : tavilyExhausted
+        ? "Tavily credits ran out. Autopilot paused. Add credits, then tap Continue."
+        : null,
   });
 
   const decision = decideAfterAutopilotChunk({
     enabled: isAutopilotEnabled(await getAgentFlags(run.workspaceId)),
     tavilyExhausted,
+    placesQuotaExhausted,
     companiesDiscovered: discoveredCount,
     peopleFound,
     allCompaniesDeduped: discoveredCount > 0 && attemptedThisChunk.length === 0,
@@ -444,6 +470,7 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
     chunkSize: input.chunkSize,
     attemptedCount: merged.attemptedNames?.length ?? 0,
     emptyDiscoveryStreak,
+    zeroLeadChunkStreak,
     autoSend: input.autoSend,
   });
 
@@ -458,7 +485,12 @@ export async function runAutopilotChunk(runId: string, chunkIndex: number): Prom
         : undefined,
   });
 
-  if (decision.enqueueWriter && newLeadIds.length && isAutopilotEnabled(await getAgentFlags(run.workspaceId))) {
+  if (
+    AUTOPILOT_RUN_WRITER &&
+    decision.enqueueWriter &&
+    newLeadIds.length &&
+    isAutopilotEnabled(await getAgentFlags(run.workspaceId))
+  ) {
     await enqueueWriterForLeads({
       leadIds: newLeadIds,
       tenantId: run.tenantId,
@@ -484,7 +516,7 @@ export async function resumeAutopilotRun(runId: string): Promise<AutopilotRunRow
   if (!run) throw new Error("Autopilot run not found");
   if (run.status === "queued" || run.status === "running") return run;
   if (run.progress.leadsSaved >= run.input.targetLeads) {
-    throw new Error("This run already has 100 leads.");
+    throw new Error(`This run already has ${run.input.targetLeads} leads.`);
   }
   if (isAutopilotTavilyExhausted([run.error ?? "", run.progress.lastError ?? ""])) {
     const { getResolvedEnrichmentConfigForWorkspace } = await import(
@@ -512,16 +544,26 @@ export async function resumeAutopilotRun(runId: string): Promise<AutopilotRunRow
     throw new Error("Autopilot is paused. Turn it on in Settings → AI.");
   }
 
+  const liftedInput =
+    run.input.targetLeads < AUTOPILOT_TARGET_LEADS || run.input.targetCompanies < AUTOPILOT_TARGET_COMPANIES
+      ? {
+          ...run.input,
+          targetLeads: AUTOPILOT_TARGET_LEADS,
+          targetCompanies: AUTOPILOT_TARGET_COMPANIES,
+        }
+      : run.input;
+
   const nextChunkIndex = run.status === "failed" || run.status === "paused" || run.status === "awaiting_approval"
     ? run.progress.chunkIndex + 1
     : run.progress.chunkIndex;
 
   await updateAutopilotRun(runId, {
+    input: liftedInput,
     status: "queued",
     error: null,
     completedAt: null,
     pausedAt: null,
-    progress: { ...run.progress, lastError: null },
+    progress: { ...run.progress, lastError: null, zeroLeadChunkStreak: 0 },
   });
   await enqueueAutopilotChunk({ runId, chunkIndex: nextChunkIndex });
   const next = await getAutopilotRun(runId);

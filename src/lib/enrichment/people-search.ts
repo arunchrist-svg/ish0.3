@@ -22,7 +22,7 @@ import {
   TavilyQuotaError,
   TAVILY_QUOTA_PEOPLE_MSG,
 } from "./tavily-client";
-import { canSearchPeopleOnWeb, searchWeb } from "./web-search";
+import { canSearchPeopleOnWeb, geminiGroundedSearch, searchWeb } from "./web-search";
 import { fetchCompanyLeadershipPages } from "./company-site-pages";
 import {
   citySearchClause,
@@ -175,15 +175,34 @@ export function buildSimpleGoogleRolePeopleQueries(params: {
   const queries: string[] = [];
   for (const phrase of phrases) {
     for (const company of companies.slice(0, 3)) {
+      // Same order people type in Google: "Knovatic Solutions head hr"
+      queries.push(`${company} ${phrase}`);
       queries.push(`${phrase} ${company}`);
       queries.push(`${company} ${phrase} linkedin`);
       if (locality) {
+        queries.push(`${company} ${phrase} ${locality}`);
         queries.push(`${phrase} ${company} ${locality}`);
         queries.push(`${company} ${phrase} ${locality} linkedin`);
       }
     }
   }
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 12);
+  if (phrases.some((phrase) => /\bhr\b/.test(phrase))) {
+    for (const company of companies.slice(0, 2)) {
+      queries.unshift(`${company} head hr`);
+    }
+  }
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 20);
+}
+
+/** 1–2 queries a person types, e.g. "Knovatic Solutions head hr". */
+export function googleFirstPeopleQueries(company: string, roleHints: string[] = []): string[] {
+  const name = company.trim();
+  if (!name) return [];
+  const phrases = [...new Set(roleHints.map(toGoogleStyleRolePhrase).filter(Boolean))];
+  const wantsHr = !phrases.length || phrases.some((phrase) => /\bhr\b/.test(phrase));
+  if (wantsHr) return [`${name} head hr`, `${name} hr head`];
+  const phrase = phrases[0]!;
+  return [`${name} ${phrase}`, `${phrase} ${name}`];
 }
 
 /**
@@ -480,7 +499,7 @@ async function fetchLinkedInForUnresolved(
 
       for (const q of queries) {
         try {
-          const hits = await searchWeb(q, perQueryLimit);
+          const hits = await searchWeb(q, perQueryLimit, { allowGemini: false });
           for (const hit of hits) {
             if (!hit.url.toLowerCase().includes("linkedin.com/in/")) continue;
             const match = hit.url.match(/linkedin\.com\/in\/([^/?#]+)/i);
@@ -641,7 +660,7 @@ export function buildGoogleStyleSeniorPeopleQueries(params: {
     );
     queries.push(`site:linkedin.com/in "${company}" (${HQ_LINKEDIN_ROLE_TERM}) India`);
   }
-  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 18);
+  return [...new Set(queries.map(excludeOpenToWork))].slice(0, 28);
 }
 
 export function buildPeopleSearchQueries(params: {
@@ -761,7 +780,7 @@ async function fetchOpenToWorkDenylistHits(
   const batches = await Promise.all(
     queries.map(async (q) => {
       try {
-        return await searchWeb(q, optimizedMaxResults(3));
+        return await searchWeb(q, optimizedMaxResults(3), { allowGemini: false });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         console.warn("[people-search] Open to Work denylist query failed:", q, message);
@@ -891,13 +910,7 @@ export async function searchPeopleViaWeb(params: {
       localities: naturalLocalities,
       roleHints: roleLabels,
     });
-    const llmQueries = await generateLinkedInSearchQueriesWithLLM({
-      company,
-      companyAliases,
-      localities: naturalLocalities,
-      roleHints: roleLabels,
-      localOperators,
-    });
+    const llmQueries: string[] = [];
     queries = [
       ...new Set([...naturalQueries, ...llmQueries.map(excludeOpenToWork), ...baseQueries]),
     ];
@@ -1025,7 +1038,7 @@ export async function searchPeopleViaWeb(params: {
     const tavilyBatches = await Promise.all(
       batch.map(async (q) => {
         try {
-          return await searchWeb(q, perQueryLimit);
+          return await searchWeb(q, perQueryLimit, { allowGemini: false });
         } catch (e) {
           const err = e instanceof Error ? e : new Error(String(e));
           console.error("[people-search] web query failed:", q, err.message);
@@ -1069,10 +1082,139 @@ export async function searchPeopleViaWeb(params: {
     return { raw, matched, roleMatched };
   };
 
-  // Keep searching until we have a buyer at this company. Wrong-company names in the
-  // first web page must not skip the LinkedIn query.
-  await runQueryBatch(queries.slice(0, 1));
+  async function pullGeminiGoogleFirst() {
+    if (localOperators || !hasGeminiKey()) return;
+    const googleQueries = googleFirstPeopleQueries(company, roleLabels).slice(0, 2);
+    if (!googleQueries.length) return;
+    console.info("[people-search] Gemini Google Search first", { company, queries: googleQueries });
+    for (const q of googleQueries) {
+      try {
+        const hits = await geminiGroundedSearch(q, 8);
+        allResults.push(...hits);
+        if (hits.length) break;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("[people-search] Gemini Google Search failed:", q, message);
+      }
+    }
+  }
+
+  await pullGeminiGoogleFirst();
   let { raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits();
+
+  async function extractBuyersWithLlm(): Promise<ScoutPersonResult[]> {
+    if (!hasLLMKey() || !allResults.length) return [];
+    const context = allResults
+      .slice(0, 12)
+      .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 800)}`)
+      .join("\n\n");
+
+    const roleFocus = localOperators
+      ? `Prioritize local seniors: ${roleHints.length ? roleHints.join(", ") : "Branch Manager, Principal, General Manager, Manager"}. Drop Head of HR, CHRO, Team Leads, Open to Work, and people at distant corporate HQ.`
+      : roleHints.length > 0
+        ? `Prioritize titles matching: ${roleHints.join(", ")}. Drop Finance, CTO, sales, engineering, and unrelated roles.`
+        : "Find HR, Procurement, Admin, and Facilities managers and directors. Drop Team Leads and Open to Work.";
+
+    const geoInstruction = localOperators
+      ? "Keep branch, school, hospital, or hotel operators in this area. Skip Head of HR, CHRO, and corporate HQ people unless they clearly work at this branch."
+      : hqCorridorPhase
+        ? "Plant-city search was empty. Keep Head of HR, HR Director, CHRO, or CPO at this company's nearby HQ metro only. Drop Delhi, Mumbai, NYC, and other far metros. Drop wrong employers (e.g. M3M when the target is 3M)."
+        : restrictToArea
+          ? "Keep people based in the selected nearby areas only. Do not include city-wide Bengaluru HQ or India-wide Head of HR unless they work in those areas."
+          : "Keep HR Manager, Head of HR, HR Director, and CHRO at the same company's nearby HQ. Exclude other countries.";
+    const goldBlock = params.goldFewShot?.trim()
+      ? `\nWorkspace gold cases (follow KEEP/DROP like a human):\n${params.goldFewShot.trim()}\n`
+      : "";
+    try {
+      const raw = await callLLM({
+        tier: "fast",
+        system: `Extract named individuals from search results for a B2B outreach contact list.
+Output ONLY a valid JSON array. No markdown fences.
+Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
+Rules:
+- Only people whose CURRENT employer is the target company.
+- IMPORTANT: Also extract people named in HR appointment news articles (hrkatha.com, peoplematters.in, etc.) and in Google search overviews. A snippet like "Namitha A is the Head of Human Resources Operations at Knovatic Solutions" is a strong signal.
+- Format title as "Role at Company" when the source headline shows the employer (e.g. "Head of HR at Infosys", "CHRO at Titan Company", "Plant HR Manager at JSW Steel"). If the employer is not in the snippet, keep the role alone.
+- Format bio as one short sentence that always includes the employer name when the person works at the target company (e.g. "CHRO at Infosys based in Bengaluru." or "Head of Procurement at Titan Company."). Never leave bio blank.
+- If a LinkedIn URL appears in the results for the named person, include it in the linkedIn field.
+- Exclude former employees ("exits", "leaves", "resigned"), Open to Work / job-seeker profiles, Team Leads, consultants at other firms, and anyone whose headline names a different company.
+- Never rewrite a different employer into the target company name.
+- Never invent emails, phones, or LinkedIn URLs that are not in the results.
+- Prefer people located in the target city when location is stated.`,
+        prompt: `Company: ${company}${companyAliases.length ? ` (also known as ${companyAliases.join(", ")})` : ""}
+Target city: ${cityClause}
+Find: ${roleFocus}
+Prefer people based in or near ${cityClause} when location is stated.
+${geoInstruction}
+${goldBlock}
+${context}
+
+Return up to ${limit} people.`,
+        maxTokens: 1200,
+      });
+
+      const parsed = parseJsonArrayFromLLM(raw)
+        .map((person) => mapLLMPerson(person, dataSource))
+        .filter((person): person is ScoutPersonResult => !!person)
+        .filter((person) => !personTitleConflictsWithCompany(person.title, company))
+        .filter((person) => isUsableScoutPerson(person, allResults, { localOperators }))
+        .filter((person) => llmPersonSupportedBySearchHits(person, allResults, searchNames));
+
+      const afterHitResolve = resolveLinkedInFromHits(parsed, allResults);
+      const resolvedParsed = await fetchLinkedInForUnresolved(
+        afterHitResolve,
+        company,
+        companyAliases,
+        perQueryLimit,
+      );
+
+      const roleMatched = resolvedParsed.filter((p) =>
+        localOperators
+          ? titleMatchesRoleHints(
+              p.title,
+              roleHints.length ? roleHints : ["Branch Manager", "Principal", "General Manager", "Manager"],
+              { localOperators },
+            )
+          : (!roleHints.length && isFestivalBuyerRole(p.title)) ||
+            titleMatchesRoleHints(p.title, roleHints) ||
+            isFestivalBuyerRole(p.title),
+      );
+      if (!roleMatched.length) return [];
+      return finalize(roleMatched.slice(0, limit));
+    } catch (e) {
+      console.error("[people-search] LLM parse failed:", e);
+      return [];
+    }
+  }
+
+  async function keepNamedBuyers(people: ScoutPersonResult[]): Promise<ScoutPersonResult[]> {
+    if (!people.length) return [];
+    const afterHitResolve = resolveLinkedInFromHits(people.slice(0, limit), allResults);
+    const resolved = await fetchLinkedInForUnresolved(
+      afterHitResolve,
+      company,
+      companyAliases,
+      perQueryLimit,
+    );
+    return finalize(resolved);
+  }
+
+  if (allResults.length && !localOperators) {
+    if (roleMatchedHeuristic.length) {
+      const kept = await keepNamedBuyers(roleMatchedHeuristic);
+      if (kept.length) return kept;
+    }
+    const fromOverview = heuristic.filter((p) => isFestivalBuyerRole(p.title));
+    if (fromOverview.length) {
+      const kept = await keepNamedBuyers(fromOverview);
+      if (kept.length) return kept;
+    }
+    const llmKept = await extractBuyersWithLlm();
+    if (llmKept.length) return llmKept;
+  }
+
+  await runQueryBatch(queries.slice(0, 1));
+  ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
   if (!roleMatchedHeuristic.length && queries.length > 1) {
     await runQueryBatch(queries.slice(1, 3));
     ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
@@ -1132,103 +1274,12 @@ export async function searchPeopleViaWeb(params: {
 
   // Prefer heuristic when we already have role matches — skip LLM for scout speed.
   if (roleMatchedHeuristic.length > 0) {
-    const kept = await finalize(roleMatchedHeuristic.slice(0, limit));
+    const kept = await keepNamedBuyers(roleMatchedHeuristic);
     if (kept.length) return kept;
   }
 
-  // LLM when snippets exist but heuristic found nobody matching the company or role.
-  if (hasLLMKey()) {
-    const context = allResults
-      .slice(0, 12)
-      .map((r, i) => `[${i + 1}] ${r.title}\nURL: ${r.url}\n${r.content.slice(0, 400)}`)
-      .join("\n\n");
-
-    const roleFocus = localOperators
-      ? `Prioritize local seniors: ${roleHints.length ? roleHints.join(", ") : "Branch Manager, Principal, General Manager, Manager"}. Drop Head of HR, CHRO, Team Leads, Open to Work, and people at distant corporate HQ.`
-      : roleHints.length > 0
-        ? `Prioritize titles matching: ${roleHints.join(", ")}. Drop Finance, CTO, sales, engineering, and unrelated roles.`
-        : "Find HR, Procurement, Admin, and Facilities managers and directors. Drop Team Leads and Open to Work.";
-
-    const geoInstruction = localOperators
-      ? "Keep branch, school, hospital, or hotel operators in this area. Skip Head of HR, CHRO, and corporate HQ people unless they clearly work at this branch."
-      : hqCorridorPhase
-        ? "Plant-city search was empty. Keep Head of HR, HR Director, CHRO, or CPO at this company's nearby HQ metro only. Drop Delhi, Mumbai, NYC, and other far metros. Drop wrong employers (e.g. M3M when the target is 3M)."
-        : restrictToArea
-          ? "Keep people based in the selected nearby areas only. Do not include city-wide Bengaluru HQ or India-wide Head of HR unless they work in those areas."
-          : "Keep HR Manager, Head of HR, HR Director, and CHRO at the same company's nearby HQ. Exclude other countries.";
-    const goldBlock = params.goldFewShot?.trim()
-      ? `\nWorkspace gold cases (follow KEEP/DROP like a human):\n${params.goldFewShot.trim()}\n`
-      : "";
-    try {
-      const raw = await callLLM({
-        tier: "fast",
-        system: `Extract named individuals from search results for a B2B outreach contact list.
-Output ONLY a valid JSON array. No markdown fences.
-Each item: { "name": string, "title": string | null, "department": string | null, "linkedIn": string | null, "location": string | null, "bio": string | null }
-Rules:
-- Only people whose CURRENT employer is the target company.
-- IMPORTANT: Also extract people named in HR appointment news articles (hrkatha.com, peoplematters.in, etc.) — these confirm the real CHRO/HR head with high confidence. A snippet like "Company appoints [Name] as CHRO" is a strong signal — include that person.
-- Format title as "Role at Company" when the source headline shows the employer (e.g. "Head of HR at Infosys", "CHRO at Titan Company", "Plant HR Manager at JSW Steel"). If the employer is not in the snippet, keep the role alone.
-- Format bio as one short sentence that always includes the employer name when the person works at the target company (e.g. "CHRO at Infosys based in Bengaluru." or "Head of Procurement at Titan Company."). Never leave bio blank.
-- If a LinkedIn URL appears in the results for the named person, include it in the linkedIn field.
-- Exclude former employees ("exits", "leaves", "resigned"), Open to Work / job-seeker profiles, Team Leads, consultants at other firms, and anyone whose headline names a different company.
-- Never rewrite a different employer into the target company name.
-- Never invent emails, phones, or LinkedIn URLs that are not in the results.
-- Prefer people located in the target city when location is stated.`,
-        prompt: `Company: ${company}${companyAliases.length ? ` (also known as ${companyAliases.join(", ")})` : ""}
-Target city: ${cityClause}
-Find: ${roleFocus}
-Prefer people based in or near ${cityClause} when location is stated.
-${geoInstruction}
-${goldBlock}
-${context}
-
-Return up to ${limit} people.`,
-        maxTokens: 1200,
-      });
-
-      // City filtering deferred to waterfall.ts — LLM-extracted people without a parsed
-      // location should still reach the buyer-role check and city relaxation downstream.
-      // matchCompany is NOT applied here: it checks person.bio/title for company name, but
-      // the LLM bio is a clean summary that often omits the company. The LLM was already
-      // instructed to only extract current employees; llmPersonSupportedBySearchHits does
-      // the employment verification against the actual search hits. Only the title-conflict
-      // guard (e.g. "Plant Head Tata Steel" on a JSW Steel scout) is kept.
-      const parsed = parseJsonArrayFromLLM(raw)
-        .map((person) => mapLLMPerson(person, dataSource))
-        .filter((person): person is ScoutPersonResult => !!person)
-        .filter((person) => !personTitleConflictsWithCompany(person.title, company))
-        .filter((person) => isUsableScoutPerson(person, allResults, { localOperators }))
-        .filter((person) => llmPersonSupportedBySearchHits(person, allResults, searchNames));
-
-      // Resolve missing LinkedIn URLs: first from existing hits (free), then targeted search (cheap).
-      const afterHitResolve = resolveLinkedInFromHits(parsed, allResults);
-      const resolvedParsed = await fetchLinkedInForUnresolved(
-        afterHitResolve,
-        company,
-        companyAliases,
-        perQueryLimit,
-      );
-
-      const roleMatched = resolvedParsed.filter((p) =>
-        localOperators
-          ? titleMatchesRoleHints(
-              p.title,
-              roleHints.length ? roleHints : ["Branch Manager", "Principal", "General Manager", "Manager"],
-              { localOperators },
-            )
-          : (!roleHints.length && isFestivalBuyerRole(p.title)) ||
-            titleMatchesRoleHints(p.title, roleHints) ||
-            isFestivalBuyerRole(p.title),
-      );
-      if (roleMatched.length) {
-        const kept = await finalize(roleMatched.slice(0, limit));
-        if (kept.length) return kept;
-      }
-    } catch (e) {
-      console.error("[people-search] LLM parse failed:", e);
-    }
-  }
+  const llmKept = await extractBuyersWithLlm();
+  if (llmKept.length) return llmKept;
 
   // Last resort: company-matched festival buyers only. Never return unfiltered heuristic.
   if (roleMatchedHeuristic.length) {

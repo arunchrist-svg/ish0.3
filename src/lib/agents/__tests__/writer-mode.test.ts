@@ -154,11 +154,12 @@ describe("writerMode", () => {
     expect(mocks.callLLM).toHaveBeenCalled();
   });
 
-  it("calls Gemini for AI Writer emails", async () => {
-    mocks.callLLM.mockRejectedValue(new Error("GEMINI_HIT"));
-    await expect(runWriter("lead-1", { writerMode: "ai" })).rejects.toThrow("GEMINI_HIT");
+  it("does not send AI Writer emails through Gemini", async () => {
+    mocks.callLLM.mockRejectedValue(new Error("OR_HIT"));
+    await expect(runWriter("lead-1", { writerMode: "ai" })).rejects.toThrow("OR_HIT");
     expect(mocks.insertValues).not.toHaveBeenCalled();
-    expect(mocks.callLLM).toHaveBeenCalledWith(
+    expect(mocks.callLLM).toHaveBeenCalled();
+    expect(mocks.callLLM).not.toHaveBeenCalledWith(
       expect.objectContaining({ provider: "gemini" }),
     );
   });

@@ -7,20 +7,24 @@ import type { ScoutCompanyResult, ScoutPersonResult } from "@/lib/enrichment/typ
 import type { AutopilotRunProgress, AutopilotRunStatus, AutopilotSchedule } from "@/db";
 import { getZonedParts } from "@/lib/email/send-window-parts";
 
-export const AUTOPILOT_TARGET_COMPANIES = 100;
-export const AUTOPILOT_TARGET_LEADS = 100;
+export const AUTOPILOT_TARGET_COMPANIES = 1000;
+export const AUTOPILOT_TARGET_LEADS = 1000;
 export const AUTOPILOT_CHUNK_SIZE = 10;
 export const AUTOPILOT_PEOPLE_PER_COMPANY = 1;
 export const AUTOPILOT_DEFAULT_SENIORITY = ["Manager", "Director"];
 export const AUTOPILOT_DEFAULT_DEPARTMENTS = ["HR", "Procurement"];
 export const AUTOPILOT_LEAD_SOURCE = "scout_autopilot";
-/** Credit backstop only. Empty pages keep running until 100 leads. */
+/** Credit backstop for search pages that return no companies. */
 export const AUTOPILOT_EMPTY_PAGE_LIMIT = 30;
+/** Consecutive chunks with 0 new leads. Finding companies but no people used to loop forever. */
+export const AUTOPILOT_ZERO_LEAD_CHUNK_LIMIT = 5;
 /** Extra company pages inside one chunk until we actually save new leads. */
 export const AUTOPILOT_MAX_DISCOVERY_PASSES = 6;
 /** Cap people lookups per chunk so a dry city cannot burn the whole Tavily pool. */
 export const AUTOPILOT_MAX_TRIES_PER_CHUNK = 40;
 
+/** Autopilot saves leads only. Emails use saved templates, not a live Writer LLM pass. */
+export const AUTOPILOT_RUN_WRITER = false;
 /** Default for new workflow bots: queue Email 1 after drafts. */
 export const AUTOPILOT_SENDS_EMAIL = true;
 /** Fallback template when the bot does not pick one. */
@@ -165,6 +169,18 @@ export function isAutopilotTavilyExhausted(messages: string[]): boolean {
   );
 }
 
+export const AUTOPILOT_PLACES_QUOTA_ERROR =
+  "Google Places daily search quota ran out. Company search stopped. Raise the Places limit or wait until reset, then Continue.";
+
+export function isAutopilotPlacesQuotaExhausted(messages: string[]): boolean {
+  return messages.some(
+    (msg) =>
+      /searchtextrequest|places\.googleapis\.com|google_places has exhausted its quota|google places daily search quota/i.test(
+        msg,
+      ),
+  );
+}
+
 export function companyDedupeReason(input: {
   alreadyOnThisRun?: boolean;
   hasBoardLead?: boolean;
@@ -219,6 +235,7 @@ export function decideAfterAutopilotChunk(input: {
   enabled: boolean;
   creditError?: boolean;
   tavilyExhausted: boolean;
+  placesQuotaExhausted?: boolean;
   companiesDiscovered: number;
   peopleFound: number;
   allCompaniesDeduped: boolean;
@@ -230,6 +247,7 @@ export function decideAfterAutopilotChunk(input: {
   chunkSize: number;
   attemptedCount?: number;
   emptyDiscoveryStreak?: number;
+  zeroLeadChunkStreak?: number;
   autoSend?: boolean;
 }): AutopilotChunkDecision {
   if (!input.enabled) {
@@ -241,6 +259,14 @@ export function decideAfterAutopilotChunk(input: {
       enqueueNext: false,
       enqueueWriter: false,
       error: "Insufficient credits. Autopilot paused. Earlier leads are kept.",
+    };
+  }
+  if (input.placesQuotaExhausted) {
+    return {
+      nextStatus: "paused",
+      enqueueNext: false,
+      enqueueWriter: input.leadsSavedTotal > 0,
+      error: AUTOPILOT_PLACES_QUOTA_ERROR,
     };
   }
   if (input.tavilyExhausted) {
@@ -266,6 +292,17 @@ export function decideAfterAutopilotChunk(input: {
       nextStatus: autopilotSendsEmail(input.autoSend) ? "completed" : "awaiting_approval",
       enqueueNext: false,
       enqueueWriter: input.leadsSavedTotal > 0,
+    };
+  }
+
+  const zeroLeadStreak = input.zeroLeadChunkStreak ?? 0;
+  if (zeroLeadStreak >= AUTOPILOT_ZERO_LEAD_CHUNK_LIMIT) {
+    return {
+      nextStatus: "paused",
+      enqueueNext: false,
+      enqueueWriter: input.leadsSavedTotal > 0,
+      error:
+        "Paused after several rounds with no new leads. Companies were found but people search did not save anyone. Change cities or people filters, then tap Continue.",
     };
   }
 
@@ -316,6 +353,7 @@ export function mergeAutopilotProgress(
     companyNames,
     attemptedNames,
     emptyDiscoveryStreak: patch.emptyDiscoveryStreak ?? prev.emptyDiscoveryStreak ?? 0,
+    zeroLeadChunkStreak: patch.zeroLeadChunkStreak ?? prev.zeroLeadChunkStreak ?? 0,
     skipped: [...(prev.skipped ?? []), ...(patch.newSkipped ?? []), ...(patch.skipped ?? [])].slice(-200),
     lastError: patch.lastError === undefined ? prev.lastError : patch.lastError,
     lastScheduledAt: patch.lastScheduledAt === undefined ? prev.lastScheduledAt : patch.lastScheduledAt,
@@ -364,11 +402,24 @@ export function autopilotFocusIndustries(
 }
 
 export function autopilotPeopleSkipReason(messages: string[]): string {
+  if (isAutopilotPlacesQuotaExhausted(messages)) {
+    return "Google Places daily search quota ran out";
+  }
   if (isAutopilotTavilyExhausted(messages)) {
     return "people search paused: Tavily credits ran out";
   }
   if (messages.some((msg) => /seniority and department|no hr, procurement, admin/i.test(msg))) {
     return "no HR, Admin, or Procurement person found";
   }
+  const cityMiss = messages.find((msg) =>
+    /no (?:decision-makers|people) found in |searched plant city .+ and nearby hq/i.test(msg),
+  );
+  if (cityMiss) return cityMiss.replace(/\s+/g, " ").trim();
+  const quota = messages.find((msg) => /quota exceeded|exhausted its quota/i.test(msg));
+  if (quota) return quota.replace(/\s+/g, " ").trim();
+  const warning = messages.find((msg) =>
+    /no (?:linkedin profiles|decision-makers found for)|people search/i.test(msg),
+  );
+  if (warning) return warning.replace(/\s+/g, " ").trim();
   return "no decision-makers in plant or nearby HQ";
 }

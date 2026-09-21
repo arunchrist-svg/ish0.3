@@ -18,7 +18,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ run: serializeAutopilotRun(run) });
   } catch (e) {
     const message = e instanceof Error ? e.message : "";
-    if (/already has 100 leads|tavily|paused/i.test(message)) {
+    if (/already has \d+ leads|tavily|paused/i.test(message)) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
     return handleApiError(e, "[api/autopilot/runs/resume]");
