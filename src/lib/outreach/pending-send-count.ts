@@ -26,36 +26,34 @@ export function withoutPendingInitialEmailSend(): SQL {
   );
 }
 
-/** Inbox Send All can auto-pick: real primary, or a stored alternate (not firstname@ / lastname@). */
+/** Inbox Send All can auto-pick: any stored address with @, except placeholders and missing. */
 export function withLikelySendableContactEmail(): SQL {
   return sql`(
     (
       ${contacts.email} is not null
       and position('@' in ${contacts.email}) > 1
       and ${contacts.email} <> '—'
-      and (${contacts.emailStatus} is null or ${contacts.emailStatus} not in ('missing', 'generic'))
+      and (${contacts.emailStatus} is null or ${contacts.emailStatus} <> 'missing')
       and lower(split_part(${contacts.email}, '@', 1)) not in (
         'firstname', 'lastname', 'first', 'last', 'name', 'user', 'email', 'info', 'admin', 'test'
-      )
-      and (
-        ${contacts.enrichmentSource} is null
-        or (
-          ${contacts.enrichmentSource} not like '%:first'
-          and ${contacts.enrichmentSource} not like '%:last'
-        )
       )
     )
     or exists (
       select 1
-      from jsonb_array_elements(coalesce(${contacts.alternateEmails}, '[]'::jsonb)) as alt
+      from jsonb_array_elements(
+        case
+          when jsonb_typeof(coalesce(${contacts.alternateEmails}, '[]'::jsonb)) = 'array'
+            then coalesce(${contacts.alternateEmails}, '[]'::jsonb)
+          else '[]'::jsonb
+        end
+      ) as alt
       where coalesce(alt->>'email', '') <> ''
         and position('@' in alt->>'email') > 1
         and alt->>'email' <> '—'
-        and coalesce(alt->>'emailStatus', '') not in ('missing', 'generic', 'bounced')
+        and coalesce(alt->>'emailStatus', '') not in ('missing', 'bounced')
         and lower(split_part(alt->>'email', '@', 1)) not in (
           'firstname', 'lastname', 'first', 'last', 'name', 'user', 'email', 'info', 'admin', 'test'
         )
-        and coalesce(alt->>'pattern', '') not in ('first', 'last')
     )
   )`;
 }

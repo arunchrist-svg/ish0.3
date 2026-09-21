@@ -195,6 +195,54 @@ describe("buildEmailThread", () => {
     expect(thread.events.some((e) => e.label === "If Opened" && e.status === "scheduled")).toBe(true);
   });
 
+  it("shows the full If Opened body when the stored snippet is clipped", () => {
+    const fullBody = `${"Every festive gift carries a message. ".repeat(20)}END OF CATALOGUE.`;
+    const thread = buildEmailThread({
+      lead: { ...baseLead, status: "outreached" } as Parameters<typeof buildEmailThread>[0]["lead"],
+      scheduleRows: [
+        {
+          id: "s1",
+          leadId: "lead-1",
+          sequenceDay: 0,
+          emailKind: "initial",
+          status: "sent",
+          scheduledFor: new Date("2026-09-21T04:00:00Z"),
+          sentAt: new Date("2026-09-21T04:00:00Z"),
+          subjectSent: "Sample",
+          bodySnippet: "Hi there",
+        },
+        {
+          id: "s5",
+          leadId: "lead-1",
+          sequenceDay: 5,
+          emailKind: "catalog_on_open",
+          status: "sent",
+          sentAt: new Date("2026-09-21T14:36:00Z"),
+          openedAt: new Date("2026-09-21T14:36:00Z"),
+          subjectSent: "festive gifting for The Mauve Unitx",
+          bodySnippet: `${fullBody.slice(0, 500)}…`,
+          draftLeadOutreachId: "d5",
+        },
+      ] as unknown as Parameters<typeof buildEmailThread>[0]["scheduleRows"],
+      sequenceDrafts: [
+        {
+          id: "d5",
+          sequencePosition: 5,
+          templateVariant: "catalog_on_open",
+          subjectA: "festive gifting for The Mauve Unitx",
+          emailBody: fullBody,
+        },
+      ] as Parameters<typeof buildEmailThread>[0]["sequenceDrafts"],
+      cadenceDays: [3, 7],
+    });
+
+    const opened = thread.events.find((e) => e.label === "If Opened");
+    expect(opened?.body).toContain("END OF CATALOGUE.");
+    expect((opened?.body ?? "").length).toBeGreaterThan(500);
+    const bar = thread.barNodes.find((n) => n.label === "If Opened");
+    expect(bar?.body).toContain("END OF CATALOGUE.");
+  });
+
   it("uses Email 1 chosen subject as the thread root before send", () => {
     const thread = buildEmailThread({
       lead: { ...baseLead, status: "draft_ready", threadRootSubject: null } as Parameters<

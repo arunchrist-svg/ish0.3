@@ -76,17 +76,25 @@ function MessageBubble({
   );
 
   return (
-    <button
-      type="button"
-      onClick={() => onSelect?.(event.id)}
+    <div
       className={cn(
         "flex w-full flex-col gap-1.5 text-left",
         side === "them" ? "items-start" : "items-end",
       )}
     >
       <div
+        role={onSelect ? "button" : undefined}
+        tabIndex={onSelect ? 0 : undefined}
+        onClick={() => onSelect?.(event.id)}
+        onKeyDown={(e) => {
+          if (!onSelect) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect(event.id);
+          }
+        }}
         className={cn(
-          "max-w-[92%] rounded-[14px] border px-3 py-2.5 shadow-[var(--shadow-brand-sm)] transition-shadow sm:max-w-[78%]",
+          "max-w-[92%] rounded-[14px] border px-3 py-2.5 text-left shadow-[var(--shadow-brand-sm)] transition-shadow sm:max-w-[85%]",
           side === "them"
             ? "border-brand-stratus-blue/15 bg-white"
             : "border-brand-stratus-blue/20 bg-brand-canvas/60",
@@ -137,18 +145,11 @@ function MessageBubble({
         ) : null}
 
         {isLong ? (
-          <span
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setExpanded((v) => !v);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.stopPropagation();
-                setExpanded((v) => !v);
-              }
             }}
             className="mt-2 inline-flex items-center gap-0.5 text-[11px] font-semibold text-brand-stratus-blue"
           >
@@ -161,10 +162,10 @@ function MessageBubble({
                 Show more <ChevronDown className="size-3" />
               </>
             )}
-          </span>
+          </button>
         ) : null}
       </div>
-    </button>
+    </div>
   );
 }
 

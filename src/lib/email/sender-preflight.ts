@@ -170,13 +170,14 @@ export async function runSenderHealthCheck(
     });
   } else if (!options?.skipVolumeCap && projectedAdditional > 0) {
     if (volume.projectedTotal > rec.max) {
+      // Already within configured dailyCap (volume_cap is the hard stop).
       issues.push({
         id: "warmup_recommend",
         label:
           rec.stage === "new"
             ? `This batch would send ${volume.projectedTotal} today. New inboxes should stay at 20–40/day for the first 2–4 weeks.`
             : `This batch would send ${volume.projectedTotal} today. Recommended for a ${rec.stage} inbox is ${rec.min}–${rec.max}/day.`,
-        severity: "critical",
+        severity: "warn",
       });
     } else {
       const ramp = assertGradualRamp({
@@ -189,7 +190,7 @@ export async function runSenderHealthCheck(
         issues.push({
           id: "warmup_spike",
           label: `Avoid a sudden spike: this batch would bring today to ${volume.projectedTotal} sends (prior day ${sendsPrior24h}). Scale gradually, stay near ${ramp.allowedToday}/day, then confirm if you still need to send.`,
-          severity: "critical",
+          severity: "warn",
         });
       }
     }

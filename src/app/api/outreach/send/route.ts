@@ -458,7 +458,7 @@ export async function POST(req: Request) {
       inReplyTo: threadHeaders.inReplyTo ?? null,
       referencesChain: threadHeaders.references ?? null,
       subjectSent: subject,
-      bodySnippet: (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null,
+      bodySnippet: approval.bodyUsed || outreach.emailBody || null,
       trackingToken: email1TrackingToken,
       draftLeadOutreachId: outreach.id,
     };
@@ -489,7 +489,7 @@ export async function POST(req: Request) {
           rfcMessageId: extra.messageId ?? null,
           recipientEmail: extra.to,
           subjectSent: subject,
-          bodySnippet: (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null,
+          bodySnippet: approval.bodyUsed || outreach.emailBody || null,
           trackingToken: extra.trackingToken,
           emailKind: "initial",
           draftLeadOutreachId: outreach.id,
@@ -529,7 +529,7 @@ export async function POST(req: Request) {
           rfcMessageId: extra.messageId ?? null,
           recipientEmail: extra.to,
           subjectSent: subject,
-          bodySnippet: (approval.bodyUsed || outreach.emailBody || "").slice(0, 500) || null,
+          bodySnippet: approval.bodyUsed || outreach.emailBody || null,
           trackingToken: extra.trackingToken,
           emailKind: "initial",
           draftLeadOutreachId: outreach.id,
@@ -555,7 +555,7 @@ export async function POST(req: Request) {
           emailKind: "followup",
           draftLeadOutreachId: linkedDraft?.id ?? null,
           subjectSent: followUpSubject || null,
-          bodySnippet: linkedDraft?.emailBody?.slice(0, 500) || null,
+          bodySnippet: linkedDraft?.emailBody || null,
         });
       }
     }

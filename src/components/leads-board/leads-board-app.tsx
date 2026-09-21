@@ -294,7 +294,7 @@ export function LeadsBoardApp() {
         setAutopilotFilterRun(null);
       }
       const boardLoadStages = boardPipelineStages().filter((stage) => stage !== BOARD_QUEUED_STAGE);
-      const [countData, queuedPage, ...stagePages] = await Promise.all([
+      const countResult = await Promise.allSettled([
         fetchLeadStageCounts(),
         fetchQueuedLeadsPage({ limit: 5000 }),
         ...boardLoadStages.map(async (stage) => ({
@@ -302,6 +302,31 @@ export function LeadsBoardApp() {
           page: await fetchBoardStagePage(stage, { ids: autopilotIds, force: true }),
         })),
       ]);
+      const countData =
+        countResult[0].status === "fulfilled" ? countResult[0].value : null;
+      const queuedPage =
+        countResult[1].status === "fulfilled" ? countResult[1].value : null;
+      const stagePages = countResult.slice(2).flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+      const loadFailed =
+        !countData || !queuedPage || stagePages.length < boardLoadStages.length;
+      if (loadFailed && !opts?.silent && !countData && stagePages.length === 0) {
+        const firstReject = countResult.find((r) => r.status === "rejected");
+        console.error(
+          "[leads-board] load failed",
+          firstReject && firstReject.status === "rejected" ? firstReject.reason : "partial stage failure",
+        );
+        toast.error("Could not load leads");
+      } else if (loadFailed && !opts?.silent) {
+        const firstReject = countResult.find((r) => r.status === "rejected");
+        console.error(
+          "[leads-board] partial load",
+          firstReject && firstReject.status === "rejected" ? firstReject.reason : "partial stage failure",
+        );
+      }
+      if (!countData && !queuedPage && stagePages.length === 0) {
+        if (autopilotRunId) setAutopilotFilterRun(null);
+        return;
+      }
       const byId = new Map<string, LeadQueueItem>();
       const cursors: Record<string, string | null> = {};
       for (const { stage, page } of stagePages) {
@@ -310,6 +335,7 @@ export function LeadsBoardApp() {
       }
       if (opts?.silent) {
         setLeads((prev) => {
+          if (byId.size === 0) return prev;
           const merged = new Map(prev.map((lead) => [lead.id, lead]));
           for (const lead of byId.values()) merged.set(lead.id, lead);
           return [...merged.values()];
@@ -321,18 +347,23 @@ export function LeadsBoardApp() {
           }
           return next;
         });
-      } else {
+      } else if (byId.size > 0 || stagePages.length > 0) {
         setLeads([...byId.values()]);
         setStageCursors(cursors);
       }
-      setStageCounts(countData.byStage);
-      setEmailReadyCount(countData.emailReady);
-      setEmailSendableCount(countData.emailSendable);
-      setQueuedCount(countData.queued);
-      setQueuedLeadsServer(queuedPage.leads);
-    } catch {
+      if (countData) {
+        setStageCounts(countData.byStage);
+        setEmailReadyCount(countData.emailReady);
+        setEmailSendableCount(countData.emailSendable);
+        setQueuedCount(countData.queued);
+      }
+      if (queuedPage) setQueuedLeadsServer(queuedPage.leads);
+    } catch (err) {
       if (autopilotRunId) setAutopilotFilterRun(null);
-      toast.error("Could not load leads");
+      if (!opts?.silent) {
+        console.error("[leads-board] load failed", err);
+        toast.error("Could not load leads");
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -569,17 +600,44 @@ export function LeadsBoardApp() {
       }
 
       const batchTotal = queued.enqueued;
-      setWritingProgress({ current: 0, total: batchTotal });
+      const batchLeadIds = queued.leadIds ?? [];
+      const syncWritten = queued.bulkFill && queued.mode === "sync" && typeof queued.written === "number";
 
-      let completed = 0;
+      if (syncWritten) {
+        const ok = queued.written ?? 0;
+        const failed = Math.max(0, batchTotal - ok);
+        setWritingProgress({ current: ok, total: batchTotal });
+        setWriteAllResult({ ok, failed, cancelled: 0 });
+        setWriteAllPhase("done");
+        if (ok > 0 && failed === 0) {
+          toast.success(
+            `${label === "Rewrite" ? "Rewrote" : "Wrote"} ${ok.toLocaleString()} ${
+              ok === 1 ? "email" : "emails"
+            }`,
+          );
+        } else {
+          toast.message(
+            `${label} finished with ${ok.toLocaleString()} done${
+              failed > 0 ? `, ${failed.toLocaleString()} failed` : ""
+            }`,
+          );
+        }
+        await load({ silent: true });
+        return;
+      }
+
+      setWritingProgress({ current: queued.written ?? 0, total: batchTotal });
+
+      let completed = queued.written ?? 0;
       let lastCompleted = -1;
       let stallPolls = 0;
-      const pollIntervalMs = 1500;
-      const stallLimit = 60;
+      const pollIntervalMs = 400;
+      const stallLimit = 45;
 
       while (!controller.signal.aborted) {
         const progress = await fetchWriteAllProgress({
-          statuses,
+          leadIds: batchLeadIds.length ? batchLeadIds : undefined,
+          statuses: batchLeadIds.length ? undefined : statuses,
           startedAt,
           total: batchTotal,
         });
@@ -1292,9 +1350,11 @@ export function LeadsBoardApp() {
           setBoardTemplateOverride(id);
         }}
         leadCount={
-          writeAllMode === "rewrite"
-            ? (stageCounts.Email ?? grouped.Email?.length ?? 0)
-            : (stageCounts["Contact Ready"] ?? grouped["Contact Ready"]?.length ?? 0)
+          writeAllPhase === "writing" && writingProgress
+            ? writingProgress.total
+            : writeAllMode === "rewrite"
+              ? (stageCounts.Email ?? grouped.Email?.length ?? 0)
+              : (stageCounts["Contact Ready"] ?? grouped["Contact Ready"]?.length ?? 0)
         }
         phase={writeAllPhase}
         progress={writingProgress}

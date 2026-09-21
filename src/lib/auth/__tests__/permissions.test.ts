@@ -114,8 +114,8 @@ describe("AUTH-UNIT-001 permissions matrix", () => {
 });
 
 describe("lead visibility roles", () => {
-  it("owner sees all tenant leads; admins and members see only their own", () => {
-    expect(leadVisibilityForRole("owner", "user")).toBe("all");
+  it("each mailbox only sees its own leads; superadmin sees all", () => {
+    expect(leadVisibilityForRole("owner", "user")).toBe("own");
     expect(leadVisibilityForRole("admin", "user")).toBe("own");
     expect(leadVisibilityForRole("member", "user")).toBe("own");
     expect(leadVisibilityForRole("viewer", SUPER)).toBe("all");

@@ -78,7 +78,7 @@ export function buildDraftsEmailThread(
       kind: "draft" as const,
       outreachId: d.id,
       subject: pos === 1 ? email1Subject || (d.subjectA ?? undefined) : (d.subjectA ?? undefined),
-      body: clip(d.emailBody),
+      body: fullBody(d.emailBody),
       snippet: preview(d.emailBody),
     };
   });
@@ -266,6 +266,11 @@ function clip(text: string | null | undefined, max = 500): string | undefined {
   if (!text?.trim()) return undefined;
   const s = text.trim();
   return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+function fullBody(text: string | null | undefined): string | undefined {
+  const s = text?.trim();
+  return s ? s : undefined;
 }
 
 function preview(text: string | null | undefined, max = 140): string | undefined {
@@ -481,10 +486,10 @@ export function buildEmailThread(params: {
             : preview(body),
       body:
         step.kind === "inbound_reply"
-          ? clip(lead.lastReplyContent)
+          ? fullBody(lead.lastReplyContent)
           : step.kind === "inbound_auto_reply"
-            ? clip(row.bodySnippet ?? body)
-            : clip(body),
+            ? fullBody(row.bodySnippet ?? body)
+            : fullBody(body),
       at: (row.sentAt ?? (isScheduled ? row.scheduledFor : undefined))?.toISOString(),
       status: bounce.bouncedAt ? "bounced" : openedAt ? "opened" : isScheduled ? "scheduled" : "sent",
       openedAt,
@@ -513,7 +518,7 @@ export function buildEmailThread(params: {
       kind: "inbound_reply",
       label: "Their reply",
       snippet: preview(lead.lastReplyContent),
-      body: clip(lead.lastReplyContent),
+      body: fullBody(lead.lastReplyContent),
       at: inboundReplyAt ?? undefined,
       status: "sent",
       sequenceDay: -2,
@@ -542,7 +547,7 @@ export function buildEmailThread(params: {
       label: `Email ${pos}`,
       subject: resolveDraftSubject(d) || undefined,
       snippet: preview(d.emailBody),
-      body: clip(d.emailBody),
+      body: fullBody(d.emailBody),
       status: "draft",
       sequenceDay: pos === 1 ? 0 : cadenceDays[pos - 2] ?? pos,
     });
@@ -555,7 +560,7 @@ export function buildEmailThread(params: {
       label: "Your reply",
       subject: latestOutreach?.subjectA ?? undefined,
       snippet: preview(latestOutreach?.emailBody),
-      body: clip(latestOutreach?.emailBody),
+      body: fullBody(latestOutreach?.emailBody),
       status: "draft",
       sequenceDay: -1,
     });
@@ -690,9 +695,9 @@ function buildBarNodes(params: {
     );
     const email1Draft = sortedDrafts.find((d) => d.sequencePosition === 1);
     const e1Body =
-      e1Row?.bodySnippet ??
+      email1Draft?.emailBody ??
       (e1Row?.approvalId ? outreachBodiesByApprovalId[e1Row.approvalId] : undefined) ??
-      email1Draft?.emailBody;
+      e1Row?.bodySnippet;
     nodes.push({
       id: "e1",
       label: "Email 1",
@@ -701,7 +706,7 @@ function buildBarNodes(params: {
       scheduleId: e1Row?.id,
       outreachId: e1Row?.draftLeadOutreachId ?? email1Draft?.id,
       subject: e1Row?.subjectSent ?? (email1Draft ? resolveDraftSubject(email1Draft) : undefined) ?? undefined,
-      body: clip(e1Body),
+      body: fullBody(e1Body),
       snippet: preview(e1Body),
       at: e1Row?.sentAt?.toISOString(),
       openedAt: e1Row?.openedAt?.toISOString(),
@@ -786,7 +791,7 @@ function buildBarNodes(params: {
         outreachId: row?.draftLeadOutreachId ?? linkedDraft?.id,
         daysUntil: days,
         subject: row?.subjectSent ?? (linkedDraft ? resolveDraftSubject(linkedDraft) : undefined) ?? undefined,
-        body: clip(body ?? linkedDraft?.emailBody),
+        body: fullBody(body ?? linkedDraft?.emailBody),
         snippet: preview(body ?? linkedDraft?.emailBody),
         at: row?.sentAt?.toISOString() ?? (isScheduled ? row?.scheduledFor?.toISOString() : undefined),
         openedAt: row?.openedAt?.toISOString(),
@@ -832,7 +837,7 @@ function buildBarNodes(params: {
         outreachId: catalogSched?.draftLeadOutreachId ?? catalogDraft?.id,
         daysUntil: days,
         subject: catalogSched?.subjectSent ?? (catalogDraft ? resolveDraftSubject(catalogDraft) : undefined) ?? undefined,
-        body: clip(
+        body: fullBody(
           catalogSched
             ? bodyForScheduleRow(catalogSched, outreachBodiesByApprovalId, catalogDraft)
             : catalogDraft?.emailBody,
@@ -874,7 +879,7 @@ function buildBarNodes(params: {
         kind: "draft" as const,
         outreachId: d.id,
         subject: d.subjectA ?? undefined,
-        body: clip(d.emailBody),
+        body: fullBody(d.emailBody),
         snippet: preview(d.emailBody),
       };
     });
@@ -893,8 +898,9 @@ function bodyForScheduleRow(
   outreachBodiesByApprovalId: Record<string, string>,
   linkedDraft?: OutreachRow | null,
 ) {
-  if (row.bodySnippet?.trim()) return row.bodySnippet;
+  // Prefer the saved draft. bodySnippet is only a 500-char send preview on older rows.
   if (linkedDraft?.emailBody?.trim()) return linkedDraft.emailBody;
+  if (row.bodySnippet?.trim()) return row.bodySnippet;
   // Follow-up / catalog rows reuse Email 1's approvalId for bookkeeping. Never use that
   // approval body as the follow-up preview or the conversation shows Email 1 twice.
   const isFollowUpRow =

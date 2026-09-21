@@ -153,6 +153,7 @@ export function WriteAllModal({
         <div className="mt-2">
           <WritingLoader
             contactName={undefined}
+            templateFill
             sequenceLabel={
               progress && progress.total > 0
                 ? starting

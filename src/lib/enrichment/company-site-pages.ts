@@ -3,7 +3,16 @@
  */
 import type { WebSearchHit } from "./web-search";
 
-const PAGE_PATHS = ["/", "/about", "/about-us", "/leadership", "/team", "/our-team"];
+const PAGE_PATHS = [
+  "/",
+  "/about",
+  "/about-us",
+  "/leadership",
+  "/leadership-team",
+  "/team",
+  "/our-team",
+  "/management",
+];
 const FETCH_TIMEOUT_MS = 8_000;
 const MAX_HTML_BYTES = 200_000;
 const MAX_TEXT_CHARS = 4_000;
@@ -63,7 +72,8 @@ async function fetchPage(url: string): Promise<WebSearchHit | null> {
       signal: controller.signal,
       headers: {
         Accept: "text/html,application/xhtml+xml",
-        "User-Agent": "ISH-Scout/1.0 (people discovery; +https://indiasweethouse.in)",
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
       },
     });
     if (!res.ok) return null;

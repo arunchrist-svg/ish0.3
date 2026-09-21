@@ -120,7 +120,7 @@ describe("runSenderHealthCheck safety", () => {
     ).resolves.toMatchObject({ canSendLive: true });
   });
 
-  it("lets the user confirm a burst above the new-inbox recommendation", async () => {
+  it("warns (not hard-blocks) when projected volume exceeds the stage recommendation but stays under the daily cap", async () => {
     const newInbox = {
       ...baseConfig,
       inboxWarmupStage: "new",
@@ -129,11 +129,13 @@ describe("runSenderHealthCheck safety", () => {
     vi.mocked(countSendsLast24h).mockResolvedValue(0);
     vi.mocked(countSendsInRange).mockResolvedValue(0);
 
-    const blocked = await runSenderHealthCheck(newInbox, "ws-1", { projectedAdditional: 80 });
-    expect(blocked.issues.some((i) => i.id === "warmup_recommend")).toBe(true);
+    const health = await runSenderHealthCheck(newInbox, "ws-1", { projectedAdditional: 80 });
+    const recommend = health.issues.find((i) => i.id === "warmup_recommend");
+    expect(recommend?.severity).toBe("warn");
+    expect(health.hasCritical).toBe(false);
 
     await expect(
-      assertSenderPreflight(newInbox, "ws-1", { projectedAdditional: 80, override: true }),
-    ).resolves.toMatchObject({ hasCritical: true });
+      assertSenderPreflight(newInbox, "ws-1", { projectedAdditional: 80 }),
+    ).resolves.toMatchObject({ canSendLive: true });
   });
 });

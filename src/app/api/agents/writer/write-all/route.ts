@@ -19,6 +19,8 @@ export const maxDuration = 300;
 
 /** Max leads per write-all request (chunked enqueue still applies inside). */
 const MAX_WRITE_ALL = 5000;
+/** Template fill is DB-only. Await small batches so the UI does not sit on a 90s stall poll. */
+const SYNC_BULK_MAX = 400;
 
 export async function POST(req: Request) {
   try {
@@ -83,6 +85,7 @@ export async function POST(req: Request) {
         mode: "queued" as const,
         creditsRequired: 0,
         creditsPerSequence,
+        leadIds: [],
       });
     }
 
@@ -103,24 +106,43 @@ export async function POST(req: Request) {
       const occasionTheme = body.occasionTheme;
       const actor = creditActorFrom(ctx);
 
+      const runFill = async () => {
+        const result = await bulkFillIshTemplateSequences({
+          leadIds,
+          tenantId: ctx.tenantId,
+          outreachTemplate: templateId,
+          occasionTheme,
+        });
+        if (!freeTemplate && result.written > 0) {
+          await deductCredits({
+            tenantId: ctx.tenantId,
+            action: "writer.draft",
+            quantity: result.written * draftsPerLead,
+            referenceId: batchId,
+            idempotencyKey: `writer-bulk:${batchId}`,
+            ...actor,
+          });
+        }
+        return result;
+      };
+
+      if (leadIds.length <= SYNC_BULK_MAX) {
+        const result = await runFill();
+        return NextResponse.json({
+          enqueued: leadIds.length,
+          written: result.written,
+          mode: "sync" as const,
+          batchId,
+          bulkFill: true,
+          leadIds,
+          creditsRequired: leadIds.length * creditsPerSequence,
+          creditsPerSequence,
+        });
+      }
+
       after(async () => {
         try {
-          const result = await bulkFillIshTemplateSequences({
-            leadIds,
-            tenantId: ctx.tenantId,
-            outreachTemplate: templateId,
-            occasionTheme,
-          });
-          if (!freeTemplate && result.written > 0) {
-            await deductCredits({
-              tenantId: ctx.tenantId,
-              action: "writer.draft",
-              quantity: result.written * draftsPerLead,
-              referenceId: batchId,
-              idempotencyKey: `writer-bulk:${batchId}`,
-              ...actor,
-            });
-          }
+          await runFill();
         } catch (e) {
           console.error("[write-all] bulk fill failed", e);
         }
@@ -131,6 +153,7 @@ export async function POST(req: Request) {
         mode: "sync" as const,
         batchId,
         bulkFill: true,
+        leadIds,
         creditsRequired: leadIds.length * creditsPerSequence,
         creditsPerSequence,
       });
@@ -150,6 +173,7 @@ export async function POST(req: Request) {
       enqueued: leadIds.length,
       mode,
       batchId,
+      leadIds,
       creditsRequired: leadIds.length * creditsPerSequence,
       creditsPerSequence,
     });

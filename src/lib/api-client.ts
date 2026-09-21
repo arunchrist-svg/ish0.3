@@ -2172,19 +2172,32 @@ export type LeadBoardCounts = {
   emailSendable: number;
   queued: number;
   emailStageTotal: number;
+  views: { list: number; replied: number };
 };
 
 export async function fetchLeadStageCounts(): Promise<LeadBoardCounts> {
   const data = await get<{
     counts: Record<string, number>;
     board?: { emailReady: number; emailSendable?: number; queued: number; emailStageTotal: number };
+    views?: { list: number; replied: number };
   }>("/api/leads/stage-counts");
   const byStage = aggregateStatusCountsByStage(data.counts);
   const emailStageTotal = data.board?.emailStageTotal ?? byStage.Email ?? 0;
   const queued = data.board?.queued ?? 0;
   const emailReady = data.board?.emailReady ?? Math.max(0, emailStageTotal - queued);
   const emailSendable = data.board?.emailSendable ?? emailReady;
-  return { byStage, emailReady, emailSendable, queued, emailStageTotal };
+  const list =
+    data.views?.list ??
+    Object.values(data.counts).reduce((sum, n) => sum + (typeof n === "number" ? n : 0), 0);
+  const replied = data.views?.replied ?? byStage.Replied ?? 0;
+  return {
+    byStage,
+    emailReady,
+    emailSendable,
+    queued,
+    emailStageTotal,
+    views: { list, replied },
+  };
 }
 
 export async function writeAllLeadsForStage(params: {
@@ -2195,8 +2208,10 @@ export async function writeAllLeadsForStage(params: {
   occasionTheme?: string | null;
 }): Promise<{
   enqueued: number;
+  written?: number;
   mode: "queued" | "sync";
   batchId?: string;
+  bulkFill?: boolean;
   leadIds?: string[];
   creditsRequired: number;
   creditsPerSequence: number;

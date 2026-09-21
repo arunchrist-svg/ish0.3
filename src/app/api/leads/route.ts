@@ -19,6 +19,7 @@ import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { withoutPendingInitialEmailSend } from "@/lib/outreach/pending-send-count";
 import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter";
 import { INBOUND_REPLY_EMAIL_KIND } from "@/lib/email/inbound-match";
+import { outboundCampaignEmailFilter } from "@/lib/email/outbound-campaign";
 
 export const preferredRegion = ["sin1"];
 
@@ -79,21 +80,16 @@ export async function GET(req: Request) {
       city: accounts.city,
     };
 
-    const lastInitialSent = db
+    /** Latest live outbound (Email 1, follow-up, catalog), not Email 1 alone. */
+    const lastOutboundSent = db
       .select({
         leadId: outreachSchedule.leadId,
         sentAt: sql<Date>`max(${outreachSchedule.sentAt})`.as("last_sent_at"),
       })
       .from(outreachSchedule)
-      .where(
-        and(
-          eq(outreachSchedule.channel, "email"),
-          eq(outreachSchedule.sequenceDay, 0),
-          eq(outreachSchedule.status, "sent"),
-        ),
-      )
+      .where(and(outboundCampaignEmailFilter(), eq(outreachSchedule.sendMode, "live")))
       .groupBy(outreachSchedule.leadId)
-      .as("last_initial_sent");
+      .as("last_outbound_sent");
 
     const lastHumanReply = db
       .select({
@@ -129,9 +125,9 @@ export async function GET(req: Request) {
           .leftJoin(contacts, eq(contacts.id, leads.contactId))
           .leftJoin(accounts, eq(accounts.id, leads.accountId))
           .leftJoin(users, eq(users.id, leads.createdByUserId))
-          .leftJoin(lastInitialSent, eq(lastInitialSent.leadId, leads.id))
+          .leftJoin(lastOutboundSent, eq(lastOutboundSent.leadId, leads.id))
           .where(listWhere)
-          .orderBy(sql`${lastInitialSent.sentAt} desc nulls last`, desc(leads.createdAt), desc(leads.id))
+          .orderBy(sql`${lastOutboundSent.sentAt} desc nulls last`, desc(leads.createdAt), desc(leads.id))
           .limit(limit)
       : db
           .select(listColumns)
@@ -162,43 +158,55 @@ export async function GET(req: Request) {
     >();
     const sentByLead = new Map<string, Date>();
     if (leadIds.length > 0) {
-      const scheduleMeta = await db
-        .select({
-          id: outreachSchedule.id,
-          leadId: outreachSchedule.leadId,
-          status: outreachSchedule.status,
-          scheduledFor: outreachSchedule.scheduledFor,
-          sentAt: outreachSchedule.sentAt,
-          lastError: outreachSchedule.lastError,
-        })
-        .from(outreachSchedule)
-        .where(
-          and(
-            inArray(outreachSchedule.leadId, leadIds),
-            eq(outreachSchedule.channel, "email"),
-            eq(outreachSchedule.sequenceDay, 0),
-            inArray(outreachSchedule.status, ["scheduled", "sending", "paused", "sent"]),
+      const [pendingRows, sentRows] = await Promise.all([
+        db
+          .select({
+            id: outreachSchedule.id,
+            leadId: outreachSchedule.leadId,
+            status: outreachSchedule.status,
+            scheduledFor: outreachSchedule.scheduledFor,
+            lastError: outreachSchedule.lastError,
+          })
+          .from(outreachSchedule)
+          .where(
+            and(
+              inArray(outreachSchedule.leadId, leadIds),
+              eq(outreachSchedule.channel, "email"),
+              eq(outreachSchedule.sequenceDay, 0),
+              inArray(outreachSchedule.status, ["scheduled", "sending", "paused"]),
+            ),
+          )
+          .orderBy(asc(outreachSchedule.scheduledFor)),
+        db
+          .select({
+            leadId: outreachSchedule.leadId,
+            sentAt: outreachSchedule.sentAt,
+          })
+          .from(outreachSchedule)
+          .where(
+            and(
+              inArray(outreachSchedule.leadId, leadIds),
+              outboundCampaignEmailFilter(),
+              eq(outreachSchedule.sendMode, "live"),
+            ),
           ),
-        )
-        .orderBy(asc(outreachSchedule.scheduledFor));
+      ]);
 
-      for (const row of scheduleMeta) {
-        if (row.status === "scheduled" || row.status === "sending" || row.status === "paused") {
-          if (!pendingByLead.has(row.leadId)) {
-            pendingByLead.set(row.leadId, {
-              scheduledFor: row.scheduledFor,
-              scheduleId: row.id,
-              status: row.status,
-              lastError: row.lastError ?? null,
-            });
-          }
-          continue;
+      for (const row of pendingRows) {
+        if (!pendingByLead.has(row.leadId)) {
+          pendingByLead.set(row.leadId, {
+            scheduledFor: row.scheduledFor,
+            scheduleId: row.id,
+            status: row.status,
+            lastError: row.lastError ?? null,
+          });
         }
-        if (row.status === "sent" && row.sentAt) {
-          const prev = sentByLead.get(row.leadId);
-          if (!prev || row.sentAt.getTime() > prev.getTime()) {
-            sentByLead.set(row.leadId, row.sentAt);
-          }
+      }
+      for (const row of sentRows) {
+        if (!row.sentAt) continue;
+        const prev = sentByLead.get(row.leadId);
+        if (!prev || row.sentAt.getTime() > prev.getTime()) {
+          sentByLead.set(row.leadId, row.sentAt);
         }
       }
     }

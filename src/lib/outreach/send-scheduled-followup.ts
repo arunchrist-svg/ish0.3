@@ -200,7 +200,7 @@ export async function sendScheduledFollowUp(params: {
       inReplyTo: threadHeaders.inReplyTo ?? null,
       referencesChain: threadHeaders.references ?? null,
       subjectSent: threadedSubject,
-      bodySnippet: body.slice(0, 500) || null,
+      bodySnippet: body || null,
       emailKind: sched.emailKind === CATALOG_ON_OPEN_EMAIL_KIND ? CATALOG_ON_OPEN_EMAIL_KIND : "followup",
       draftLeadOutreachId: generatedOutreach.id,
       lastError: null,

@@ -9,6 +9,8 @@ type Props = {
   companyName?: string;
   className?: string;
   sequenceLabel?: string;
+  /** Template fill has no LLM; skip research/drafting copy. */
+  templateFill?: boolean;
 };
 
 const DEFAULT_HINTS = [
@@ -18,16 +20,29 @@ const DEFAULT_HINTS = [
   "Checking inbox safety",
 ];
 
-export function WritingLoader({ contactName, companyName, className, sequenceLabel }: Props) {
+const TEMPLATE_HINTS = [
+  "Filling from the shared template",
+  "Swapping company names",
+];
+
+export function WritingLoader({
+  contactName,
+  companyName,
+  className,
+  sequenceLabel,
+  templateFill,
+}: Props) {
   const [hintIndex, setHintIndex] = useState(0);
 
-  const hints = companyName
-    ? DEFAULT_HINTS.map((h) =>
-        h === "Pulling company intel & gifting hooks"
-          ? `Researching ${companyName}`
-          : h,
-      )
-    : DEFAULT_HINTS;
+  const hints = templateFill
+    ? TEMPLATE_HINTS
+    : companyName
+      ? DEFAULT_HINTS.map((h) =>
+          h === "Pulling company intel & gifting hooks"
+            ? `Researching ${companyName}`
+            : h,
+        )
+      : DEFAULT_HINTS;
 
   useEffect(() => {
     if (hints.length <= 1) return;

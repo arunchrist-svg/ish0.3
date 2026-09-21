@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { aggregateStatusCountsByStage } from "@/lib/pipeline-status";
 import { countPendingInitialEmailSends, countSendableEmailStageLeads, countEmailStageWithUsableInbox } from "@/lib/outreach/pending-send-count";
+import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter";
 
 export const preferredRegion = ["sin1"];
 
@@ -13,7 +14,13 @@ export async function GET() {
   try {
     const ctx = await requireTenantContext();
     const where = withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId));
-    const [rows, queued, emailReady, emailSendable] = await Promise.all([
+    const humanRepliedWhere = withLeadVisibility(
+      ctx,
+      eq(leads.tenantId, ctx.tenantId),
+      eq(leads.status, "replied"),
+      humanRepliedLeadSql(),
+    );
+    const [rows, queued, emailReady, emailSendable, listTotalRow, repliedTotalRow] = await Promise.all([
       db
         .select({ status: leads.status, n: sql<number>`count(*)::int` })
         .from(leads)
@@ -21,7 +28,20 @@ export async function GET() {
         .groupBy(leads.status),
       countPendingInitialEmailSends(ctx),
       countSendableEmailStageLeads(ctx),
-      countEmailStageWithUsableInbox(ctx),
+      countEmailStageWithUsableInbox(ctx).catch((err) => {
+        console.error("[api/leads/stage-counts] sendable count failed", err);
+        return null;
+      }),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(leads)
+        .where(where)
+        .then((r) => r[0]?.n ?? 0),
+      db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(leads)
+        .where(humanRepliedWhere)
+        .then((r) => r[0]?.n ?? 0),
     ]);
 
     const counts: Record<string, number> = {};
@@ -36,9 +56,13 @@ export async function GET() {
       counts,
       board: {
         emailReady,
-        emailSendable,
+        emailSendable: emailSendable ?? emailReady,
         queued,
         emailStageTotal,
+      },
+      views: {
+        list: listTotalRow,
+        replied: repliedTotalRow,
       },
     });
   } catch (e) {

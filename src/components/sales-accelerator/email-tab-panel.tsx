@@ -1229,7 +1229,7 @@ export function EmailTabPanel({ lead, draft, onDraftUpdated, onSilentRefresh, on
       phase === "reply_sent");
 
   return (
-    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-2 overflow-hidden px-0 py-1 lg:space-y-2.5 lg:px-[22px] lg:py-2">
+    <div className="ish-email-tab animate-brand-tab-in min-w-0 space-y-2 overflow-visible px-0 py-1 lg:space-y-2.5 lg:px-[22px] lg:py-2">
       {!isEmptyCompose ? (
         <OutreachJourneyPanel
           thread={thread}

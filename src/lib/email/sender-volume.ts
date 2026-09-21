@@ -1,7 +1,8 @@
-import { db, outreachSchedule, leads } from "@/db";
+import { db, outreachSchedule, leads, userEmailSettings } from "@/db";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { extractDomain } from "@/lib/email/sender-domain";
 import { calendarDayKey } from "@/lib/email/send-window-parts";
+import { outboundCampaignEmailFilter } from "@/lib/email/outbound-campaign";
 
 export {
   assertGradualRamp,
@@ -20,10 +21,26 @@ export {
   type WarmupRecommendation,
 } from "@/lib/email/sender-warmup";
 
+/** Users whose mailbox fromAddress matches (case-insensitive). */
+async function mailboxOwnerUserIds(workspaceId: string, fromAddress: string): Promise<string[]> {
+  const normalized = fromAddress.trim().toLowerCase();
+  if (!normalized) return [];
+  const rows = await db
+    .select({ userId: userEmailSettings.userId })
+    .from(userEmailSettings)
+    .where(
+      and(
+        eq(userEmailSettings.workspaceId, workspaceId),
+        sql`lower(coalesce(${userEmailSettings.emailConfig}->>'fromAddress', '')) = ${normalized}`,
+      ),
+    );
+  return rows.map((r) => r.userId);
+}
+
 /**
- * Count live workspace sends in the last 24h.
- * `fromAddress` is accepted for future per-domain filtering; schedule rows do not
- * yet store the from-domain, so counts are workspace-scoped today.
+ * Count live outbound email sends in a time range for volume / warmup gates.
+ * Excludes WhatsApp, dry-run rows, and inbound reply/auto-reply noise.
+ * When `fromAddress` maps to a user mailbox, counts that owner's leads only.
  */
 export async function countSendsLast24h(workspaceId: string, fromAddress: string): Promise<number> {
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -37,6 +54,7 @@ export async function countSendsInRange(
   until?: Date,
 ): Promise<number> {
   void extractDomain(fromAddress);
+  const ownerIds = await mailboxOwnerUserIds(workspaceId, fromAddress);
 
   const rows = await db
     .select({ total: sql<number>`count(*)::int` })
@@ -45,9 +63,11 @@ export async function countSendsInRange(
     .where(
       and(
         eq(leads.workspaceId, workspaceId),
-        eq(outreachSchedule.status, "sent"),
+        outboundCampaignEmailFilter(),
+        eq(outreachSchedule.sendMode, "live"),
         gte(outreachSchedule.sentAt, since),
         until ? lt(outreachSchedule.sentAt, until) : undefined,
+        ownerIds.length > 0 ? inArray(leads.createdByUserId, ownerIds) : undefined,
       ),
     );
 

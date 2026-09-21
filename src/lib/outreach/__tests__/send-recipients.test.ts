@@ -53,6 +53,30 @@ describe("resolveSendRecipients", () => {
     ).toEqual(["umarani.n@bfwindia.com"]);
   });
 
+  it("auto-selects a real first-name inbox when that is the only To", () => {
+    expect(
+      defaultSelectedContactEmails("aditya@beco.com", [
+        {
+          email: "aditya@beco.com",
+          emailStatus: "unverified",
+          enrichmentProvider: "permutation",
+          enrichmentSource: "name_domain_guess:first",
+          pattern: "first",
+        },
+      ]),
+    ).toEqual(["aditya@beco.com"]);
+    expect(isWeakGuessEmail({ email: "aditya@beco.com", pattern: "first" })).toBe(false);
+    const result = resolveSendRecipients({
+      email: "aditya@beco.com",
+      emailStatus: "unverified",
+      enrichmentProvider: "permutation",
+      enrichmentSource: "name_domain_guess:first",
+      alternateEmails: [],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.recipients).toEqual(["aditya@beco.com"]);
+  });
+
   it("does not auto-select a lone firstname@ guess", () => {
     expect(
       defaultSelectedContactEmails("firstname@bfwindia.com", [

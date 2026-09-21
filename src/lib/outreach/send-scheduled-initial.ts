@@ -151,7 +151,7 @@ export async function sendScheduledInitialEmail(params: {
       rfcMessageId,
       recipientEmail: to,
       subjectSent: subject,
-      bodySnippet: body.slice(0, 500) || null,
+      bodySnippet: body || null,
       trackingToken,
       lastError: null,
     })

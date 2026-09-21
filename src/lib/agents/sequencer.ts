@@ -224,6 +224,14 @@ export async function runSequencer(): Promise<{
               skipped++;
               continue;
             }
+            if (e instanceof SenderPreflightError) {
+              const reason = e.issues?.length
+                ? `Sender preflight: ${e.issues.map((i) => i.label).join("; ")}`
+                : "Sender preflight failed";
+              await releaseToScheduled(claimed.id, reason.slice(0, 500));
+              skipped++;
+              continue;
+            }
             throw e;
           }
           continue;

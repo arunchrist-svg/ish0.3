@@ -21,17 +21,16 @@ export async function POST(req: Request) {
     const startedAt = body.startedAt ? new Date(body.startedAt) : null;
     const total = body.total ?? leadIds.length;
 
-    if ((!leadIds.length && !statuses.length) || !startedAt || Number.isNaN(startedAt.getTime())) {
+    if (!startedAt || Number.isNaN(startedAt.getTime()) || (!leadIds.length && !statuses.length)) {
       return NextResponse.json(
         { error: "startedAt and leadIds or statuses required" },
         { status: 400 },
       );
     }
 
-    const scopeFilter = statuses.length
-      ? inArray(leads.status, statuses)
-      : inArray(leadOutreach.leadId, leadIds);
-
+    // Count Email 1 drafts created in this run. Ignore current pipeline stage:
+    // Write All moves Contact Ready leads to draft_ready as soon as copy lands.
+    void statuses;
     const rows = await db
       .selectDistinct({ leadId: leadOutreach.leadId })
       .from(leadOutreach)
@@ -41,7 +40,7 @@ export async function POST(req: Request) {
           ctx,
           and(
             eq(leads.tenantId, ctx.tenantId),
-            scopeFilter,
+            leadIds.length ? inArray(leadOutreach.leadId, leadIds) : undefined,
             eq(leadOutreach.sequencePosition, 1),
             gte(leadOutreach.createdAt, startedAt),
           ),

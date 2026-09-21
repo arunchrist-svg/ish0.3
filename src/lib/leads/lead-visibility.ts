@@ -9,13 +9,11 @@ export function canViewAllTenantLeads(platformRole?: string | null): boolean {
 }
 
 /**
- * Owners see all leads in their tenant (needed for team management and
- * "added by" filtering across members). Admins and members only see their
- * own. Superadmin sees all.
+ * Each login only sees leads owned by that mailbox (Scout, Leads, Email).
+ * Superadmin still sees every lead in the tenant for support.
  */
 export function leadVisibilitySql(ctx: Pick<TenantContext, "userId" | "role" | "platformRole">): SQL | undefined {
   if (canViewAllTenantLeads(ctx.platformRole)) return undefined;
-  if (ctx.role === "owner") return undefined;
   return eq(leads.createdByUserId, ctx.userId);
 }
 
@@ -36,7 +34,6 @@ export function canAccessLeadRecord(
 ): boolean {
   if (lead.tenantId !== ctx.tenantId) return false;
   if (canViewAllTenantLeads(ctx.platformRole)) return true;
-  if (ctx.role === "owner") return true;
   return lead.createdByUserId === ctx.userId;
 }
 
@@ -60,8 +57,7 @@ export function withMailboxLeadVisibility(
   return and(...filtered)!;
 }
 
-export function leadVisibilityForRole(role: TenantRole, platformRole?: string | null): "all" | "own" {
+export function leadVisibilityForRole(_role: TenantRole, platformRole?: string | null): "all" | "own" {
   if (canViewAllTenantLeads(platformRole)) return "all";
-  if (role === "owner") return "all";
   return "own";
 }

@@ -8,7 +8,6 @@ import {
 } from "@/lib/enrichment/contact-emails";
 import { sanitizeEmail } from "@/lib/enrichment/validate-contact";
 
-const WEAK_PERMUTATION_PATTERNS = new Set(["first", "last"]);
 const PLACEHOLDER_LOCAL_PARTS = new Set([
   "firstname",
   "lastname",
@@ -86,15 +85,13 @@ function isSendableStoredEmail(entry: ContactEmailEntry): boolean {
   return !isRejectedEmailEntry(entry);
 }
 
-/** firstname@domain / lastname@domain guesses, plus placeholder local parts like firstname@. */
+/** Literal firstname@ / lastname@ placeholders. Real first-name guesses like aditya@ stay sendable. */
 export function isWeakGuessEmail(entry: {
   email?: string | null;
   pattern?: string | null;
   enrichmentProvider?: string | null;
   enrichmentSource?: string | null;
 }): boolean {
-  const pattern = entry.pattern ?? parsePatternFromEnrichmentSource(entry.enrichmentSource);
-  if (pattern && WEAK_PERMUTATION_PATTERNS.has(pattern)) return true;
   const local = entry.email?.split("@")[0]?.trim().toLowerCase() ?? "";
   return PLACEHOLDER_LOCAL_PARTS.has(local);
 }
@@ -195,6 +192,8 @@ function sendPreferenceScore(entry: ContactEmailEntry): number {
     return 90;
   }
   if (entry.pattern === "first.last") return 70;
+  const pattern = entry.pattern ?? parsePatternFromEnrichmentSource(entry.enrichmentSource);
+  if (pattern === "first" || pattern === "last") return 50;
   if (hasUsableEmail(entry.email, entry.emailStatus)) return 60;
   return 40;
 }
