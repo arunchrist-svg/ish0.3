@@ -17,7 +17,7 @@ import { packIdFromBrand } from "@/lib/email/outreach-templates";
 import { deleteLeadOutreachWhere } from "@/lib/outreach/delete-lead-outreach";
 import { asVariantKey } from "@/lib/email/draft-variants";
 import { normalizeCadenceDays } from "@/lib/email/cadence";
-import { computeFollowUpScheduledFor, sendWindowFromEmailFields, type SendWindow } from "@/lib/email/send-window";
+import { nextSendWindowStart, sendWindowFromEmailFields, type SendWindow } from "@/lib/email/send-window";
 
 const CATALOG_PENDING = ["scheduled", "paused", "pending_review"] as const;
 
@@ -45,8 +45,9 @@ export function isIfOpenedOpenTrigger(params: {
   return params.openedSequenceDay === cadence[0];
 }
 
+/** Soonest legal send slot after the open (same window as Email 1). Weekend-closed workspaces may land after 2 days. */
 export function computeIfOpenedScheduledFor(openedAt: Date, sendWindow: Partial<SendWindow> | null): Date {
-  return computeFollowUpScheduledFor(openedAt, 1, sendWindow);
+  return nextSendWindowStart(openedAt, sendWindow);
 }
 
 /**

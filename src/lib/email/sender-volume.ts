@@ -61,9 +61,11 @@ export async function countSendsInRange(
 export async function countInitialOutboundByCalendarDay(
   workspaceId: string,
   timezone: string,
+  ownerUserId?: string | null,
 ): Promise<Map<string, number>> {
   const workspaceFilter = and(
     eq(leads.workspaceId, workspaceId),
+    ownerUserId ? eq(leads.createdByUserId, ownerUserId) : undefined,
     eq(outreachSchedule.channel, "email"),
     eq(outreachSchedule.sequenceDay, 0),
   );
@@ -115,6 +117,7 @@ export async function countInitialOutboundByCalendarDay(
 export async function countSentInitialByCalendarDay(
   workspaceId: string,
   timezone: string,
+  ownerUserId?: string | null,
 ): Promise<Map<string, number>> {
   const rows = await db
     .select({
@@ -125,6 +128,7 @@ export async function countSentInitialByCalendarDay(
     .where(
       and(
         eq(leads.workspaceId, workspaceId),
+        ownerUserId ? eq(leads.createdByUserId, ownerUserId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         eq(outreachSchedule.status, "sent"),

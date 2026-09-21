@@ -1,8 +1,11 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, leads, outreachSchedule } from "@/db";
 
-/** Latest scheduled time for Email 1 still in the outbox (append new Send All after this). */
-export async function getLastInitialEmailQueueTime(workspaceId: string): Promise<Date | null> {
+/** Latest scheduled time for Email 1 still in this mailbox's outbox (append Send All after this). */
+export async function getLastInitialEmailQueueTime(
+  workspaceId: string,
+  ownerUserId?: string | null,
+): Promise<Date | null> {
   const [row] = await db
     .select({ scheduledFor: outreachSchedule.scheduledFor })
     .from(outreachSchedule)
@@ -10,6 +13,7 @@ export async function getLastInitialEmailQueueTime(workspaceId: string): Promise
     .where(
       and(
         eq(leads.workspaceId, workspaceId),
+        ownerUserId ? eq(leads.createdByUserId, ownerUserId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         inArray(outreachSchedule.status, ["scheduled", "sending", "paused"]),

@@ -3,6 +3,7 @@ import {
   canAccessLeadRecord,
   canViewAllTenantLeads,
   leadVisibilityForRole,
+  mailboxLeadVisibilitySql,
 } from "@/lib/leads/lead-visibility";
 
 describe("lead visibility", () => {
@@ -62,5 +63,10 @@ describe("lead visibility", () => {
         { tenantId: "t2", createdByUserId: "u1" },
       ),
     ).toBe(false);
+  });
+
+  it("mailbox visibility scopes owners to their own leads", () => {
+    expect(mailboxLeadVisibilitySql({ userId: "owner-1", platformRole: "user" })).toBeDefined();
+    expect(mailboxLeadVisibilitySql({ userId: "owner-1", platformRole: "superadmin" })).toBeUndefined();
   });
 });

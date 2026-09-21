@@ -40,11 +40,13 @@ export function AutopilotRunningLoader({
   const vertical = (run?.input.industries ?? industries ?? []).filter(Boolean).slice(0, 2).join(", ");
   const companiesSaved = run?.progress.companiesSaved ?? 0;
   const leadsSaved = run?.progress.leadsSaved ?? 0;
-  const targetCompanies = run?.input.targetCompanies ?? 100;
-  const targetLeads = run?.input.targetLeads ?? 100;
+  const targetCompanies = run?.input.targetCompanies ?? 1000;
+  const targetLeads = run?.input.targetLeads ?? 1000;
   const chunkSize = run?.input.chunkSize ?? 10;
   const chunkIndex = run?.progress.chunkIndex ?? 0;
   const totalChunks = Math.max(1, Math.ceil(targetCompanies / chunkSize));
+  const attempted = run?.progress.attemptedNames?.length ?? 0;
+  const skipCount = run?.progress.skipped?.length ?? 0;
   const latestCompanies = (run?.progress.companyNames ?? []).slice(-3).reverse();
   const latestSkip = run?.progress.skipped?.at(-1);
 
@@ -71,10 +73,10 @@ export function AutopilotRunningLoader({
     setElapsedSec(0);
     const id = window.setInterval(() => setElapsedSec((s) => s + 1), 1000);
     return () => window.clearInterval(id);
-  }, [run?.id]);
+  }, [run?.id, chunkIndex]);
 
-  const companyPct = Math.max(4, (companiesSaved / targetCompanies) * 100);
-  const leadPct = Math.max(4, (leadsSaved / targetLeads) * 100);
+  const companyPct = targetCompanies ? (companiesSaved / targetCompanies) * 100 : 0;
+  const leadPct = targetLeads ? (leadsSaved / targetLeads) * 100 : 0;
   const message = phaseCopy(run);
 
   return (
@@ -108,10 +110,17 @@ export function AutopilotRunningLoader({
         </span>
       </p>
       <p className="mt-1 text-[12px] text-brand-ink-soft">
-        Chunk {chunkIndex + 1} of {totalChunks}
+        Search round {chunkIndex + 1}
+        {leadsSaved > 0 ? ` of about ${totalChunks}` : ""}
         {place ? ` · ${place}` : ""}
-        {` · ${elapsedSec}s`}
+        {` · ${elapsedSec}s this round`}
       </p>
+      {attempted > 0 || skipCount > 0 ? (
+        <p className="mt-1 text-[11px] tabular-nums text-brand-ink-faint">
+          Tried {attempted} companies
+          {skipCount ? ` · skipped ${skipCount}` : ""}
+        </p>
+      ) : null}
 
       <div className="mt-5 w-full max-w-[280px] space-y-3">
         <Meter label="Companies" done={companiesSaved} total={targetCompanies} pct={companyPct} />

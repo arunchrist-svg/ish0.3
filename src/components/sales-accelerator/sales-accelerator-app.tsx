@@ -11,6 +11,7 @@ import { notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import { deriveQueueAction } from "@/lib/pipeline-status";
 import {
   applyLeadListView,
+  filterLeadsByQuery,
   LEAD_ADDED_BY_STORAGE_KEY,
   LEAD_PANEL_FILTERS_STORAGE_KEY,
   LEAD_QUEUE_SORT_STORAGE_KEY,
@@ -75,7 +76,13 @@ function ensureLeadInList(list: LeadQueueItem[], lead: LeadDetailRecord): LeadQu
   return [queueItemFromDetail(lead), ...list];
 }
 
-export function SalesAcceleratorApp() {
+export function SalesAcceleratorApp({
+  listScope = "all",
+}: {
+  /** human_replied: only leads with a real (non-auto) reply. */
+  listScope?: "all" | "human_replied";
+} = {}) {
+  const humanRepliedOnly = listScope === "human_replied";
   const { canWritePipeline } = usePermissions();
   const router = useRouter();
   const pathname = usePathname();
@@ -349,13 +356,19 @@ export function SalesAcceleratorApp() {
   const refreshLeadList = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setListLoading(true);
     try {
-      const page = await fetchLeadsPage({ limit: 50, force: true });
+      const page = await fetchLeadsPage({
+        limit: 50,
+        force: true,
+        ...(humanRepliedOnly
+          ? { status: "replied", humanReply: true, sort: "reply_newest" }
+          : {}),
+      });
       const data = page.leads;
       setNextCursor(page.nextCursor);
       const current = activeLeadIdRef.current;
       if (current && !data.some((l) => l.id === current)) {
         const stillOpen = await fetchLead(current).catch(() => null);
-        if (stillOpen) {
+        if (stillOpen && (!humanRepliedOnly || stillOpen.status === "replied")) {
           setLeads(ensureLeadInList(data, stillOpen));
           setPrefetchedLead(stillOpen);
           return;
@@ -379,13 +392,19 @@ export function SalesAcceleratorApp() {
     } finally {
       if (!opts?.silent) setListLoading(false);
     }
-  }, [syncLeadToUrl, isMobileLayout, pathname, router]);
+  }, [syncLeadToUrl, isMobileLayout, pathname, router, humanRepliedOnly]);
 
   const loadMoreLeads = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      const page = await fetchLeadsPage({ limit: 50, cursor: nextCursor });
+      const page = await fetchLeadsPage({
+        limit: 50,
+        cursor: nextCursor,
+        ...(humanRepliedOnly
+          ? { status: "replied", humanReply: true, sort: "reply_newest" }
+          : {}),
+      });
       setLeads((prev) => {
         const seen = new Set(prev.map((l) => l.id));
         return [...prev, ...page.leads.filter((l) => !seen.has(l.id))];
@@ -396,7 +415,7 @@ export function SalesAcceleratorApp() {
     } finally {
       setLoadingMore(false);
     }
-  }, [nextCursor, loadingMore]);
+  }, [nextCursor, loadingMore, humanRepliedOnly]);
 
   async function handleQueueRefresh() {
     if (queueRefreshing || mergingDuplicates || fixingNames) return;
@@ -413,7 +432,12 @@ export function SalesAcceleratorApp() {
 
     async function init() {
       setListLoading(true);
-      const listPromise = fetchLeadsPage({ limit: 50 });
+      const listPromise = fetchLeadsPage({
+        limit: 50,
+        ...(humanRepliedOnly
+          ? { status: "replied", humanReply: true, sort: "reply_newest" }
+          : {}),
+      });
 
       const detailPromise = leadFromUrl
         ? fetchLead(leadFromUrl).catch(() => null)
@@ -427,14 +451,16 @@ export function SalesAcceleratorApp() {
         setNextCursor(page.nextCursor);
 
         if (detail) {
-          setPrefetchedLead(detail);
-          setLeads(ensureLeadInList(list, detail));
+          const includeDetail = !humanRepliedOnly || detail.status === "replied";
+          setPrefetchedLead(includeDetail ? detail : null);
+          setLeads(includeDetail ? ensureLeadInList(list, detail) : list);
         } else {
           setLeads(list);
         }
 
         const urlLeadExists =
-          Boolean(detail) || Boolean(leadFromUrl && list.some((l) => l.id === leadFromUrl));
+          Boolean(detail && (!humanRepliedOnly || detail.status === "replied")) ||
+          Boolean(leadFromUrl && list.some((l) => l.id === leadFromUrl));
         const activeId = urlLeadExists
           ? leadFromUrl
           : isMobileLayout
@@ -481,15 +507,21 @@ export function SalesAcceleratorApp() {
     setActiveLeadId(leadFromUrl);
   }, [leadFromUrl]);
 
-  const filteredLeads = useMemo(
-    () =>
-      applyLeadListView(leads, {
-        search: searchQuery,
-        filters: { quick: quickFilter, panel: panelFilters, addedByUserId },
-        sort: queueSort,
-      }),
-    [leads, searchQuery, quickFilter, panelFilters, addedByUserId, queueSort],
-  );
+  const filteredLeads = useMemo(() => {
+    if (humanRepliedOnly) {
+      // Keep API reply_newest order; only apply search.
+      return filterLeadsByQuery(leads, searchQuery);
+    }
+    return applyLeadListView(leads, {
+      search: searchQuery,
+      filters: {
+        quick: quickFilter,
+        panel: panelFilters,
+        addedByUserId,
+      },
+      sort: queueSort,
+    });
+  }, [leads, searchQuery, quickFilter, panelFilters, addedByUserId, queueSort, humanRepliedOnly]);
 
   const selectedLeadId =
     activeLeadId && filteredLeads.some((item) => item.id === activeLeadId) ? activeLeadId : null;
@@ -515,38 +547,50 @@ export function SalesAcceleratorApp() {
   if (!listLoading && leads.length === 0) {
     return (
       <>
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center text-[13px] text-brand-ink-faint">
-          <div className="text-4xl">🎯</div>
-          <div>
-            <div className="font-semibold text-brand-ink">No leads yet</div>
-            <div className="mt-1">Scout companies, add a lead, or import an Excel / CSV list.</div>
-          </div>
-          {canWritePipeline ? (
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button
-                variant="ghost"
-                className="h-auto rounded-2xl bg-brand-black px-5 py-2.5 text-[13px] font-semibold text-white hover:bg-brand-black/90"
-                onClick={openCreateLead}
-              >
-                Add lead
-              </Button>
-              <Button
-                variant="ghost"
-                className="h-auto rounded-2xl border border-brand-border bg-white px-5 py-2.5 text-[13px] font-semibold text-brand-ink hover:bg-brand-canvas"
-                onClick={() => setImportOpen(true)}
-              >
-                <Upload className="mr-1.5 size-3.5" />
-                Import CSV / Excel
-              </Button>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <AppPageHeader
+            icon={Rocket}
+            title={humanRepliedOnly ? "Replied" : "Leads"}
+            titleAddon={<LeadsViewToggle className="h-8" />}
+          />
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center text-[13px] text-brand-ink-faint">
+            <div>
+              <div className="font-semibold text-brand-ink">
+                {humanRepliedOnly ? "No human replies yet" : "No leads yet"}
+              </div>
+              <div className="mt-1">
+                {humanRepliedOnly
+                  ? "When someone writes back (not an auto-reply), they show up here."
+                  : "Scout companies, add a lead, or import an Excel / CSV list."}
+              </div>
             </div>
-          ) : null}
+            {!humanRepliedOnly && canWritePipeline ? (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button type="button" onClick={openCreateLead}>
+                  <Plus className="size-3.5" />
+                  Add lead
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setImportOpen(true)}>
+                  <Upload className="size-3.5" />
+                  Import
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </div>
         <LeadFormModal
           open={formOpen}
           mode={formMode}
           initial={editingLead}
+          createDraft={createDraft}
           onClose={() => setFormOpen(false)}
           onSubmit={handleLeadFormSubmit}
+        />
+        <LinkedInLeadModal
+          open={linkedInOpen}
+          onClose={() => setLinkedInOpen(false)}
+          onCreated={handleLinkedInLeadCreated}
+          onIncomplete={handleLinkedInLeadIncomplete}
         />
         <LeadImportModal
           open={importOpen}
@@ -572,25 +616,25 @@ export function SalesAcceleratorApp() {
       activeId={selectedLeadId ?? ""}
       onSelect={selectLead}
       onRefresh={() => refreshLeadList({ silent: true })}
-      onImportLeads={() => setImportOpen(true)}
-      onAddLead={openCreateLead}
-      onLinkedInLead={openLinkedInLead}
-      canWrite={canWritePipeline}
+      onImportLeads={humanRepliedOnly ? undefined : () => setImportOpen(true)}
+      onAddLead={humanRepliedOnly ? undefined : openCreateLead}
+      onLinkedInLead={humanRepliedOnly ? undefined : openLinkedInLead}
+      canWrite={canWritePipeline && !humanRepliedOnly}
       searchQuery={searchQuery}
       onSearchQueryChange={setSearchQuery}
       listScrollRef={listScrollRef}
       sort={queueSort}
       onSortChange={handleQueueSortChange}
-      quickFilter={quickFilter}
-      onQuickFilterChange={handleQuickFilterChange}
-      panelFilters={panelFilters}
-      onPanelFiltersChange={handlePanelFiltersChange}
-      addedByUserId={addedByUserId}
-      onAddedByUserIdChange={handleAddedByUserIdChange}
+      quickFilter={humanRepliedOnly ? null : quickFilter}
+      onQuickFilterChange={humanRepliedOnly ? () => {} : handleQuickFilterChange}
+      panelFilters={humanRepliedOnly ? new Set() : panelFilters}
+      onPanelFiltersChange={humanRepliedOnly ? () => {} : handlePanelFiltersChange}
+      addedByUserId={humanRepliedOnly ? null : addedByUserId}
+      onAddedByUserIdChange={humanRepliedOnly ? () => {} : handleAddedByUserIdChange}
       addedByUsers={addedByUsers}
-      onMergeDuplicates={canWritePipeline ? handleMergeDuplicates : undefined}
+      onMergeDuplicates={!humanRepliedOnly && canWritePipeline ? handleMergeDuplicates : undefined}
       mergingDuplicates={mergingDuplicates}
-      onFixNames={canWritePipeline ? handleFixNames : undefined}
+      onFixNames={!humanRepliedOnly && canWritePipeline ? handleFixNames : undefined}
       fixingNames={fixingNames}
       hasMore={Boolean(nextCursor)}
       loadingMore={loadingMore}
@@ -614,6 +658,7 @@ export function SalesAcceleratorApp() {
         onLeadUpdated={() => refreshLeadList({ silent: true })}
         onEditLead={canWritePipeline ? openEditLead : undefined}
         onDeleteLead={canWritePipeline ? handleDeleteLead : undefined}
+        defaultTab={humanRepliedOnly ? "Email" : "Summary"}
       />
     </div>
   ) : listLoading ? (
@@ -631,11 +676,11 @@ export function SalesAcceleratorApp() {
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <AppPageHeader
           icon={Rocket}
-          title="Leads"
+          title={humanRepliedOnly ? "Replied" : "Leads"}
           titleAddon={<LeadsViewToggle className="h-8" />}
           actions={
             <>
-              {canWritePipeline ? (
+              {!humanRepliedOnly && canWritePipeline ? (
                 <LeadAddMenu
                   disabled={mergingDuplicates || fixingNames}
                   onAddLead={openCreateLead}
@@ -690,17 +735,23 @@ export function SalesAcceleratorApp() {
                   </>
                 ) : null}
               </div>
-              <LeadFilterBar
-                quick={quickFilter}
-                panel={panelFilters}
-                sort={queueSort}
-                addedByUserId={addedByUserId}
-                addedByUsers={addedByUsers}
-                onQuickChange={handleQuickFilterChange}
-                onPanelChange={handlePanelFiltersChange}
-                onSortChange={handleQueueSortChange}
-                onAddedByUserIdChange={handleAddedByUserIdChange}
-              />
+              {!humanRepliedOnly ? (
+                <LeadFilterBar
+                  quick={quickFilter}
+                  panel={panelFilters}
+                  sort={queueSort}
+                  addedByUserId={addedByUserId}
+                  addedByUsers={addedByUsers}
+                  onQuickChange={handleQuickFilterChange}
+                  onPanelChange={handlePanelFiltersChange}
+                  onSortChange={handleQueueSortChange}
+                  onAddedByUserIdChange={handleAddedByUserIdChange}
+                />
+              ) : (
+                <span className="hidden text-[11px] font-medium text-brand-ink-faint sm:inline">
+                  Human replies only
+                </span>
+              )}
             </>
           }
         />
@@ -712,7 +763,7 @@ export function SalesAcceleratorApp() {
           {detailPane}
         </div>
       </div>
-      {canWritePipeline && !selectedLeadId ? (
+      {canWritePipeline && !selectedLeadId && !humanRepliedOnly ? (
         <button
           type="button"
           onClick={openCreateLead}

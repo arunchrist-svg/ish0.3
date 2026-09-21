@@ -1,5 +1,5 @@
 import { db, outreachSchedule, leads, contacts, accounts, leadOutreach, leadResearch } from "@/db";
-import { eq, lte, and, or, asc, isNull, notInArray } from "drizzle-orm";
+import { eq, lte, and, or, asc, isNull, notInArray, sql } from "drizzle-orm";
 import { notifyLeadEvent } from "@/lib/push/notify-workspace";
 import { logAudit } from "@/lib/audit";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
@@ -142,7 +142,11 @@ export async function runSequencer(): Promise<{
       .select()
       .from(outreachSchedule)
       .where(and(...dueConditions))
-      .orderBy(asc(outreachSchedule.sequenceDay), asc(outreachSchedule.scheduledFor))
+      .orderBy(
+        sql`case when ${outreachSchedule.emailKind} = ${CATALOG_ON_OPEN_EMAIL_KIND} then 0 else 1 end`,
+        asc(outreachSchedule.scheduledFor),
+        asc(outreachSchedule.sequenceDay),
+      )
       .limit(BATCH_SIZE);
 
     if (!due.length) break;
@@ -299,13 +303,14 @@ export async function runSequencer(): Promise<{
         const requiresReview = !isCatalog && emailConfig.followUpPolicy === "review_all_followups";
         const failsQuality = !isCatalog && (!quality.passes || Boolean(generatedOutreach.revisionTimeout));
 
-        if (requiresReview || failsQuality) {
+        // Review-first policy holds every follow-up. Auto-send still sends when quality is low.
+        if (requiresReview) {
           await db
             .update(outreachSchedule)
             .set({
               status: "pending_review",
               draftLeadOutreachId: generatedOutreach.id,
-              lastError: requiresReview ? "Follow-up requires review" : "Follow-up failed quality gate",
+              lastError: "Follow-up requires review",
             })
             .where(eq(outreachSchedule.id, claimed.id));
 
@@ -321,8 +326,9 @@ export async function runSequencer(): Promise<{
               outreachId: generatedOutreach.id,
               delivScore: quality.delivScore,
               rubricTotal: quality.rubricTotal,
-              requiresReview,
+              requiresReview: true,
               revisionTimeout: generatedOutreach.revisionTimeout,
+              failsQuality,
             },
           });
 
@@ -364,10 +370,18 @@ export async function runSequencer(): Promise<{
           });
         }
 
+        if (failsQuality) {
+          console.warn(
+            `[sequencer] auto-sending follow-up ${claimed.id} despite quality gate`,
+            { delivScore: quality.delivScore, rubricTotal: quality.rubricTotal },
+          );
+        }
+
         await sendScheduledFollowUp({
           scheduleId: claimed.id,
           tenantId: lead.tenantId,
           workspaceId: lead.workspaceId,
+          overrideQualityGate: failsQuality,
         });
 
         processed++;

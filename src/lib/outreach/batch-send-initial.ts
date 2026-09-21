@@ -112,8 +112,8 @@ export async function prepareBatchQueue(
   const now = new Date();
 
   const [existingByDay, queueAfter] = await Promise.all([
-    countInitialOutboundByCalendarDay(ctx.workspaceId, sendWindow.timezone),
-    getLastInitialEmailQueueTime(ctx.workspaceId),
+    countInitialOutboundByCalendarDay(ctx.workspaceId, sendWindow.timezone, ctx.userId),
+    getLastInitialEmailQueueTime(ctx.workspaceId, ctx.userId),
   ]);
   const { slots, spanDays } = planBatchInitialSends({
     count: leadIds.length,

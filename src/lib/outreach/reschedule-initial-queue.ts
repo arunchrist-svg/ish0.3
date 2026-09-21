@@ -32,7 +32,12 @@ type QueueActor = {
   userId?: string | null;
 };
 
-async function countFutureQueuedByDay(workspaceId: string, timezone: string, after: Date) {
+async function countFutureQueuedByDay(
+  workspaceId: string,
+  timezone: string,
+  after: Date,
+  ownerUserId?: string | null,
+) {
   const rows = await db
     .select({ scheduledFor: outreachSchedule.scheduledFor })
     .from(outreachSchedule)
@@ -40,6 +45,7 @@ async function countFutureQueuedByDay(workspaceId: string, timezone: string, aft
     .where(
       and(
         eq(leads.workspaceId, workspaceId),
+        ownerUserId ? eq(leads.createdByUserId, ownerUserId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         inArray(outreachSchedule.status, ["scheduled", "sending", "paused"]),
@@ -191,6 +197,7 @@ export async function rollDueInitialQueueIfOutsideWindow(
       and(
         eq(leads.tenantId, actor.tenantId),
         eq(leads.workspaceId, actor.workspaceId),
+        actor.userId ? eq(leads.createdByUserId, actor.userId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         inArray(outreachSchedule.status, ["scheduled", "sending"]),
@@ -203,8 +210,8 @@ export async function rollDueInitialQueueIfOutsideWindow(
 
   const scheduleFrom = nextSendWindowStart(now, sendWindow);
   const existingByDay = mergeDayCounts(
-    await countSentInitialByCalendarDay(actor.workspaceId, sendWindow.timezone),
-    await countFutureQueuedByDay(actor.workspaceId, sendWindow.timezone, now),
+    await countSentInitialByCalendarDay(actor.workspaceId, sendWindow.timezone, actor.userId),
+    await countFutureQueuedByDay(actor.workspaceId, sendWindow.timezone, now, actor.userId),
   );
 
   return replanQueuedRows({
@@ -222,6 +229,7 @@ export async function rollAllDueQueuesOutsideWindow(now = new Date()): Promise<n
     .selectDistinct({
       tenantId: leads.tenantId,
       workspaceId: leads.workspaceId,
+      userId: leads.createdByUserId,
     })
     .from(outreachSchedule)
     .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
@@ -237,7 +245,7 @@ export async function rollAllDueQueuesOutsideWindow(now = new Date()): Promise<n
   const seen = new Set<string>();
   let rescheduled = 0;
   for (const group of groups) {
-    const key = `${group.tenantId}:${group.workspaceId}`;
+    const key = `${group.tenantId}:${group.workspaceId}:${group.userId ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const result = await rollDueInitialQueueIfOutsideWindow(group, now);
@@ -276,6 +284,7 @@ export async function rescheduleInitialEmailQueue(
       and(
         eq(leads.tenantId, ctx.tenantId),
         eq(leads.workspaceId, ctx.workspaceId),
+        ctx.userId ? eq(leads.createdByUserId, ctx.userId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         inArray(outreachSchedule.status, ["scheduled", "sending"]),
@@ -292,7 +301,7 @@ export async function rescheduleInitialEmailQueue(
     rows,
     scheduleFrom,
     now,
-    existingByDay: await countSentInitialByCalendarDay(ctx.workspaceId, sendWindow.timezone),
+    existingByDay: await countSentInitialByCalendarDay(ctx.workspaceId, sendWindow.timezone, ctx.userId),
     auditAction: "outreach.queue_rescheduled",
   });
 }
@@ -325,6 +334,7 @@ export async function spreadQueuedInitialEmailsFromNow(
       and(
         eq(leads.tenantId, actor.tenantId),
         eq(leads.workspaceId, actor.workspaceId),
+        actor.userId ? eq(leads.createdByUserId, actor.userId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         inArray(outreachSchedule.status, ["scheduled", "sending"]),
@@ -339,7 +349,7 @@ export async function spreadQueuedInitialEmailsFromNow(
     rows,
     scheduleFrom,
     now,
-    existingByDay: await countSentInitialByCalendarDay(actor.workspaceId, sendWindow.timezone),
+    existingByDay: await countSentInitialByCalendarDay(actor.workspaceId, sendWindow.timezone, actor.userId),
     auditAction: "outreach.queue_spread_random_gaps",
   });
 }

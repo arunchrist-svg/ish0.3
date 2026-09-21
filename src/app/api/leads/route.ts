@@ -17,6 +17,8 @@ import {
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { withoutPendingInitialEmailSend } from "@/lib/outreach/pending-send-count";
+import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter";
+import { INBOUND_REPLY_EMAIL_KIND } from "@/lib/email/inbound-match";
 
 export const preferredRegion = ["sin1"];
 
@@ -32,7 +34,10 @@ export async function GET(req: Request) {
     const statuses = statusFilter ? statusFilter.split(",").filter(Boolean) : null;
     const limit = parseListLimit(searchParams.get("limit"));
     const sortSentNewest = searchParams.get("sort") === "sent_newest";
-    const cursor = sortSentNewest ? null : decodeCursor(searchParams.get("cursor"));
+    const sortReplyNewest = searchParams.get("sort") === "reply_newest";
+    const humanReplyOnly = searchParams.get("humanReply") === "1";
+    const cursor =
+      sortSentNewest || sortReplyNewest ? null : decodeCursor(searchParams.get("cursor"));
     const includeTotal = searchParams.get("totals") === "1";
 
     const excludePendingInitial = searchParams.get("excludePendingInitial") === "1";
@@ -41,6 +46,7 @@ export async function GET(req: Request) {
     if (statuses?.length) whereParts.push(inArray(leads.status, statuses));
     if (ids.length) whereParts.push(inArray(leads.id, ids.slice(0, 100)));
     if (excludePendingInitial) whereParts.push(withoutPendingInitialEmailSend());
+    if (humanReplyOnly) whereParts.push(humanRepliedLeadSql());
     const keyset = keysetBefore(leads.createdAt, leads.id, cursor);
     if (keyset) whereParts.push(keyset);
     const listWhere = withLeadVisibility(ctx, ...whereParts);
@@ -48,6 +54,7 @@ export async function GET(req: Request) {
       ctx,
       eq(leads.tenantId, ctx.tenantId),
       statuses?.length ? inArray(leads.status, statuses) : undefined,
+      humanReplyOnly ? humanRepliedLeadSql() : undefined,
     );
 
     const listColumns = {
@@ -88,7 +95,34 @@ export async function GET(req: Request) {
       .groupBy(outreachSchedule.leadId)
       .as("last_initial_sent");
 
-    const listQuery = sortSentNewest
+    const lastHumanReply = db
+      .select({
+        leadId: outreachSchedule.leadId,
+        repliedAt: sql<Date>`max(${outreachSchedule.sentAt})`.as("last_replied_at"),
+      })
+      .from(outreachSchedule)
+      .where(
+        and(
+          eq(outreachSchedule.channel, "email"),
+          eq(outreachSchedule.emailKind, INBOUND_REPLY_EMAIL_KIND),
+          eq(outreachSchedule.status, "sent"),
+        ),
+      )
+      .groupBy(outreachSchedule.leadId)
+      .as("last_human_reply");
+
+    const listQuery = sortReplyNewest
+      ? db
+          .select(listColumns)
+          .from(leads)
+          .leftJoin(contacts, eq(contacts.id, leads.contactId))
+          .leftJoin(accounts, eq(accounts.id, leads.accountId))
+          .leftJoin(users, eq(users.id, leads.createdByUserId))
+          .leftJoin(lastHumanReply, eq(lastHumanReply.leadId, leads.id))
+          .where(listWhere)
+          .orderBy(sql`${lastHumanReply.repliedAt} desc nulls last`, desc(leads.createdAt), desc(leads.id))
+          .limit(limit)
+      : sortSentNewest
       ? db
           .select(listColumns)
           .from(leads)
@@ -202,7 +236,7 @@ export async function GET(req: Request) {
       };
     });
 
-    const nextCursor = sortSentNewest
+    const nextCursor = sortSentNewest || sortReplyNewest
       ? null
       : nextCursorFromRows(
           rows.map((r) => ({

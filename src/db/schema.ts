@@ -656,6 +656,7 @@ export type AutopilotRunProgress = {
   companyNames: string[];
   attemptedNames?: string[];
   emptyDiscoveryStreak?: number;
+  zeroLeadChunkStreak?: number;
   skipped: { name: string; reason: string }[];
   lastError?: string | null;
   lastScheduledAt?: string | null;

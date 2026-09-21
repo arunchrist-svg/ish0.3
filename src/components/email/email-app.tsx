@@ -22,12 +22,16 @@ import { MobilePageLayout, PanelCard, AppPageHeader, text } from "@/design-syste
 import {
   fetchEmailLogs,
   fetchEmailOverview,
+  listAutopilotRuns,
   prefetchLead,
   setOutreachSendingPaused,
+  type AutopilotRunDto,
   type EmailLogStatus,
   type EmailLogsData,
   type EmailOverviewData,
 } from "@/lib/api-client";
+import { emailOpenRatePercent } from "@/lib/email/outbox-queue-status";
+import { autopilotRunOutboxLabel } from "@/lib/email/outbound-campaign-shared";
 import { SyncRepliesButton } from "@/components/sales-accelerator/sync-replies-button";
 import { EmailLogsTable } from "@/components/email/email-logs-table";
 import {
@@ -476,6 +480,7 @@ export function EmailApp() {
   const searchParams = useSearchParams();
   const { refresh: refreshOutreachBadge } = useInboxBadge();
   const [data, setData] = useState<EmailOverviewData | null>(null);
+  const [autopilotRuns, setAutopilotRuns] = useState<AutopilotRunDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [togglingSend, setTogglingSend] = useState(false);
@@ -495,12 +500,13 @@ export function EmailApp() {
     () => parsePageTab(searchParams.get("tab")),
     [searchParams],
   );
+  const autopilotRunId = searchParams.get("autopilotRun");
   const isLogsTab = activeTab === "logs";
 
   const loadOverview = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoading(true);
     try {
-      const overview = await fetchEmailOverview();
+      const overview = await fetchEmailOverview(undefined, { autopilotRunId });
       setData(overview);
       refreshOutreachBadge();
     } catch {
@@ -508,7 +514,7 @@ export function EmailApp() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [refreshOutreachBadge]);
+  }, [autopilotRunId, refreshOutreachBadge]);
 
   const loadLogs = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -518,6 +524,7 @@ export function EmailApp() {
           status: logStatus,
           q: logSearch,
           limit: 100,
+          autopilotRunId,
         });
         setLogs(result);
       } catch {
@@ -526,7 +533,7 @@ export function EmailApp() {
         if (!options?.silent) setLogsLoading(false);
       }
     },
-    [logSearch, logStatus],
+    [autopilotRunId, logSearch, logStatus],
   );
 
   const load = useCallback(async () => {
@@ -546,10 +553,30 @@ export function EmailApp() {
     void loadLogs();
   }, [isLogsTab, loadLogs]);
 
+  useEffect(() => {
+    void listAutopilotRuns()
+      .then((payload) =>
+        setAutopilotRuns(
+          payload.runs.filter((run) => (run.progress.leadIds?.length ?? run.progress.leadsSaved ?? 0) > 0),
+        ),
+      )
+      .catch(() => setAutopilotRuns([]));
+  }, []);
+
   const setTab = useCallback(
     (tab: PageTab) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("tab", tab);
+      router.replace(`/email?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  const setAutopilotRunFilter = useCallback(
+    (runId: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (runId) params.set("autopilotRun", runId);
+      else params.delete("autopilotRun");
       router.replace(`/email?${params.toString()}`, { scroll: false });
     },
     [router, searchParams],
@@ -612,8 +639,12 @@ export function EmailApp() {
     });
   }, [data, activeTab, filterRows]);
 
-  const openRate =
-    data && data.stats.totalSent > 0 ? Math.round((data.stats.opened / data.stats.total) * 100) : 0;
+  const openRate = data
+    ? emailOpenRatePercent(
+        logs?.counts.opened ?? data.stats.opened,
+        logs?.counts.all ?? data.stats.totalSent,
+      )
+    : 0;
 
   const kpiConfig = useMemo(() => {
     if (!data) return [];
@@ -781,6 +812,23 @@ export function EmailApp() {
         ) : data ? (
           <>
             <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center">
+              {autopilotRuns.length > 0 ? (
+                <label className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
+                  <span className="sr-only">Filter by Autopilot area</span>
+                  <select
+                    value={autopilotRunId ?? ""}
+                    onChange={(event) => setAutopilotRunFilter(event.target.value)}
+                    className="h-9 max-w-full rounded-full border border-brand-border/70 bg-white/80 px-3 text-[12px] font-semibold text-brand-ink outline-none lg:max-w-[16rem]"
+                  >
+                    <option value="">All areas</option>
+                    {autopilotRuns.map((run) => (
+                      <option key={run.id} value={run.id}>
+                        {autopilotRunOutboxLabel(run)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="grid min-w-0 flex-1 grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
                 {kpiConfig.map((kpi) => (
                   <KpiTile

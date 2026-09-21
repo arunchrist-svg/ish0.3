@@ -27,7 +27,7 @@ import {
   getOutreachTemplatesForPack,
 } from "@/lib/email/outreach-templates";
 import { getBoardTemplateOverride, setBoardTemplateOverride } from "@/lib/board-template-override";
-import { OutreachComposeModal } from "@/components/email/outreach-compose-modal";
+import { OutreachComposeModal, type OutreachComposeTab } from "@/components/email/outreach-compose-modal";
 import { MobilePageLayout, SearchBar, AppPageHeader } from "@/design-system";
 import { LeadsViewToggle } from "@/components/leads/leads-view-toggle";
 import { LeadFilterBar } from "@/components/leads/lead-filter-bar";
@@ -124,6 +124,13 @@ function boardStagePageLimit(stage: string): number {
   return stage === "Email Sent" ? 80 : 50;
 }
 
+/** Map board column → compose modal tab (review vs reply/conversation). */
+function composeTabForStage(stage: string): OutreachComposeTab {
+  if (stage === "Replied") return "replies";
+  if (stage === "Email") return "needs_review";
+  return "active";
+}
+
 function fetchBoardStagePage(
   stage: string,
   opts?: { cursor?: string | null; ids?: string[]; force?: boolean },
@@ -137,8 +144,14 @@ function fetchBoardStagePage(
     limit: boardStagePageLimit(stage),
     cursor: opts?.cursor,
     ids: opts?.ids,
-    sort: stage === "Email Sent" ? "sent_newest" : undefined,
+    sort:
+      stage === "Email Sent"
+        ? "sent_newest"
+        : stage === "Replied"
+          ? "reply_newest"
+          : undefined,
     excludePendingInitial: stage === "Email",
+    humanReply: stage === "Replied" ? true : undefined,
     force: opts?.force,
   });
 }
@@ -191,7 +204,10 @@ export function LeadsBoardApp() {
   const boardScrollRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const queueHydrated = useRef(false);
-  const [composeLeadId, setComposeLeadId] = useState<string | null>(null);
+  const [composeTarget, setComposeTarget] = useState<{
+    leadId: string;
+    tab: OutreachComposeTab;
+  } | null>(null);
   const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
   const [emailReadyCount, setEmailReadyCount] = useState(0);
   const [emailSendableCount, setEmailSendableCount] = useState(0);
@@ -1190,12 +1206,22 @@ export function LeadsBoardApp() {
                     isQueuedStage || stage === "Email Sent" ? sendQueueByLeadId : undefined
                   }
                   onLeadOpen={
-                    stage === "Email" || isQueuedStage || stage === "Email Sent"
-                      ? (lead) => setComposeLeadId(lead.id)
+                    stage === "Email" ||
+                    isQueuedStage ||
+                    stage === "Email Sent" ||
+                    stage === "Replied"
+                      ? (lead) =>
+                          setComposeTarget({
+                            leadId: lead.id,
+                            tab: composeTabForStage(stage),
+                          })
                       : undefined
                   }
                   onLeadPrefetch={
-                    stage === "Email" || isQueuedStage || stage === "Email Sent"
+                    stage === "Email" ||
+                    isQueuedStage ||
+                    stage === "Email Sent" ||
+                    stage === "Replied"
                       ? (lead) => prefetchLead(lead.id)
                       : undefined
                   }
@@ -1276,11 +1302,11 @@ export function LeadsBoardApp() {
         onWrite={() => void runBulkWriteFromModal()}
         onClose={closeWriteAllModal}
       />
-      {composeLeadId ? (
+      {composeTarget ? (
         <OutreachComposeModal
-          leadId={composeLeadId}
-          tab="needs_review"
-          onClose={() => setComposeLeadId(null)}
+          leadId={composeTarget.leadId}
+          tab={composeTarget.tab}
+          onClose={() => setComposeTarget(null)}
           onChanged={() => void load({ silent: true })}
         />
       ) : null}

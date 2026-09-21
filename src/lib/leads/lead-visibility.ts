@@ -19,6 +19,17 @@ export function leadVisibilitySql(ctx: Pick<TenantContext, "userId" | "role" | "
   return eq(leads.createdByUserId, ctx.userId);
 }
 
+/**
+ * Outbox / send-queue occupancy is always the logged-in mailbox, even for owners.
+ * Superadmin still sees every lead for support.
+ */
+export function mailboxLeadVisibilitySql(
+  ctx: Pick<TenantContext, "userId" | "platformRole">,
+): SQL | undefined {
+  if (canViewAllTenantLeads(ctx.platformRole)) return undefined;
+  return eq(leads.createdByUserId, ctx.userId);
+}
+
 export function canAccessLeadRecord(
   ctx: Pick<TenantContext, "userId" | "role" | "platformRole" | "tenantId">,
   lead: { tenantId: string; createdByUserId?: string | null },
@@ -34,6 +45,16 @@ export function withLeadVisibility(
   ...parts: Array<SQL | undefined>
 ): SQL {
   const visibility = leadVisibilitySql(ctx);
+  const filtered = [...parts, visibility].filter(Boolean) as SQL[];
+  if (filtered.length === 1) return filtered[0];
+  return and(...filtered)!;
+}
+
+export function withMailboxLeadVisibility(
+  ctx: Pick<TenantContext, "userId" | "platformRole">,
+  ...parts: Array<SQL | undefined>
+): SQL {
+  const visibility = mailboxLeadVisibilitySql(ctx);
   const filtered = [...parts, visibility].filter(Boolean) as SQL[];
   if (filtered.length === 1) return filtered[0];
   return and(...filtered)!;

@@ -116,6 +116,18 @@ describe("planBatchInitialSends", () => {
     });
     expect(slots[0].getTime()).toBeGreaterThanOrEqual(queueAfter.getTime() + 3 * 60_000 - 1000);
   });
+
+  it("Sunday night with empty mailbox occupancy starts Monday window", () => {
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 20, hour: 23, minute: 10 }, IST);
+    const { slots } = planBatchInitialSends({
+      count: 1,
+      window,
+      dailyCap: 50,
+      now,
+      existingByDay: new Map(),
+    });
+    expect(calendarDayKey(slots[0], IST)).toBe("2026-09-21");
+  });
 });
 
 describe("countPlannedInRolling24h", () => {

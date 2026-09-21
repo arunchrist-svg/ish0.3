@@ -48,6 +48,7 @@ vi.mock("@/db", () => ({
     scheduledFor: "scheduledFor",
     status: "status",
     sequenceDay: "sequenceDay",
+    emailKind: "emailKind",
     attemptCount: "attemptCount",
     lastAttemptAt: "lastAttemptAt",
     lastError: "lastError",
@@ -221,6 +222,7 @@ describe("runSequencer pre-linked drafts", () => {
       scheduleId: "sched-1",
       tenantId: "t1",
       workspaceId: "w1",
+      overrideQualityGate: false,
     });
     expect(mocks.updateSet).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -246,6 +248,25 @@ describe("runSequencer pre-linked drafts", () => {
         lastError: "Follow-up requires review",
       }),
     );
+  });
+
+  it("auto-sends with quality override when draft fails quality gate", async () => {
+    mocks.evaluateOutreachDraft.mockResolvedValue({
+      delivScore: 40,
+      rubricTotal: 40,
+      passes: false,
+      revisionTimeoutRisk: false,
+    });
+
+    const result = await runSequencer();
+    expect(result.processed).toBe(1);
+    expect(result.pendingReview).toBe(0);
+    expect(mocks.sendScheduledFollowUp).toHaveBeenCalledWith({
+      scheduleId: "sched-1",
+      tenantId: "t1",
+      workspaceId: "w1",
+      overrideQualityGate: true,
+    });
   });
 
   it("defers due rows outside Shoot-to window without sending", async () => {

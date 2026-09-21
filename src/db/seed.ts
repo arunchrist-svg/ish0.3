@@ -114,6 +114,7 @@ async function seed() {
           buyerPersonas: ["HR Manager"],
         },
         campaignMode: "custom",
+        followUpPolicy: "auto_send",
       },
     })
     .onConflictDoNothing();

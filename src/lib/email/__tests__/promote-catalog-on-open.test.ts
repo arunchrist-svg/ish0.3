@@ -9,7 +9,7 @@ import {
   buildIshFestiveCatalogParagraphs,
   buildIshFestiveCatalogParagraphsB,
 } from "@/lib/email/ish-festive-catalog";
-import { computeFollowUpScheduledFor, sameCalendarDay, zonedLocalToUtc } from "@/lib/email/send-window";
+import { sameCalendarDay, zonedLocalToUtc, nextSendWindowStart } from "@/lib/email/send-window";
 
 const IST = "Asia/Kolkata";
 const weekdays = {
@@ -55,19 +55,39 @@ describe("festive catalogue on open", () => {
         cadenceDays: [3, 7],
       }),
     ).toBe(false);
+    expect(
+      isIfOpenedOpenTrigger({
+        openedSequenceDay: -2,
+        openedEmailKind: "inbound_auto_reply",
+        cadenceDays: [3, 7],
+      }),
+    ).toBe(false);
+    expect(
+      isIfOpenedOpenTrigger({
+        openedSequenceDay: -2,
+        openedEmailKind: "inbound_reply",
+        cadenceDays: [3, 7],
+      }),
+    ).toBe(false);
   });
 
-  it("schedules If Opened for the next send-window day after the open", () => {
+  it("schedules If Opened at the next send-window slot, not +1 day", () => {
     const openedAt = zonedLocalToUtc({ year: 2026, month: 8, day: 19, hour: 15, minute: 0 }, IST);
     const scheduled = computeIfOpenedScheduledFor(openedAt, weekdays);
-    expect(scheduled).toEqual(computeFollowUpScheduledFor(openedAt, 1, weekdays));
-    expect(sameCalendarDay(scheduled, zonedLocalToUtc({ year: 2026, month: 8, day: 20, hour: 15 }, IST), IST)).toBe(
-      true,
-    );
+    expect(scheduled).toEqual(nextSendWindowStart(openedAt, weekdays));
+    expect(sameCalendarDay(scheduled, openedAt, IST)).toBe(true);
   });
 
-  it("snaps a Friday-night open to Monday when weekends are closed", () => {
-    const openedAt = zonedLocalToUtc({ year: 2026, month: 8, day: 21, hour: 16, minute: 0 }, IST);
+  it("snaps after-hours opens to the next morning in-window", () => {
+    const openedAt = zonedLocalToUtc({ year: 2026, month: 8, day: 19, hour: 18, minute: 0 }, IST);
+    const scheduled = computeIfOpenedScheduledFor(openedAt, weekdays);
+    expect(
+      sameCalendarDay(scheduled, zonedLocalToUtc({ year: 2026, month: 8, day: 20, hour: 9 }, IST), IST),
+    ).toBe(true);
+  });
+
+  it("snaps a Friday after-hours open to Monday when weekends are closed", () => {
+    const openedAt = zonedLocalToUtc({ year: 2026, month: 8, day: 21, hour: 18, minute: 0 }, IST);
     const scheduled = computeIfOpenedScheduledFor(openedAt, weekdays);
     expect(sameCalendarDay(scheduled, zonedLocalToUtc({ year: 2026, month: 8, day: 24, hour: 9 }, IST), IST)).toBe(
       true,

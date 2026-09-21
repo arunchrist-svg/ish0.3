@@ -420,15 +420,25 @@ export function formatHourLabel(hour: number): string {
   return `${h12}:${minutes} ${suffix}`;
 }
 
-/** Human label for a queued send instant in the window timezone (e.g. "Wed 10 Sep, 9:00 AM"). */
-export function formatQueuedSendLabel(at: Date, windowInput?: Partial<SendWindow> | null): string {
+/** Human label for a queued send instant in the window timezone. Uses today / tomorrow when it is. */
+export function formatQueuedSendLabel(at: Date, windowInput?: Partial<SendWindow> | null, now = new Date()): string {
   const window = resolveSendWindow(windowInput);
   const parts = getZonedParts(at, window.timezone);
+  const dueKey = calendarDayKey(at, window.timezone);
+  const todayKey = calendarDayKey(now, window.timezone);
+  const [year, monthNum, dayNum] = todayKey.split("-").map(Number);
+  const next = new Date(Date.UTC(year, monthNum - 1, dayNum + 1));
+  const tomorrowKey = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
   const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parts.weekday] ?? "";
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const month = months[parts.month - 1] ?? "";
-  const decimalHour = parts.hour + (parts.minute >= 30 ? 0.5 : 0);
-  return `${weekday} ${parts.day} ${month}, ${formatHourLabel(decimalHour)}`;
+  const minute = String(parts.minute).padStart(2, "0");
+  const hour12 = parts.hour % 12 === 0 ? 12 : parts.hour % 12;
+  const suffix = parts.hour >= 12 ? "PM" : "AM";
+  const time = `${hour12}:${minute} ${suffix}`;
+  if (dueKey === todayKey) return `today, ${time}`;
+  if (dueKey === tomorrowKey) return `tomorrow, ${time}`;
+  return `${weekday} ${parts.day} ${month}, ${time}`;
 }
 
 /** Compact label for axis ticks (e.g. 12a, 4a, 12p). */

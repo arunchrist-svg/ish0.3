@@ -83,7 +83,7 @@ export const FOLLOW_UP_POLICY_OPTIONS: { value: FollowUpPolicy; label: string; d
   {
     value: "auto_send",
     label: "Auto-send follow-ups",
-    desc: "Email 2 and 3 send on schedule if they pass the quality score gate.",
+    desc: "Email 2 and 3 send on schedule. Low quality scores are logged but do not block send.",
   },
   {
     value: "review_all_followups",

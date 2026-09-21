@@ -40,6 +40,33 @@ describe("detectAutomatedReply", () => {
     ).toBe(true);
   });
 
+  it("flags Undelivered Mail Returned to Sender", () => {
+    expect(
+      detectAutomatedReply({
+        subject: "Undelivered Mail Returned to Sender",
+        text: "This message was created automatically by mail delivery software. A message that you sent could not be delivered to one or more recipients.",
+      }),
+    ).toMatchObject({ automated: true });
+  });
+
+  it("flags maternity leave auto-reply body", () => {
+    expect(
+      detectAutomatedReply({
+        subject: "Re: Corporate gifting",
+        text: "Thank you for your email. I am currently on maternity leave and will return in a few months.",
+      }),
+    ).toMatchObject({ automated: true, reason: "leave_body" });
+  });
+
+  it("flags OOO leave of absence subject", () => {
+    expect(
+      detectAutomatedReply({
+        subject: "Out of Office: Leave of Absence",
+        text: "I am on leave until next quarter.",
+      }).automated,
+    ).toBe(true);
+  });
+
   it("treats a normal human reply as human", () => {
     expect(
       detectAutomatedReply({

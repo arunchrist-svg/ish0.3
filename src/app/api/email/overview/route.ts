@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, outreachSchedule, leads, contacts, accounts, leadOutreach } from "@/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, inArray, sql } from "drizzle-orm";
 import { getResolvedEmailConfig } from "@/lib/settings/email-settings";
 import { normalizeCadenceDays, type CadenceDays } from "@/lib/email/cadence";
 import { suggestReplyNextAction, type ReplyNextAction } from "@/lib/email/reply-next-action";
 import { deriveSequenceState, type SequenceControlState } from "@/lib/outreach/sequence-control-shared";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { parseListLimit } from "@/lib/api/cursor";
-import { withLeadVisibility } from "@/lib/leads/lead-visibility";
-import { getOutreachAttentionCounts } from "@/lib/email/outreach-attention-counts";
+import { withMailboxLeadVisibility } from "@/lib/leads/lead-visibility";
+import { getOutboxEngagementCounts, getOutreachAttentionCounts, listHotOutboxLeadIds } from "@/lib/email/outreach-attention-counts";
+import { classifyOutboxQueueStatus } from "@/lib/email/outbox-queue-status";
+import { resolveOutboxLeadScope } from "@/lib/email/outbox-lead-scope";
 
 export const preferredRegion = ["sin1"];
 
@@ -234,23 +236,15 @@ function buildLeadRow(
       ? new Date(email1Row.scheduledFor).toISOString()
       : null;
 
-  let queueStatus: LeadEmailRow["queueStatus"];
-  if (opts.needsReviewMeta) {
-    queueStatus = "needs_review";
-  } else if (hasInboundReply) {
-    // Keep the conversation in Replies after you send a reply so the thread stays findable.
-    queueStatus = "replies";
-  } else if (allOpens.length > 0 && first.leadStatus !== "replied" && (scheduledRows.length > 0 || pausedRows.length > 0)) {
-    queueStatus = "hot";
-  } else if (scheduledRows.length === 0 && pausedRows.length === 0 && sentRows.length > 0 && first.leadStatus !== "replied") {
-    queueStatus = "done";
-  } else if (scheduledRows.length > 0 && sentRows.length > 0) {
-    queueStatus = "active";
-  } else if (pausedRows.length > 0 && scheduledRows.length === 0 && sentRows.length > 0) {
-    queueStatus = "done";
-  } else {
-    queueStatus = "active";
-  }
+  let queueStatus: LeadEmailRow["queueStatus"] = classifyOutboxQueueStatus({
+    needsReview: Boolean(opts.needsReviewMeta),
+    hasInboundReply,
+    leadStatus: first.leadStatus,
+    opened: allOpens.length > 0,
+    scheduledCount: scheduledRows.length,
+    pausedCount: pausedRows.length,
+    sentCount: sentRows.length,
+  });
 
   let legacyStatus: LeadEmailRow["status"] = "active";
   if (first.leadStatus === "replied") {
@@ -333,6 +327,44 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const tabsToInclude = parseTabsParam(searchParams);
     const countsOnly = searchParams.get("counts") === "1";
+    const { leadIds } = await resolveOutboxLeadScope(ctx, searchParams.get("autopilotRun"));
+    const leadFilter = leadIds?.length ? inArray(leads.id, leadIds) : undefined;
+    if (leadIds && leadIds.length === 0) {
+      const emailConfig = await getResolvedEmailConfig(ctx.workspaceId);
+      const empty: LeadEmailRow[] = [];
+      return withServerTiming(
+        NextResponse.json({
+          outreachPaused: emailConfig.outreachPaused ?? false,
+          sendMode: emailConfig.sendMode,
+          cadenceDays: normalizeCadenceDays(emailConfig.cadenceDays),
+          stats: {
+            totalSent: 0,
+            opened: 0,
+            replied: 0,
+            dueToday: 0,
+            total: 0,
+            needsReview: 0,
+            replies: 0,
+            tabCounts: {
+              needs_review: 0,
+              active: 0,
+              hot: 0,
+              replies: 0,
+              done: 0,
+            },
+          },
+          needsReview: empty,
+          replies: empty,
+          hot: empty,
+          active: empty,
+          done: empty,
+          draftReady: empty,
+          stopped: empty,
+        }),
+        marks,
+        t0,
+      );
+    }
     const needNeedsReview = tabsToInclude.includes("needs_review");
     // Full schedule graph only when a tab needs sequence classification (not needs_review alone).
     const needScheduleGraph = tabsToInclude.some((t) =>
@@ -342,16 +374,17 @@ export async function GET(req: Request) {
 
     if (countsOnly) {
       const dbStart = performance.now();
-      const [emailConfig, attention] = await Promise.all([
+      const [emailConfig, attention, engagement] = await Promise.all([
         getResolvedEmailConfig(ctx.workspaceId),
         getOutreachAttentionCounts(ctx),
+        getOutboxEngagementCounts(ctx, leadIds),
       ]);
       mark(marks, "db", dbStart);
       const empty: LeadEmailRow[] = [];
       const tabCounts = {
         needs_review: attention.needsReview,
         active: 0,
-        hot: 0,
+        hot: engagement.hot,
         replies: attention.replies,
         done: 0,
       };
@@ -361,8 +394,8 @@ export async function GET(req: Request) {
           sendMode: emailConfig.sendMode,
           cadenceDays: normalizeCadenceDays(emailConfig.cadenceDays),
           stats: {
-            totalSent: 0,
-            opened: 0,
+            totalSent: engagement.sent,
+            opened: engagement.opened,
             replied: attention.replies,
             dueToday: 0,
             total: attention.inboxCount,
@@ -384,7 +417,7 @@ export async function GET(req: Request) {
     }
 
     const dbStart = performance.now();
-    const [emailConfig, rows, replyDrafts, pendingFollowUps, needsReviewLeads] = await Promise.all([
+    const [emailConfig, rows, replyDrafts, pendingFollowUps, needsReviewLeads, engagement, hotLeadIds] = await Promise.all([
       getResolvedEmailConfig(ctx.workspaceId),
       needScheduleGraph
         ? db
@@ -413,8 +446,11 @@ export async function GET(req: Request) {
             .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
             .innerJoin(contacts, eq(leads.contactId, contacts.id))
             .innerJoin(accounts, eq(leads.accountId, accounts.id))
-            .where(withLeadVisibility(ctx, eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.channel, "email")))
-            .orderBy(desc(outreachSchedule.scheduledFor))
+            .where(withMailboxLeadVisibility(ctx, eq(leads.workspaceId, ctx.workspaceId), eq(outreachSchedule.channel, "email"), leadFilter))
+            .orderBy(
+              desc(sql`(${outreachSchedule.openedAt} is not null)`),
+              desc(outreachSchedule.scheduledFor),
+            )
             .limit(SCHEDULE_ROW_CAP)
         : Promise.resolve([] as ScheduleGraphRow[]),
       needScheduleGraph || needNeedsReview
@@ -423,10 +459,11 @@ export async function GET(req: Request) {
             .from(leadOutreach)
             .innerJoin(leads, eq(leadOutreach.leadId, leads.id))
             .where(
-              withLeadVisibility(
+              withMailboxLeadVisibility(
                 ctx,
                 eq(leads.workspaceId, ctx.workspaceId),
                 eq(leadOutreach.templateVariant, "reply"),
+                leadFilter,
               ),
             )
             .limit(500)
@@ -457,10 +494,11 @@ export async function GET(req: Request) {
             .innerJoin(accounts, eq(leads.accountId, accounts.id))
             .leftJoin(leadOutreach, eq(leadOutreach.id, outreachSchedule.draftLeadOutreachId))
             .where(
-              withLeadVisibility(
+              withMailboxLeadVisibility(
                 ctx,
                 eq(leads.workspaceId, ctx.workspaceId),
                 eq(outreachSchedule.status, "pending_review"),
+                leadFilter,
               ),
             )
             .limit(rowLimit)
@@ -511,10 +549,11 @@ export async function GET(req: Request) {
               ),
             )
             .where(
-              withLeadVisibility(
+              withMailboxLeadVisibility(
                 ctx,
                 eq(leads.workspaceId, ctx.workspaceId),
                 eq(leads.status, "draft_ready"),
+                leadFilter,
               ),
             )
             .limit(rowLimit)
@@ -534,6 +573,10 @@ export async function GET(req: Request) {
             deliverabilityScore: number | null;
             rubricTotal: number | null;
           }[]),
+      getOutboxEngagementCounts(ctx, leadIds),
+      needScheduleGraph && tabsToInclude.includes("hot")
+        ? listHotOutboxLeadIds(ctx, rowLimit, leadIds)
+        : Promise.resolve([] as string[]),
     ]);
     mark(marks, "db", dbStart);
     const cadenceDays = normalizeCadenceDays(emailConfig.cadenceDays);
@@ -544,6 +587,48 @@ export async function GET(req: Request) {
     for (const row of rows) {
       if (!byLead.has(row.leadId)) byLead.set(row.leadId, []);
       byLead.get(row.leadId)!.push(row);
+    }
+
+    const missingHotIds = hotLeadIds.filter((id) => !byLead.has(id));
+    if (missingHotIds.length > 0) {
+      const extraRows = await db
+        .select({
+          scheduleId: outreachSchedule.id,
+          leadId: outreachSchedule.leadId,
+          sequenceDay: outreachSchedule.sequenceDay,
+          scheduleStatus: outreachSchedule.status,
+          scheduledFor: outreachSchedule.scheduledFor,
+          sentAt: outreachSchedule.sentAt,
+          openedAt: outreachSchedule.openedAt,
+          bouncedAt: outreachSchedule.bouncedAt,
+          bounceReason: outreachSchedule.bounceReason,
+          recipientEmail: outreachSchedule.recipientEmail,
+          emailKind: outreachSchedule.emailKind,
+          draftLeadOutreachId: outreachSchedule.draftLeadOutreachId,
+          leadStatus: leads.status,
+          contactName: contacts.name,
+          contactEmail: contacts.email,
+          companyName: accounts.name,
+          industry: accounts.industry,
+          city: accounts.city,
+          lastReplyContent: leads.lastReplyContent,
+        })
+        .from(outreachSchedule)
+        .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+        .innerJoin(contacts, eq(leads.contactId, contacts.id))
+        .innerJoin(accounts, eq(leads.accountId, accounts.id))
+        .where(
+          withMailboxLeadVisibility(
+            ctx,
+            eq(leads.workspaceId, ctx.workspaceId),
+            eq(outreachSchedule.channel, "email"),
+            inArray(outreachSchedule.leadId, missingHotIds),
+          ),
+        );
+      for (const row of extraRows) {
+        if (!byLead.has(row.leadId)) byLead.set(row.leadId, []);
+        byLead.get(row.leadId)!.push(row);
+      }
     }
 
     const result: LeadEmailRow[] = [];
@@ -665,7 +750,11 @@ export async function GET(req: Request) {
 
     const needsReviewAll = result.filter((r) => r.queueStatus === "needs_review");
     const repliesAll = result.filter((r) => r.queueStatus === "replies");
-    const hotAll = result.filter((r) => r.queueStatus === "hot");
+    const hotAll = result
+      .filter((r) => r.queueStatus === "hot")
+      .sort(
+        (a, b) => new Date(b.openedAt ?? 0).getTime() - new Date(a.openedAt ?? 0).getTime(),
+      );
     const activeAll = result.filter((r) => r.queueStatus === "active" && r.sequenceState === "active");
     const doneAll = result.filter((r) => r.queueStatus === "done");
 
@@ -680,13 +769,13 @@ export async function GET(req: Request) {
     const tabCounts = {
       needs_review: needsReviewAll.length,
       active: activeAll.length,
-      hot: hotAll.length,
+      hot: engagement.hot,
       replies: repliesAll.length,
       done: doneAll.length,
     };
 
-    const totalSent = result.reduce((s, r) => s + r.emailsSent, 0);
-    const opened = result.filter((r) => r.openedAt != null).length;
+    const totalSent = engagement.sent;
+    const opened = engagement.opened;
     const replied = result.filter((r) => r.hasInboundReply).length;
     const dueToday = result.filter((r) => {
       if (!r.nextEmailDue || r.sequenceState !== "active") return false;

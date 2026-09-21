@@ -28,12 +28,16 @@ import {
   mergeLeadOutreachFromServer,
 } from "@/lib/email/apply-writer-draft";
 
+const TABS = ["Summary", "Email", "WhatsApp", "Relationship Analytics"] as const;
+
 type Props = {
   leadId: string;
   initialLead?: LeadDetailRecord | null;
   onLeadUpdated: () => void;
   onEditLead?: (lead: LeadDetailRecord) => void;
   onDeleteLead?: (leadId: string) => void;
+  /** Tab to open when switching leads. Defaults to Summary. */
+  defaultTab?: (typeof TABS)[number];
 };
 
 function confidenceTierFromLead(lead: LeadDetailRecord): string {
@@ -100,8 +104,6 @@ function toQueueItem(lead: LeadDetailRecord) {
   };
 }
 
-const TABS = ["Summary", "Email", "WhatsApp", "Relationship Analytics"] as const;
-
 const TAB_SHORT: Record<(typeof TABS)[number], string> = {
   Summary: "Summary",
   Email: "Email",
@@ -109,7 +111,14 @@ const TAB_SHORT: Record<(typeof TABS)[number], string> = {
   "Relationship Analytics": "Network",
 };
 
-export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead, onDeleteLead }: Props) {
+export function RecordWorkspace({
+  leadId,
+  initialLead,
+  onLeadUpdated,
+  onEditLead,
+  onDeleteLead,
+  defaultTab = "Summary",
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -133,7 +142,7 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   const [lead, setLead] = useState<LeadDetailRecord | null>(initialLead ?? null);
   const [loading, setLoading] = useState(!initialLead);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>("Summary");
+  const [activeTab, setActiveTab] = useState<string>(defaultTab);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load(opts?: { silent?: boolean; replaceOutreach?: boolean; clearOutreach?: boolean }) {
@@ -215,19 +224,12 @@ export function RecordWorkspace({ leadId, initialLead, onLeadUpdated, onEditLead
   }
 
 
-  // Always land on Summary when opening or switching leads. Ignore deep-link tab=email/whatsapp.
+  // Land on defaultTab when opening or switching leads (Summary elsewhere; Email on Replied).
   useEffect(() => {
-    setActiveTab("Summary");
-    const params =
-      typeof window !== "undefined"
-        ? new URLSearchParams(window.location.search)
-        : new URLSearchParams(searchParams.toString());
-    const tab = params.get("tab");
-    if (tab === "email" || tab === "whatsapp") {
-      syncTabToUrl("Summary");
-    }
+    setActiveTab(defaultTab);
+    syncTabToUrl(defaultTab);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadId]);
+  }, [leadId, defaultTab]);
 
   useEffect(() => {
     if (initialLead?.id === leadId) {

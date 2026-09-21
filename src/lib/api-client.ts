@@ -736,8 +736,10 @@ export async function fetchLeadsPage(params?: {
   totals?: boolean;
   force?: boolean;
   ids?: string[];
-  sort?: "sent_newest";
+  sort?: "sent_newest" | "reply_newest";
   excludePendingInitial?: boolean;
+  /** Only leads with a real human inbound reply (excludes DSN / OOO / auto). */
+  humanReply?: boolean;
 }): Promise<LeadsPage> {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
@@ -747,6 +749,7 @@ export async function fetchLeadsPage(params?: {
   if (params?.ids?.length) qs.set("ids", params.ids.slice(0, 100).join(","));
   if (params?.sort) qs.set("sort", params.sort);
   if (params?.excludePendingInitial) qs.set("excludePendingInitial", "1");
+  if (params?.humanReply) qs.set("humanReply", "1");
   const path = `/api/leads?${qs.toString()}`;
   // Cache first page only; paginated pages stay uncached to avoid stale appends.
   const useCache = !params?.cursor;
@@ -987,7 +990,10 @@ export async function setOutreachSendingPaused(paused: boolean): Promise<{ outre
 
 export type EmailOverviewTab = "needs_review" | "active" | "hot" | "replies" | "done";
 
-export async function fetchEmailOverview(tabs?: EmailOverviewTab | EmailOverviewTab[]): Promise<EmailOverviewData> {
+export async function fetchEmailOverview(
+  tabs?: EmailOverviewTab | EmailOverviewTab[],
+  options?: { autopilotRunId?: string | null },
+): Promise<EmailOverviewData> {
   const params = new URLSearchParams();
   if (tabs) {
     const list = Array.isArray(tabs) ? tabs : [tabs];
@@ -995,6 +1001,7 @@ export async function fetchEmailOverview(tabs?: EmailOverviewTab | EmailOverview
   } else {
     params.set("tabs", "all");
   }
+  if (options?.autopilotRunId) params.set("autopilotRun", options.autopilotRunId);
   const res = await fetch(`/api/email/overview?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to load Outbox queue");
   return res.json();
@@ -1035,12 +1042,14 @@ export async function fetchEmailLogs(params?: {
   q?: string;
   limit?: number;
   offset?: number;
+  autopilotRunId?: string | null;
 }): Promise<EmailLogsData> {
   const search = new URLSearchParams();
   if (params?.status && params.status !== "all") search.set("status", params.status);
   if (params?.q?.trim()) search.set("q", params.q.trim());
   if (params?.limit) search.set("limit", String(params.limit));
   if (params?.offset) search.set("offset", String(params.offset));
+  if (params?.autopilotRunId) search.set("autopilotRun", params.autopilotRunId);
   const qs = search.toString();
   const res = await fetch(`/api/email/logs${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to load send logs");

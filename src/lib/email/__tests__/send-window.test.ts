@@ -303,6 +303,15 @@ describe("multi-range hour windows", () => {
 describe("formatQueuedSendLabel", () => {
   it("formats a queued send instant in the window timezone", () => {
     const at = zonedLocalToUtc({ year: 2026, month: 9, day: 10, hour: 9, minute: 0 }, IST);
-    expect(formatQueuedSendLabel(at, { timezone: IST })).toBe("Thu 10 Sep, 9:00 AM");
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 1, hour: 12, minute: 0 }, IST);
+    expect(formatQueuedSendLabel(at, { timezone: IST }, now)).toBe("Thu 10 Sep, 9:00 AM");
+  });
+
+  it("uses today and tomorrow for nearby send days", () => {
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 20, hour: 22, minute: 59 }, IST);
+    const today = zonedLocalToUtc({ year: 2026, month: 9, day: 20, hour: 23, minute: 10 }, IST);
+    const tomorrow = zonedLocalToUtc({ year: 2026, month: 9, day: 21, hour: 9, minute: 21 }, IST);
+    expect(formatQueuedSendLabel(today, { timezone: IST }, now)).toBe("today, 11:10 PM");
+    expect(formatQueuedSendLabel(tomorrow, { timezone: IST }, now)).toBe("tomorrow, 9:21 AM");
   });
 });

@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { db, outreachSchedule, leads, contacts, accounts } from "@/db";
-import { and, count, desc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { deriveEmailLogStatus, type EmailLogStatus } from "@/lib/email/log-status";
 import { syncResendBounces } from "@/lib/email/sync-resend-bounces";
+import { withMailboxLeadVisibility } from "@/lib/leads/lead-visibility";
+import { outboundCampaignEmailFilter } from "@/lib/email/outbound-campaign";
+import { resolveOutboxLeadScope } from "@/lib/email/outbox-lead-scope";
 
 export type EmailLogRow = {
   id: string;
@@ -61,13 +64,21 @@ export async function GET(req: Request) {
     const q = searchParams.get("q")?.trim() ?? "";
     const limit = parsePage(searchParams.get("limit"), 50, 100) || 50;
     const offset = parsePage(searchParams.get("offset"), 0, 10_000);
+    const { leadIds } = await resolveOutboxLeadScope(ctx, searchParams.get("autopilotRun"));
+    if (leadIds && leadIds.length === 0) {
+      const empty: EmailLogsResponse = {
+        items: [],
+        total: 0,
+        limit,
+        offset,
+        counts: { all: 0, opened: 0, bounced: 0, delivered: 0 },
+      };
+      return NextResponse.json(empty);
+    }
 
-    const workspaceFilter = eq(leads.workspaceId, ctx.workspaceId);
-    const outboundFilter = and(
-      eq(outreachSchedule.status, "sent"),
-      eq(outreachSchedule.channel, "email"),
-      sql`${outreachSchedule.emailKind} is distinct from 'inbound_reply'`,
-    );
+    const workspaceFilter = withMailboxLeadVisibility(ctx, eq(leads.workspaceId, ctx.workspaceId));
+    const outboundFilter = outboundCampaignEmailFilter();
+    const leadFilter = leadIds ? inArray(leads.id, leadIds) : undefined;
     const statusFilter =
       status === "bounced"
         ? isNotNull(outreachSchedule.bouncedAt)
@@ -89,6 +100,7 @@ export async function GET(req: Request) {
     const filters = [
       workspaceFilter,
       outboundFilter,
+      leadFilter,
       statusFilter,
       searchFilter,
     ].filter((clause): clause is NonNullable<typeof clause> => Boolean(clause));
@@ -103,7 +115,7 @@ export async function GET(req: Request) {
         .innerJoin(accounts, eq(leads.accountId, accounts.id));
     }
 
-    const workspaceAndOutbound = and(workspaceFilter, outboundFilter);
+    const workspaceAndOutbound = and(workspaceFilter, outboundFilter, leadFilter);
 
     const [rows, filteredCount, allCount, openedCount, bouncedCount, deliveredCount] = await Promise.all([
       db
