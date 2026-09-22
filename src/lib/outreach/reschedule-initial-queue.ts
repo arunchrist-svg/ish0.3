@@ -369,12 +369,14 @@ function queueNeedsRandomSpread(times: Date[], now: Date): boolean {
 
 /**
  * Re-space Email 1 queues that are still on equal 3m gaps, or that have piled up as due.
+ * Always per mailbox owner so one login's queue cannot push another to tomorrow.
  */
 export async function rebalanceQueuedInitialSendGaps(now = new Date()): Promise<number> {
   const groups = await db
     .selectDistinct({
       tenantId: leads.tenantId,
       workspaceId: leads.workspaceId,
+      userId: leads.createdByUserId,
     })
     .from(outreachSchedule)
     .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
@@ -389,7 +391,7 @@ export async function rebalanceQueuedInitialSendGaps(now = new Date()): Promise<
   const seen = new Set<string>();
   let rescheduled = 0;
   for (const group of groups) {
-    const key = `${group.tenantId}:${group.workspaceId}`;
+    const key = `${group.tenantId}:${group.workspaceId}:${group.userId ?? ""}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
@@ -401,6 +403,7 @@ export async function rebalanceQueuedInitialSendGaps(now = new Date()): Promise<
         and(
           eq(leads.tenantId, group.tenantId),
           eq(leads.workspaceId, group.workspaceId),
+          group.userId ? eq(leads.createdByUserId, group.userId) : undefined,
           eq(outreachSchedule.channel, "email"),
           eq(outreachSchedule.sequenceDay, 0),
           inArray(outreachSchedule.status, ["scheduled", "sending"]),

@@ -761,7 +761,7 @@ export async function fetchLeadsPage(params?: {
       )
     : await get<{ leads: LeadQueueItem[]; nextCursor?: string | null; totals?: { leads: number } }>(path);
   return {
-    leads: data.leads,
+    leads: Array.isArray(data.leads) ? data.leads : [],
     nextCursor: data.nextCursor ?? null,
     totals: data.totals,
   };
@@ -777,7 +777,7 @@ export async function fetchQueuedLeadsPage(params?: {
   const path = `/api/leads/queued?${qs.toString()}`;
   const data = await get<{ leads: LeadQueueItem[]; nextCursor?: string | null }>(path);
   return {
-    leads: data.leads,
+    leads: Array.isArray(data.leads) ? data.leads : [],
     nextCursor: data.nextCursor ?? null,
   };
 }

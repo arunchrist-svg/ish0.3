@@ -306,7 +306,12 @@ export function LeadsBoardApp() {
         countResult[0].status === "fulfilled" ? countResult[0].value : null;
       const queuedPage =
         countResult[1].status === "fulfilled" ? countResult[1].value : null;
-      const stagePages = countResult.slice(2).flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+      const stagePages = countResult.slice(2).flatMap((r) => {
+        if (r.status !== "fulfilled") return [];
+        const value = r.value as { stage: string; page?: { leads?: LeadQueueItem[]; nextCursor?: string | null } };
+        const leads = Array.isArray(value.page?.leads) ? value.page.leads : [];
+        return [{ stage: value.stage, leads, nextCursor: value.page?.nextCursor ?? null }];
+      });
       const loadFailed =
         !countData || !queuedPage || stagePages.length < boardLoadStages.length;
       if (loadFailed && !opts?.silent && !countData && stagePages.length === 0) {
@@ -329,9 +334,9 @@ export function LeadsBoardApp() {
       }
       const byId = new Map<string, LeadQueueItem>();
       const cursors: Record<string, string | null> = {};
-      for (const { stage, page } of stagePages) {
-        for (const lead of page.leads) byId.set(lead.id, lead);
-        cursors[stage] = page.nextCursor;
+      for (const { stage, leads, nextCursor } of stagePages) {
+        for (const lead of leads) byId.set(lead.id, lead);
+        cursors[stage] = nextCursor;
       }
       if (opts?.silent) {
         setLeads((prev) => {
@@ -357,7 +362,7 @@ export function LeadsBoardApp() {
         setEmailSendableCount(countData.emailSendable);
         setQueuedCount(countData.queued);
       }
-      if (queuedPage) setQueuedLeadsServer(queuedPage.leads);
+      if (queuedPage) setQueuedLeadsServer(Array.isArray(queuedPage.leads) ? queuedPage.leads : []);
     } catch (err) {
       if (autopilotRunId) setAutopilotFilterRun(null);
       if (!opts?.silent) {
@@ -376,10 +381,11 @@ export function LeadsBoardApp() {
     setLoadingMoreStage(stage);
     try {
       const page = await fetchBoardStagePage(stage, { cursor });
+      const extra = Array.isArray(page.leads) ? page.leads : [];
       setLeads((prev) => {
-        if (!page.leads.length) return prev;
+        if (!extra.length) return prev;
         const byId = new Map(prev.map((lead) => [lead.id, lead]));
-        for (const lead of page.leads) byId.set(lead.id, lead);
+        for (const lead of extra) byId.set(lead.id, lead);
         return [...byId.values()];
       });
       setStageCursors((prev) => ({ ...prev, [stage]: page.nextCursor }));
