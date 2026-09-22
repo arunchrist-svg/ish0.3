@@ -30,6 +30,8 @@ import { CreditBalanceChip } from "@/components/sales-accelerator/credit-balance
 import { useInboxBadge } from "@/hooks/use-inbox-badge";
 import { PushPermissionBanner } from "@/components/mobile/push-permission-banner";
 import { Home, Inbox } from "lucide-react";
+import { HomeOutreachInsights } from "@/components/home/home-outreach-insights";
+import { isHumanReplyNotification } from "@/lib/email/human-reply-filter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -254,10 +256,13 @@ export function HomeApp() {
   const [tavilyUsage, setTavilyUsage] = useState<TavilyUsage | null>(null);
   const [llmConfig, setLlmConfig] = useState<LlmConfig | null>(null);
   const { session } = useSession();
-  const { notifications: hotReplyNotifs, unreadCount: hotReplyCount } = useNotifications();
+  const { notifications: allNotifs } = useNotifications();
+  const hotReplyNotifs = allNotifs.filter(isHumanReplyNotification);
+  const hotReplyCount = hotReplyNotifs.filter((n) => n.type === "reply_received" && !n.readAt).length;
   const isSuperadmin = session?.isSuperadmin ?? false;
   const [funnelLoading, setFunnelLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [outreachReloadSignal, setOutreachReloadSignal] = useState(0);
   const { count: inboxCount } = useInboxBadge();
 
   async function loadAll(silent = false) {
@@ -284,6 +289,8 @@ export function HomeApp() {
         setLeads((data as { leads: LeadItem[] }).leads ?? []);
       })
       .catch(() => {});
+
+    setOutreachReloadSignal((n) => n + 1);
 
     if (superadmin) {
       void fetch("/api/usage/tavily")
@@ -439,7 +446,8 @@ export function HomeApp() {
           );
         })()}
 
-        
+        <HomeOutreachInsights reloadSignal={outreachReloadSignal} />
+
         {hotReplyCount > 0 ? (
           <div className="mb-5 rounded-[20px] border border-brand-stratus-salmon/30 bg-white p-4 shadow-[var(--shadow-brand-sm)]">
             <div className="mb-3 flex items-center justify-between">

@@ -13,6 +13,7 @@ import { withMailboxLeadVisibility } from "@/lib/leads/lead-visibility";
 import { getOutboxEngagementCounts, getOutreachAttentionCounts, listHotOutboxLeadIds } from "@/lib/email/outreach-attention-counts";
 import { classifyOutboxQueueStatus } from "@/lib/email/outbox-queue-status";
 import { resolveOutboxLeadScope } from "@/lib/email/outbox-lead-scope";
+import { isHumanReplyContent } from "@/lib/email/human-reply-filter";
 
 export const preferredRegion = ["sin1"];
 
@@ -166,9 +167,12 @@ function buildLeadRow(
   const maxSentDay = sentRows.length > 0 ? Math.max(...sentRows.map((r) => r.sequenceDay)) : -1;
   const hasReplyDraftFromSet = opts.replyDraftLeadIds.has(leadId);
 
+  const hasInboundReplyRow = leadRows.some(
+    (r) => r.scheduleStatus === "sent" && r.emailKind === "inbound_reply",
+  );
   const hasInboundReply =
-    leadRows.some((r) => r.scheduleStatus === "sent" && r.emailKind === "inbound_reply") ||
-    first.leadStatus === "replied";
+    isHumanReplyContent(first.lastReplyContent) &&
+    (hasInboundReplyRow || first.leadStatus === "replied");
   const hasInboundAutoReply = leadRows.some(
     (r) => r.scheduleStatus === "sent" && r.emailKind === "inbound_auto_reply",
   );

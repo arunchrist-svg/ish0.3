@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireTenantContext } from "@/lib/tenant";
 import { db, notifications } from "@/db";
 import { eq, and, isNull, desc } from "drizzle-orm";
+import { isHumanReplyNotification } from "@/lib/email/human-reply-filter";
 
 export async function GET() {
   try {
@@ -19,7 +20,11 @@ export async function GET() {
       .orderBy(desc(notifications.createdAt))
       .limit(50);
 
-    return NextResponse.json({ notifications: rows, unreadCount: rows.length });
+    const unreadNotifications = rows.filter(isHumanReplyNotification);
+    return NextResponse.json({
+      notifications: unreadNotifications,
+      unreadCount: unreadNotifications.length,
+    });
   } catch (err) {
     console.error("GET /api/notifications", err);
     return NextResponse.json({ error: "Failed to load notifications" }, { status: 500 });

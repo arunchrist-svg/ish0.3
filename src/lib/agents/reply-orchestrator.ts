@@ -3,6 +3,7 @@ import { findRelatedLeads } from "@/lib/enrichment/related-leads";
 import { db, leads } from "@/db";
 import { eq } from "drizzle-orm";
 import { extractLatestReplyText } from "@/lib/email/reply-body";
+import { isHumanReplyContent } from "@/lib/email/human-reply-filter";
 import { ensureBlankReplyDraft } from "@/lib/email/blank-reply-draft";
 
 export type ReplyOrchestratorResult = {
@@ -27,6 +28,14 @@ export async function runReplyOrchestrator(params: {
 
   const replyRaw = (lead as typeof leads.$inferSelect & { lastReplyContent?: string | null }).lastReplyContent;
   const replySnippet = extractLatestReplyText(replyRaw) ?? "";
+
+  if (!isHumanReplyContent(replySnippet)) {
+    return {
+      notified: { inApp: 0, email: 0 },
+      relatedCount: 0,
+      draftFailed: false,
+    };
+  }
 
   let outreachId: string | undefined;
   let rubricTotal: number | undefined;

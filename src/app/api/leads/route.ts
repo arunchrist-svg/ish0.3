@@ -17,7 +17,7 @@ import {
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { withoutPendingInitialEmailSend } from "@/lib/outreach/pending-send-count";
-import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter";
+import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter-sql";
 import { INBOUND_REPLY_EMAIL_KIND } from "@/lib/email/inbound-match";
 import { outboundCampaignEmailFilter } from "@/lib/email/outbound-campaign";
 

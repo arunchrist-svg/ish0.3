@@ -5,6 +5,7 @@ import { db, notifications } from "@/db";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
 import { getOutreachAttentionCounts } from "@/lib/email/outreach-attention-counts";
+import { isHumanReplyNotification } from "@/lib/email/human-reply-filter";
 
 export const preferredRegion = ["sin1"];
 
@@ -43,10 +44,12 @@ export async function GET() {
     ]);
     mark(marks, "db", dbStart);
 
+    const unreadNotifications = notifRows.filter(isHumanReplyNotification);
+
     const res = NextResponse.json(
       {
-        notifications: notifRows,
-        unreadCount: notifRows.length,
+        notifications: unreadNotifications,
+        unreadCount: unreadNotifications.length,
         needsReview: attention.needsReview,
         replies: attention.replies,
         inboxCount: attention.inboxCount,

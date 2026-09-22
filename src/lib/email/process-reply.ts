@@ -7,6 +7,9 @@ import {
   INBOUND_AUTO_REPLY_EMAIL_KIND,
   INBOUND_REPLY_EMAIL_KIND,
 } from "@/lib/email/inbound-match";
+import { detectAutomatedReply } from "@/lib/email/detect-automated-reply";
+import { isHumanReplyContent } from "@/lib/email/human-reply-filter";
+import { revertFalseInboundReply } from "@/lib/email/revert-false-inbound";
 
 export type InboundReplyClass = "human" | "auto";
 
@@ -40,15 +43,28 @@ export async function processLeadReply(params: {
     inboundMessageId,
     tenantId,
     workspaceId,
-    replyClass = "human",
-    autoReason,
     subject,
   } = params;
 
-  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+  let lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
   if (!lead) return { ok: false, error: "Lead not found" };
 
-  if (lead.status === "replied" || isPastReplyStage(lead.status)) {
+  const autoDetected = detectAutomatedReply({
+    subject,
+    text: replyContent ?? lead.lastReplyContent,
+  });
+  const replyClass: InboundReplyClass =
+    autoDetected.automated ? "auto" : (params.replyClass ?? "human");
+  const resolvedAutoReason = autoDetected.automated ? autoDetected.reason : params.autoReason;
+
+  if (
+    (lead.status === "replied" || isPastReplyStage(lead.status)) &&
+    !isHumanReplyContent(replyContent ?? lead.lastReplyContent, subject)
+  ) {
+    await revertFalseInboundReply(leadId);
+    lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) });
+    if (!lead) return { ok: false, error: "Lead not found" };
+  } else if (lead.status === "replied" || isPastReplyStage(lead.status)) {
     return { ok: true, skipped: true, reason: "already past reply stage" };
   }
 
@@ -70,7 +86,7 @@ export async function processLeadReply(params: {
         rfcMessageId: inboundMessageId,
         subjectSent: subject?.trim() || "Automated reply",
         bodySnippet: bodySnippet,
-        bounceReason: autoReason ?? null,
+        bounceReason: resolvedAutoReason ?? null,
         scheduledFor: new Date(),
         sentAt: new Date(),
         status: "sent",
@@ -85,7 +101,7 @@ export async function processLeadReply(params: {
       entityId: leadId,
       metadata: {
         source,
-        autoReason: autoReason ?? null,
+        autoReason: resolvedAutoReason ?? null,
         hasReplyContent: !!replyContent,
         inboundMessageId,
       },

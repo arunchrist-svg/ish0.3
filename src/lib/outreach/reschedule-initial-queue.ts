@@ -310,12 +310,48 @@ export async function rescheduleInitialEmailQueue(
  * Re-space remaining Email 1 queue from now (or next window) with a fresh random
  * 30s–3m gap between each send. Daily cap still applies. Does not count other
  * queued rows as occupancy so the remaining list can fill today's window.
+ *
+ * Always scoped to one mailbox (`actor.userId`). If userId is missing, each
+ * owner in the workspace is respread separately so queues never merge.
  */
 export async function spreadQueuedInitialEmailsFromNow(
   actor: QueueActor,
   now = new Date(),
 ): Promise<RescheduleQueueResult | null> {
-  const emailConfig = await getResolvedEmailConfig(actor.workspaceId, actor.userId ?? undefined);
+  if (!actor.userId) {
+    const owners = await db
+      .selectDistinct({ userId: leads.createdByUserId })
+      .from(outreachSchedule)
+      .innerJoin(leads, eq(outreachSchedule.leadId, leads.id))
+      .where(
+        and(
+          eq(leads.tenantId, actor.tenantId),
+          eq(leads.workspaceId, actor.workspaceId),
+          eq(outreachSchedule.channel, "email"),
+          eq(outreachSchedule.sequenceDay, 0),
+          inArray(outreachSchedule.status, ["scheduled", "sending"]),
+        ),
+      );
+    let combined: RescheduleQueueResult | null = null;
+    for (const owner of owners) {
+      const part = await spreadQueuedInitialEmailsFromNow(
+        { ...actor, userId: owner.userId },
+        now,
+      );
+      if (!part) continue;
+      if (!combined) combined = part;
+      else {
+        combined = {
+          ...part,
+          rescheduled: combined.rescheduled + part.rescheduled,
+          leadCount: combined.leadCount + part.leadCount,
+        };
+      }
+    }
+    return combined;
+  }
+
+  const emailConfig = await getResolvedEmailConfig(actor.workspaceId, actor.userId);
   if (isOutreachSendingPaused(emailConfig)) return null;
 
   const sendWindow = sendWindowFromEmailFields(emailConfig);
@@ -334,7 +370,7 @@ export async function spreadQueuedInitialEmailsFromNow(
       and(
         eq(leads.tenantId, actor.tenantId),
         eq(leads.workspaceId, actor.workspaceId),
-        actor.userId ? eq(leads.createdByUserId, actor.userId) : undefined,
+        eq(leads.createdByUserId, actor.userId),
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         inArray(outreachSchedule.status, ["scheduled", "sending"]),
@@ -357,14 +393,15 @@ export async function spreadQueuedInitialEmailsFromNow(
 const EQUAL_GAP_MS = BATCH_SEND_GAP_MAX_SECONDS * 1000;
 
 function queueNeedsRandomSpread(times: Date[], now: Date): boolean {
-  let dueCount = 0;
-  for (let i = 0; i < times.length; i++) {
-    if (times[i]!.getTime() <= now.getTime()) dueCount++;
-    if (i > 0 && times[i]!.getTime() - times[i - 1]!.getTime() === EQUAL_GAP_MS) {
+  // Only rebalance fixed equal-gap schedules. Do not replan just because several
+  // emails are due (that thrashes large queues on every sequencer tick).
+  for (let i = 1; i < times.length; i++) {
+    if (times[i]!.getTime() - times[i - 1]!.getTime() === EQUAL_GAP_MS) {
       return true;
     }
   }
-  return dueCount >= 2;
+  void now;
+  return false;
 }
 
 /**

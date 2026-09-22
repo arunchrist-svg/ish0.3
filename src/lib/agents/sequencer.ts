@@ -94,15 +94,16 @@ async function cancelWithReason(id: string, reason: string): Promise<void> {
     .where(eq(outreachSchedule.id, id));
 }
 
-/** Permanent skip: slot will not be used; try the next queued send immediately. */
+/** Permanent skip: slot will not be used; try the next queued send for this mailbox. */
 async function cancelAndPullForward(
   id: string,
   reason: string,
   workspaceId: string,
   now: Date,
+  ownerUserId?: string | null,
 ): Promise<void> {
   await cancelWithReason(id, reason);
-  await pullForwardNextQueuedInitialEmail(workspaceId, now);
+  await pullForwardNextQueuedInitialEmail(workspaceId, now, ownerUserId);
 }
 
 export async function runSequencer(): Promise<{
@@ -160,6 +161,7 @@ export async function runSequencer(): Promise<{
       }
 
       let workspaceId: string | undefined;
+      let ownerUserId: string | null | undefined;
 
       try {
         const lead = await db.query.leads.findFirst({
@@ -174,6 +176,7 @@ export async function runSequencer(): Promise<{
         }
 
         workspaceId = lead.workspaceId;
+        ownerUserId = lead.createdByUserId;
 
         const emailConfig = await getResolvedEmailConfig(lead.workspaceId, lead.createdByUserId || undefined);
         if (isOutreachSendingPaused(emailConfig)) {
@@ -204,6 +207,7 @@ export async function runSequencer(): Promise<{
               `Lead status ${lead.status} cannot send Email 1`,
               workspaceId,
               now,
+              lead.createdByUserId,
             );
             skipped++;
             continue;
@@ -416,7 +420,7 @@ export async function runSequencer(): Promise<{
           await cancelWithReason(claimed.id, reason);
           skipped++;
           if (workspaceId && claimed.sequenceDay === 0) {
-            await pullForwardNextQueuedInitialEmail(workspaceId, new Date());
+            await pullForwardNextQueuedInitialEmail(workspaceId, new Date(), ownerUserId);
           }
           continue;
         }
@@ -424,7 +428,7 @@ export async function runSequencer(): Promise<{
         if (outcome === "failed") {
           failed++;
           if (workspaceId && claimed.sequenceDay === 0) {
-            await pullForwardNextQueuedInitialEmail(workspaceId, new Date());
+            await pullForwardNextQueuedInitialEmail(workspaceId, new Date(), ownerUserId);
           }
         } else skipped++;
       }

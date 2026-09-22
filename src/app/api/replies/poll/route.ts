@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { pollRepliesForAllWorkspaces, pollRepliesForWorkspace } from "@/lib/email/reply-poller";
+import { reconcileNonHumanRepliedLeads } from "@/lib/email/reconcile-non-human-replies";
 import { requireTenantContext, UnauthorizedError } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
@@ -21,7 +22,8 @@ async function handlePoll(req: Request) {
     const ctx = await requireTenantContext();
     requirePipelineWrite(ctx);
     const result = await pollRepliesForWorkspace(ctx.workspaceId);
-    return NextResponse.json({ ok: true, ...result });
+    const reconciled = await reconcileNonHumanRepliedLeads(ctx.workspaceId);
+    return NextResponse.json({ ok: true, ...result, reconciled });
   } catch (e) {
     if (e instanceof UnauthorizedError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

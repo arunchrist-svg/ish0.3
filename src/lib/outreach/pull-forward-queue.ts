@@ -4,11 +4,12 @@ import { randomBatchSendGapMs } from "@/lib/outreach/plan-batch-sends";
 
 /**
  * When a send slot is freed (skip/cancel), pull the next scheduled Email 1 forward
- * by a random 30s–3m gap so the next send is not immediate and not a fixed 3m wait.
+ * for the same mailbox owner only. Never steals a slot from another login's queue.
  */
 export async function pullForwardNextQueuedInitialEmail(
   workspaceId: string,
   now: Date,
+  ownerUserId?: string | null,
 ): Promise<boolean> {
   const [next] = await db
     .select({ id: outreachSchedule.id })
@@ -17,6 +18,7 @@ export async function pullForwardNextQueuedInitialEmail(
     .where(
       and(
         eq(leads.workspaceId, workspaceId),
+        ownerUserId ? eq(leads.createdByUserId, ownerUserId) : undefined,
         eq(outreachSchedule.channel, "email"),
         eq(outreachSchedule.sequenceDay, 0),
         eq(outreachSchedule.status, "scheduled"),

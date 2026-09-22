@@ -6,7 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 import { aggregateStatusCountsByStage } from "@/lib/pipeline-status";
 import { countPendingInitialEmailSends, countSendableEmailStageLeads, countEmailStageWithUsableInbox } from "@/lib/outreach/pending-send-count";
-import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter";
+import { humanRepliedLeadSql } from "@/lib/email/human-reply-filter-sql";
 
 export const preferredRegion = ["sin1"];
 

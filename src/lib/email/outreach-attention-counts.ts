@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { withMailboxLeadVisibility } from "@/lib/leads/lead-visibility";
 import type { TenantContext } from "@/lib/tenant";
 import { outboundCampaignEmailFilter } from "@/lib/email/outbound-campaign";
+import { humanInboundScheduleRowSql, noHumanInboundReplyExistsSql } from "@/lib/email/human-reply-filter-sql";
 
 export type OutreachAttentionCounts = {
   /** Email 1 drafts + follow-ups awaiting human review (visible leads only). */
@@ -54,6 +55,7 @@ export async function getOutreachAttentionCounts(ctx: VisibilityCtx): Promise<Ou
           eq(leads.workspaceId, ctx.workspaceId),
           eq(outreachSchedule.emailKind, "inbound_reply"),
           eq(outreachSchedule.status, "sent"),
+          humanInboundScheduleRowSql(),
           sql`NOT EXISTS (
             SELECT 1 FROM ${outreachSchedule} outbound
             WHERE outbound.lead_id = ${leads.id}
@@ -127,12 +129,7 @@ export async function getOutboxEngagementCounts(
     sql`${outreachSchedule.sequenceDay} >= 0`,
     sql`${outreachSchedule.emailKind} is distinct from 'inbound_reply'`,
     sql`${leads.status} is distinct from 'replied'`,
-    sql`NOT EXISTS (
-      SELECT 1 FROM ${outreachSchedule} inbound
-      WHERE inbound.lead_id = ${leads.id}
-        AND inbound.email_kind = 'inbound_reply'
-        AND inbound.status = 'sent'
-    )`,
+    noHumanInboundReplyExistsSql(),
   );
 
   const [sentRow, openedRow, hotRow] = await Promise.all([
@@ -175,12 +172,7 @@ export async function listHotOutboxLeadIds(
     sql`${outreachSchedule.sequenceDay} >= 0`,
     sql`${outreachSchedule.emailKind} is distinct from 'inbound_reply'`,
     sql`${leads.status} is distinct from 'replied'`,
-    sql`NOT EXISTS (
-      SELECT 1 FROM ${outreachSchedule} inbound
-      WHERE inbound.lead_id = ${leads.id}
-        AND inbound.email_kind = 'inbound_reply'
-        AND inbound.status = 'sent'
-    )`,
+    noHumanInboundReplyExistsSql(),
   );
   const rows = await db
     .select({

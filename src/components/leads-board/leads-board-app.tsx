@@ -294,13 +294,17 @@ export function LeadsBoardApp() {
         setAutopilotFilterRun(null);
       }
       const boardLoadStages = boardPipelineStages().filter((stage) => stage !== BOARD_QUEUED_STAGE);
+      // Silent polls only refresh counts + Queued. Full column reload is for first paint / manual refresh.
+      const silent = Boolean(opts?.silent);
       const countResult = await Promise.allSettled([
         fetchLeadStageCounts(),
-        fetchQueuedLeadsPage({ limit: 5000 }),
-        ...boardLoadStages.map(async (stage) => ({
-          stage,
-          page: await fetchBoardStagePage(stage, { ids: autopilotIds, force: true }),
-        })),
+        fetchQueuedLeadsPage({ limit: silent ? 400 : 5000 }),
+        ...(silent
+          ? []
+          : boardLoadStages.map(async (stage) => ({
+              stage,
+              page: await fetchBoardStagePage(stage, { ids: autopilotIds, force: true }),
+            }))),
       ]);
       const countData =
         countResult[0].status === "fulfilled" ? countResult[0].value : null;
@@ -312,16 +316,17 @@ export function LeadsBoardApp() {
         const leads = Array.isArray(value.page?.leads) ? value.page.leads : [];
         return [{ stage: value.stage, leads, nextCursor: value.page?.nextCursor ?? null }];
       });
-      const loadFailed =
-        !countData || !queuedPage || stagePages.length < boardLoadStages.length;
-      if (loadFailed && !opts?.silent && !countData && stagePages.length === 0) {
+      const loadFailed = silent
+        ? !countData && !queuedPage
+        : !countData || !queuedPage || stagePages.length < boardLoadStages.length;
+      if (loadFailed && !silent && !countData && stagePages.length === 0) {
         const firstReject = countResult.find((r) => r.status === "rejected");
         console.error(
           "[leads-board] load failed",
           firstReject && firstReject.status === "rejected" ? firstReject.reason : "partial stage failure",
         );
         toast.error("Could not load leads");
-      } else if (loadFailed && !opts?.silent) {
+      } else if (loadFailed && !silent) {
         const firstReject = countResult.find((r) => r.status === "rejected");
         console.error(
           "[leads-board] partial load",
@@ -338,20 +343,14 @@ export function LeadsBoardApp() {
         for (const lead of leads) byId.set(lead.id, lead);
         cursors[stage] = nextCursor;
       }
-      if (opts?.silent) {
-        setLeads((prev) => {
-          if (byId.size === 0) return prev;
-          const merged = new Map(prev.map((lead) => [lead.id, lead]));
-          for (const lead of byId.values()) merged.set(lead.id, lead);
-          return [...merged.values()];
-        });
-        setStageCursors((prev) => {
-          const next = { ...prev };
-          for (const [stage, cursor] of Object.entries(cursors)) {
-            if (!prev[stage]) next[stage] = cursor;
-          }
-          return next;
-        });
+      if (silent) {
+        if (byId.size > 0) {
+          setLeads((prev) => {
+            const merged = new Map(prev.map((lead) => [lead.id, lead]));
+            for (const lead of byId.values()) merged.set(lead.id, lead);
+            return [...merged.values()];
+          });
+        }
       } else if (byId.size > 0 || stagePages.length > 0) {
         setLeads([...byId.values()]);
         setStageCursors(cursors);
@@ -403,7 +402,7 @@ export function LeadsBoardApp() {
   useEffect(() => {
     const id = window.setInterval(() => {
       void load({ silent: true });
-    }, 15_000);
+    }, 45_000);
     return () => window.clearInterval(id);
   }, [load]);
 
@@ -1042,7 +1041,7 @@ export function LeadsBoardApp() {
       }
     };
     void tick();
-    const id = window.setInterval(() => void tick(), 45_000);
+    const id = window.setInterval(() => void tick(), 90_000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
