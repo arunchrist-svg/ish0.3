@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { db, agentRuns, leads, contacts } from "@/db";
-import { eq, and, desc, gte, inArray } from "drizzle-orm";
+import { eq, and, desc, gte, inArray, isNull, or } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export async function GET() {
   try {
@@ -20,7 +21,14 @@ export async function GET() {
         completedAt: agentRuns.completedAt,
       })
       .from(agentRuns)
-      .where(and(eq(agentRuns.tenantId, ctx.tenantId), gte(agentRuns.startedAt, since)))
+      .leftJoin(leads, eq(leads.id, agentRuns.leadId))
+      .where(
+        and(
+          eq(agentRuns.tenantId, ctx.tenantId),
+          gte(agentRuns.startedAt, since),
+          or(isNull(agentRuns.leadId), withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId))),
+        ),
+      )
       .orderBy(desc(agentRuns.startedAt))
       .limit(20);
 
@@ -31,7 +39,7 @@ export async function GET() {
         .select({ id: leads.id, name: contacts.name })
         .from(leads)
         .innerJoin(contacts, eq(leads.contactId, contacts.id))
-        .where(and(eq(leads.tenantId, ctx.tenantId), inArray(leads.id, leadIds)));
+        .where(withLeadVisibility(ctx, eq(leads.tenantId, ctx.tenantId), inArray(leads.id, leadIds)));
       for (const l of leadRows) leadNames.set(l.id, l.name);
     }
 

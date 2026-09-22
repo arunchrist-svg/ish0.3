@@ -9,6 +9,7 @@ import { friendlyLLMError } from "@/lib/llm";
 import { hasGeminiKeys } from "@/lib/llm/gemini-keys";
 import { hasAnthropicKey } from "@/lib/llm/provider-chain";
 import { hasOpenRouterKey } from "@/lib/llm/openrouter";
+import { localLlmEnabled } from "@/lib/llm/local-llm";
 import { hasTavilyKeys } from "./tavily-keys";
 
 export function hasTavilyKey(): boolean {
@@ -20,7 +21,7 @@ export function hasGeminiKey(): boolean {
 }
 
 export function hasLLMKey(): boolean {
-  return hasAnthropicKey() || hasGeminiKey() || hasOpenRouterKey();
+  return hasAnthropicKey() || hasGeminiKey() || hasOpenRouterKey() || localLlmEnabled();
 }
 
 export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
@@ -34,9 +35,9 @@ export function checkDiscoveryPrerequisites(cfg: EnrichmentConfig): string[] {
           "Agentic Places + Apollo needs GOOGLE_PLACES_API_KEY. Add it, or switch Agentic data stack to Directories.",
         );
       }
-      if (cfg.peopleSearchProvider !== "none" && !hasApolloKey() && !hasGeminiKey()) {
+      if (cfg.peopleSearchProvider !== "none" && !hasApolloKey() && !hasGeminiKey() && !hasTavilyKey()) {
         errors.push(
-          "Agentic Places + Apollo needs APOLLO_API_KEY or GEMINI_API_KEY for people search. Add one, turn People search Off, or switch to Directories.",
+          "People search needs APOLLO_API_KEY, GEMINI_API_KEY, TAVILY_API_KEY, or company websites for local extract. Add one, or turn People search Off.",
         );
       }
       return errors;

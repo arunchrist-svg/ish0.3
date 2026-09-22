@@ -194,15 +194,27 @@ export function buildSimpleGoogleRolePeopleQueries(params: {
   return [...new Set(queries.map(excludeOpenToWork))].slice(0, 20);
 }
 
-/** 1–2 queries a person types, e.g. "Knovatic Solutions head hr". */
-export function googleFirstPeopleQueries(company: string, roleHints: string[] = []): string[] {
+/** 1–3 queries a person types, e.g. "Knovatic Solutions head hr" or "Ashok Leyland head hr Hosur". */
+export function googleFirstPeopleQueries(
+  company: string,
+  roleHints: string[] = [],
+  locality?: string,
+): string[] {
   const name = company.trim();
   if (!name) return [];
+  const loc = locality?.trim();
   const phrases = [...new Set(roleHints.map(toGoogleStyleRolePhrase).filter(Boolean))];
   const wantsHr = !phrases.length || phrases.some((phrase) => /\bhr\b/.test(phrase));
-  if (wantsHr) return [`${name} head hr`, `${name} hr head`];
-  const phrase = phrases[0]!;
-  return [`${name} ${phrase}`, `${phrase} ${name}`];
+  const role = wantsHr ? "head hr" : phrases[0]!;
+  const queries = [`${name} ${role}`];
+  if (wantsHr) queries.push(`${name} hr head`);
+  else queries.push(`${role} ${name}`);
+  if (loc) {
+    queries.splice(1, 0, `${name} ${role} ${loc}`, `${name} ${role} ${loc} linkedin`);
+  } else {
+    queries.push(`${name} ${role} linkedin`);
+  }
+  return [...new Set(queries)].slice(0, loc ? 3 : 2);
 }
 
 /**
@@ -863,7 +875,9 @@ export async function searchPeopleViaWeb(params: {
         : "India";
 
   if (!canSearchPeopleOnWeb()) {
-    throw new Error("People search needs Tavily or Gemini. Add TAVILY_API_KEY or GEMINI_API_KEY.");
+    if (!params.companyWebsite && !params.companyDomain) {
+      throw new Error("People search needs Tavily, Gemini, or a company website.");
+    }
   }
 
   const roleTerm =
@@ -1084,9 +1098,10 @@ export async function searchPeopleViaWeb(params: {
 
   async function pullGeminiGoogleFirst() {
     if (localOperators || !hasGeminiKey()) return;
-    const googleQueries = googleFirstPeopleQueries(company, roleLabels).slice(0, 2);
+    const locality = searchCities[0];
+    const googleQueries = googleFirstPeopleQueries(company, roleLabels, locality);
     if (!googleQueries.length) return;
-    console.info("[people-search] Gemini Google Search first", { company, queries: googleQueries });
+    console.info("[people-search] Google then LinkedIn via Search", { company, queries: googleQueries });
     for (const q of googleQueries) {
       try {
         const hits = await geminiGroundedSearch(q, 8);
@@ -1094,7 +1109,7 @@ export async function searchPeopleViaWeb(params: {
         if (hits.length) break;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.warn("[people-search] Gemini Google Search failed:", q, message);
+        console.warn("[people-search] Google Search failed:", q, message);
       }
     }
   }
@@ -1213,17 +1228,6 @@ Return up to ${limit} people.`,
     if (llmKept.length) return llmKept;
   }
 
-  await runQueryBatch(queries.slice(0, 1));
-  ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
-  if (!roleMatchedHeuristic.length && queries.length > 1) {
-    await runQueryBatch(queries.slice(1, 3));
-    ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
-  }
-  if (!roleMatchedHeuristic.length && queries.length > 3) {
-    await runQueryBatch(queries.slice(3, 6));
-    ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
-  }
-
   let sitePagesPulled = false;
   async function pullCompanySitePages() {
     if (sitePagesPulled) return 0;
@@ -1240,6 +1244,19 @@ Return up to ${limit} people.`,
       });
     }
     return pages.length;
+  }
+
+  if (canSearchPeopleOnWeb()) {
+    await runQueryBatch(queries.slice(0, 1));
+    ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
+    if (!roleMatchedHeuristic.length && queries.length > 1) {
+      await runQueryBatch(queries.slice(1, 3));
+      ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
+    }
+    if (!roleMatchedHeuristic.length && queries.length > 3) {
+      await runQueryBatch(queries.slice(3, 6));
+      ({ raw: heuristicRaw, matched: heuristic, roleMatched: roleMatchedHeuristic } = keepableFromHits());
+    }
   }
 
   if (!allResults.length) {
@@ -1292,7 +1309,7 @@ Return up to ${limit} people.`,
 
   // Empty-result fallback: simple Google phrasing for whatever roles were requested
   // (HR, Procurement, Admin, branch managers, etc.), including domain-slug tokens.
-  if (!localOperators && roleLabels.length) {
+  if (!localOperators && roleLabels.length && canSearchPeopleOnWeb()) {
     const executed = new Set(queries.slice(0, 6));
     const fallbackLocality =
       (plantPhase || hqCorridorPhase

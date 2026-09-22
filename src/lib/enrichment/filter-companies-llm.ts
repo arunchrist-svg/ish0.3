@@ -4,9 +4,9 @@
  * Uses Gemini first (with provider rotation on quota).
  */
 import { callLLM, type LLMProvider } from "@/lib/llm";
-import { hasGeminiKeys } from "@/lib/llm/gemini-keys";
 import { hasAnthropicKey, isProviderConfigured } from "@/lib/llm/provider-chain";
 import { hasOpenRouterKey } from "@/lib/llm/openrouter";
+import { localLlmEnabled } from "@/lib/llm/local-llm";
 import { llmErrorMessage } from "./discovery-prerequisites";
 import { cleanCompanyName } from "./directory-parser";
 import { isGeographicEntity } from "./company-name-match";
@@ -23,15 +23,16 @@ export type CompanyNameFilterMeta = {
   productSummary?: string | null;
 };
 
-/** Prefer Gemini for scout cleanup. Never returns anthropic as the explicit first hop. */
+/** Local extract first, then OpenRouter. Gemini is search-only. */
 export function freeCompanyFilterProvider(): LLMProvider | null {
-  if (hasGeminiKeys()) return "gemini";
+  if (localLlmEnabled()) return "local";
   if (hasOpenRouterKey()) return "openrouter";
+  if (isProviderConfigured("anthropic")) return "anthropic";
   return null;
 }
 
 export function hasScoutLlmProvider(): boolean {
-  return isProviderConfigured("gemini") || isProviderConfigured("openrouter") || hasAnthropicKey();
+  return isProviderConfigured("local") || isProviderConfigured("openrouter") || hasAnthropicKey();
 }
 
 function stripCodeFences(raw: string): string {

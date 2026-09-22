@@ -2,7 +2,11 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db, accounts, contacts, leadOutreach, leads, yieldFunnel } from "@/db";
 import { companyNameForEmail } from "@/lib/email/company-display-name";
 import { normalizeEmailBody } from "@/lib/email/email-body-format";
-import { fillIshCatalogDraftVariants, fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import {
+  fillIshCatalogDraftVariants,
+  fillIshDraftVariants,
+  ISH_BULK_FIRST_NAME_TOKEN,
+} from "@/lib/email/ish-cold-templates";
 import {
   CATALOG_ON_OPEN_SEQUENCE_POSITION,
   CATALOG_ON_OPEN_VARIANT,
@@ -41,8 +45,15 @@ export function canBulkFillIshTemplate(params: {
   return Boolean(params.outreachTemplate);
 }
 
-function applyCompany(copy: DraftCopy, company: string): DraftCopy {
-  const swap = (value?: string) => (value ? value.split(COMPANY_TOKEN).join(company) : value);
+function applyLeadTokens(copy: DraftCopy, company: string, contactFirstName: string): DraftCopy {
+  const swap = (value?: string) => {
+    if (!value) return value;
+    return value
+      .split(COMPANY_TOKEN)
+      .join(company)
+      .split(ISH_BULK_FIRST_NAME_TOKEN)
+      .join(contactFirstName);
+  };
   return {
     subjectA: swap(copy.subjectA)!,
     subjectB: swap(copy.subjectB)!,
@@ -69,7 +80,7 @@ function buildReferenceSequence(params: {
         ? (occasionId as never)
         : undefined;
   const shared = {
-    contactFirstName: "there",
+    contactFirstName: ISH_BULK_FIRST_NAME_TOKEN,
     companyName: COMPANY_TOKEN,
     senderFirstName: sender,
     brandName: brand,
@@ -185,6 +196,8 @@ export async function bulkFillIshTemplateSequences(params: {
           createdByUserId: leads.createdByUserId,
           accountName: accounts.name,
           companyOverview: accounts.companyOverview,
+          contactFirstName: contacts.firstName,
+          contactName: contacts.name,
         })
         .from(leads)
         .innerJoin(contacts, eq(contacts.id, leads.contactId))
@@ -240,8 +253,12 @@ export async function bulkFillIshTemplateSequences(params: {
 
         for (const lead of ownerRows) {
           const company = companyNameForEmail(lead.accountName);
-          const steps = reference.steps.map((copy) => applyCompany(copy, company));
-          const catalog = applyCompany(reference.catalog, company);
+          const firstName =
+            lead.contactFirstName?.trim() ||
+            lead.contactName?.trim().split(/\s+/)[0] ||
+            ISH_BULK_FIRST_NAME_TOKEN;
+          const steps = reference.steps.map((copy) => applyLeadTokens(copy, company, firstName));
+          const catalog = applyLeadTokens(reference.catalog, company, firstName);
           const free = isZeroCostTemplateWrite(params.outreachTemplate);
           const deliv = free ? 92 : 88;
 

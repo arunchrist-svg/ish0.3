@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { db, leads, contacts, accounts } from "@/db";
-import { eq, desc, and, or, like } from "drizzle-orm";
+import { eq, desc, or, like } from "drizzle-orm";
 import { requireTenantContext } from "@/lib/tenant";
 import { decodeCursor, keysetBefore, nextCursorFromRows, parseListLimit } from "@/lib/api/cursor";
 import { mark, startTiming, withServerTiming } from "@/lib/perf/server-timing";
+import { withLeadVisibility } from "@/lib/leads/lead-visibility";
 
 export const preferredRegion = ["sin1"];
 
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
       .from(leads)
       .innerJoin(contacts, eq(contacts.id, leads.contactId))
       .innerJoin(accounts, eq(accounts.id, leads.accountId))
-      .where(and(...whereParts))
+      .where(withLeadVisibility(ctx, ...whereParts))
       .orderBy(desc(leads.createdAt), desc(leads.id))
       .limit(limit);
     mark(marks, "db", dbStart);

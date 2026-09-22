@@ -4,12 +4,14 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { startAgentRun, completeAgentRun } from "@/lib/agents/log-agent-run";
 import { ensureGeminiApiKey, geminiModelId, sanitizeModelId } from "@/lib/llm/gemini-env";
 import { getOpenRouterChatModel, openrouterModelsToAttempt, parseOpenRouterSuggestedSlug } from "@/lib/llm/openrouter";
+import { getLocalChatModel, resolveLocalLlmModelId } from "@/lib/llm/local-llm";
 import type { LLMProvider, LLMTier } from "@/lib/llm/tiers";
 import {
   getAvailableGeminiKeys,
   getAvailableOpenRouterKeys,
   isLLMModelFallbackError,
   isLLMQuotaOrAuthError,
+  isLLMTransportError,
   markGeminiKeyRejected,
   markOpenRouterKeyRejected,
   markProviderRejected,
@@ -27,7 +29,7 @@ export type LLMTraceContext = {
 };
 
 export function getLLMProvider(): string {
-  return "gemini";
+  return providersToAttempt()[0] ?? "none";
 }
 
 function getAnthropicModel(tier: LLMTier) {
@@ -45,7 +47,7 @@ function getGeminiModel(tier: LLMTier, apiKey: string) {
 
 function getMaxTokens(requested?: number, provider?: LLMProvider): number {
   const base = requested ?? 2048;
-  if (provider === "openrouter" || provider === "gemini") return base;
+  if (provider === "openrouter" || provider === "gemini" || provider === "local") return base;
   const envCap = process.env.ANTHROPIC_MAX_OUTPUT_TOKENS
     ? parseInt(process.env.ANTHROPIC_MAX_OUTPUT_TOKENS, 10)
     : undefined;
@@ -53,7 +55,7 @@ function getMaxTokens(requested?: number, provider?: LLMProvider): number {
 }
 
 function tiersToAttempt(requested: LLMTier, provider: LLMProvider): LLMTier[] {
-  if (provider === "openrouter") return [requested];
+  if (provider === "openrouter" || provider === "local") return [requested];
   if (provider === "gemini") return [requested === "quality" ? "quality" : "fast"];
   return requested === "quality" ? ["quality", "fast"] : ["fast"];
 }
@@ -67,11 +69,14 @@ async function generateWithTier(params: {
   openrouterModel?: string;
   openrouterApiKey?: string;
   geminiApiKey?: string;
+  localModel?: string;
 }): Promise<{ text: string; inputTokens?: number; outputTokens?: number; modelId?: string; latencyMs: number }> {
   const model =
     params.provider === "openrouter"
       ? getOpenRouterChatModel(params.openrouterModel, params.openrouterApiKey)
-      : params.provider === "gemini"
+      : params.provider === "local"
+        ? getLocalChatModel(params.localModel ?? "local-model")
+        : params.provider === "gemini"
         ? getGeminiModel(params.tier, params.geminiApiKey ?? "")
         : getAnthropicModel(params.tier);
   const started = Date.now();
@@ -80,7 +85,7 @@ async function generateWithTier(params: {
     system: params.system,
     prompt: params.prompt,
     maxOutputTokens: getMaxTokens(params.maxTokens, params.provider),
-    maxRetries: params.provider === "openrouter" ? 0 : 1,
+    maxRetries: params.provider === "openrouter" || params.provider === "local" ? 0 : 1,
   } as Parameters<typeof generateText>[0]);
   const usage = (result as { usage?: { inputTokens?: number; outputTokens?: number; promptTokens?: number; completionTokens?: number } }).usage;
   const inputTokens = usage?.inputTokens ?? usage?.promptTokens;
@@ -173,6 +178,16 @@ async function generateWithProvider(params: {
     throw lastError ?? new Error("All OpenRouter keys exhausted");
   }
 
+  if (params.provider === "local") {
+    try {
+      const localModel = await resolveLocalLlmModelId();
+      return await generateWithTier({ ...params, localModel });
+    } catch (error) {
+      markProviderRejected("local");
+      throw error;
+    }
+  }
+
   const attemptTiers = tiersToAttempt(params.tier, "anthropic");
   let lastError: unknown;
   for (let i = 0; i < attemptTiers.length; i++) {
@@ -208,7 +223,7 @@ export async function callLLM(params: {
       : providersToAttempt(params.provider)
   ).filter((provider) => provider !== "gemini");
   if (!providerOrder.length) {
-    throw new Error("No LLM provider configured. Add GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENROUTER_API_KEY.");
+    throw new Error("No LLM provider configured. Start LM Studio or add OPENROUTER_API_KEY / ANTHROPIC_API_KEY.");
   }
 
   let runId: string | undefined;
@@ -245,7 +260,8 @@ export async function callLLM(params: {
       return result.text;
     } catch (error) {
       lastError = error;
-      if (nextProvider && isLLMQuotaOrAuthError(error)) {
+      if (nextProvider && (isLLMQuotaOrAuthError(error) || isLLMTransportError(error))) {
+        if (provider === "local") markProviderRejected("local");
         console.warn(`[callLLM] ${provider} unavailable, rotating to ${nextProvider}`);
         continue;
       }
@@ -275,7 +291,7 @@ export function llmErrorHttpStatus(error: unknown): 429 | 500 {
 export function friendlyLLMError(error: unknown): string {
   const msg = error instanceof Error ? error.message : "AI request failed";
   if (/No LLM provider configured/i.test(msg)) {
-    return "Add GEMINI_API_KEY in .env.local to use AI features.";
+    return "Start LM Studio (local server on port 1234) or add OPENROUTER_API_KEY.";
   }
   if (/GEMINI_API_KEY is missing|generativeai|google/i.test(msg)) {
     if (/quota|rate.?limit|429|resource_exhausted|exceeded your current quota/i.test(msg)) {
@@ -284,6 +300,9 @@ export function friendlyLLMError(error: unknown): string {
     if (/api.?key|unauthorized|401|authentication/i.test(msg)) {
       return "Gemini API key was rejected. Check GEMINI_API_KEY in .env.local.";
     }
+  }
+  if (/lm studio|local llm|localhost:1234|127\.0\.0\.1:1234/i.test(msg)) {
+    return "LM Studio is not running. Load a chat model and start the local server on port 1234.";
   }
   if (/OPENROUTER_API_KEY is missing/i.test(msg)) {
     return "Add OPENROUTER_API_KEY in .env.local to use AI Writer.";

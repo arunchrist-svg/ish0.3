@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fillIshCatalogDraftVariants, fillIshDraftVariants } from "@/lib/email/ish-cold-templates";
+import { SRILAKSHA_OUTREACH_EMAIL } from "@/lib/email/srilaksha-sender";
 
 const names = {
   contactFirstName: "Vijetha",
@@ -63,12 +64,12 @@ describe("ISH cold email templates", () => {
       sequencePosition: 1,
       fromLocation: "Kasturinagar",
       senderPhone: "+91 98765 43210",
-      fromAddress: "srilaksha@indiasweethouse.in",
+      fromAddress: SRILAKSHA_OUTREACH_EMAIL,
     });
     expect(withPhone.emailBody).toMatch(
-      /Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar\n\n\+91 98765 43210 \| srilaksha@indiasweethouse\.in/,
+      /Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar\n\n\+91 98765 43210 \| srilaksha@srilakshaenterprises\.in/,
     );
-    expect(withPhone.emailBodyB).toMatch(/\+91 98765 43210 \| srilaksha@indiasweethouse\.in/);
+    expect(withPhone.emailBodyB).toMatch(/\+91 98765 43210 \| srilaksha@srilakshaenterprises\.in/);
   });
 
   it("uses Settings signature under Warmly when set", () => {
@@ -95,7 +96,7 @@ describe("ISH cold email templates", () => {
       sequencePosition: 5,
       fromLocation: "Kasturinagar",
       senderPhone: "+91 98765 43210",
-      fromAddress: "srilaksha@indiasweethouse.in",
+      fromAddress: SRILAKSHA_OUTREACH_EMAIL,
       signature: "Anuj\nManager\nIndia Sweet House",
     });
     expect(catalog.emailBody).toMatch(/Warmly,\nAnuj\nManager\nIndia Sweet House$/);
@@ -153,10 +154,10 @@ describe("ISH cold email templates", () => {
       sequencePosition: 5,
       fromLocation: "Kasturinagar",
       senderPhone: "+91 98765 43210",
-      fromAddress: "srilaksha@indiasweethouse.in",
+      fromAddress: SRILAKSHA_OUTREACH_EMAIL,
     });
     const signOff =
-      /Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar\n\n\+91 98765 43210 \| srilaksha@indiasweethouse\.in/;
+      /Warmly,\nSrilaksha\nIndia Sweet House, Kasturinagar\n\n\+91 98765 43210 \| srilaksha@srilakshaenterprises\.in/;
     expect(catalog.subjectA).toBe("festive gifting for Acme Auto");
     expect(catalog.subjectB).toBe("festive gifting for Acme Auto");
     expect(catalog.emailBody).toMatch(signOff);
@@ -226,7 +227,7 @@ describe("ISH cold email templates", () => {
     expect(e1.subjectA).toBe("A small box of Diwali, on its way to you?");
     expect(e1.subjectB).toBe("15 minutes, and a box of sweets, this festive season?");
     expect(e1.subjectC).toBe("How's the festive gifting shaping up on your end?");
-    expect(e1.emailBody).toMatch(/^Namaste,/);
+    expect(e1.emailBody).toMatch(/^Hi Vijetha,/);
     expect(e1.emailBody).toMatch(/sample box consisting a few of our handcrafted sweets/);
     expect(e1.emailBody).toMatch(/best delivery address/);
     expect(e1.emailBodyB).toMatch(/15-20 minutes at your office/);
@@ -246,7 +247,7 @@ describe("ISH cold email templates", () => {
     expect(e2.subjectA).toBe("Following up: our 2026 festive gifting range for Acme Auto");
     expect(e2.subjectB).toBe("The story behind what's in our festive boxes");
     expect(e2.subjectC).toBe("A few gifting options for Acme Auto this Diwali");
-    expect(e2.emailBody).toMatch(/^Namaste,/);
+    expect(e2.emailBody).toMatch(/^Hi Vijetha,/);
     expect(e2.emailBody).toMatch(/Manikya & Neelam/);
     expect(e2.emailBody).toMatch(/e-gift coupons/);
     expect(e2.emailBodyB).toMatch(/Karma Farm \(it grew out of a gaushala\)/);

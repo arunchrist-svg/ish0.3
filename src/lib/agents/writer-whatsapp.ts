@@ -120,12 +120,12 @@ function fallbackWhatsAppCopy(params: {
   valueProp?: string;
   cta?: string;
 }): string {
-  const first = params.contactFirstName || "there";
+  const first = params.contactFirstName?.trim() || "";
   const hook = params.hook?.trim() || `Corporate gifting for ${params.companyDisplayName}`;
   const value = params.valueProp?.trim() || `${params.brandName} can help your team.`;
   const cta = params.cta?.trim() || "Open to a tasting sample this week?";
   return sanitizeWhatsAppCopy(
-    `Hi ${first}, ${hook}. ${value}\n\n${cta}\n\n${params.senderFirstName}\n${params.brandName}`,
+    `${first ? `Hi ${first},` : "Hi,"} ${hook}. ${value}\n\n${cta}\n\n${params.senderFirstName}\n${params.brandName}`,
   );
 }
 

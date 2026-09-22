@@ -22,7 +22,7 @@ type VisibilityCtx = Pick<TenantContext, "userId" | "role" | "platformRole" | "w
  * - draft_ready only when Email 1 outreach exists (same inner join as overview list)
  * - plus pending_review follow-ups
  * - unreplied inbound replies only
- * - mailbox visibility (this login's leads; superadmin sees all)
+ * - mailbox visibility (this login's leads only)
  */
 export async function getOutreachAttentionCounts(ctx: VisibilityCtx): Promise<OutreachAttentionCounts> {
   const [draftReadyRow, pendingReviewRow, repliesRow] = await Promise.all([

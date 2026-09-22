@@ -78,6 +78,14 @@ describe("googleFirstPeopleQueries", () => {
       "procurement head Nash Industries",
     ]);
   });
+
+  it("adds city and LinkedIn the way a person would type them", () => {
+    expect(googleFirstPeopleQueries("Ashok Leyland", ["Head of HR"], "Hosur")).toEqual([
+      "Ashok Leyland head hr",
+      "Ashok Leyland head hr Hosur",
+      "Ashok Leyland head hr Hosur linkedin",
+    ]);
+  });
 });
 
 describe("buildGoogleStyleSeniorPeopleQueries", () => {

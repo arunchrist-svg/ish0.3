@@ -55,11 +55,20 @@ describe("company discovery prerequisites", () => {
 
   it("requires Places, and Apollo or Gemini, for Agentic Places + Apollo", () => {
     clearTavilyEnv();
+    vi.stubEnv("TAVILY_API_KEY", "");
+    vi.stubEnv("TAVILY_API_KEY_2", "");
+    vi.stubEnv("TAVILY_API_KEY_3", "");
+    vi.stubEnv("TAVILY_API_KEY_4", "");
+    vi.stubEnv("TAVILY_API_KEY_5", "");
+    vi.stubEnv("TAVILY_API_KEY_6", "");
+    vi.stubEnv("TAVILY_API_KEYS", "");
     vi.stubEnv("GOOGLE_PLACES_API_KEY", "");
     vi.stubEnv("APOLLO_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY", "");
     vi.stubEnv("GEMINI_API_KEY_2", "");
     vi.stubEnv("GEMINI_API_KEY_3", "");
+    vi.stubEnv("GEMINI_API_KEY_4", "");
+    vi.stubEnv("GEMINI_API_KEY_5", "");
     vi.stubEnv("GEMINI_API_KEYS", "");
     vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "");
 
@@ -72,7 +81,7 @@ describe("company discovery prerequisites", () => {
     );
 
     expect(errors.some((error) => /GOOGLE_PLACES_API_KEY/i.test(error))).toBe(true);
-    expect(errors.some((error) => /APOLLO_API_KEY or GEMINI_API_KEY/i.test(error))).toBe(true);
+    expect(errors.some((error) => /people search/i.test(error))).toBe(true);
     vi.unstubAllEnvs();
   });
 });

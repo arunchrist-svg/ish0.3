@@ -1,4 +1,5 @@
 import { companyNameForEmail } from "@/lib/email/company-display-name";
+import { formatHiGreetingLine, resolveIshGreetingName } from "@/lib/email/ish-greeting";
 import { isFestiveWriteOccasion, type WriteOccasionId } from "@/lib/occasions/catalog";
 import { writeOccasionLabel } from "@/lib/occasions/resolve";
 
@@ -40,7 +41,7 @@ function wrap(
   closing: "thanks" | "best",
   signature?: string | null,
 ): string {
-  return `Hi ${first},\n\n${paragraphs}\n\n${signOff(sender, brand, closing, signature)}`;
+  return `${formatHiGreetingLine(first)}\n\n${paragraphs}\n\n${signOff(sender, brand, closing, signature)}`;
 }
 
 function applyCta(paragraphs: string, templateId?: string | null): string {
@@ -433,7 +434,7 @@ export function getIshOccasionEmails(params: {
   if (isFestiveWriteOccasion(params.occasionId)) {
     return [];
   }
-  const first = params.contactFirstName || "there";
+  const first = resolveIshGreetingName(params.contactFirstName);
   const company = companyNameForEmail(params.companyName);
   const sender = params.senderFirstName?.trim() || "Team";
   const brand = params.brandName?.trim() || "India Sweet House";

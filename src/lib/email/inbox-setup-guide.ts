@@ -1,5 +1,6 @@
 import type { SmtpServerId } from "@/lib/email/config";
 import { SMTP_SERVER_OPTIONS } from "@/lib/email/config";
+import { SRILAKSHA_OUTREACH_EMAIL } from "@/lib/email/srilaksha-sender";
 
 export type InboxSetupStep = { title: string; detail: string };
 
@@ -20,7 +21,7 @@ export function inboxSetupGuide(id: SmtpServerId): {
       steps: [
         {
           title: "Sign in to Zoho Mail",
-          detail: `Open ${mailUrl} with the inbox that will send outreach (for example prasantmishra@indiasweethouse.in).`,
+          detail: `Open ${mailUrl} with the inbox that will send outreach (for example ${SRILAKSHA_OUTREACH_EMAIL}).`,
         },
         {
           title: "Enable IMAP access",

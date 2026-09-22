@@ -1,44 +1,30 @@
 import { and, eq, type SQL } from "drizzle-orm";
 import { leads } from "@/db";
 import type { TenantContext, TenantRole } from "@/lib/tenant";
-import { isSuperadmin } from "@/lib/auth/platform";
-
-/** Platform superadmin can see every lead in a tenant for support. */
-export function canViewAllTenantLeads(platformRole?: string | null): boolean {
-  return isSuperadmin(platformRole);
-}
 
 /**
  * Each login only sees leads owned by that mailbox (Scout, Leads, Email).
- * Superadmin still sees every lead in the tenant for support.
+ * Platform superadmin uses /admin for support, not a shared seller board.
  */
-export function leadVisibilitySql(ctx: Pick<TenantContext, "userId" | "role" | "platformRole">): SQL | undefined {
-  if (canViewAllTenantLeads(ctx.platformRole)) return undefined;
+export function leadVisibilitySql(ctx: Pick<TenantContext, "userId">): SQL {
   return eq(leads.createdByUserId, ctx.userId);
 }
 
-/**
- * Outbox / send-queue occupancy is always the logged-in mailbox, even for owners.
- * Superadmin still sees every lead for support.
- */
-export function mailboxLeadVisibilitySql(
-  ctx: Pick<TenantContext, "userId" | "platformRole">,
-): SQL | undefined {
-  if (canViewAllTenantLeads(ctx.platformRole)) return undefined;
+/** Outbox / send-queue occupancy is always the logged-in mailbox. */
+export function mailboxLeadVisibilitySql(ctx: Pick<TenantContext, "userId">): SQL {
   return eq(leads.createdByUserId, ctx.userId);
 }
 
 export function canAccessLeadRecord(
-  ctx: Pick<TenantContext, "userId" | "role" | "platformRole" | "tenantId">,
+  ctx: Pick<TenantContext, "userId" | "tenantId">,
   lead: { tenantId: string; createdByUserId?: string | null },
 ): boolean {
   if (lead.tenantId !== ctx.tenantId) return false;
-  if (canViewAllTenantLeads(ctx.platformRole)) return true;
   return lead.createdByUserId === ctx.userId;
 }
 
 export function withLeadVisibility(
-  ctx: Pick<TenantContext, "userId" | "role" | "platformRole">,
+  ctx: Pick<TenantContext, "userId">,
   ...parts: Array<SQL | undefined>
 ): SQL {
   const visibility = leadVisibilitySql(ctx);
@@ -48,7 +34,7 @@ export function withLeadVisibility(
 }
 
 export function withMailboxLeadVisibility(
-  ctx: Pick<TenantContext, "userId" | "platformRole">,
+  ctx: Pick<TenantContext, "userId">,
   ...parts: Array<SQL | undefined>
 ): SQL {
   const visibility = mailboxLeadVisibilitySql(ctx);
@@ -57,7 +43,6 @@ export function withMailboxLeadVisibility(
   return and(...filtered)!;
 }
 
-export function leadVisibilityForRole(_role: TenantRole, platformRole?: string | null): "all" | "own" {
-  if (canViewAllTenantLeads(platformRole)) return "all";
+export function leadVisibilityForRole(_role: TenantRole, _platformRole?: string | null): "all" | "own" {
   return "own";
 }

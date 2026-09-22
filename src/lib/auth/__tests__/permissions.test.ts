@@ -114,10 +114,10 @@ describe("AUTH-UNIT-001 permissions matrix", () => {
 });
 
 describe("lead visibility roles", () => {
-  it("each mailbox only sees its own leads; superadmin sees all", () => {
+  it("each mailbox only sees its own leads, including superadmin on seller CRM", () => {
     expect(leadVisibilityForRole("owner", "user")).toBe("own");
     expect(leadVisibilityForRole("admin", "user")).toBe("own");
     expect(leadVisibilityForRole("member", "user")).toBe("own");
-    expect(leadVisibilityForRole("viewer", SUPER)).toBe("all");
+    expect(leadVisibilityForRole("viewer", SUPER)).toBe("own");
   });
 });

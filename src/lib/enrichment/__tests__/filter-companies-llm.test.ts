@@ -27,9 +27,9 @@ describe("parseCompanyFilterKeepNames", () => {
 });
 
 describe("freeCompanyFilterProvider", () => {
-  it("returns gemini, openrouter, or null without using anthropic as primary", () => {
+  it("returns local, openrouter, anthropic, or null, never gemini", () => {
     const provider = freeCompanyFilterProvider();
-    expect(provider === null || provider === "openrouter" || provider === "gemini").toBe(true);
-    expect(provider).not.toBe("anthropic");
+    expect(provider === null || provider === "openrouter" || provider === "local" || provider === "anthropic").toBe(true);
+    expect(provider).not.toBe("gemini");
   });
 });

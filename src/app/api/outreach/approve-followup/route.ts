@@ -5,6 +5,7 @@ import { requireTenantContext } from "@/lib/tenant";
 import { handleApiError } from "@/lib/api-errors";
 import { requirePipelineWrite } from "@/lib/auth/permissions";
 import { logAudit } from "@/lib/audit";
+import { canAccessLeadRecord } from "@/lib/leads/lead-visibility";
 
 /**
  * Promote a pending_review follow-up to scheduled so the sequencer can send it
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
         sequenceDay: outreachSchedule.sequenceDay,
         tenantId: leads.tenantId,
         workspaceId: leads.workspaceId,
+        createdByUserId: leads.createdByUserId,
       })
       .from(outreachSchedule)
       .innerJoin(leads, eq(leads.id, outreachSchedule.leadId))
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
       )
       .limit(1);
 
-    if (!row) {
+    if (!row || !canAccessLeadRecord(ctx, row)) {
       return NextResponse.json({ error: "Follow-up not found" }, { status: 404 });
     }
     if (row.sequenceDay <= 0) {

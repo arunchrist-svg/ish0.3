@@ -6,18 +6,22 @@ import {
 } from "@/lib/llm/provider-chain";
 
 describe("providersToAttempt", () => {
-  afterEach(() => {
+    afterEach(() => {
     resetLLMProviderSession();
     delete process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY_2;
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LOCAL_LLM_ENABLED;
+    delete process.env.LOCAL_LLM_BASE_URL;
   });
 
   it("prefers OpenRouter then Claude, and does not use Gemini for chat", () => {
     process.env.GEMINI_API_KEY = "g1";
     process.env.ANTHROPIC_API_KEY = "a1";
     process.env.OPENROUTER_API_KEY = "o1";
+    delete process.env.LOCAL_LLM_ENABLED;
+    delete process.env.LOCAL_LLM_BASE_URL;
     expect(providersToAttempt()).toEqual(["openrouter", "anthropic"]);
   });
 
