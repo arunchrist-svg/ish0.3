@@ -162,9 +162,9 @@ async function countPeriodActivity(
     .where(visibility(ctx));
 
   return {
-    sent: row?.sent ?? 0,
-    opened: row?.opened ?? 0,
-    replies: row?.replies ?? 0,
+    sent: Number(row?.sent ?? 0),
+    opened: Number(row?.opened ?? 0),
+    replies: Number(row?.replies ?? 0),
   };
 }
 

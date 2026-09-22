@@ -126,6 +126,7 @@ function buildLeadRow(
     industry: string | null;
     city: string | null;
     leadStatus: string;
+    lastReplyContent?: string | null;
   },
   leadRows: {
     scheduleId: string;

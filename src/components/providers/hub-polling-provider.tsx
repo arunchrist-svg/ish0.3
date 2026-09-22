@@ -11,6 +11,7 @@ export type AppNotification = {
   urgency: string;
   metadata: Record<string, unknown>;
   createdAt: string;
+  readAt?: string | null;
 };
 
 type NotificationsContextValue = {
