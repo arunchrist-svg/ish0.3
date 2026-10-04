@@ -1,5 +1,16 @@
 import { toast } from "sonner";
+import { isNativePlatform } from "@/lib/capacitor/platform";
 import type { WhatsAppAutoOpenPayload } from "@/lib/whatsapp/auto-after-second-email";
+
+function prefersWhatsAppNativeHandoff(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (isNativePlatform()) return true;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+}
+
+function isWhatsAppDeepLink(url: string): boolean {
+  return /^https:\/\/(wa\.me|api\.whatsapp\.com)\//i.test(url);
+}
 
 // Stored on `window` so HMR module reloads don't lose the reference.
 const WA_WIN_KEY = "__ish_wa_win__";
@@ -12,6 +23,11 @@ function setWaWindow(w: Window | null) {
 }
 
 export function openWhatsAppClickUrl(url: string): void {
+  if (prefersWhatsAppNativeHandoff() && isWhatsAppDeepLink(url)) {
+    window.location.assign(url);
+    return;
+  }
+
   const existing = getWaWindow();
   if (existing && !existing.closed) {
     try {

@@ -8,6 +8,7 @@ import {
   openContactWhatsApp,
   type ContactListItem,
 } from "@/lib/api-client";
+import { openWhatsAppClickUrl } from "@/lib/whatsapp/open-click";
 import { toast } from "sonner";
 
 function WhatsAppGlyph({ className }: { className?: string }) {
@@ -44,7 +45,7 @@ export function ContactWhatsAppButton({
     setPending(true);
     try {
       const { url } = await openContactWhatsApp(contact.id);
-      window.open(url, "_blank", "noopener,noreferrer");
+      openWhatsAppClickUrl(url);
       if (!sent) setConfirming(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not open WhatsApp");
