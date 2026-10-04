@@ -248,6 +248,8 @@ export const contacts = pgTable("contacts", {
   enrichmentProvider: text("enrichment_provider"),
   alternateEmails: jsonb("alternate_emails").$type<import("@/lib/enrichment/contact-emails").ContactEmailEntry[]>().default([]),
   phone:           text("phone"),
+  whatsappOpenedAt: timestamp("whatsapp_opened_at"),
+  whatsappSentAt:  timestamp("whatsapp_sent_at"),
   linkedIn:        text("linkedin"),
   bio:             text("bio"),
   isKeyDM:         boolean("is_key_dm").default(false),

@@ -32,6 +32,8 @@ export async function GET(req: Request) {
         email: contacts.email,
         emailStatus: contacts.emailStatus,
         phone: contacts.phone,
+        whatsappOpenedAt: contacts.whatsappOpenedAt,
+        whatsappSentAt: contacts.whatsappSentAt,
         linkedIn: contacts.linkedIn,
         isKeyDM: contacts.isKeyDM,
         company: accounts.name,
@@ -65,6 +67,8 @@ export async function GET(req: Request) {
         email: r.email ?? "—",
         emailStatus: r.emailStatus ?? "missing",
         hasLead: !!r.leadId,
+        whatsappOpenedAt: r.whatsappOpenedAt?.toISOString() ?? null,
+        whatsappSentAt: r.whatsappSentAt?.toISOString() ?? null,
       });
     }
 

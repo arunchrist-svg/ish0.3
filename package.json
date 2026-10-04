@@ -26,6 +26,7 @@
         "db:seed-test-user": "tsx scripts/seed-test-user.ts",
         "email:health": "tsx scripts/check-sender-health.ts",
         "sequencer:once": "tsx scripts/sequencer-once.ts",
+        "inngest:dev": "npx inngest-cli@latest dev -u http://127.0.0.1:3002/api/inngest",
         "cap:sync": "npx cap sync",
         "cap:ios": "npm run cap:sync:ios && npx cap open ios",
         "cap:android": "npm run cap:sync:android && npx cap open android",

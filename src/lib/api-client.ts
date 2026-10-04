@@ -1955,6 +1955,8 @@ export type ContactListItem = {
   email: string;
   emailStatus: string;
   phone: string | null;
+  whatsappOpenedAt: string | null;
+  whatsappSentAt: string | null;
   linkedIn: string | null;
   company: string;
   companyId: string;
@@ -2008,6 +2010,16 @@ export type FetchContactsPage = {
   contacts: ContactListItem[];
   nextCursor: string | null;
 };
+
+export async function openContactWhatsApp(contactId: string): Promise<{ url: string; to: string; message: string }> {
+  return post<{ url: string; to: string; message: string }>(`/api/contacts/${contactId}/whatsapp`, {
+    action: "open",
+  });
+}
+
+export async function markContactWhatsAppSent(contactId: string): Promise<{ sentAt: string }> {
+  return post<{ sentAt: string }>(`/api/contacts/${contactId}/whatsapp`, { action: "sent" });
+}
 
 export async function fetchContactsPage(params?: {
   limit?: number;

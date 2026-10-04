@@ -51,6 +51,7 @@ async function main() {
       const filePath = path.join(drizzleDir, file);
       const sql = await readFile(filePath, "utf8");
       process.stdout.write(`→ ${file} ... `);
+      await pool.query("SET search_path TO public");
       await pool.query(sql);
       console.log("ok");
     }

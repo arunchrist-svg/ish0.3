@@ -21,6 +21,7 @@ import { FacetFilterBar } from "@/components/filters/facet-filter-bar";
 import { BusinessCardCapture } from "@/components/mobile/business-card-capture";
 import type { BusinessCardFields } from "@/lib/enrichment/business-card-ocr";
 import { fetchContactsPage, createLeadFromContact, type ContactListItem } from "@/lib/api-client";
+import { ContactWhatsAppButton } from "@/components/contacts/contact-whatsapp-button";
 import { subscribeCrmRecordsRefresh, notifyCrmRecordsChanged } from "@/lib/crm-refresh";
 import {
   applyContactsListView,
@@ -135,6 +136,14 @@ export function ContactsApp() {
   );
 
   const leadsCount = contacts.filter((c) => c.hasLead).length;
+
+  function markWhatsAppSent(contactId: string, sentAt: string) {
+    setContacts((prev) =>
+      prev.map((contact) =>
+        contact.id === contactId ? { ...contact, whatsappSentAt: sentAt } : contact,
+      ),
+    );
+  }
 
   const exportParams = () => {
     const params = new URLSearchParams();
@@ -275,7 +284,11 @@ export function ContactsApp() {
             <div className="ish-page-padding space-y-0 py-3 lg:hidden">
               <div className="ish-list-group">
                 {filtered.map((contact) => (
-                  <ContactMobileRow key={contact.id} contact={contact} />
+                  <ContactMobileRow
+                    key={contact.id}
+                    contact={contact}
+                    onWhatsAppSent={markWhatsAppSent}
+                  />
                 ))}
               </div>
               <p className="px-1 pt-3 text-[11px] text-brand-ink-faint">
@@ -300,13 +313,18 @@ export function ContactsApp() {
                   <th className="px-6 py-3 text-left font-semibold text-brand-ink-soft">Contact</th>
                   <th className="px-4 py-3 text-left font-semibold text-brand-ink-soft">Company</th>
                   <th className="px-4 py-3 text-left font-semibold text-brand-ink-soft">Email</th>
+                  <th className="px-4 py-3 text-left font-semibold text-brand-ink-soft">WhatsApp</th>
                   <th className="px-4 py-3 text-left font-semibold text-brand-ink-soft">Status</th>
                   <th className="px-4 py-3 text-left font-semibold text-brand-ink-soft">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((contact) => (
-                  <ContactRow key={contact.id} contact={contact} />
+                  <ContactRow
+                    key={contact.id}
+                    contact={contact}
+                    onWhatsAppSent={markWhatsAppSent}
+                  />
                 ))}
               </tbody>
             </table>
@@ -322,64 +340,38 @@ export function ContactsApp() {
   );
 }
 
-function ContactMobileRow({ contact }: { contact: ContactListItem }) {
+function ContactMobileRow({
+  contact,
+  onWhatsAppSent,
+}: {
+  contact: ContactListItem;
+  onWhatsAppSent: (contactId: string, sentAt: string) => void;
+}) {
   return (
-    <div className="ish-list-row">
-      <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-brand-avatar-1 text-[12px] font-bold text-[#5a4838]">
-        {contact.name.charAt(0)}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[13px] font-semibold text-brand-ink">{contact.name}</span>
-          {contact.isKeyDM ? (
-            <Star className="size-3 shrink-0 fill-brand-yellow text-brand-yellow" />
-          ) : null}
-          {contact.hasLead ? (
-            <span className="rounded-full bg-brand-green/15 px-1.5 py-0.5 text-[9px] font-bold text-brand-green">
-              Lead
-            </span>
-          ) : null}
+    <div className="ish-list-row items-start">
+      <div className="min-w-0 flex-1 py-0.5">
+        <div className="truncate text-[16px] font-semibold leading-tight text-brand-ink">
+          {contact.name}
         </div>
-        <div className="truncate text-[11px] text-brand-ink-soft">
-          {[contact.title, contact.company].filter(Boolean).join(" · ") || "—"}
+        <div className="mt-0.5 truncate text-[13px] text-brand-ink">
+          {contact.company || "—"}
         </div>
-        <div className="truncate text-[11px] text-brand-ink-faint">
-          {contact.email && contact.email !== "—" ? contact.email : "No email"}
+        <div className="truncate text-[12px] text-brand-ink-soft">
+          {contact.title && contact.title !== "—" ? contact.title : "No designation"}
         </div>
       </div>
-      {contact.hasLead && contact.leadId ? (
-        <Link
-          href={`/?lead=${contact.leadId}`}
-          className="shrink-0 rounded-lg bg-brand-black px-2.5 py-1.5 text-[10px] font-bold text-white"
-        >
-          Open
-        </Link>
-      ) : (
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              const { id } = await createLeadFromContact({
-                ...contact,
-                phone: contact.phone ?? undefined,
-              });
-              toast.success("Lead created");
-              notifyCrmRecordsChanged({ source: "contact_add_lead", savedLeads: 1 });
-              window.location.href = `/?lead=${id}`;
-            } catch {
-              toast.error("Could not create lead");
-            }
-          }}
-          className="shrink-0 rounded-lg bg-brand-yellow px-2.5 py-1.5 text-[10px] font-bold text-brand-ink"
-        >
-          Add
-        </button>
-      )}
+      <ContactWhatsAppButton contact={contact} size="lg" onSent={onWhatsAppSent} />
     </div>
   );
 }
 
-function ContactRow({ contact }: { contact: ContactListItem }) {
+function ContactRow({
+  contact,
+  onWhatsAppSent,
+}: {
+  contact: ContactListItem;
+  onWhatsAppSent: (contactId: string, sentAt: string) => void;
+}) {
   const emailStatusColor =
     contact.emailStatus === "verified"
       ? "text-brand-green"
@@ -448,6 +440,14 @@ function ContactRow({ contact }: { contact: ContactListItem }) {
       </td>
 
       <td className="px-4 py-3">
+        {contact.phone && contact.phone !== "—" ? (
+          <ContactWhatsAppButton contact={contact} onSent={onWhatsAppSent} />
+        ) : (
+          <span className="text-[10px] text-brand-ink-faint">No mobile</span>
+        )}
+      </td>
+
+      <td className="px-4 py-3">
         {contact.hasLead ? (
           <div className="flex flex-col gap-1">
             <span className="inline-flex w-fit items-center gap-1 rounded-full bg-brand-green/15 px-2 py-0.5 text-[10px] font-bold text-brand-green">
@@ -466,7 +466,7 @@ function ContactRow({ contact }: { contact: ContactListItem }) {
       </td>
 
       <td className="px-4 py-3">
-        <div className="flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+        <div className="flex items-center gap-2">
           {contact.hasLead && contact.leadId ? (
             <Link
               href={`/?lead=${contact.leadId}`}
