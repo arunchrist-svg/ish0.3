@@ -1,4 +1,5 @@
 import {
+  type SendHourRange,
   type SendWindow,
   isWithinSendWindow,
   snapToSendWindow,
@@ -77,6 +78,66 @@ function dayIsFull(dayKey: string, dayCount: Map<string, number>, dailyCap: numb
   return (dayCount.get(dayKey) ?? 0) >= dailyCap;
 }
 
+function rangeDurationHours(range: SendHourRange): number {
+  return Math.max(0.5, range.hourEnd - range.hourStart);
+}
+
+/** Split the daily cap across hour ranges by duration (morning/evening get a fair share). */
+export function allocateDailyCapAcrossRanges(ranges: SendHourRange[], dailyCap: number): number[] {
+  if (ranges.length === 0) return [];
+  if (ranges.length === 1) return [Math.max(0, dailyCap)];
+
+  const durations = ranges.map(rangeDurationHours);
+  const total = durations.reduce((sum, d) => sum + d, 0);
+  const caps = durations.map((d) => Math.floor((dailyCap * d) / total));
+  let remainder = dailyCap - caps.reduce((sum, n) => sum + n, 0);
+  for (let i = caps.length - 1; i >= 0 && remainder > 0; i--) {
+    caps[i]! += 1;
+    remainder -= 1;
+  }
+  return caps;
+}
+
+function rangeIndexAt(candidate: Date, window: SendWindow): number {
+  const parts = getZonedParts(candidate, window.timezone);
+  const minutes = parts.hour * 60 + parts.minute;
+  return window.hourRanges.findIndex((range) => {
+    const start = range.hourStart * 60;
+    const end = range.hourEnd * 60;
+    return minutes >= start && minutes < end;
+  });
+}
+
+function rangeCountKey(dayKey: string, rangeIndex: number): string {
+  return `${dayKey}:${rangeIndex}`;
+}
+
+/** Assume prior sends filled earlier ranges first so evening still gets its share. */
+function seedRangeCounts(
+  existingByDay: Map<string, number>,
+  rangeCaps: number[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const [dayKey, existing] of existingByDay) {
+    let left = Math.max(0, existing);
+    for (let i = 0; i < rangeCaps.length; i++) {
+      const use = Math.min(left, rangeCaps[i]!);
+      out.set(rangeCountKey(dayKey, i), use);
+      left -= use;
+    }
+  }
+  return out;
+}
+
+function advancePastRange(candidate: Date, window: SendWindow, rangeIndex: number): Date {
+  const parts = getZonedParts(candidate, window.timezone);
+  const next = window.hourRanges[rangeIndex + 1];
+  if (next) {
+    return atLocalHour(parts, next.hourStart, window.timezone);
+  }
+  return nextAllowedDayStart(candidate, window);
+}
+
 export type BatchSendPlan = {
   slots: Date[];
   /** Calendar days spanned in the settings timezone (inclusive). */
@@ -86,6 +147,7 @@ export type BatchSendPlan = {
 /**
  * Plan Email 1 send times for a batch: respects send window (timezone, days, hours)
  * and daily send cap per calendar day in that timezone.
+ * With morning + evening ranges, the daily cap is split across those blocks.
  * Default spacing is a fresh random gap of 30s–3m between each send.
  */
 export function planBatchInitialSends(params: {
@@ -109,6 +171,9 @@ export function planBatchInitialSends(params: {
       ? () => params.gapMinutes! * 60_000
       : () => randomBatchSendGapMs(params.random ?? Math.random);
   const dayCount = new Map(params.existingByDay);
+  const rangeCaps = allocateDailyCapAcrossRanges(params.window.hourRanges, params.dailyCap);
+  const rangeCounts = seedRangeCounts(params.existingByDay, rangeCaps);
+  const splitByRange = params.window.hourRanges.length > 1;
   const slots: Date[] = [];
   let lastSlot: Date | null = null;
   const queueStart = params.queueAfter
@@ -137,6 +202,16 @@ export function planBatchInitialSends(params: {
         continue;
       }
 
+      const rangeIndex = rangeIndexAt(candidate, params.window);
+      if (splitByRange && rangeIndex >= 0) {
+        const key = rangeCountKey(dayKey, rangeIndex);
+        const used = rangeCounts.get(key) ?? 0;
+        if (used >= rangeCaps[rangeIndex]!) {
+          candidate = advancePastRange(candidate, params.window, rangeIndex);
+          continue;
+        }
+      }
+
       if (lastSlot && candidate.getTime() < lastSlot.getTime() + stepGapMs) {
         candidate = new Date(lastSlot.getTime() + stepGapMs);
         if (!isWithinSendWindow(candidate, params.window)) {
@@ -147,6 +222,10 @@ export function planBatchInitialSends(params: {
 
       slots.push(candidate);
       dayCount.set(dayKey, (dayCount.get(dayKey) ?? 0) + 1);
+      if (splitByRange && rangeIndex >= 0) {
+        const key = rangeCountKey(dayKey, rangeIndex);
+        rangeCounts.set(key, (rangeCounts.get(key) ?? 0) + 1);
+      }
       lastSlot = candidate;
       break;
     }

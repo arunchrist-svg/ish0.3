@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { planBatchInitialSends, countPlannedInRolling24h } from "@/lib/outreach/plan-batch-sends";
-import { calendarDayKey } from "@/lib/email/send-window-parts";
+import {
+  planBatchInitialSends,
+  countPlannedInRolling24h,
+  allocateDailyCapAcrossRanges,
+} from "@/lib/outreach/plan-batch-sends";
+import { calendarDayKey, getZonedParts } from "@/lib/email/send-window-parts";
 import { type SendWindow, zonedLocalToUtc } from "@/lib/email/send-window";
 
 const IST = "Asia/Kolkata";
@@ -127,6 +131,48 @@ describe("planBatchInitialSends", () => {
       existingByDay: new Map(),
     });
     expect(calendarDayKey(slots[0], IST)).toBe("2026-09-21");
+  });
+});
+
+describe("allocateDailyCapAcrossRanges", () => {
+  it("splits the daily cap by range duration", () => {
+    expect(
+      allocateDailyCapAcrossRanges(
+        [
+          { hourStart: 7, hourEnd: 11 },
+          { hourStart: 16, hourEnd: 20 },
+        ],
+        120,
+      ),
+    ).toEqual([60, 60]);
+  });
+});
+
+describe("planBatchInitialSends morning + evening", () => {
+  it("uses both morning and evening blocks in one day", () => {
+    const splitWindow: SendWindow = {
+      daysOfWeek: [1, 2, 3, 4, 5],
+      hourStart: 7,
+      hourEnd: 20,
+      hourRanges: [
+        { hourStart: 7, hourEnd: 11 },
+        { hourStart: 16, hourEnd: 20 },
+      ],
+      timezone: IST,
+    };
+    const now = zonedLocalToUtc({ year: 2026, month: 9, day: 9, hour: 7, minute: 0 }, IST);
+    const { slots } = planBatchInitialSends({
+      count: 8,
+      window: splitWindow,
+      dailyCap: 8,
+      now,
+      existingByDay: new Map(),
+      gapMinutes: 3,
+    });
+    const morning = slots.filter((slot) => getZonedParts(slot, IST).hour < 12).length;
+    const evening = slots.filter((slot) => getZonedParts(slot, IST).hour >= 16).length;
+    expect(morning).toBe(4);
+    expect(evening).toBe(4);
   });
 });
 
